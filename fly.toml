@@ -1,0 +1,34 @@
+# fly.toml app configuration file generated for kurten-shy-fire-1309 on 2023-12-02T19:15:28-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "kvitlech"
+primary_region = "ewr"
+kill_signal = "SIGTERM"
+
+[build]
+
+[deploy]
+
+[env]
+  PHX_HOST = "kvitlech.online"
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  max_machines_running = 1
+  processes = ["app"]
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 1000
+    soft_limit = 1000
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024

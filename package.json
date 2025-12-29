@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "deploy": "cd .. && mix assets.deploy && rm -f _build/esbuild"
+  },
+  "dependencies": {
+    "@ryangjchandler/alpine-clipboard": "^2.1.0",
+    "agora-rtc-sdk-ng": "^4.19.3",
+    "alpinejs": "3.2.2",
+    "phoenix_live_view": "file:../deps/phoenix_live_view",
+    "swiper": "^11.0.5",
+    "topbar": "^1.0.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.2.0",
+    "postcss": "^8.3.5",
+    "postcss-import": "^14.0.2",
+    "tailwindcss": "^3.3.5"
+  }
+}

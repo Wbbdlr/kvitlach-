@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Suez%20One" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <%= live_title_tag(assigns[:page_title] || "Kurten", suffix: " · Kvitlech") %>
+    <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
+
+    <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
+    </script>
+  </head>
+  <body>
+    <div class="h-screen-custom w-screen flex flex-col justify-center">
+      <div class="mx-auto h-full w-full max-w-screen-sm bg-rose-50 shadow-md overflow-scroll ">
+        <%= @inner_content %>
+      </div>
+    </div>
+  </body>
+</html>
