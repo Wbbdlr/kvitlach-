@@ -1,42 +1,7 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useGameStore } from "./state";
-import { Player, Turn, Card, RoundPhase } from "./types";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
-
-function WalletBadge({ player, amount, turnPosition }: { player: Player; amount?: number; turnPosition?: "active" | "next" }) {
-  const roleLabel = player.type === "admin" ? "Banker" : "Player";
-  const displayName = fullName(player) || player.firstName;
-  const turnLabel = turnPosition === "active" ? "Current turn" : turnPosition === "next" ? "Up next" : undefined;
-  const turnClass =
-    turnPosition === "active"
-      ? "bg-blue-100 text-blue-700 border-blue-200"
-      : turnPosition === "next"
-      ? "bg-amber-100 text-amber-700 border-amber-200"
-      : undefined;
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className={clsx("h-2 w-2 rounded-full", player.presence === "online" ? "bg-green-500" : "bg-slate-400")}></div>
-      <div className="font-semibold text-sm">{displayName}</div>
-      <div className="inline-flex items-center gap-1 text-xs text-slate-500">
-        {player.type === "admin" && (
-          <svg
-            className="h-3 w-3 text-amber-500"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
-          </svg>
-        )}
-        {roleLabel}
-      </div>
-      {turnLabel && (
-        <span className={clsx("text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border", turnClass)}>{turnLabel}</span>
-      )}
-      {typeof amount === "number" && <div className="text-xs text-emerald-700 font-semibold">${amount}</div>}
-    </div>
-  );
-}
+import { useGameStore } from "./state";
+import { Card, Player, RoundPhase, Turn } from "./types";
 
 const cardImages: Record<string, string> = {
   "1": "/1.png",
@@ -55,21 +20,18 @@ const cardImages: Record<string, string> = {
 };
 
 function isRosierPair(cards: Card[]): boolean {
-  if (cards.length !== 2) return false;
-  return cards.every((card) => card.attributes.type === "rosier");
+  if (cards.length < 2) return false;
+  const [first, second] = cards;
+  return first.attributes.type === "rosier" && second.attributes.type === "rosier";
 }
 
 function allTotals(cards: Card[]): number[] {
-  if (cards.length === 0) return [0];
   return cards.reduce<number[]>((sums, card, index) => {
-    const values = (card.attributes.values && card.attributes.values.length > 0
-      ? card.attributes.values
-      : [Number(card.name)].filter((v) => Number.isFinite(v))) as number[];
+    const values = (card.attributes?.values?.length ? card.attributes.values : [Number(card.name)])
+      .filter((v) => Number.isFinite(v));
     if (index === 0) return [...values];
     const combos: number[] = [];
-    sums.forEach((sum) => {
-      values.forEach((value) => combos.push(sum + value));
-    });
+    sums.forEach((sum) => values.forEach((value) => combos.push(sum + value)));
     return combos;
   }, []);
 }
@@ -79,9 +41,7 @@ function bestTotal(cards: Card[]): { total?: number; bustedTotal?: number } {
   if (isRosierPair(cards)) return { total: 21 };
   const totals = allTotals(cards);
   const valid = totals.filter((sum) => sum <= 21);
-  if (valid.length > 0) {
-    return { total: Math.max(...valid) };
-  }
+  if (valid.length > 0) return { total: Math.max(...valid) };
   if (totals.length === 0) return { total: 0 };
   return { bustedTotal: Math.min(...totals) };
 }
@@ -102,6 +62,7 @@ function isPushTurn(turn: Turn): boolean {
   const settled = turn.settledBet ?? wager;
   return turn.state === "won" && wager === 0 && settled === 0;
 }
+
 function totalDisplay(
   turn: Turn,
   viewerId?: string,
@@ -124,7 +85,8 @@ function totalDisplay(
 
   if (!isOwnerView && isBanker && !bankerResolved && !forceBankerReveal) {
     const visible = turn.cards.slice(1);
-    if (visible.length === 0) return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
+    if (visible.length === 0)
+      return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
     const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
     if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
     if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
@@ -143,7 +105,8 @@ function totalDisplay(
     return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
   }
 
-  const canRevealTotal = isOwnerView || turn.state === "won" || turn.state === "lost" || isPublicStandby || forceBankerReveal;
+  const canRevealTotal =
+    isOwnerView || turn.state === "won" || turn.state === "lost" || isPublicStandby || forceBankerReveal;
   const revealForOwnerStandby = isOwnerView && turn.state === "standby";
   if (!canRevealTotal && !revealForOwnerStandby) {
     return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
@@ -156,19 +119,19 @@ function totalDisplay(
   return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
 }
 
-  function statusDisplay(turn: Turn): { label: string; className: string } {
-    if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
-    if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
-    if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };
-    if (turn.state === "lost") {
-      const { total, bustedTotal } = bestTotal(turn.cards);
-      const busted = total === undefined && bustedTotal !== undefined;
-      if (busted) return { label: "BUSTED", className: "text-rose-700 font-bold" };
-      return { label: "LOST", className: "text-rose-600 font-semibold" };
-    }
-    if (turn.state === "skipped") return { label: "Skipped", className: "text-slate-500" };
-    if (turn.state === "pending") return { label: "Waiting...", className: "text-slate-500" };
-    return { label: "", className: "text-slate-500" };
+function statusDisplay(turn: Turn): { label: string; className: string } {
+  if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
+  if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
+  if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };
+  if (turn.state === "lost") {
+    const { total, bustedTotal } = bestTotal(turn.cards);
+    const busted = total === undefined && bustedTotal !== undefined;
+    if (busted) return { label: "BUSTED", className: "text-rose-700 font-bold" };
+    return { label: "LOST", className: "text-rose-600 font-semibold" };
+  }
+  if (turn.state === "skipped") return { label: "Skipped", className: "text-slate-500" };
+  if (turn.state === "pending") return { label: "Waiting...", className: "text-slate-500" };
+  return { label: "", className: "text-slate-500" };
 }
 
 function betDisplay(turn: Turn, includeBanker = false): { label: string; className: string } {
@@ -200,6 +163,59 @@ function CardView({ card, hidden, size = "md" }: { card: Card; hidden?: boolean;
       {showFallback && (
         <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-slate-700">
           {card.name}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function WalletBadge({
+  player,
+  amount,
+  turnPosition,
+  onClick,
+}: {
+  player: Player;
+  amount?: number;
+  turnPosition?: "active" | "next";
+  onClick?: (playerId: string) => void;
+}) {
+  const name = [player.firstName, player.lastName].filter(Boolean).join(" ");
+  const isBanker = player.type === "admin";
+  const presenceTone = player.presence === "online" ? "bg-emerald-500" : "bg-slate-300";
+  return (
+    <div
+      className={clsx(
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm bg-white",
+        isBanker ? "border-amber-200 text-amber-700" : "border-slate-200 text-slate-600"
+      )}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : -1}
+      onClick={onClick ? () => onClick(player.id) : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(player.id); } } : undefined}
+      classNamePrefix=""
+      style={onClick ? { cursor: "pointer" } : undefined}
+    >
+      <span className="inline-flex items-center gap-1">
+        <span className={clsx("h-2.5 w-2.5 rounded-full", presenceTone)} aria-hidden="true"></span>
+        {isBanker && (
+          <svg className="h-3 w-3 text-amber-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
+          </svg>
+        )}
+        <span>{name || "Player"}</span>
+      </span>
+      {typeof amount === "number" && <span className="text-[11px] text-slate-500">${amount}</span>}
+      {turnPosition && (
+        <span
+          className={clsx(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide",
+            turnPosition === "active"
+              ? "bg-blue-50 text-blue-700 border border-blue-200"
+              : "bg-amber-50 text-amber-700 border border-amber-200"
+          )}
+        >
+          {turnPosition === "active" ? "Active" : "Next"}
         </span>
       )}
     </div>
@@ -359,36 +375,42 @@ function TurnCard({
     >
       {header}
       <div className="flex gap-2 flex-wrap text-sm items-center">
-          {turn.cards.map((c, idx) => {
+        {turn.cards.map((c, idx) => {
           const isOwnerView = viewerId === turn.player.id;
           const isBlattPhase = (turn.bet ?? 0) === 0;
           const bankerReveal = turn.player.type !== "admin" ? true : forceBankerReveal || turn.state !== "pending";
+          const roundFinished = roundState === "terminate" || forceBankerReveal;
           const betStart = firstBetCardIndex?.[turn.player.id];
+          const totals = bestTotal(turn.cards);
+          const resolved = turn.state === "lost" || turn.state === "won";
+          const auto21 = totals.total === 21 || isRosierPair(turn.cards);
+          const standbyReveal = turn.state === "standby" && (roundFinished || auto21);
 
-          // Reveal rules:
-          // - Owner always sees their own cards.
-          // - Reveal to everyone when player busts, wins, or auto-stands (standby); Blatt draws (no wager) are visible to all except the very first dealt card.
-          // - Banker: first card stays hidden until banker resolves; subsequent banker draws are visible to all as they happen.
           let hide = true;
           if (isOwnerView) {
             hide = false;
           } else if (turn.player.type === "admin") {
             hide = idx === 0 && !bankerReveal;
-          } else if (turn.state === "lost" || turn.state === "won" || turn.state === "standby") {
+          } else if (resolved || standbyReveal) {
             hide = false;
+          } else if (turn.state === "standby") {
+            hide = true;
           } else if (isBlattPhase) {
-            hide = idx === 0; // keep the initial card hidden, show subsequent Blatt draws
+            hide = idx === 0;
           } else if (typeof betStart === "number") {
             hide = idx === 0 || idx >= betStart;
+          } else {
+            hide = true;
           }
-            const shouldEnlarge = turn.player.type !== "admin" || isCurrentTurn;
-            const cardSize = useCompact ? "md" : shouldEnlarge ? "lg" : "md";
-            return <CardView key={idx} card={c} hidden={hide} size={cardSize} />;
+
+          const shouldEnlarge = turn.player.type !== "admin" || isCurrentTurn;
+          const cardSize = useCompact ? "md" : shouldEnlarge ? "lg" : "md";
+          return <CardView key={idx} card={c} hidden={hide} size={cardSize} />;
         })}
       </div>
-      <div className={clsx("text-xs", totalInfo.wrapperClassName ?? "text-slate-600")}>
+      <div className={clsx("text-xs", totalInfo.wrapperClassName ?? "text-slate-600")}> 
         {totalInfo.prefix}
-        <span className={clsx("ml-1", totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-600")}>
+        <span className={clsx("ml-1", totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-600")}> 
           {totalInfo.value}
         </span>
       </div>
@@ -406,10 +428,12 @@ function TurnCard({
         </button>
       )}
       {showPlayerControls && (
-        <div className="flex flex-wrap gap-2 items-center mt-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             type="number"
-            value={betAmount ?? ""}
+            value={betAmount}
+            min={0}
+            step={1}
             onChange={(e) => onBetChange?.(e.target.value)}
             className="border rounded px-3 py-2 w-24"
             onFocus={(event) => event.target.select()}
@@ -427,14 +451,10 @@ function TurnCard({
             />
             <span>BANK!</span>
             {typeof bankAvailable === "number" && (
-              <span className="text-[11px] font-normal text-slate-500">
-                Bank ${bankAvailable.toLocaleString()}
-              </span>
+              <span className="text-[11px] font-normal text-slate-500">Bank ${bankAvailable.toLocaleString()}</span>
             )}
             {typeof bankAddAmount === "number" && bankAddAmount > 0 && (
-              <span className="text-[11px] font-normal text-slate-500">
-                Adds ${bankAddAmount.toLocaleString()}
-              </span>
+              <span className="text-[11px] font-normal text-slate-500">Adds ${bankAddAmount.toLocaleString()}</span>
             )}
           </label>
           {bankDisabled && bankDisabledReason && (
@@ -447,11 +467,7 @@ function TurnCard({
           >
             Bet
           </button>
-          <button
-            className="bg-blue-600 text-white px-3 py-2 rounded"
-            title={drawButtonTitle}
-            onClick={onHit}
-          >
+          <button className="bg-blue-600 text-white px-3 py-2 rounded" title={drawButtonTitle} onClick={onHit}>
             {drawButtonLabel}
           </button>
           <button
@@ -463,23 +479,15 @@ function TurnCard({
           </button>
         </div>
       )}
-      {waitingForTurn && (
-        <div className="text-xs text-slate-500 mt-2">Waiting for your turn...</div>
-      )}
+
+      {waitingForTurn && <div className="text-xs text-slate-500 mt-2">Waiting for your turn...</div>}
+
       {showBankerControls && (
         <div className="flex flex-wrap gap-2 items-center mt-2">
-          <button
-            className="bg-blue-600 text-white px-3 py-2 rounded"
-            title="Draw one more card."
-            onClick={onHit}
-          >
+          <button className="bg-blue-600 text-white px-3 py-2 rounded" title="Draw one more card." onClick={onHit}>
             Hit
           </button>
-          <button
-            className="bg-ink text-white px-3 py-2 rounded"
-            title="End your turn."
-            onClick={onStand}
-          >
+          <button className="bg-ink text-white px-3 py-2 rounded" title="End your turn." onClick={onStand}>
             Stand
           </button>
         </div>
@@ -502,6 +510,7 @@ export default function App() {
     notifications,
     bankerSummaryAt,
   } = store;
+  const [statsPlayerId, setStatsPlayerId] = useState<string | undefined>(undefined);
   const [bankerFirstName, setBankerFirst] = useState("");
   const [bankerLastName, setBankerLast] = useState("");
   const [joinFirstName, setJoinFirst] = useState("");
@@ -538,6 +547,8 @@ export default function App() {
   const [walletAdjustAmount, setWalletAdjustAmount] = useState("");
   const [walletAdjustNote, setWalletAdjustNote] = useState("");
   const [walletAdjustError, setWalletAdjustError] = useState<string | undefined>(undefined);
+  const [pendingKick, setPendingKick] = useState<{ playerId: string; label: string } | null>(null);
+  const prefilledRoomIdRef = useRef(false);
   const formErrors = store.formErrors ?? {};
   const dismissNotification = store.dismissNotification;
   const dismissBankerSummary = store.dismissBankerSummary;
@@ -546,12 +557,21 @@ export default function App() {
   const turns = round?.turns?.filter(Boolean) ?? [];
 
   useEffect(() => {
-    if (roomIdInput) return;
+    if (prefilledRoomIdRef.current) return;
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const fromQuery = params.get("room");
-    if (fromQuery) setRoomId(fromQuery);
-  }, [roomIdInput]);
+    if (fromQuery) {
+      setRoomId(fromQuery);
+      prefilledRoomIdRef.current = true;
+      return;
+    }
+    const lastRoom = window.localStorage.getItem("kvitlach.lastRoomId");
+    if (lastRoom) {
+      setRoomId(lastRoom);
+      prefilledRoomIdRef.current = true;
+    }
+  }, []);
 
   useEffect(() => {
     if (formErrors.create) setBankerFormExpanded(true);
@@ -634,22 +654,23 @@ export default function App() {
   const otherPlayerTurns = playerTurns.filter((t) => t.player?.id !== playerId);
   const isAdmin = room?.players.find((p) => p.id === playerId)?.type === "admin";
   const pendingTurns = useMemo(() => turns.filter((t) => t.state === "pending"), [turns]);
-  const pendingPlayers = useMemo(() => pendingTurns.filter((t) => t.player.type !== "admin"), [pendingTurns]);
-  const bankerPending = pendingTurns.some((t) => t.player.type === "admin");
-  const autoRevealBanker = pendingPlayers.length === 0 && bankerPending;
+  const overviewTurns = useMemo(() => {
+    const banker = turns.filter((t) => t.player.type === "admin");
+    const others = turns.filter((t) => t.player.type !== "admin");
+    return [...banker, ...others];
+  }, [turns]);
   const bankLock = round?.bankLock;
   const primaryBankerTurn = bankerTurns[0];
   const activeTurnId = useMemo(() => {
+    if (round?.state === "final" && primaryBankerTurn?.player?.id) return primaryBankerTurn.player.id;
     if (bankLock?.stage === "banker" && primaryBankerTurn?.player?.id) return primaryBankerTurn.player.id;
     if (bankLock?.stage === "player" && bankLock.playerId) return bankLock.playerId;
-    if (autoRevealBanker) return undefined;
     return pendingTurns[0]?.player.id;
-  }, [autoRevealBanker, bankLock?.playerId, bankLock?.stage, pendingTurns, primaryBankerTurn?.player?.id]);
+  }, [round?.state, bankLock?.playerId, bankLock?.stage, pendingTurns, primaryBankerTurn?.player?.id]);
   const nextTurnId = useMemo(() => {
     if (bankLock?.stage === "banker") return pendingTurns[0]?.player.id;
-    if (autoRevealBanker) return undefined;
     return pendingTurns[1]?.player.id;
-  }, [autoRevealBanker, bankLock?.stage, pendingTurns]);
+  }, [bankLock?.stage, pendingTurns]);
   const bankerActive = bankerTurns.some((t) => t.player?.id === activeTurnId);
   const bankerCompact = Boolean(round && !bankerActive && round.state !== "terminate" && round.state !== "final");
   const canAct =
@@ -700,6 +721,7 @@ export default function App() {
         .reduce((sum, turn) => sum + Math.max(0, turn.bet ?? 0), 0),
     [turns]
   );
+  const bankerWalletTotal = bankerPlayer ? room?.wallets?.[bankerPlayer.id] ?? 0 : undefined;
 
   useEffect(() => {
     setBankBetSelected(false);
@@ -734,6 +756,43 @@ export default function App() {
     return parsed;
   })();
   const decksInPlay = round?.deckCount ?? preferredDeckCountValue ?? 1;
+
+  const statsData = useMemo(() => {
+    if (!statsPlayerId) return undefined;
+    const rounds = roundHistory ?? [];
+    const entries = rounds
+      .map((r) => {
+        const turn = r.turns.find((t) => t.player.id === statsPlayerId);
+        if (!turn) return undefined;
+        const status = statusDisplay(turn);
+        const betInfo = betDisplay(turn, true);
+        return {
+          roundNumber: r.roundNumber,
+          status: status.label || "",
+          statusClass: status.className,
+          bet: betInfo.label,
+          betClass: betInfo.className,
+        };
+      })
+      .filter(Boolean) as {
+      roundNumber: number;
+      status: string;
+      statusClass: string;
+      bet: string;
+      betClass: string;
+    }[];
+    if (!entries.length) return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false };
+    const wins = entries.filter((e) => e.status === "WON").length;
+    const losses = entries.filter((e) => e.status === "LOST" || e.status === "BUSTED").length;
+    const pushes = entries.filter((e) => e.status === "PUSH").length;
+    const playerRecord = room?.players.find((p) => p.id === statsPlayerId);
+    const playerName =
+      playerRecord?.firstName ??
+      rounds.find((r) => r.turns.some((t) => t.player.id === statsPlayerId))?.turns.find((t) => t.player.id === statsPlayerId)?.player
+        ?.firstName ?? "Player";
+    const isBanker = playerRecord?.type === "admin";
+    return { name: playerName, entries: entries.slice(0, 10), wins, losses, pushes, isBanker };
+  }, [statsPlayerId, roundHistory, room?.players]);
 
   useEffect(() => {
     if (me) {
@@ -852,10 +911,16 @@ export default function App() {
     if (!isAdmin) return;
     const player = room?.players.find((p) => p.id === playerId);
     const label = player ? fullName(player) || player.firstName : "this player";
-    const confirmed = typeof window !== "undefined" ? window.confirm(`Remove ${label || "this player"} from the table?`) : true;
-    if (!confirmed) return;
-    store.kickPlayer(playerId);
+    setPendingKick({ playerId, label: label || "this player" });
   };
+
+  const confirmKick = () => {
+    if (!pendingKick) return;
+    store.kickPlayer(pendingKick.playerId);
+    setPendingKick(null);
+  };
+
+  const cancelKick = () => setPendingKick(null);
 
   const handleToggleBank = (selected: boolean) => {
     if (!selected) {
@@ -870,6 +935,38 @@ export default function App() {
 
   return (
     <>
+      {pendingKick && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={cancelKick}
+        >
+          <div
+            className="relative w-full max-w-md card-surface p-5 flex flex-col gap-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="text-lg font-semibold text-ink">Remove player?</div>
+            <p className="text-sm text-slate-600">Are you sure you want to remove {pendingKick.label} from the table?</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                onClick={cancelKick}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
+                onClick={confirmKick}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showBankSummary && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
@@ -975,6 +1072,54 @@ export default function App() {
               </div>
             );
           })}
+        </div>
+      )}
+      {statsPlayerId && statsData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
+          onClick={() => setStatsPlayerId(undefined)}
+        >
+          <div
+            className="relative w-full max-w-md card-surface bg-white p-5 pt-9 pr-11 rounded-lg shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="absolute top-3 right-3 inline-flex h-6 w-6 items-center justify-center rounded-full border border-rose-200 bg-rose-50 text-rose-600 text-xs font-bold shadow-sm hover:bg-rose-100"
+              style={{ transform: "translateY(4px)" }}
+              aria-label="Close stats"
+              onClick={() => setStatsPlayerId(undefined)}
+            >
+              ×
+            </button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm uppercase tracking-wide text-slate-500">{statsData.isBanker ? "Bank stats" : "Player stats"}</div>
+                  <div className="text-lg font-semibold text-ink">{statsData.name}</div>
+                </div>
+                <div className="text-right text-xs text-slate-500">
+                  <div>Wins: <span className="font-semibold text-emerald-700">{statsData.wins}</span></div>
+                  <div>Losses: <span className="font-semibold text-rose-700">{statsData.losses}</span></div>
+                  <div>Pushes: <span className="font-semibold text-slate-600">{statsData.pushes}</span></div>
+                </div>
+              </div>
+              <div className="border border-slate-200 rounded-lg divide-y divide-slate-200 overflow-hidden">
+                {statsData.entries.length === 0 && (
+                  <div className="p-3 text-xs text-slate-500">No completed rounds yet.</div>
+                )}
+                {statsData.entries.map((entry) => (
+                  <div key={`stats-${statsPlayerId}-${entry.roundNumber}`} className="p-3 flex items-center justify-between text-sm">
+                    <div className="text-slate-600">Round {entry.roundNumber}</div>
+                    <div className="flex items-center gap-3">
+                      <span className={clsx("text-xs uppercase tracking-wide", entry.statusClass)}>{entry.status}</span>
+                      <span className={clsx("text-xs", entry.betClass)}>Bet {entry.bet}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
       <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col gap-6">
@@ -1534,6 +1679,7 @@ export default function App() {
                       : undefined
                     : undefined
                 }
+                onClick={(id) => setStatsPlayerId(id)}
               />
             ))}
           </div>
@@ -1854,8 +2000,15 @@ export default function App() {
                 Round {round?.roundNumber ?? 1}
             </div>
             <div className="flex items-center gap-3 text-xs text-slate-500">
-              <span className="uppercase tracking-wide">{round.state}</span>
-              <span>Total stakes: ${totalStakes.toLocaleString()}</span>
+              <span className="uppercase tracking-wide">
+                {round.state === "terminate" ? "Complete" : round.state === "final" ? "Final" : "Playing"}
+              </span>
+              <span>
+                Total stakes: ${totalStakes.toLocaleString()}
+                {typeof bankerWalletTotal === "number"
+                  ? ` of $${bankerWalletTotal.toLocaleString()} available`
+                  : ""}
+              </span>
               <span>Decks in play: {round.deckCount ?? 1}</span>
               <span>Cards remaining: {cardsRemaining}</span>
             </div>
@@ -1863,56 +2016,80 @@ export default function App() {
 
           <div className="card-surface p-3 border border-slate-200 bg-slate-50">
             <div className="text-sm font-semibold mb-2">Table Overview</div>
-            <div className="grid md:grid-cols-2 gap-2 text-xs text-slate-700">
-                {turns.map((t) => {
-                    const isActive = round?.state !== "terminate" && t.state === "pending" && activeTurnId === t.player.id;
-                  const isNext = round?.state !== "terminate" && t.state === "pending" && nextTurnId === t.player.id && !isActive;
-                    const statusInfo = statusDisplay(t);
-                    const shouldForceReveal = t.player.type === "admin" && (autoRevealBanker || round?.state === "final" || round?.state === "terminate");
-                    const totalInfo = totalDisplay(t, playerId, round?.state, { forceBankerReveal: shouldForceReveal });
-                    const betInfo = betDisplay(t);
-                    const showStatusLabel = !isActive && Boolean(statusInfo.label);
+            <div className="grid gap-3 md:grid-cols-2 text-xs text-slate-700">
+              {overviewTurns.map((t) => {
+                const isActive = round?.state !== "terminate" && t.state === "pending" && activeTurnId === t.player.id;
+                const isNext = round?.state !== "terminate" && t.state === "pending" && nextTurnId === t.player.id && !isActive;
+                const statusInfo = statusDisplay(t);
+                const shouldForceReveal = t.player.type === "admin" && round?.state === "terminate";
+                const totalInfo = totalDisplay(t, playerId, round?.state, { forceBankerReveal: shouldForceReveal });
+                const betInfo = betDisplay(t);
+                const showStatusLabel = !isActive && Boolean(statusInfo.label);
+                const walletAmount = room?.wallets?.[t.player.id];
                 return (
                   <div
                     key={t.player.id}
                     className={clsx(
-                      "flex flex-col gap-1 border border-transparent rounded",
-                      isActive && "border-blue-300 bg-blue-50/70"
+                      "flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm",
+                      isActive && "border-blue-400 bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 shadow-md",
+                      isNext && !isActive && "border-amber-200 bg-amber-50/60",
+                      t.player.type === "admin" && "border-amber-300 bg-amber-50/90"
                     )}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold">{[t.player.firstName, t.player.lastName].filter(Boolean).join(" ")}</span>
-                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-slate-200 text-slate-700">
-                        {t.player.type === "admin" && (
-                          <svg
-                            className="h-3 w-3 text-amber-600"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            aria-hidden="true"
-                          >
-                            <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
-                          </svg>
-                        )}
-                        {t.player.type === "admin" ? "Banker" : "Player"}
-                      </span>
-                    </div>
-                      <div className="flex flex-wrap gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-800">{[t.player.firstName, t.player.lastName].filter(Boolean).join(" ")}</span>
+                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                          {t.player.type === "admin" && (
+                            <svg
+                              className="h-3 w-3 text-amber-600"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
+                            </svg>
+                          )}
+                          {t.player.type !== "admin" && "Player"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
                         {showStatusLabel && (
                           <span className={clsx("text-[11px] uppercase tracking-wide", statusInfo.className)}>{statusInfo.label}</span>
                         )}
                         {isActive && (
-                        <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 uppercase tracking-wide">Active turn</span>
-                      )}
+                          <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 uppercase tracking-wide">Active</span>
+                        )}
                         {isNext && (
-                          <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-2 py-0.5 uppercase tracking-wide">Up next</span>
+                          <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-2 py-0.5 uppercase tracking-wide">Next</span>
                         )}
-                        {t.player.type !== "admin" && (
-                          <span className="text-slate-500">Bet: <span className={betInfo.className}>{betInfo.label}</span></span>
-                        )}
-                        <span>Cards: {t.cards.length}</span>
-                        <span className={clsx(totalInfo.wrapperClassName ?? "text-slate-500")}>
-                          {totalInfo.prefix} <span className={clsx(totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-500")}>{totalInfo.value}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-slate-600">
+                      {typeof walletAmount === "number" && (
+                        <span className="inline-flex items-center gap-1 text-slate-700">
+                          <svg
+                            className="h-4 w-4 text-emerald-500"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
+                            <path d="M2.25 7.5A2.25 2.25 0 014.5 5.25h15a.75.75 0 010 1.5H4.5a.75.75 0 00-.75.75v7.5c0 .414.336.75.75.75h15a.75.75 0 010 1.5h-15A2.25 2.25 0 012.25 15V7.5z" />
+                            <path d="M18.75 9A2.25 2.25 0 0016.5 11.25v1.5A2.25 2.25 0 0018.75 15H21V9h-2.25z" />
+                            <path d="M20.25 13.5a.75.75 0 100-1.5.75.75 0 000 1.5z" />
+                          </svg>
+                          <span className="text-sm font-semibold">${walletAmount.toLocaleString()}</span>
                         </span>
+                      )}
+                      {t.player.type !== "admin" && (
+                        <span>
+                          Bet: <span className={betInfo.className}>{betInfo.label}</span>
+                        </span>
+                      )}
+                      <span>Cards: {t.cards.length}</span>
+                      <span className={clsx(totalInfo.wrapperClassName ?? "text-slate-500")}> 
+                        {totalInfo.prefix} <span className={clsx(totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-500")}>{totalInfo.value}</span>
+                      </span>
                     </div>
                   </div>
                 );
@@ -1926,6 +2103,17 @@ export default function App() {
                   <div className="flex-1 h-px bg-slate-200"></div>
                   <span className="inline-flex items-center justify-center px-4 py-1 text-[11px] uppercase tracking-[0.3em] text-ink bg-slate-100 rounded-full border border-slate-300 shadow-sm">Banker</span>
                   <div className="flex-1 h-px bg-slate-200"></div>
+                  {isAdmin && round?.state !== "terminate" && (
+                    <button
+                      type="button"
+                      className="ml-3 inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-rose-700 shadow-sm hover:border-rose-300 hover:text-rose-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => store.endRoundDueToBank()}
+                      disabled={round?.bankLock?.stage !== "decision"}
+                      title={round?.bankLock?.stage === "decision" ? "End round after bank decision" : "End round available when bank is exhausted"}
+                    >
+                      End round
+                    </button>
+                  )}
                 </div>
                 {bankerTurns.map((t) => (
                 <TurnCard
@@ -1941,7 +2129,7 @@ export default function App() {
                   onHit={() => store.hit()}
                   onStand={() => store.stand()}
                     isCompact={bankerCompact && t.player.id !== playerId}
-                    forceBankerReveal={autoRevealBanker}
+                    forceBankerReveal={round?.state === "terminate"}
                   firstBetCardIndex={firstBetCardIndex}
                 />
               ))}
@@ -2015,32 +2203,61 @@ export default function App() {
                 : "Waiting for your turn..."}
             </div>
           )}
-          {round.state === "terminate" && (
-            <div className="mt-3 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
-              Round complete. Start a new round when ready.
+          {round.state === "terminate" && !isAdmin && (
+            <div className="card-surface mx-auto max-w-md p-3 text-xs text-amber-800 flex items-center justify-center gap-2 text-center waiting-flash mt-3">
+              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+              <span className="font-semibold uppercase">Waiting for Banker to start the round</span>
+              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
             </div>
           )}
-          {round.state === "terminate" && !isAdmin && (
-            <div className="text-xs text-slate-600 mt-2">
-              Waiting for the Banker to start the next round.
+          {round.state === "terminate" && isAdmin && (
+            <div className="mt-3 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
+              <span>Round complete. Start a new round when ready.</span>
+              <button
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                  "border-ink text-ink hover:bg-ink hover:text-white focus-visible:outline-ink"
+                )}
+                onClick={() => {
+                  const parsedOverride = deckCount === "" ? undefined : Number(deckCount);
+                  const parsedPreferred = preferredDecks === "" ? undefined : Number(preferredDecks);
+                  const deckToUse = parsedOverride ?? parsedPreferred;
+                  store.startRound(deckToUse);
+                }}
+              >
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white">
+                  <svg
+                    className="h-3 w-3"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 4l10 6-10 6V4z" />
+                  </svg>
+                </span>
+                <span>Start round</span>
+              </button>
             </div>
           )}
         </section>
       )}
 
-      {roundHistory?.length > 0 && (
+      {room && (
         <section className="card-surface p-4 flex flex-col gap-3">
           <button
             type="button"
             className="flex items-center justify-between text-sm font-semibold text-ink"
             onClick={() => setShowHistory((prev) => !prev)}
           >
-            <span>Round history ({roundHistory.length})</span>
+            <span className="text-base font-semibold text-ink">Round History ({roundHistory?.length ?? 0})</span>
             <span className="text-xs text-slate-500">{showHistory ? "Hide" : "Show"}</span>
           </button>
           {showHistory && (
             <div className="flex flex-col gap-3">
-              {roundHistory.map((summary) => (
+              {(roundHistory ?? []).length === 0 && (
+                <div className="text-xs text-slate-500">No completed rounds yet.</div>
+              )}
+              {(roundHistory ?? []).map((summary) => (
                 <div key={summary.roundId} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <div className="font-semibold text-sm">Round {summary.roundNumber}</div>
@@ -2145,6 +2362,145 @@ export default function App() {
         </div>
       )}
 
+      {pendingKick && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={cancelKick}
+        >
+          <div
+            className="relative w-full max-w-md card-surface p-5 flex flex-col gap-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="text-lg font-semibold text-ink">Remove player?</div>
+            <p className="text-sm text-slate-600">Are you sure you want to remove {pendingKick.label} from the table?</p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                onClick={cancelKick}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
+                onClick={confirmKick}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showBankSummary && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={dismissBankerSummary}
+        >
+          <div
+            className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto card-surface p-6 flex flex-col gap-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="absolute top-3 right-3 text-xs font-semibold text-slate-500 underline"
+              onClick={dismissBankerSummary}
+            >
+              Close
+            </button>
+            <div className="space-y-2">
+              <div className="text-lg font-semibold text-ink">Bank showdown summary</div>
+              <div className="text-xs text-slate-500">
+                The banker ended the round after the bank was depleted. Review the results below or print/save for your records.
+              </div>
+            </div>
+            {latestSummary ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Round {latestSummary.roundNumber}</span>
+                  <span>{new Date(latestSummary.completedAt).toLocaleString()}</span>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {latestSummary.turns.map((turn) => {
+                    const statusInfo = statusDisplay(turn);
+                    const betInfo = betDisplay(turn, true);
+                    const name = [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ");
+                    const roleLabel = turn.player.type === "admin" ? "Banker" : "Player";
+                    return (
+                      <div
+                        key={`${latestSummary.roundId}-${turn.player.id}`}
+                        className="flex justify-between items-start gap-3 border border-slate-200 bg-white rounded px-3 py-2"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-sm text-ink">{name || "Unnamed"}</span>
+                          <span className="text-[11px] uppercase tracking-wide text-slate-500">{roleLabel}</span>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={statusInfo.className}>{statusInfo.label}</span>
+                          <span className={clsx("text-xs", betInfo.className)}>{betInfo.label}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-600">Preparing summary…</div>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-700"
+                onClick={() => window.print()}
+              >
+                Print / Save PDF
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
+                onClick={dismissBankerSummary}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {notifications.length > 0 && (
+        <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+          {notifications.map((note) => {
+            const toneClass =
+              note.tone === "success"
+                ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+                : note.tone === "error"
+                ? "bg-rose-50 border border-rose-200 text-rose-700"
+                : "bg-blue-50 border border-blue-200 text-blue-700";
+            return (
+              <div
+                key={note.id}
+                className={`rounded-lg px-4 py-3 shadow-md ${toneClass}`}
+                role="alert"
+                aria-live="assertive"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex-1 text-sm font-medium whitespace-pre-line">{note.message}</span>
+                  <button
+                    type="button"
+                    className="text-xs uppercase tracking-wide"
+                    onClick={() => dismissNotification(note.id)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {showWhatIs && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
