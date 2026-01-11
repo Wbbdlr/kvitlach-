@@ -1279,8 +1279,6 @@ export default function App() {
         <span className="self-end -translate-y-[4px] transform text-[10px] font-serif uppercase tracking-[0.2em] text-amber-700 leading-tight">
           Ah Heimishe Chanukah Shpil
         </span>
-        <span className={clsx("text-xs px-2 py-1 rounded", status === "connected" ? "bg-green-100 text-green-700" : status === "connecting" ? "bg-amber-100 text-amber-700" : "bg-slate-200 text-slate-700")}
-        >WS: {status} ({wsUrl})</span>
         {room && isAdmin && (
           <button
             type="button"
@@ -2639,7 +2637,28 @@ export default function App() {
         </div>
       )}
       <footer className="mt-8 border-t border-slate-200 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <span className="font-semibold text-slate-600">Kvitlach</span>
+        <div className="flex items-center gap-3">
+          <span className="font-semibold text-slate-600">Kvitlach</span>
+          <span
+            className={clsx(
+              "inline-flex items-center gap-1 rounded-full px-2 py-1 border text-[11px]",
+              status === "connected"
+                ? "border-green-200 bg-green-50 text-green-700"
+                : status === "connecting"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-slate-200 bg-slate-50 text-slate-700"
+            )}
+            title={`WebSocket: ${status} (${wsUrl})`}
+          >
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: status === "connected" ? "#16a34a" : status === "connecting" ? "#f59e0b" : "#94a3b8" }}
+              aria-hidden="true"
+            />
+            <span className="uppercase tracking-wide">WS</span>
+            <span className="text-[10px]">{status === "connected" ? "ok" : status === "connecting" ? "wait" : "down"}</span>
+          </span>
+        </div>
         <nav className="flex items-center gap-4">
           <a href="/about" className="hover:text-ink underline-offset-4 hover:underline">About</a>
           <button
