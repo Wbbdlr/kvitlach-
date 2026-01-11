@@ -155,6 +155,11 @@ function computeDefaultWsUrl(): string {
   const { protocol, hostname } = window.location;
   const wsProtocol = protocol === "https:" ? "wss" : "ws";
 
+  // If we are served from the public domain, hard-point to the tunnel host.
+  if (hostname.endsWith("kvitlach.us")) {
+    return `${wsProtocol}://ws.kvitlach.us`;
+  }
+
   if (/-\d+\.app\.github\.dev$/.test(hostname)) {
     // GitHub Codespaces encode the port inside the subdomain, so swap in the WS port.
     return `${wsProtocol}://${hostname.replace(/-\d+\.app\.github\.dev$/, `-${DEFAULT_WS_PORT}.app.github.dev`)}`;
@@ -163,7 +168,8 @@ function computeDefaultWsUrl(): string {
   return `${wsProtocol}://${hostname}:${DEFAULT_WS_PORT}`;
 }
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? computeDefaultWsUrl();
+// Prefer build-time injection; otherwise, default to the public tunnel host.
+const WS_URL = import.meta.env.VITE_WS_URL ?? "wss://ws.kvitlach.us";
 
 type SetState = Parameters<StateCreator<UIState>>[0];
 type GetState = Parameters<StateCreator<UIState>>[1];
