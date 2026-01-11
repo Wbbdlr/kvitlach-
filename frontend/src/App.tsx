@@ -19,14 +19,21 @@ const cardImages: Record<string, string> = {
   blank: "/blank.png",
 };
 
+function usableCards(cards: Card[]): Card[] {
+  return cards.filter((card) => !card.attributes?.eleveroonIgnored);
+}
+
 function isRosierPair(cards: Card[]): boolean {
-  if (cards.length < 2) return false;
-  const [first, second] = cards;
+  const visible = usableCards(cards);
+  if (visible.length < 2) return false;
+  const [first, second] = visible;
   return first.attributes.type === "rosier" && second.attributes.type === "rosier";
 }
 
 function allTotals(cards: Card[]): number[] {
-  return cards.reduce<number[]>((sums, card, index) => {
+  const visible = usableCards(cards);
+  if (visible.length === 0) return [0];
+  return visible.reduce<number[]>((sums, card, index) => {
     const values = (card.attributes?.values?.length ? card.attributes.values : [Number(card.name)])
       .filter((v) => Number.isFinite(v));
     if (index === 0) return [...values];
@@ -37,9 +44,10 @@ function allTotals(cards: Card[]): number[] {
 }
 
 function bestTotal(cards: Card[]): { total?: number; bustedTotal?: number } {
-  if (cards.length === 0) return { total: 0 };
-  if (isRosierPair(cards)) return { total: 21 };
-  const totals = allTotals(cards);
+  const visible = usableCards(cards);
+  if (visible.length === 0) return { total: 0 };
+  if (isRosierPair(visible)) return { total: 21 };
+  const totals = allTotals(visible);
   const valid = totals.filter((sum) => sum <= 21);
   if (valid.length > 0) return { total: Math.max(...valid) };
   if (totals.length === 0) return { total: 0 };
@@ -156,13 +164,25 @@ function CardView({ card, hidden, size = "md" }: { card: Card; hidden?: boolean;
   const alt = hidden ? "Face-down card" : `Card ${card.name}`;
   const showFallback = !hidden && !cardImages[key];
   const sizeClass = size === "lg" ? "w-16 h-24" : "w-12 h-16";
+  const ignored = Boolean(card.attributes?.eleveroonIgnored);
 
   return (
-    <div className={`${sizeClass} rounded-lg border border-transparent bg-transparent shadow-none overflow-hidden relative`}>
+    <div
+      className={clsx(
+        `${sizeClass} rounded-lg border bg-transparent shadow-none overflow-hidden relative`,
+        hidden ? "border-transparent" : "border-transparent",
+        ignored && "opacity-60 grayscale border-slate-300"
+      )}
+    >
       <img src={src} alt={alt} className="w-full h-full object-contain" />
       {showFallback && (
         <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-slate-700">
           {card.name}
+        </span>
+      )}
+      {ignored && !hidden && (
+        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-slate-600 bg-white/40">
+          Eleveroon
         </span>
       )}
     </div>
@@ -193,7 +213,6 @@ function WalletBadge({
       tabIndex={onClick ? 0 : -1}
       onClick={onClick ? () => onClick(player.id) : undefined}
       onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(player.id); } } : undefined}
-      classNamePrefix=""
       style={onClick ? { cursor: "pointer" } : undefined}
     >
       <span className="inline-flex items-center gap-1">
@@ -235,6 +254,7 @@ function TurnCard({
   betAmount,
   onBetChange,
   onBet,
+  betError,
   onHit,
   onStand,
   isCompact,
@@ -246,6 +266,8 @@ function TurnCard({
   bankDisabledReason,
   firstBetCardIndex,
   forceBankerReveal,
+  eleveroonSelected,
+  onToggleEleveroon,
 }: {
   turn: Turn;
   isAdmin: boolean;
@@ -259,6 +281,7 @@ function TurnCard({
   betAmount?: string;
   onBetChange?: (value: string) => void;
   onBet?: () => void;
+  betError?: string;
   onHit?: () => void;
   onStand?: () => void;
   isCompact?: boolean;
@@ -270,6 +293,8 @@ function TurnCard({
   bankDisabledReason?: string;
   firstBetCardIndex?: Record<string, number>;
   forceBankerReveal?: boolean;
+  eleveroonSelected?: boolean;
+  onToggleEleveroon?: (selected: boolean) => void;
 }) {
   const statusInfo = statusDisplay(turn);
   const isMe = viewerId === turn.player.id;
@@ -277,10 +302,13 @@ function TurnCard({
   const canActTurn = isMe && turn.state === "pending" && isActiveTurn;
   const showPlayerControls = canActTurn && !isBanker && onBet && onHit && onStand && betAmount !== undefined && onBetChange;
   const showBankerControls = canActTurn && isBanker && !forceBankerReveal && onHit && onStand;
+  const showEleveroonToggle = showPlayerControls || showBankerControls;
   const isCurrentTurn = Boolean(isActiveTurn && turn.state === "pending" && roundState !== "terminate");
   const isNextPlayer = Boolean(isNextTurn && !isCurrentTurn && turn.state === "pending" && roundState !== "terminate");
   const waitingForTurn = isMe && turn.state === "pending" && !canActTurn && roundState !== "terminate";
   const shouldForceReveal = isBanker && (forceBankerReveal || roundState === "final" || roundState === "terminate");
+  const showBankerResolutionWait =
+    isMe && turn.player.type !== "admin" && turn.state === "standby" && roundState !== "terminate";
   const totalInfo = totalDisplay(turn, viewerId, roundState, { forceBankerReveal: shouldForceReveal });
   const betInfo = betDisplay(turn);
   const bankerStyle = highlightBanker
@@ -384,21 +412,29 @@ function TurnCard({
           const totals = bestTotal(turn.cards);
           const resolved = turn.state === "lost" || turn.state === "won";
           const auto21 = totals.total === 21 || isRosierPair(turn.cards);
-          const standbyReveal = turn.state === "standby" && (roundFinished || auto21);
+            const standbyReveal = false;
+
+            const hasBet = typeof betStart === "number";
+            const isInitialCard = idx === 0;
+            const isBlattCard = hasBet ? idx > 0 && idx < betStart : isBlattPhase && idx > 0;
+            const isBetOrHitCard = hasBet ? idx >= betStart : false;
 
           let hide = true;
           if (isOwnerView) {
             hide = false;
           } else if (turn.player.type === "admin") {
             hide = idx === 0 && !bankerReveal;
-          } else if (resolved || standbyReveal) {
+            } else if (resolved || standbyReveal || roundFinished) {
             hide = false;
-          } else if (turn.state === "standby") {
-            hide = true;
-          } else if (isBlattPhase) {
-            hide = idx === 0;
-          } else if (typeof betStart === "number") {
-            hide = idx === 0 || idx >= betStart;
+            } else if (turn.state === "standby") {
+              // Standing but unresolved: keep non-blatt hidden, blatt cards stay visible.
+              hide = !(isBlattCard && !isInitialCard);
+            } else if (isBlattPhase) {
+              // No bet yet: initial hidden, blatts visible.
+              hide = idx === 0;
+            } else if (hasBet) {
+              // After bet: initial hidden; pre-bet blatts visible; bet/hit cards hidden until resolution.
+              hide = isInitialCard || isBetOrHitCard ? true : !isBlattCard;
           } else {
             hide = true;
           }
@@ -438,6 +474,7 @@ function TurnCard({
             className="border rounded px-3 py-2 w-24"
             onFocus={(event) => event.target.select()}
           />
+          {betError && <span className="text-xs text-rose-600 whitespace-nowrap">{betError}</span>}
           <label
             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-300"
             title="BANK! bets the remaining available bank for your seat; the banker must resolve this wager immediately for you and any already-standing players."
@@ -460,6 +497,22 @@ function TurnCard({
           {bankDisabled && bankDisabledReason && (
             <span className="text-[11px] text-rose-600">{bankDisabledReason}</span>
           )}
+            {showEleveroonToggle && (
+              <label
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
+                title={isBanker ? "Eleveroon is always active for the banker." : "Player-controlled Eleveroon option."}
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  checked={Boolean(isBanker ? true : eleveroonSelected)}
+                  disabled={isBanker}
+                  onChange={(event) => onToggleEleveroon?.(event.target.checked)}
+                />
+                <span>Eleveroon</span>
+                {isBanker && <span className="text-[11px] font-normal text-slate-500">Always on</span>}
+              </label>
+            )}
           <button
             className="bg-accent text-white px-3 py-2 rounded"
             title="Place or raise your wager; each bet also deals you one more card."
@@ -482,6 +535,12 @@ function TurnCard({
 
       {waitingForTurn && <div className="text-xs text-slate-500 mt-2">Waiting for your turn...</div>}
 
+      {showBankerResolutionWait && (
+        <div className="mt-2 text-xs font-semibold text-amber-700 animate-pulse">
+          Waiting for Banker to Play You Out
+        </div>
+      )}
+
       {showBankerControls && (
         <div className="flex flex-wrap gap-2 items-center mt-2">
           <button className="bg-blue-600 text-white px-3 py-2 rounded" title="Draw one more card." onClick={onHit}>
@@ -490,6 +549,21 @@ function TurnCard({
           <button className="bg-ink text-white px-3 py-2 rounded" title="End your turn." onClick={onStand}>
             Stand
           </button>
+            {showEleveroonToggle && (
+              <label
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
+                title="Eleveroon is always active for the banker."
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                  checked={true}
+                  disabled
+                />
+                <span>Eleveroon</span>
+                <span className="text-[11px] font-normal text-slate-500">Always on</span>
+              </label>
+            )}
         </div>
       )}
     </div>
@@ -542,6 +616,8 @@ export default function App() {
   const [buyInAmount, setBuyInAmount] = useState("");
   const [buyInNote, setBuyInNote] = useState("");
   const [bankBetSelected, setBankBetSelected] = useState(false);
+  const [betError, setBetError] = useState<string | undefined>(undefined);
+  const [eleveroonSelected, setEleveroonSelected] = useState(false);
   const [firstBetCardIndex, setFirstBetCardIndex] = useState<Record<string, number>>({});
   const [walletAdjustTarget, setWalletAdjustTarget] = useState<string | null>(null);
   const [walletAdjustAmount, setWalletAdjustAmount] = useState("");
@@ -613,6 +689,11 @@ export default function App() {
     });
     if (changed) setFirstBetCardIndex(next);
   }, [turns, round, firstBetCardIndex]);
+
+  useEffect(() => {
+    // Reset Eleveroon selection when a new round begins.
+    setEleveroonSelected(false);
+  }, [round?.roundId]);
 
   useEffect(() => {
     // Clear or collapse the wallet adjustment form when players or rooms change.
@@ -726,6 +807,11 @@ export default function App() {
   useEffect(() => {
     setBankBetSelected(false);
   }, [myPlayerTurn?.player.id, round?.roundId]);
+  useEffect(() => {
+    if (!betError) return;
+    const timer = setTimeout(() => setBetError(undefined), 3000);
+    return () => clearTimeout(timer);
+  }, [betError]);
   const renameRequests = room?.renameRequests ?? [];
   const myRenameRequest = renameRequests.find((req) => req.playerId === playerId);
   const buyInRequests = room?.buyInRequests ?? [];
@@ -925,12 +1011,14 @@ export default function App() {
   const handleToggleBank = (selected: boolean) => {
     if (!selected) {
       setBankBetSelected(false);
+      setBetError(undefined);
       return;
     }
     if (!canBank) return;
     setBankBetSelected(true);
     const nextAmount = bankIncrement;
     setBet(nextAmount > 0 ? String(nextAmount) : "");
+    setBetError(undefined);
   };
 
   return (
@@ -2126,7 +2214,7 @@ export default function App() {
                   roundState={round?.state}
                   highlightBanker
                   walletAmount={room?.wallets?.[t.player.id]}
-                  onHit={() => store.hit()}
+                    onHit={() => store.hit({ eleveroon: t.player.type === "admin" ? true : eleveroonSelected })}
                   onStand={() => store.stand()}
                     isCompact={bankerCompact && t.player.id !== playerId}
                     forceBankerReveal={round?.state === "terminate"}
@@ -2152,16 +2240,25 @@ export default function App() {
                     onBetChange={(v) => {
                       setBet(v);
                       if (bankBetSelected) setBankBetSelected(false);
+                      setBetError(undefined);
                     }}
                     onBet={() => {
                       const parsed = Number(betAmount);
                       const amount = Number.isFinite(parsed) ? parsed : 0;
+                      const wallet = room?.wallets?.[playerId ?? ""] ?? 0;
+                      const existingBet = myPlayerTurn?.bet ?? 0;
+                      const nextTotal = existingBet + amount;
+                      if (nextTotal > wallet) {
+                        setBetError("Insufficient chips for this wager.");
+                        return;
+                      }
                       store.bet(amount, { bank: bankBetSelected });
                       if (bankBetSelected) setBankBetSelected(false);
+                      setBetError(undefined);
                       setBet("");
                     }}
-                    onHit={() => store.hit()}
-                    onStand={() => store.stand()}
+                      onHit={() => store.hit({ eleveroon: isAdmin ? true : eleveroonSelected })}
+                      onStand={() => store.stand()}
                     bankAvailable={bankInfo?.available}
                     bankAddAmount={bankIncrement}
                     bankSelected={bankBetSelected}
@@ -2169,6 +2266,9 @@ export default function App() {
                     bankDisabled={!canBank}
                     bankDisabledReason={bankDisabledReason}
                     firstBetCardIndex={firstBetCardIndex}
+                    betError={betError}
+                      eleveroonSelected={eleveroonSelected}
+                      onToggleEleveroon={(checked) => setEleveroonSelected(checked)}
                   />
                 </div>
               )}

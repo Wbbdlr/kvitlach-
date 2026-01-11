@@ -1,9 +1,9 @@
 import { v4 as uuid } from "uuid";
 import { customAlphabet } from "nanoid";
-import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState } from "./round";
-import { handleHit } from "./round";
-import { Balance, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn } from "./types";
-import type { RoundContext } from "./round";
+import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState } from "./round.js";
+import { handleHit } from "./round.js";
+import { Balance, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn } from "./types.js";
+import type { RoundContext } from "./round.js";
 
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -321,7 +321,7 @@ export class GameStore {
     return processed;
   }
 
-  applyHit(roundId: string, playerId: string) {
+  applyHit(roundId: string, playerId: string, options?: { eleveroon?: boolean }) {
     const round = this.rounds.get(roundId);
     if (!round) throw new Error("round_not_found");
     const roomRec = this.rooms.get(round.roomId);
@@ -335,7 +335,7 @@ export class GameStore {
       }
       if (lock.stage === "decision") throw new Error("banker_deciding");
     }
-    const updated = handleHit(round, playerId);
+    const updated = handleHit(round, playerId, { eleveroon: options?.eleveroon });
     const processed = this.processBankLock(updated, roomRec);
     this.rounds.set(roundId, processed);
     return processed;

@@ -1,4 +1,4 @@
-import { GameStore } from "../store";
+import { GameStore } from "../store.js";
 
 describe("GameStore banker approvals", () => {
   it("stores buy-in requests and applies funds when approved", () => {

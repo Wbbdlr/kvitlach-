@@ -8,6 +8,7 @@ export interface Card {
   attributes: {
     values: number[];
     type?: "rosier";
+    eleveroonIgnored?: boolean;
   };
 }
 

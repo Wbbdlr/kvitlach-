@@ -1,6 +1,6 @@
-import { createHttpServer } from "./http-server";
-import { GameStore } from "./store";
-import { WSServer } from "./ws-server";
+import { createHttpServer } from "./http-server.js";
+import { GameStore } from "./store.js";
+import { WSServer } from "./ws-server.js";
 
 const PORT_WS = Number(process.env.WS_PORT || 3001);
 const PORT_HTTP = Number(process.env.PORT || 3000);

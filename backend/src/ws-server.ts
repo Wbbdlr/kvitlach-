@@ -1,7 +1,7 @@
-import { WebSocketServer, WebSocket } from "ws";
-import { GameStore } from "./store";
-import { ClientEnvelope, RoomState, RoundState, ServerEnvelope } from "./types";
-import type { RoundContext } from "./round";
+import { WebSocketServer, WebSocket, RawData } from "ws";
+import { GameStore } from "./store.js";
+import { ClientEnvelope, RoomState, RoundState, ServerEnvelope } from "./types.js";
+import type { RoundContext } from "./round.js";
 
 interface ConnectionMeta {
   roomId?: string;
@@ -23,7 +23,7 @@ export class WSServer {
 
   private onConnection(socket: WebSocket) {
     this.meta.set(socket, {});
-    socket.on("message", (data: WebSocket.RawData) => this.onMessage(socket, data));
+    socket.on("message", (data: RawData) => this.onMessage(socket, data));
     socket.on("close", () => this.onClose(socket));
     socket.on("error", (err: Error) => console.error("ws error", err));
   }
@@ -46,7 +46,7 @@ export class WSServer {
     }
   }
 
-  private onMessage(socket: WebSocket, data: WebSocket.RawData) {
+  private onMessage(socket: WebSocket, data: RawData) {
     let msg: ClientEnvelope;
     try {
       msg = JSON.parse(data.toString());
@@ -102,9 +102,11 @@ export class WSServer {
           break;
         }
         case "room:switch-admin": {
-          const { roomId, playerId } = (payload as any) || {};
-          if (!roomId || !playerId) throw new Error("invalid_payload");
-          this.store.switchAdmin(roomId, playerId);
+          const { roomId, targetPlayerId } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || !targetPlayerId) throw new Error("invalid_payload");
+          this.store.switchAdmin(roomId, actorId, targetPlayerId);
           this.broadcastRoom(roomId);
           this.sendAck(socket, requestId, {});
           break;
@@ -139,11 +141,11 @@ export class WSServer {
           break;
         }
         case "turn:hit": {
-          const { roundId, playerId: actorFromPayload } = (payload as any) || {};
+          const { roundId, playerId: actorFromPayload, eleveroon } = (payload as any) || {};
           const meta = this.meta.get(socket);
           const actorId = actorFromPayload ?? meta?.playerId;
           if (!roundId || !actorId) throw new Error("invalid_payload");
-          const round = this.store.applyHit(roundId, actorId);
+          const round = this.store.applyHit(roundId, actorId, { eleveroon: Boolean(eleveroon) });
           this.handleRoundUpdate(round);
           this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
           break;
@@ -383,11 +385,13 @@ export class WSServer {
   private handleRoundUpdate(round: RoundState) {
     this.broadcastRound(round);
     if (round.state === "terminate") {
+      const roundSnapshot = this.store.getRound(round.roundId);
+      const sanitizedRound = roundSnapshot ? this.sanitizeRound(roundSnapshot as RoundContext) : undefined;
       const { balances } = this.store.finalizeRound(round.roundId);
       this.broadcast(round.roomId, {
         type: "round:ended",
         roomId: round.roomId,
-        payload: { balances },
+        payload: { balances, round: sanitizedRound },
       });
       this.broadcastRoom(round.roomId);
     }

@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
-import { newDeck } from "./deck";
-import { calcState, getSums, initializeTurns } from "./turn";
-import { Balance, Card, Player, RoundPhase, RoundState, Turn } from "./types";
+import { newDeck } from "./deck.js";
+import { calcState, getSums, initializeTurns } from "./turn.js";
+import { Balance, Card, Player, RoundPhase, RoundState, Turn } from "./types.js";
 
 const TERMINATE_DELAY_FINAL_MS = 20000;
 const TERMINATE_DELAY_SKIP_MS = 5000;
@@ -53,7 +53,7 @@ export function handleBet(state: RoundContext, playerId: string, amount: number)
   return advanceState({ ...state, turns, deck: remainingDeck });
 }
 
-export function handleHit(state: RoundContext, playerId: string) {
+export function handleHit(state: RoundContext, playerId: string, options?: { eleveroon?: boolean }) {
   const turnIndex = state.turns.findIndex((t) => t.player.id === playerId);
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
@@ -61,7 +61,17 @@ export function handleHit(state: RoundContext, playerId: string) {
   const [pickedCard, ...remainingDeck] = state.deck;
   if (!pickedCard) throw new Error("deck_empty");
 
-  const cards = [...turn.cards, pickedCard];
+  const priorTotal = winningNumber(turn.cards);
+  const eleveroonActive = options?.eleveroon || turn.player.type === "admin";
+  const isElevenCard = pickedCard.attributes.values?.includes(11);
+  const cardWouldBust = calcState([...turn.cards, pickedCard]) === "lost";
+  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && priorTotal === 11 && cardWouldBust);
+
+  const effectiveCard = shouldIgnoreEleven
+    ? { ...pickedCard, attributes: { ...pickedCard.attributes, eleveroonIgnored: true } }
+    : pickedCard;
+
+  const cards = [...turn.cards, effectiveCard];
   let nextState = calcState(cards);
 
   if (turn.player.type !== "admin" && (turn.bet ?? 0) === 0) {
@@ -89,7 +99,12 @@ export function handleStand(state: RoundContext, playerId: string) {
   const turnIndex = state.turns.findIndex((t) => t.player.id === playerId);
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
-  const updatedTurn: Turn = { ...turn, state: "standby" };
+  const isPush = turn.player.type !== "admin" && (turn.bet ?? 0) === 0;
+  const updatedTurn: Turn = {
+    ...turn,
+    state: isPush ? "won" : "standby",
+    settledBet: isPush ? 0 : turn.settledBet,
+  };
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
   return advanceState({ ...state, turns }, TERMINATE_DELAY_FINAL_MS);
 }

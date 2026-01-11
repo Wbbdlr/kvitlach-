@@ -16,11 +16,13 @@ Modern take on the Hanukkah-era twenty-one variant featuring a dedicated banker.
 
 ## Features
 - Multiplayer rooms with banker ownership, optional join passwords, rotating starting players, and auto-sized decks (up to 16). Bankers can still override deck count.
-- WebSocket-driven gameplay loop with cumulative betting (`Bet` adds to the wager and deals a card) alongside classic `Hit`, `Stand`, and `Skip`, plus bank showdown logic.
-- Pre-bet "Blatt" draws let players view cards for free; multiple Blatts are allowed before wagering.
-- Card visibility rules: owners always see their own hands; busted/winning/standby hands reveal to everyone; the banker’s first card stays hidden until resolution; banker totals reveal in final/terminate states.
-- Banker controls: approve/deny rename and chip requests, top up or drain the bank, adjust any player wallet (with notes), kick players, and end the round when the bank is depleted.
-- Round tracking and history: infinite round log with timestamps, balance history, queued-player indicators, banker showdown summary, and notifications for approvals/adjustments.
+- WebSocket-driven gameplay loop with cumulative betting (`Bet` adds to the wager and deals a card) alongside classic `Hit`, `Stand`, and `Skip`, plus Bank! showdown logic.
+- Pre-bet "Blatt" draws let players view cards for free; multiple Blatts are allowed before wagering, and standing with no wager auto-resolves as a push.
+- Card visibility rules: owners always see their own hands; busted/winning/standby hands reveal to everyone; the banker’s first card stays hidden until resolution; banker totals reveal in final/terminate states; pre-bet Blatts stay visible to the table, wagered cards stay hidden until resolved.
+- Eleveroon support: banker always-on; players can toggle it per-hit to ignore a single busting eleven; indicators mark ignored cards.
+- Banker controls: approve/deny rename and chip requests, top up or drain the bank, adjust any player wallet (with notes), kick players, end the round when the bank is depleted, and handle Bank! showdown exposures.
+- Round tracking and history: persisted per-room history in the browser, showdown summaries, queued-player indicators, and notifications for approvals/adjustments.
+- UI affordances: inline bet validation (shows insufficient-funds hint beside the wager), standby indicator while waiting on banker resolution, bank toggle that auto-fills to the remaining available bank.
 
 ## Project Structure
 

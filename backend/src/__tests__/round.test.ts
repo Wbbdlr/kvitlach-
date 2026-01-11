@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { createRound, calculateBalances, calculateEndState, getGameState, handleBet, handleHit, playerWon } from "../round";
+import {
+  createRound,
+  calculateBalances,
+  calculateEndState,
+  getGameState,
+  handleBet,
+  handleHit,
+  handleStand,
+  playerWon,
+} from "../round";
 import { Player } from "../types";
 
 const admin: Player = { id: "a", firstName: "A", lastName: "Admin", type: "admin", presence: "online" };
@@ -174,6 +183,25 @@ describe("round state", () => {
 
     expect(updated.state).toBe("pending");
     expect(updated.bet).toBe(0);
+  });
+
+  it("pushes immediately when standing with no wager", () => {
+    const round = createRound([admin, p1], "room1");
+    const playerTurn = round.turns.find((t) => t.player.type !== "admin")!;
+
+    playerTurn.cards = [
+      { name: "5", attributes: { values: [5] } },
+      { name: "7", attributes: { values: [7] } },
+    ];
+
+    const resolved = handleStand(round, playerTurn.player.id);
+    const updatedPlayer = resolved.turns.find((t) => t.player.id === playerTurn.player.id)!;
+    const banker = resolved.turns.find((t) => t.player.type === "admin")!;
+
+    expect(updatedPlayer.state).toBe("won");
+    expect(updatedPlayer.bet).toBe(0);
+    expect(resolved.state).toBe("terminate");
+    expect(banker.state).toBe("standby");
   });
 
   it("keeps players pending when they have wagered", () => {

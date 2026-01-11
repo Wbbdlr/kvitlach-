@@ -1,4 +1,4 @@
-import { Card, Player, Turn, TurnState } from "./types";
+import { Card, Player, Turn, TurnState } from "./types.js";
 
 export function calcState(cards: Card[]): TurnState {
   const sums = getSums(cards);
@@ -10,7 +10,9 @@ export function calcState(cards: Card[]): TurnState {
 }
 
 export function getSums(cards: Card[]): number[] {
-  const values = cards.map((card) => card.attributes.values);
+  const values = cards
+    .filter((card) => !card.attributes.eleveroonIgnored)
+    .map((card) => card.attributes.values);
   return calcSums(values);
 }
 

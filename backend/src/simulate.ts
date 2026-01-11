@@ -1,5 +1,5 @@
-import { createRound, handleBet, handleHit, handleStand, winningNumber } from "./round";
-import { Player, Turn } from "./types";
+import { createRound, handleBet, handleHit, handleStand, winningNumber } from "./round.js";
+import { Player, Turn } from "./types.js";
 
 interface SimulationConfig {
   deckCounts: number[];

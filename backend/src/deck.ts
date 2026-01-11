@@ -1,4 +1,4 @@
-import { Card } from "./types";
+import { Card } from "./types.js";
 
 const baseCards: Card[] = [
   { name: "1", attributes: { values: [1] } },

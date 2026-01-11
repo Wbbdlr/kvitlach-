@@ -46,7 +46,7 @@ interface UIState {
   formErrors: Partial<Record<"join" | "create" | "round" | "global", string>>;
   startRound: (deckCount?: number) => void;
   bet: (amount: number, options?: { bank?: boolean }) => void;
-  hit: () => void;
+  hit: (options?: { eleveroon?: boolean }) => void;
   stand: () => void;
   skip: (playerId?: string) => void;
   requestRename: (firstName: string, lastName?: string) => void;
@@ -63,6 +63,8 @@ interface UIState {
 }
 
 const SESSION_STORAGE_KEY = "kvitlach.session";
+const LAST_ROOM_STORAGE_KEY = "kvitlach.lastRoomId";
+const historyKey = (roomId: string) => `kvitlach.history.${roomId}`;
 
 const loadSession = (): SessionData | undefined => {
   if (typeof window === "undefined" || !window.localStorage) return undefined;
@@ -85,17 +87,65 @@ const loadSession = (): SessionData | undefined => {
   return undefined;
 };
 
+const loadLastRoomId = (): string | undefined => {
+  if (typeof window === "undefined" || !window.localStorage) return undefined;
+  try {
+    const raw = window.localStorage.getItem(LAST_ROOM_STORAGE_KEY);
+    if (raw && typeof raw === "string") return raw;
+  } catch (err) {
+    console.warn("Failed to load last roomId", err);
+  }
+  return undefined;
+};
+
+const persistLastRoomId = (roomId?: string) => {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    if (!roomId) {
+      window.localStorage.removeItem(LAST_ROOM_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(LAST_ROOM_STORAGE_KEY, roomId);
+    }
+  } catch (err) {
+    console.warn("Failed to persist last roomId", err);
+  }
+};
+
 const persistSession = (session?: SessionData) => {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
     if (!session) {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      persistLastRoomId(undefined);
     } else {
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      persistLastRoomId(session.roomId);
     }
   } catch (err) {
     console.warn("Failed to persist session", err);
   }
+};
+
+const persistRoundHistory = (roomId: string | undefined, history: CompletedRoundSummary[]) => {
+  if (!roomId || typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(historyKey(roomId), JSON.stringify(history.slice(0, 50)));
+  } catch (err) {
+    console.warn("Failed to persist round history", err);
+  }
+};
+
+const loadRoundHistory = (roomId: string | undefined): CompletedRoundSummary[] => {
+  if (!roomId || typeof window === "undefined" || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(historyKey(roomId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as CompletedRoundSummary[];
+  } catch (err) {
+    console.warn("Failed to load round history", err);
+  }
+  return [];
 };
 
 const DEFAULT_WS_PORT = 3001;
@@ -132,6 +182,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
 
   const analyzeRoomTransition = (state: UIState, nextRoom: RoomState): Partial<UIState> => {
     const updates: Partial<UIState> = { room: nextRoom };
+    if (!state.roundHistory.length || state.room?.roomId !== nextRoom.roomId) {
+      const hydratedHistory = loadRoundHistory(nextRoom.roomId);
+      if (hydratedHistory.length) updates.roundHistory = hydratedHistory;
+    }
     const playerId = state.playerId;
     const prevRoom = state.room;
     if (!playerId || !prevRoom) return updates;
@@ -184,39 +238,49 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       set((state: UIState) => analyzeRoomTransition(state, msg.payload as RoomState));
     if (msg.type === "round:state" && msg.payload) set({ round: msg.payload as RoundState });
     if (msg.type === "round:ended") {
-      const { balances } = (msg.payload as any) || { balances: [] };
-        set((s: UIState) => {
-          const currentRound = s.round;
-          const summary = currentRound
-            ? {
-                roundId: currentRound.roundId,
-                roundNumber: currentRound.roundNumber ?? (s.roundHistory[0]?.roundNumber ?? 0) + 1,
-                turns: currentRound.turns.map((turn) => ({
-                  ...turn,
-                  cards: turn.cards.map((card) => ({
-                    ...card,
-                    attributes: {
-                      ...card.attributes,
-                      values: [...card.attributes.values],
-                    },
-                  })),
+      const payload = (msg.payload as any) || {};
+      const balances = payload.balances ?? [];
+      const roundFromPayload = payload.round as RoundState | undefined;
+      set((s: UIState) => {
+        const currentRound = roundFromPayload ?? s.round;
+        const inferredRoundNumber =
+          currentRound?.roundNumber ?? s.room?.completedRounds ?? s.roundHistory[0]?.roundNumber ?? 0;
+        const summary = currentRound
+          ? {
+              roundId: currentRound.roundId,
+              roundNumber: currentRound.roundNumber ?? inferredRoundNumber,
+              turns: currentRound.turns.map((turn) => ({
+                ...turn,
+                cards: turn.cards.map((card) => ({
+                  ...card,
+                  attributes: {
+                    ...card.attributes,
+                    values: [...card.attributes.values],
+                  },
                 })),
-                balances: balances ?? [],
-                completedAt: Date.now(),
-              }
-            : undefined;
-          return {
-            balances: [...balances, ...s.balances],
-            roundHistory: summary ? [summary, ...s.roundHistory] : s.roundHistory,
-          };
-        });
+              })),
+              balances: balances ?? [],
+              completedAt: Date.now(),
+            }
+          : undefined;
+        const existing = summary
+          ? s.roundHistory.filter((r) => r.roundId !== summary.roundId)
+          : s.roundHistory;
+        const nextHistory = summary ? [summary, ...existing].slice(0, 50) : existing;
+        if (summary && (s.room?.roomId || currentRound?.roomId)) {
+          persistRoundHistory(s.room?.roomId ?? currentRound?.roomId, nextHistory);
+        }
+        return {
+          balances: [...balances, ...s.balances],
+          roundHistory: nextHistory,
+        };
+      });
       return;
     }
     if (msg.type === "room:banker-topup") {
       const payload = (msg.payload as any) || {};
       set((state: UIState) => {
-        const banker = state.room?.players.find((p) => p.id === msg.playerId);
-        const bankerName = [banker?.firstName, banker?.lastName].filter(Boolean).join(" ").trim() || "Banker";
+        const bankerName = "Banker";
         const amountValue = typeof payload.amount === "number" ? payload.amount : undefined;
         const amountLabel = typeof amountValue === "number" ? `$${Math.abs(amountValue)}` : "chips";
         const direction =
@@ -230,6 +294,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             : `${bankerName} ${direction} ${amountLabel} ${preposition} the bank${noteSuffix}`;
         const totalSentence = totalLabel ? ` Bank now holds ${totalLabel}.` : "";
         const message = `${summary}.${totalSentence}`;
+        const last = state.notifications[state.notifications.length - 1];
+        if (last?.message === message) return { notifications: state.notifications };
         const notifications = [...state.notifications, makeNotification(message, "info")].slice(-5);
         return { notifications };
       });
@@ -238,9 +304,9 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     if (msg.type === "player:bank-adjusted") {
       const payload = (msg.payload as any) || {};
       set((state: UIState) => {
-        const actor = state.room?.players.find((p) => p.id === msg.playerId);
-        const target = state.room?.players.find((p) => p.id === payload.playerId || msg.playerId);
-        const actorName = [actor?.firstName, actor?.lastName].filter(Boolean).join(" ").trim() || "Banker";
+        const actorName = "Banker";
+        const targetId = typeof payload.playerId === "string" ? payload.playerId : msg.playerId;
+        const target = state.room?.players.find((p) => p.id === targetId);
         const targetName = [target?.firstName, target?.lastName].filter(Boolean).join(" ").trim() || "Player";
         const amountValue = typeof payload.amount === "number" ? payload.amount : undefined;
         const amountLabel = typeof amountValue === "number" ? `$${Math.abs(amountValue)}` : "chips";
@@ -248,9 +314,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const preposition = direction === "removed" ? "from" : "to";
         const totalLabel = typeof payload.total === "number" ? `$${payload.total}` : undefined;
         const noteSuffix = payload.note ? ` (${payload.note})` : "";
-        const summary = `${actorName} ${direction} ${amountLabel} ${preposition} ${targetName}${noteSuffix}`;
+        const summary = `${actorName} ${direction} ${amountLabel} ${preposition} ${targetName}'s stack${noteSuffix}`;
         const totalSentence = totalLabel ? ` ${targetName} now has ${totalLabel}.` : "";
         const message = `${summary}.${totalSentence}`;
+        const last = state.notifications[state.notifications.length - 1];
+        if (last?.message === message) return { notifications: state.notifications };
         const notifications = [...state.notifications, makeNotification(message, "info")].slice(-5);
         return { notifications };
       });
@@ -263,6 +331,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     if (msg.type === "error" && msg.error) {
       const errorMessage = msg.error?.message;
       if (errorMessage === "invalid_session") {
+        const priorRoom = state.session?.roomId || state.room?.roomId;
+        if (priorRoom) persistLastRoomId(priorRoom);
         persistSession(undefined);
       }
       set((state: UIState) => {
@@ -321,6 +391,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           persistSession(sessionPayload);
           update.session = sessionPayload;
           update.playerId = sessionPayload.playerId;
+          persistLastRoomId(sessionPayload.roomId);
         } else if (payload.player) {
           update.playerId = payload.player.id;
         }
@@ -338,6 +409,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     const session = get().session ?? loadSession();
     if (session) {
       client.send("room:resume", session);
+      persistLastRoomId(session.roomId);
     }
   });
   client.onClose(() => {
@@ -412,7 +484,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       const requestId = client.send("turn:bet", { roundId, amount, playerId, bank: Boolean(options?.bank) });
       set({ pendingAction: { requestId, type: "bet" } });
     },
-    hit: () => {
+    hit: (options?: { eleveroon?: boolean }) => {
       const roundId = get().round?.roundId;
       const playerId = get().playerId;
       if (get().pendingAction) return;
@@ -424,7 +496,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set({ message: "Player session unavailable. Rejoin the game." });
         return;
       }
-      const requestId = client.send("turn:hit", { roundId, playerId });
+      const requestId = client.send("turn:hit", { roundId, playerId, eleveroon: Boolean(options?.eleveroon) });
       set({ pendingAction: { requestId, type: "hit" } });
     },
     stand: () => {
