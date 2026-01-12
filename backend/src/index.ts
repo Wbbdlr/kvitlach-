@@ -7,8 +7,10 @@ const PORT_WS = Number(process.env.WS_PORT || 3001);
 const PORT_HTTP = Number(process.env.PORT || 3000);
 
 async function main() {
-  const db = new Database();
-  await db.init();
+  const dbUrl = process.env.DATABASE_URL;
+  const db = dbUrl ? new Database(dbUrl) : undefined;
+  if (!db) console.warn("DATABASE_URL not set; connection logs disabled");
+  if (db) await db.init();
   const store = new GameStore(db);
   new WSServer(store, PORT_WS);
 
