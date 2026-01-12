@@ -27,7 +27,7 @@ export default function About() {
           <li>Create a room (or join one) and set a banker bankroll. Banker owns the bank for the session.</li>
           <li>Blatt (draw for free) to peek at cards before you wager. Multiple blatts are allowed.</li>
           <li>Place a wager (or BANK! to challenge the banker) — bet adds a card and locks your stake.</li>
-          <li>Act on your turn: Hit (draw), Stand, or Skip. Eleveroon toggle ignores busting elevens in a row when your total was 11.</li>
+          <li>Act on your turn: Hit (draw), Stand, or Skip. Eleveroon toggle ignores busting elevens in a row when your total was 11; leave it off and an 11 at 11 will bust.</li>
           <li>Banker resolves at the end: plays out the bank hand, pays winners, collects losses, pushes ties.</li>
         </ol>
       </section>
@@ -47,7 +47,7 @@ export default function About() {
         <h2 className="text-xl font-semibold text-ink">Odds and fairness</h2>
         <p>
           The backend includes a Monte Carlo simulator to inspect edge and variance. Default rules mirror table play; no house
-          advantage is injected beyond classic banker position. Eleveroon reduces busts by ignoring busting elevens in a row when the hand was sitting at 11.
+          advantage is injected beyond classic banker position. Eleveroon reduces busts by ignoring busting elevens in a row when the hand was sitting at 11; if you don’t toggle it, that 11 will bust you.
         </p>
       </section>
 

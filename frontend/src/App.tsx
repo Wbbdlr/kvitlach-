@@ -578,6 +578,11 @@ function TurnCard({
                 />
                 <span>Eleveroon</span>
                 {isBanker && <span className="text-[11px] font-normal text-slate-500">Always on</span>}
+                {!isBanker && (
+                  <span className="text-[11px] font-normal text-slate-500">
+                    If off, an 11 at 11 will bust you.
+                  </span>
+                )}
               </label>
             )}
           <button
