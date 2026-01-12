@@ -37,7 +37,7 @@ export class WSServer {
     const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
 
     this.meta.set(socket, { ip: ip ?? undefined, userAgent: userAgent ?? undefined });
-    socket.on("message", (data: RawData) => this.onMessage(socket, data));
+    socket.on("message", (data: RawData) => void this.onMessage(socket, data));
     socket.on("close", () => this.onClose(socket));
     socket.on("error", (err: Error) => console.error("ws error", err));
   }
@@ -62,7 +62,7 @@ export class WSServer {
     }
   }
 
-  private onMessage(socket: WebSocket, data: RawData) {
+  private async onMessage(socket: WebSocket, data: RawData) {
     let msg: ClientEnvelope;
     try {
       msg = JSON.parse(data.toString());
