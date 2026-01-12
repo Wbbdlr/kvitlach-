@@ -1,6 +1,7 @@
 import { create, StateCreator } from "zustand";
 import { WSClient } from "./ws";
 import { Balance, RoomState, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
+import { ReactionEvent } from "./types";
 
 type NotificationTone = "success" | "info" | "error";
 
@@ -31,6 +32,7 @@ interface UIState {
   balances: Balance[];
   roundHistory: CompletedRoundSummary[];
   connections?: ConnectionSummary[];
+  reactions: ReactionEvent[];
   playerId?: string;
   session?: SessionData;
   status: "disconnected" | "connecting" | "connected";
@@ -50,6 +52,7 @@ interface UIState {
   hit: (options?: { eleveroon?: boolean }) => void;
   stand: () => void;
   skip: (playerId?: string) => void;
+  sendReaction: (emoji: string) => void;
   requestRename: (firstName: string, lastName?: string) => void;
   approveRename: (playerId: string) => void;
   rejectRename: (playerId: string) => void;
@@ -390,6 +393,24 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       });
       return;
     }
+    if (msg.type === "reaction:new") {
+      const reaction = (msg.payload as ReactionEvent | undefined) as ReactionEvent | undefined;
+      if (!reaction || !reaction.playerId || !reaction.emoji || !reaction.reactedAt) return;
+      set((state: UIState) => {
+        const cutoff = Date.now() - 10000;
+        const trimmed = state.reactions.filter((r) => r.reactedAt > cutoff);
+        const next = [...trimmed, reaction].slice(-20);
+        return { reactions: next };
+      });
+      setTimeout(() => {
+        set((state: UIState) => ({
+          reactions: state.reactions.filter(
+            (r) => !(r.playerId === reaction.playerId && r.reactedAt === reaction.reactedAt && r.emoji === reaction.emoji)
+          ),
+        }));
+      }, 10000);
+      return;
+    }
     if (msg.type === "ack") {
       set((state: UIState) => {
         const update: Partial<UIState> = { message: undefined };
@@ -437,6 +458,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     status: "disconnected",
     balances: [],
     roundHistory: [],
+    reactions: [],
     wsUrl: WS_URL,
     pendingAction: undefined,
     formErrors: {},
@@ -519,6 +541,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (!roundId || !playerId) return;
       const requestId = client.send("turn:stand", { roundId, playerId });
       set({ pendingAction: { requestId, type: "stand" } });
+    },
+    sendReaction: (emoji: string) => {
+      if (!emoji) return;
+      client.send("player:react", { emoji });
     },
     skip: (playerId?: string) => {
       const roundId = get().round?.roundId;

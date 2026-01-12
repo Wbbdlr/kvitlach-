@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import type { IncomingMessage } from "http";
 import { GameStore } from "./store.js";
-import { ClientEnvelope, RoomState, RoundState, ServerEnvelope } from "./types.js";
+import { ClientEnvelope, RoomState, RoundState, ServerEnvelope, ReactionEvent } from "./types.js";
 import type { RoundContext } from "./round.js";
 
 interface ConnectionMeta {
@@ -373,6 +373,22 @@ export class WSServer {
             payload: result,
           });
           this.sendAck(socket, requestId, { room, topUp: result });
+          break;
+        }
+        case "player:react": {
+          const { emoji } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || typeof emoji !== "string" || !emoji.trim()) throw new Error("invalid_payload");
+          const room = this.store.getRoom(roomId);
+          const isMember = room?.players.some((p) => p.id === actorId);
+          if (!isMember) throw new Error("forbidden");
+          const allowed: string[] = ["👏", "😂", "😮", "❤️", "🔥", "👍"];
+          const normalized = allowed.includes(emoji.trim()) ? emoji.trim() : allowed[0];
+          const payloadOut: ReactionEvent = { playerId: actorId, emoji: normalized, reactedAt: Date.now() };
+          this.broadcast(roomId, { type: "reaction:new", roomId, payload: payloadOut });
+          this.sendAck(socket, requestId, {});
           break;
         }
         case "room:get": {

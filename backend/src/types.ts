@@ -99,6 +99,12 @@ export interface ConnectionSummary {
   lastSeenAt?: number;
 }
 
+export interface ReactionEvent {
+  playerId: string;
+  emoji: string;
+  reactedAt: number;
+}
+
 export interface ClientEnvelope<T = unknown> {
   type: string;
   roomId?: string;

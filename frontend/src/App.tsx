@@ -2673,35 +2673,35 @@ export default function App() {
 
       {room && (
         <section className="card-surface p-4 flex flex-col gap-3">
-          <button
-            type="button"
-            className="flex items-center justify-between text-sm font-semibold text-ink"
-            onClick={() => setShowHistory((prev) => !prev)}
-          >
-            <span className="text-base font-semibold text-ink">Round History ({roundHistory?.length ?? 0})</span>
-            <span className="text-xs text-slate-500">{showHistory ? "Hide" : "Show"}</span>
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              className="flex items-center justify-between text-sm font-semibold text-ink"
+              onClick={() => setShowHistory((prev) => !prev)}
+            >
+              <span className="text-base font-semibold text-ink">Round History ({roundHistory?.length ?? 0})</span>
+              <span className="ml-2 text-xs text-slate-500">{showHistory ? "Hide" : "Show"}</span>
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={exportRoundHistoryTxt}
+              disabled={!roundHistory?.length}
+              title={roundHistory?.length ? "Download round history as text" : "No completed rounds yet"}
+            >
+              <svg
+                className="h-3.5 w-3.5 text-ink"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M3 4a2 2 0 012-2h6l4 4v10a2 2 0 01-2 2H5a2 2 0 01-2-2V4zm8 8V9h2l-3-3-3 3h2v3h2z" />
+              </svg>
+              <span>Export .txt</span>
+            </button>
+          </div>
           {showHistory && (
             <div className="flex flex-col gap-3">
-              {(roundHistory ?? []).length > 0 && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm transition-colors hover:bg-slate-50"
-                    onClick={exportRoundHistoryTxt}
-                  >
-                    <svg
-                      className="h-3.5 w-3.5 text-ink"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 4a2 2 0 012-2h6l4 4v10a2 2 0 01-2 2H5a2 2 0 01-2-2V4zm8 8V9h2l-3-3-3 3h2v3h2z" />
-                    </svg>
-                    <span>Export .txt</span>
-                  </button>
-                </div>
-              )}
               {(roundHistory ?? []).length === 0 && (
                 <div className="text-xs text-slate-500">No completed rounds yet.</div>
               )}
