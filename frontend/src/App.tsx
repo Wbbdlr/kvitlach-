@@ -20,7 +20,33 @@ const cardImages: Record<string, string> = {
   blank: "/blank.png",
 };
 
-const REACTION_EMOJIS = ["👏", "😂", "😮", "❤️", "🔥", "👍"];
+const REACTION_EMOJIS = [
+  "👏",
+  "😂",
+  "😮",
+  "❤️",
+  "🔥",
+  "👍",
+  "😢",
+  "🤯",
+  "😎",
+  "🙌",
+  "😡",
+  "🤔",
+  "🎉",
+  "🤞",
+  "🙏",
+  "🍀",
+  "🍻",
+  "🍕",
+  "💤",
+  "💯",
+  "✅",
+  "❌",
+  "🤑",
+  "😭",
+  "🤡",
+];
 
 function usableCards(cards: Card[]): Card[] {
   return cards.filter((card) => !card.attributes?.eleveroonIgnored);
@@ -256,40 +282,14 @@ function WalletBadge({
   );
 }
 
-function ReactionTray({ reactions, players }: { reactions: ReactionEvent[]; players: Player[] }) {
-  if (!reactions.length || !players.length) return null;
-  const sorted = [...reactions].sort((a, b) => a.reactedAt - b.reactedAt).slice(-8);
-  return (
-    <div className="fixed top-4 left-4 z-40 flex flex-col gap-2 w-56">
-      {sorted.map((reaction) => {
-        const player = players.find((p) => p.id === reaction.playerId);
-        const name = player ? fullName(player) || player.firstName : "Player";
-        return (
-          <div
-            key={`${reaction.playerId}-${reaction.reactedAt}-${reaction.emoji}`}
-            className="flex items-center gap-2 rounded-lg bg-white/90 border border-slate-200 px-3 py-2 shadow-lg backdrop-blur-sm"
-          >
-            <span className="text-xl" aria-label="Reaction emoji">{reaction.emoji}</span>
-            <div className="flex flex-col leading-tight">
-              <span className="text-xs font-semibold text-ink truncate">{name || "Player"}</span>
-              <span className="text-[10px] text-slate-500">reacted</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function ReactionPicker({ onPick, disabled }: { onPick: (emoji: string) => void; disabled?: boolean }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
-      <span className="text-[11px] font-semibold text-slate-600 px-1">React</span>
+    <div className="grid grid-cols-5 gap-2 p-3 rounded-lg border border-slate-200 bg-white shadow-lg w-60">
       {REACTION_EMOJIS.map((emoji) => (
         <button
           key={emoji}
           type="button"
-          className="text-xl leading-none hover:scale-110 transition-transform disabled:opacity-40"
+          className="text-xl leading-none rounded-lg border border-transparent hover:border-slate-200 hover:bg-slate-50 transition disabled:opacity-40"
           aria-label={`Send ${emoji}`}
           onClick={() => onPick(emoji)}
           disabled={disabled}
@@ -329,6 +329,7 @@ function TurnCard({
   eleveroonSelected,
   onToggleEleveroon,
   turnTimer,
+  reactionEmoji,
 }: {
   turn: Turn;
   isAdmin: boolean;
@@ -357,6 +358,7 @@ function TurnCard({
   eleveroonSelected?: boolean;
   onToggleEleveroon?: (selected: boolean) => void;
   turnTimer?: { playerId: string; remainingMs: number; percent: number; durationMs: number };
+  reactionEmoji?: string;
 }) {
   const statusInfo = statusDisplay(turn);
   const isMe = viewerId === turn.player.id;
@@ -488,11 +490,16 @@ function TurnCard({
   return (
     <div
       className={clsx(
-        "card-surface p-4 flex flex-col gap-2",
+        "card-surface p-4 flex flex-col gap-2 relative",
         isCurrentTurn && "ring-2 ring-blue-300 border-blue-300"
       )}
       style={bankerStyle}
     >
+      {reactionEmoji && (
+        <div className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm text-lg">
+          <span aria-label="Reaction">{reactionEmoji}</span>
+        </div>
+      )}
       {header}
       {showTurnTimer && (
         <div className="flex items-center gap-2 text-xs">
@@ -753,6 +760,7 @@ export default function App() {
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [sfxEnabled, setSfxEnabled] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
   const audioManager = useMemo(() => new AudioManager(), []);
   const prevRoundRef = useRef<RoundState | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
@@ -763,6 +771,14 @@ export default function App() {
 
   // Normalize turns early so hooks below can safely depend on this array.
   const turns = round?.turns?.filter(Boolean) ?? [];
+  const latestReactionByPlayer = useMemo(() => {
+    const map: Record<string, ReactionEvent> = {};
+    reactions.forEach((r) => {
+      const prev = map[r.playerId];
+      if (!prev || r.reactedAt > prev.reactedAt) map[r.playerId] = r;
+    });
+    return map;
+  }, [reactions]);
 
   useEffect(() => {
     if (prefilledRoomIdRef.current) return;
@@ -1130,8 +1146,8 @@ export default function App() {
         const roundLines: string[] = [];
         roundLines.push(`Round ${r.roundNumber ?? idx + 1}`);
         roundLines.push(`Completed: ${new Date(r.completedAt).toLocaleString()}`);
-        roundLines.push(`Players: ${r.turns.length}`);
-        r.turns.forEach((turn) => {
+        roundLines.push(`Players: ${r.turns?.length ?? 0}`);
+        (r.turns ?? []).forEach((turn) => {
           const name = [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName || "Player";
           const role = turn.player.type === "admin" ? "Banker" : "Player";
           const bet = typeof turn.bet === "number" ? `$${turn.bet}` : "--";
@@ -1155,7 +1171,10 @@ export default function App() {
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = `kvitlach-history${room?.roomId ? `-${room.roomId}` : ""}.txt`;
+    anchor.rel = "noopener";
+    document.body.appendChild(anchor);
     anchor.click();
+    document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
   };
 
@@ -1261,7 +1280,6 @@ export default function App() {
 
   return (
     <>
-      {room && <ReactionTray reactions={reactions} players={room.players} />}
       {pendingKick && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
@@ -2383,11 +2401,6 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-            <ReactionPicker onPick={(emoji) => sendReaction(emoji)} disabled={status !== "connected"} />
-            <span className="text-[11px] text-slate-500">Reactions flash to the table for ~10s.</span>
-          </div>
-
           <div className="card-surface p-3 border border-slate-200 bg-slate-50">
             <div className="flex items-center justify-between mb-2 text-sm">
               <span className="font-semibold">Table Overview</span>
@@ -2546,13 +2559,34 @@ export default function App() {
                     forceBankerReveal={round?.state === "terminate"}
                   firstBetCardIndex={firstBetCardIndex}
                   turnTimer={activeTurnTimer?.playerId === t.player.id ? activeTurnTimer : undefined}
+                  reactionEmoji={latestReactionByPlayer[t.player.id]?.emoji}
                 />
               ))}
             </div>
             <div>
               {myPlayerTurn && (
                 <div className="mb-2">
-                  <div className="text-xs uppercase text-slate-500 mb-1">Your hand</div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="text-xs uppercase text-slate-500">Your hand</div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-ink shadow-sm hover:bg-slate-50"
+                      onClick={() => setShowReactionPicker((v) => !v)}
+                    >
+                      REACT
+                    </button>
+                  </div>
+                  {showReactionPicker && (
+                    <div className="mb-2">
+                      <ReactionPicker
+                        onPick={(emoji) => {
+                          sendReaction(emoji);
+                          setShowReactionPicker(false);
+                        }}
+                        disabled={status !== "connected"}
+                      />
+                    </div>
+                  )}
                   <TurnCard
                     key={myPlayerTurn.player?.id ?? "me"}
                     turn={myPlayerTurn}
@@ -2597,6 +2631,7 @@ export default function App() {
                       eleveroonSelected={eleveroonSelected}
                       onToggleEleveroon={(checked) => setEleveroonSelected(checked)}
                     turnTimer={activeTurnTimer?.playerId === myPlayerTurn.player.id ? activeTurnTimer : undefined}
+                    reactionEmoji={latestReactionByPlayer[myPlayerTurn.player.id]?.emoji}
                   />
                 </div>
               )}
@@ -2619,6 +2654,7 @@ export default function App() {
                     walletAmount={room?.wallets?.[t.player.id]}
                     firstBetCardIndex={firstBetCardIndex}
                     turnTimer={activeTurnTimer?.playerId === t.player.id ? activeTurnTimer : undefined}
+                    reactionEmoji={latestReactionByPlayer[t.player.id]?.emoji}
                   />
                 ))}
               </div>
@@ -2687,7 +2723,7 @@ export default function App() {
               className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={exportRoundHistoryTxt}
               disabled={!roundHistory?.length}
-              title={roundHistory?.length ? "Download round history as text" : "No completed rounds yet"}
+              title={roundHistory?.length ? "Export Game History and Details" : "No completed rounds yet"}
             >
               <svg
                 className="h-3.5 w-3.5 text-ink"
@@ -3045,6 +3081,7 @@ export default function App() {
         </div>
         <nav className="flex items-center gap-4">
           <a href="/about" className="hover:text-ink underline-offset-4 hover:underline">About</a>
+          <a href="/disclaimer" className="hover:text-ink underline-offset-4 hover:underline">Disclaimer</a>
           <button
             type="button"
             onClick={() => setShowContact(true)}
