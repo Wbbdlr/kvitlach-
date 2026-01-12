@@ -1,16 +1,37 @@
 services:
+  db:
+    container_name: kvitlach-db
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=kvitlach
+      - POSTGRES_PASSWORD=kvitlach
+      - POSTGRES_DB=kvitlach
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kvitlach"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "127.0.0.1:25432:5432"
+
   backend:
     container_name: kvitlach-backend
     build: ../backend
     environment:
       - PORT=25000
       - WS_PORT=25001
+      - DATABASE_URL=postgres://kvitlach:kvitlach@db:5432/kvitlach
     restart: unless-stopped
     ports:
       - "127.0.0.1:25000:25000"
       - "127.0.0.1:25001:25001"
     mem_limit: 4g
     cpus: "3.0"
+    depends_on:
+      - db
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:25000/health"]
       interval: 30s
@@ -37,3 +58,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+volumes:
+  db-data:
