@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
+import type { IncomingMessage } from "http";
 import { GameStore } from "./store.js";
 import { ClientEnvelope, RoomState, RoundState, ServerEnvelope } from "./types.js";
 import type { RoundContext } from "./round.js";
@@ -6,6 +7,9 @@ import type { RoundContext } from "./round.js";
 interface ConnectionMeta {
   roomId?: string;
   playerId?: string;
+  ip?: string;
+  userAgent?: string;
+  connectionId?: number;
 }
 
 export class WSServer {
@@ -16,13 +20,23 @@ export class WSServer {
 
   constructor(store: GameStore, port: number) {
     this.store = store;
+    this.store.setRoundUpdateListener((round) => this.handleRoundUpdate(round));
     this.wss = new WebSocketServer({ port });
-    this.wss.on("connection", (socket: WebSocket) => this.onConnection(socket));
+    this.wss.on("connection", (socket: WebSocket, request: IncomingMessage) => this.onConnection(socket, request));
     console.log(`WebSocket listening on ws://0.0.0.0:${port}`);
   }
 
-  private onConnection(socket: WebSocket) {
-    this.meta.set(socket, {});
+  private onConnection(socket: WebSocket, request: IncomingMessage) {
+    const forwardedFor = request.headers["x-forwarded-for"];
+    const ip = Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : typeof forwardedFor === "string"
+      ? forwardedFor.split(",")[0]?.trim()
+      : request.socket.remoteAddress;
+    const userAgentHeader = request.headers["user-agent"];
+    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
+
+    this.meta.set(socket, { ip: ip ?? undefined, userAgent: userAgent ?? undefined });
     socket.on("message", (data: RawData) => this.onMessage(socket, data));
     socket.on("close", () => this.onClose(socket));
     socket.on("error", (err: Error) => console.error("ws error", err));
@@ -41,6 +55,8 @@ export class WSServer {
         if (!stillConnected) {
           this.store.setPresence(info.roomId, info.playerId, "offline");
           this.broadcastRoom(info.roomId);
+          void this.store.recordDisconnection(info.connectionId);
+            void this.broadcastConnections(info.roomId);
         }
       }
     }
@@ -62,33 +78,35 @@ export class WSServer {
           const { firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll } = (payload as any) || {};
           if (!firstName) throw new Error("invalid_payload");
           const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll });
-          this.attach(socket, room.roomId, player.id);
+          await this.attach(socket, room.roomId, player.id);
           this.sendAck(socket, requestId, {
             room,
             player,
             session: { roomId: room.roomId, playerId: player.id, token: sessionToken },
           });
           this.broadcastRoom(room.roomId);
+          await this.broadcastConnections(room.roomId);
           break;
         }
         case "room:join": {
           const { roomId, firstName, lastName, password } = (payload as any) || {};
           if (!roomId || !firstName) throw new Error("invalid_payload");
           const { room, player, sessionToken } = this.store.joinRoom(roomId, { firstName, lastName, password });
-          this.attach(socket, room.roomId, player.id);
+          await this.attach(socket, room.roomId, player.id);
           this.sendAck(socket, requestId, {
             room,
             player,
             session: { roomId: room.roomId, playerId: player.id, token: sessionToken },
           });
           this.broadcastRoom(room.roomId);
+          await this.broadcastConnections(room.roomId);
           break;
         }
         case "room:resume": {
           const { roomId, playerId, token } = (payload as any) || {};
           if (!roomId || !playerId || !token) throw new Error("invalid_payload");
           const { player, sessionToken } = this.store.resumePlayer(roomId, playerId, token);
-          this.attach(socket, roomId, playerId);
+          await this.attach(socket, roomId, playerId);
           const room = this.store.getRoom(roomId);
           const round = room?.roundId ? this.store.getRound(room.roundId) : undefined;
           if (room) this.broadcastRoom(roomId);
@@ -99,6 +117,7 @@ export class WSServer {
             round: round ? this.sanitizeRound(round) : undefined,
             session: { roomId, playerId, token: sessionToken },
           });
+          await this.broadcastConnections(roomId);
           break;
         }
         case "room:switch-admin": {
@@ -398,14 +417,23 @@ export class WSServer {
   }
 
   private sanitizeRound(round: RoundState | RoundContext): RoundState {
-    const { timer, ...rest } = round as RoundContext;
+    const { timer, turnTimer, ...rest } = round as RoundContext;
     return rest;
   }
 
-  private attach(socket: WebSocket, roomId: string, playerId: string) {
-    this.meta.set(socket, { roomId, playerId });
+  private async attach(socket: WebSocket, roomId: string, playerId: string) {
+    const existing = this.meta.get(socket) ?? {};
+    const meta: ConnectionMeta = { ...existing, roomId, playerId };
+    this.meta.set(socket, meta);
     if (!this.rooms.has(roomId)) this.rooms.set(roomId, new Set());
     this.rooms.get(roomId)!.add(socket);
+    try {
+      const connectionId = await this.store.recordConnection(roomId, playerId, existing.ip, existing.userAgent);
+      meta.connectionId = connectionId;
+      this.meta.set(socket, meta);
+    } catch (err) {
+      console.error("connection logging failed", err);
+    }
   }
 
   private broadcastRoom(roomId: string) {
@@ -427,6 +455,18 @@ export class WSServer {
     const sockets = this.rooms.get(roomId);
     if (!sockets) return;
     sockets.forEach((sock) => this.send(sock, message));
+  }
+
+  private async broadcastConnections(roomId: string) {
+    const sockets = this.rooms.get(roomId);
+    if (!sockets) return;
+    const summaries = await this.store.getConnectionSummaries(roomId);
+    sockets.forEach((sock) => {
+      const meta = this.meta.get(sock);
+      if (!meta?.playerId) return;
+      if (!this.store.isAdmin(roomId, meta.playerId)) return;
+      this.send(sock, { type: "room:connections", roomId, payload: { players: summaries } });
+    });
   }
 
   private sendAck(socket: WebSocket, requestId: string | undefined, payload: unknown) {

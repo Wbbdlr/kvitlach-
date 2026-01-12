@@ -67,6 +67,9 @@ export interface RoundState {
   deckCount?: number;
   roundNumber: number;
   bankLock?: BankLockState;
+  turnTimerPlayerId?: string;
+  turnTimerExpiresAt?: number;
+  turnTimerDurationMs?: number;
 }
 
 export interface RoomState {
@@ -85,6 +88,15 @@ export interface RoomState {
   waitingPlayerIds: string[];
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
+}
+
+export interface ConnectionSummary {
+  playerId: string;
+  roomId: string;
+  ip?: string;
+  userAgent?: string;
+  connectedAt?: number;
+  lastSeenAt?: number;
 }
 
 export interface ServerEnvelope<T = unknown> {

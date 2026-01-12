@@ -2,11 +2,13 @@ import { v4 as uuid } from "uuid";
 import { customAlphabet } from "nanoid";
 import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState } from "./round.js";
 import { handleHit } from "./round.js";
-import { Balance, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn } from "./types.js";
+import { Balance, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
 import type { RoundContext } from "./round.js";
+import type { Database } from "./db.js";
 
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const TURN_TIMEOUT_MS = 90 * 1000;
 const MAX_NAME_LEN = 40;
 const MAX_ROOM_NAME_LEN = 80;
 const MAX_NOTE_LEN = 160;
@@ -49,6 +51,12 @@ export class GameStore {
   private rooms = new Map<string, RoomRecord>();
   private rounds = new Map<string, RoundContext>();
   private sessions = new Map<string, SessionRecord>();
+  private roundUpdateListener?: (round: RoundContext) => void;
+  private db?: Database;
+
+  constructor(db?: Database) {
+    this.db = db;
+  }
 
   private sanitizeName(value: string | undefined, max = MAX_NAME_LEN) {
     return (value ?? "").trim().slice(0, max);
@@ -64,6 +72,111 @@ export class GameStore {
     const payload = { ts: new Date().toISOString(), roomId, actorId, action, ...(details ?? {}) };
     // Lightweight audit log; replace with structured logging sink if needed.
     console.info(JSON.stringify({ audit: payload }));
+  }
+
+  setRoundUpdateListener(listener: (round: RoundContext) => void) {
+    this.roundUpdateListener = listener;
+  }
+
+  async recordConnection(roomId: string, playerId: string, ip?: string, userAgent?: string): Promise<number | undefined> {
+    if (!this.db) return undefined;
+    return this.db.logConnection({ roomId, playerId, ip, userAgent });
+  }
+
+  async recordDisconnection(connectionId?: number) {
+    if (!this.db || !connectionId) return;
+    await this.db.logDisconnection(connectionId);
+  }
+
+  async getConnectionSummaries(roomId: string): Promise<ConnectionSummary[]> {
+    if (!this.db) return [];
+    return this.db.getRoomConnectionSummaries(roomId);
+  }
+
+  private getActiveTurnId(round: RoundContext): string | undefined {
+    if (round.state === "terminate") return undefined;
+    if (round.bankLock?.stage === "decision") return undefined;
+    const pendingTurns = round.turns.filter((turn) => turn.state === "pending");
+    const bankerTurn = round.turns.find((turn) => turn.player.type === "admin");
+
+    if ((round.state === "final" || round.bankLock?.stage === "banker") && bankerTurn) return bankerTurn.player.id;
+    if (round.bankLock?.stage === "player") return round.bankLock.playerId;
+    return pendingTurns[0]?.player.id;
+  }
+
+  private syncTurnTimer(roundId: string, next: RoundContext, prev?: RoundContext): RoundContext {
+    const activeTurnId = this.getActiveTurnId(next);
+    const activeTurn = activeTurnId ? next.turns.find((turn) => turn.player.id === activeTurnId) : undefined;
+    const now = Date.now();
+
+    const shouldSkipTimer =
+      !activeTurnId ||
+      !activeTurn ||
+      activeTurn.player.type === "admin" ||
+      activeTurn.state !== "pending";
+
+    if (shouldSkipTimer) {
+      if (prev?.turnTimer) clearTimeout(prev.turnTimer);
+      return {
+        ...next,
+        turnTimer: undefined,
+        turnTimerPlayerId: undefined,
+        turnTimerExpiresAt: undefined,
+        turnTimerDurationMs: undefined,
+      };
+    }
+
+    const sameActive = prev?.turnTimerPlayerId === activeTurnId && typeof prev?.turnTimerExpiresAt === "number";
+    const remainingMs = sameActive ? Math.max((prev?.turnTimerExpiresAt ?? 0) - now, 0) : TURN_TIMEOUT_MS;
+
+    if (remainingMs <= 0) {
+      return this.forceTimeoutStand(roundId, next, activeTurnId);
+    }
+
+    if (prev?.turnTimer) clearTimeout(prev.turnTimer);
+    const timer = setTimeout(() => this.handleTurnTimeout(roundId, activeTurnId), remainingMs);
+
+    return {
+      ...next,
+      turnTimer: timer,
+      turnTimerPlayerId: activeTurnId,
+      turnTimerExpiresAt: now + remainingMs,
+      turnTimerDurationMs: TURN_TIMEOUT_MS,
+    };
+  }
+
+  private forceTimeoutStand(roundId: string, round: RoundContext, playerId: string): RoundContext {
+    const roomRec = this.rooms.get(round.roomId);
+    if (!roomRec) return round;
+    try {
+      const updated = handleStand(round, playerId);
+      const processed = this.processBankLock(updated, roomRec);
+      this.audit("auto-stand", round.roomId, playerId, { reason: "turn_timeout" });
+      const persisted = this.persistRound(roundId, processed, round);
+      if (this.roundUpdateListener) this.roundUpdateListener(persisted);
+      return persisted;
+    } catch (err) {
+      console.error("auto-stand failure", err);
+      return round;
+    }
+  }
+
+  private handleTurnTimeout = (roundId: string, playerId: string) => {
+    const round = this.rounds.get(roundId);
+    if (!round) return;
+    const activeTurnId = this.getActiveTurnId(round);
+    if (activeTurnId !== playerId) {
+      this.persistRound(roundId, round, round);
+      return;
+    }
+    this.forceTimeoutStand(roundId, round, playerId);
+  };
+
+  private persistRound(roundId: string, next: RoundContext, prev?: RoundContext): RoundContext {
+    const previous = prev ?? this.rounds.get(roundId);
+    const withTimer = this.syncTurnTimer(roundId, next, previous);
+    this.rounds.set(roundId, withTimer);
+    return withTimer;
   }
 
     createRoom(admin: { firstName: string; lastName?: string; roomName?: string; password?: string; buyIn?: number; roomId?: string; bankerBankroll?: number }) {
@@ -196,11 +309,11 @@ export class GameStore {
     if (playersForRound.length < 1) throw new Error("not_enough_players");
     const roundNumber = (roomRec.room.completedRounds ?? 0) + 1;
     const round = createRound(playersForRound, roomId, deckCount, roundNumber);
-    this.rounds.set(round.roundId, round);
-    roomRec.room.roundId = round.roundId;
+    const stored = this.persistRound(round.roundId, round);
+    roomRec.room.roundId = stored.roundId;
     roomRec.room.waitingPlayerIds = [];
     this.bumpRoomTimer(roomId);
-    return round;
+    return stored;
   }
 
   getRoom(roomId: string): RoomState | undefined {
@@ -237,8 +350,8 @@ export class GameStore {
       if (round) {
         const turns = round.turns.filter((t) => t.player.id !== targetPlayerId);
         const bankLock = round.bankLock?.playerId === targetPlayerId ? undefined : round.bankLock;
-        const updated: RoundContext = { ...round, turns, bankLock };
-        this.rounds.set(roundId, updated);
+          const updated: RoundContext = { ...round, turns, bankLock };
+          this.persistRound(roundId, updated, round);
       }
     }
 
@@ -317,8 +430,7 @@ export class GameStore {
     }
 
     const processed = this.processBankLock(updated, roomRec);
-    this.rounds.set(roundId, processed);
-    return processed;
+    return this.persistRound(roundId, processed, round);
   }
 
   applyHit(roundId: string, playerId: string, options?: { eleveroon?: boolean }) {
@@ -337,8 +449,7 @@ export class GameStore {
     }
     const updated = handleHit(round, playerId, { eleveroon: options?.eleveroon });
     const processed = this.processBankLock(updated, roomRec);
-    this.rounds.set(roundId, processed);
-    return processed;
+    return this.persistRound(roundId, processed, round);
   }
 
   applyStand(roundId: string, playerId: string) {
@@ -357,8 +468,7 @@ export class GameStore {
     }
     const updated = handleStand(round, playerId);
     const processed = this.processBankLock(updated, roomRec);
-    this.rounds.set(roundId, processed);
-    return processed;
+    return this.persistRound(roundId, processed, round);
   }
 
   applySkip(roundId: string, playerId: string) {
@@ -375,13 +485,14 @@ export class GameStore {
     }
     const updated = handleSkip(round, playerId);
     const processed = this.processBankLock(updated, roomRec);
-    this.rounds.set(roundId, processed);
-    return processed;
+    return this.persistRound(roundId, processed, round);
   }
 
   finalizeRound(roundId: string) {
     const round = this.rounds.get(roundId);
     if (!round) return { balances: [] as Balance[] };
+    if (round.turnTimer) clearTimeout(round.turnTimer);
+    if (round.timer) clearTimeout(round.timer);
     const balances = calculateBalances(round.turns);
     this.rounds.delete(roundId);
     const roomRec = this.rooms.get(round.roomId);
@@ -414,8 +525,7 @@ export class GameStore {
       return turn;
     });
     const updated: RoundContext = { ...round, turns: resolved, state: "terminate", bankLock: undefined };
-    this.rounds.set(roundId, updated);
-    return updated;
+    return this.persistRound(roundId, updated, round);
   }
 
   requestRename(roomId: string, playerId: string, firstName: string, lastName?: string): RenameRequest {
@@ -467,8 +577,7 @@ export class GameStore {
                 }
             : turn
         );
-        updatedRound = { ...round, turns };
-        this.rounds.set(roundId, updatedRound);
+        updatedRound = this.persistRound(roundId, { ...round, turns }, round);
       }
     }
       this.audit("rename-approve", roomId, adminId, { target: targetPlayerId });
@@ -614,7 +723,7 @@ export class GameStore {
             settledNet: undefined,
           };
           roundCtx.bankLock = undefined;
-          this.rounds.set(roundId, roundCtx);
+          this.persistRound(roundId, roundCtx);
         }
       }
     }

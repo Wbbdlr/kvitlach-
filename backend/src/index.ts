@@ -1,12 +1,15 @@
 import { createHttpServer } from "./http-server.js";
 import { GameStore } from "./store.js";
 import { WSServer } from "./ws-server.js";
+import { Database } from "./db.js";
 
 const PORT_WS = Number(process.env.WS_PORT || 3001);
 const PORT_HTTP = Number(process.env.PORT || 3000);
 
 async function main() {
-  const store = new GameStore();
+  const db = new Database();
+  await db.init();
+  const store = new GameStore(db);
   new WSServer(store, PORT_WS);
 
   const app = createHttpServer();

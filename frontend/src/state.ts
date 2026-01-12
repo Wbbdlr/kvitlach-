@@ -1,6 +1,6 @@
 import { create, StateCreator } from "zustand";
 import { WSClient } from "./ws";
-import { Balance, RoomState, RoundState, ServerEnvelope, Turn } from "./types";
+import { Balance, RoomState, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 
 type NotificationTone = "success" | "info" | "error";
 
@@ -30,6 +30,7 @@ interface UIState {
   round?: RoundState;
   balances: Balance[];
   roundHistory: CompletedRoundSummary[];
+  connections?: ConnectionSummary[];
   playerId?: string;
   session?: SessionData;
   status: "disconnected" | "connecting" | "connected";
@@ -281,6 +282,12 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           roundHistory: nextHistory,
         };
       });
+      return;
+    }
+    if (msg.type === "room:connections") {
+      const payload = (msg.payload as any) || {};
+      const players = (payload.players as ConnectionSummary[]) || [];
+      set({ connections: players });
       return;
     }
     if (msg.type === "room:banker-topup") {

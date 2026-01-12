@@ -9,6 +9,10 @@ const MAX_DECKS = 16;
 
 export interface RoundContext extends RoundState {
   timer?: NodeJS.Timeout;
+  turnTimer?: NodeJS.Timeout;
+  turnTimerPlayerId?: string;
+  turnTimerExpiresAt?: number;
+  turnTimerDurationMs?: number;
 }
 
 export function createRound(players: Player[], roomId: string, deckCountInput?: number, roundNumber = 1): RoundContext {
@@ -61,11 +65,10 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   const [pickedCard, ...remainingDeck] = state.deck;
   if (!pickedCard) throw new Error("deck_empty");
 
-  const priorTotal = winningNumber(turn.cards);
   const eleveroonActive = options?.eleveroon || turn.player.type === "admin";
   const isElevenCard = pickedCard.attributes.values?.includes(11);
   const cardWouldBust = calcState([...turn.cards, pickedCard]) === "lost";
-  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && priorTotal === 11 && cardWouldBust);
+  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && cardWouldBust);
 
   const effectiveCard = shouldIgnoreEleven
     ? { ...pickedCard, attributes: { ...pickedCard.attributes, eleveroonIgnored: true } }

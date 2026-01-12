@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { useGameStore } from "./state";
-import { Card, Player, RoundPhase, Turn } from "./types";
+import { Card, Player, RoomState, RoundPhase, RoundState, Turn } from "./types";
+import { AudioManager } from "./audio";
 
 const cardImages: Record<string, string> = {
   "1": "/1.png",
@@ -82,6 +83,7 @@ function totalDisplay(
   wrapperClassName?: string;
   valueClassName?: string;
 } {
+  const roundState = _roundState;
   const prefix = "Total:";
   const { total, bustedTotal } = bestTotal(turn.cards);
   const isOwnerView = viewerId === turn.player.id;
@@ -90,6 +92,17 @@ function totalDisplay(
   const bankerResolved = turn.state === "lost" || turn.state === "standby" || turn.state === "won";
   const forceBankerReveal = opts?.forceBankerReveal;
   const isPublicStandby = turn.state === "standby";
+
+  // For non-owners viewing player hands (including the banker), keep totals hidden until the hand resolves or the round ends.
+  if (
+    !isOwnerView &&
+    !isBanker &&
+    roundState !== "terminate" &&
+    turn.state !== "won" &&
+    turn.state !== "lost"
+  ) {
+    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
+  }
 
   if (!isOwnerView && isBanker && !bankerResolved && !forceBankerReveal) {
     const visible = turn.cards.slice(1);
@@ -268,6 +281,7 @@ function TurnCard({
   forceBankerReveal,
   eleveroonSelected,
   onToggleEleveroon,
+  turnTimer,
 }: {
   turn: Turn;
   isAdmin: boolean;
@@ -295,6 +309,7 @@ function TurnCard({
   forceBankerReveal?: boolean;
   eleveroonSelected?: boolean;
   onToggleEleveroon?: (selected: boolean) => void;
+  turnTimer?: { playerId: string; remainingMs: number; percent: number; durationMs: number };
 }) {
   const statusInfo = statusDisplay(turn);
   const isMe = viewerId === turn.player.id;
@@ -334,6 +349,14 @@ function TurnCard({
       ? statusInfo
       : undefined
     : undefined;
+  const showTurnTimer = Boolean(
+    turnTimer &&
+      turnTimer.playerId === turn.player.id &&
+      turn.player.type !== "admin" &&
+      turn.state === "pending" &&
+      roundState !== "terminate"
+  );
+  const timerSecondsLeft = showTurnTimer ? Math.max(0, Math.ceil((turnTimer?.remainingMs ?? 0) / 1000)) : undefined;
 
   const header = (
     <div className="flex justify-between items-center flex-wrap gap-2">
@@ -402,6 +425,21 @@ function TurnCard({
       style={bankerStyle}
     >
       {header}
+      {showTurnTimer && (
+        <div className="flex items-center gap-2 text-xs text-blue-700">
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 font-semibold">
+            <span className="h-2 w-2 rounded-full bg-blue-500" aria-hidden="true"></span>
+            <span>{timerSecondsLeft ?? 0}s left</span>
+          </span>
+          <div className="flex-1 h-1.5 min-w-[96px] rounded-full bg-slate-200 overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-[width] duration-300 ease-linear"
+              style={{ width: `${turnTimer?.percent ?? 0}%` }}
+              aria-hidden="true"
+            ></div>
+          </div>
+        </div>
+      )}
       <div className="flex gap-2 flex-wrap text-sm items-center">
         {turn.cards.map((c, idx) => {
           const isOwnerView = viewerId === turn.player.id;
@@ -457,7 +495,7 @@ function TurnCard({
       )}
       {canAdminSkip && (
         <button
-          className="text-xs text-red-600 underline self-start"
+          className="self-start inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-rose-700 shadow-sm hover:border-rose-300 hover:text-rose-800"
           onClick={() => onSkipOther?.(turn.player.id)}
         >
           Skip player
@@ -500,7 +538,11 @@ function TurnCard({
             {showEleveroonToggle && (
               <label
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
-                title={isBanker ? "Eleveroon is always active for the banker." : "Player-controlled Eleveroon option."}
+                title={
+                  isBanker
+                    ? "Eleveroon automatically ignores a single busting eleven for the banker."
+                    : "Eleveroon lets you ignore one busting eleven when your total was 11."
+                }
               >
                 <input
                   type="checkbox"
@@ -552,7 +594,7 @@ function TurnCard({
             {showEleveroonToggle && (
               <label
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
-                title="Eleveroon is always active for the banker."
+                title="Eleveroon automatically ignores a single busting eleven for the banker."
               >
                 <input
                   type="checkbox"
@@ -570,6 +612,125 @@ function TurnCard({
   );
 }
 
+function RadialTableOverview({
+  turns,
+  room,
+  activeTurnId,
+  nextTurnId,
+  onSelectPlayer,
+  roundState,
+}: {
+  turns: Turn[];
+  room?: RoomState;
+  activeTurnId?: string;
+  nextTurnId?: string;
+  onSelectPlayer?: (playerId: string) => void;
+  roundState?: RoundPhase;
+}) {
+  const banker = room?.players.find((p) => p.type === "admin");
+  const bankerTurn = turns.find((t) => t.player.type === "admin");
+  const playerTurns = turns.filter((t) => t.player.type !== "admin");
+  const maxSlices = 12;
+  if (playerTurns.length === 0 || playerTurns.length > maxSlices) return null;
+
+  const manyPlayers = playerTurns.length > 8;
+  const radiusPercent = manyPlayers ? 46 : 40;
+  const sliceSizeClass = manyPlayers ? "w-28 h-22 sm:w-32 sm:h-24" : "w-32 h-24 sm:w-36 sm:h-28";
+
+  const centerWallet = banker ? room?.wallets?.[banker.id] : undefined;
+  const bankerStatus = bankerTurn ? statusDisplay(bankerTurn) : undefined;
+
+  return (
+    <div className="relative w-full max-w-4xl aspect-square mx-auto">
+      <div className="absolute inset-[28%] sm:inset-1/4 rounded-full border border-amber-200 bg-amber-50/80 shadow-inner flex flex-col items-center justify-center text-center px-3 py-3">
+        <div className="text-[11px] uppercase tracking-wide text-amber-700">Banker</div>
+        <div className="text-base font-semibold text-ink leading-tight">
+          {banker ? [banker.firstName, banker.lastName].filter(Boolean).join(" ") || banker.firstName : "Banker"}
+        </div>
+        {typeof centerWallet === "number" && (
+          <div className="text-xs text-amber-800">${centerWallet.toLocaleString()}</div>
+        )}
+        {bankerStatus?.label && (
+          <span className={clsx("mt-1 text-[11px] uppercase tracking-wide", bankerStatus.className)}>
+            {bankerStatus.label}
+          </span>
+        )}
+      </div>
+
+      {playerTurns.map((turn, idx) => {
+        const angle = (idx / playerTurns.length) * 360;
+        const isActive = activeTurnId === turn.player.id && turn.state === "pending";
+        const isNext = nextTurnId === turn.player.id && turn.state === "pending";
+        const statusInfo = statusDisplay(turn);
+        const betInfo = betDisplay(turn);
+        const wallet = room?.wallets?.[turn.player.id];
+        const totalInfo = totalDisplay(turn, undefined, roundState, {
+          forceBankerReveal: turn.player.type === "admin" || turn.state !== "pending" || roundState === "terminate",
+        });
+        const cardCount = turn.cards.length;
+
+        const tone =
+          turn.state === "won"
+            ? "from-emerald-100 to-emerald-200"
+            : turn.state === "lost"
+            ? "from-rose-100 to-rose-200"
+            : isActive
+            ? "from-blue-100 to-blue-200"
+            : isNext
+            ? "from-amber-100 to-amber-200"
+            : "from-slate-100 to-slate-200";
+
+        return (
+          <button
+            key={turn.player.id}
+            type="button"
+            className="absolute left-1/2 top-1/2 origin-center"
+            style={{ transform: `rotate(${angle}deg) translate(${radiusPercent}%) rotate(${-angle}deg)` }}
+            onClick={() => onSelectPlayer?.(turn.player.id)}
+            title="Click for stats"
+          >
+            <div
+              className={clsx(
+                "relative overflow-hidden rounded-lg border shadow-sm transition-transform duration-200 hover:-translate-y-0.5",
+                sliceSizeClass,
+                isActive && "ring-2 ring-blue-300 border-blue-200",
+                isNext && !isActive && "ring-1 ring-amber-200"
+              )}
+              style={{ clipPath: "polygon(50% 0%, 98% 100%, 2% 100%)" }}
+            >
+              <div className={clsx("absolute inset-0 bg-gradient-to-b", tone)} aria-hidden="true" />
+              <div className="relative h-full flex flex-col justify-between px-3 py-2 text-left">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-ink leading-tight">
+                      {[turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || "Player"}
+                    </span>
+                    <span className="text-[11px] text-slate-600">Cards: {cardCount}</span>
+                  </div>
+                  {statusInfo.label && (
+                    <span className={clsx("text-[10px] uppercase tracking-wide", statusInfo.className)}>
+                      {statusInfo.label}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-700 flex flex-col gap-0.5">
+                  {typeof wallet === "number" && <span>Wallet: ${wallet.toLocaleString()}</span>}
+                  <span>
+                    Bet: <span className={betInfo.className}>{betInfo.label}</span>
+                  </span>
+                  <span className={clsx(totalInfo.wrapperClassName ?? "text-slate-600")}>
+                    {totalInfo.prefix} <span className={clsx(totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-600")}>{totalInfo.value}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const store = useGameStore();
   const {
@@ -583,6 +744,7 @@ export default function App() {
     roundHistory,
     notifications,
     bankerSummaryAt,
+    connections,
   } = store;
   const [statsPlayerId, setStatsPlayerId] = useState<string | undefined>(undefined);
   const [bankerFirstName, setBankerFirst] = useState("");
@@ -625,6 +787,12 @@ export default function App() {
   const [walletAdjustNote, setWalletAdjustNote] = useState("");
   const [walletAdjustError, setWalletAdjustError] = useState<string | undefined>(undefined);
   const [pendingKick, setPendingKick] = useState<{ playerId: string; label: string } | null>(null);
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  const [musicEnabled, setMusicEnabled] = useState(false);
+  const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [userInteracted, setUserInteracted] = useState(false);
+  const audioManager = useMemo(() => new AudioManager(), []);
+  const prevRoundRef = useRef<RoundState | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
   const formErrors = store.formErrors ?? {};
   const dismissNotification = store.dismissNotification;
@@ -655,7 +823,12 @@ export default function App() {
   }, [formErrors.create]);
 
   useEffect(() => {
+    const markInteraction = () => {
+      if (!userInteracted) setUserInteracted(true);
+      audioManager.noteInteraction();
+    };
     const handlePointerDown = (event: PointerEvent) => {
+      markInteraction();
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable], [role='textbox']")) return;
       const active = document.activeElement as HTMLElement | null;
@@ -666,7 +839,7 @@ export default function App() {
 
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, []);
+  }, [audioManager, userInteracted]);
 
   useEffect(() => {
     if (room) setShowLobby(false);
@@ -695,6 +868,51 @@ export default function App() {
     // Reset Eleveroon selection when a new round begins.
     setEleveroonSelected(false);
   }, [round?.roundId]);
+
+  useEffect(() => {
+    // Keep manager flags in sync with UI toggles.
+    audioManager.setSfxEnabled(sfxEnabled);
+  }, [audioManager, sfxEnabled]);
+
+  useEffect(() => {
+    audioManager.setMusicEnabled(musicEnabled && userInteracted);
+    return () => audioManager.setMusicEnabled(false);
+  }, [audioManager, musicEnabled, userInteracted]);
+
+  useEffect(() => {
+    if (!round) {
+      prevRoundRef.current = undefined;
+      return;
+    }
+    const prev = prevRoundRef.current;
+    if (!prev || prev.roundId !== round.roundId) {
+      prevRoundRef.current = round;
+      return;
+    }
+
+    round.turns.forEach((turn) => {
+      const prevTurn = prev.turns.find((t) => t.player.id === turn.player.id);
+      if (!prevTurn) return;
+      if ((turn.cards?.length ?? 0) > (prevTurn.cards?.length ?? 0)) {
+        audioManager.playSfx("deal");
+      }
+      if (turn.state !== prevTurn.state) {
+        if (turn.state === "won") audioManager.playSfx("win");
+        if (turn.state === "lost") {
+          const { total, bustedTotal } = bestTotal(turn.cards);
+          const busted = total === undefined && bustedTotal !== undefined;
+          if (busted) audioManager.playSfx("bust");
+        }
+      }
+    });
+
+    prevRoundRef.current = round;
+  }, [audioManager, round]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowTs(Date.now()), 500);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // Clear or collapse the wallet adjustment form when players or rooms change.
@@ -741,6 +959,8 @@ export default function App() {
     const others = turns.filter((t) => t.player.type !== "admin");
     return [...banker, ...others];
   }, [turns]);
+  const radialPlayers = overviewTurns.filter((t) => t.player.type !== "admin");
+  const radialEligible = radialPlayers.length > 0 && radialPlayers.length <= 12;
   const bankLock = round?.bankLock;
   const primaryBankerTurn = bankerTurns[0];
   const activeTurnId = useMemo(() => {
@@ -753,6 +973,14 @@ export default function App() {
     if (bankLock?.stage === "banker") return pendingTurns[0]?.player.id;
     return pendingTurns[1]?.player.id;
   }, [bankLock?.stage, pendingTurns]);
+  const activeTimerPlayerId = round?.turnTimerPlayerId;
+  const activeTimerRemainingMs = round?.turnTimerExpiresAt ? Math.max(round.turnTimerExpiresAt - nowTs, 0) : undefined;
+  const turnTimerDurationMs = round?.turnTimerDurationMs ?? 90_000;
+  const activeTurnTimer = useMemo(() => {
+    if (!activeTimerPlayerId || activeTimerRemainingMs === undefined) return undefined;
+    const percent = Math.max(0, Math.min(100, Math.round((activeTimerRemainingMs / turnTimerDurationMs) * 100)));
+    return { playerId: activeTimerPlayerId, remainingMs: activeTimerRemainingMs, percent, durationMs: turnTimerDurationMs };
+  }, [activeTimerPlayerId, activeTimerRemainingMs, turnTimerDurationMs]);
   const bankerActive = bankerTurns.some((t) => t.player?.id === activeTurnId);
   const bankerCompact = Boolean(round && !bankerActive && round.state !== "terminate" && round.state !== "final");
   const canAct =
@@ -1279,6 +1507,9 @@ export default function App() {
         <span className="self-end -translate-y-[4px] transform text-[10px] font-serif uppercase tracking-[0.2em] text-amber-700 leading-tight">
           Ah Heimishe Chanukah Shpil
         </span>
+        <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 shadow-sm">
+          Beta
+        </span>
         {room && isAdmin && (
           <button
             type="button"
@@ -1289,43 +1520,84 @@ export default function App() {
           </button>
         )}
       </header>
-        <section className="card-surface p-4 flex flex-col gap-2">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-3 max-w-xl">
-              <div className="font-semibold text-base">Welcome to Kvitlach</div>
-              <div className="text-xs text-slate-500">
-                Join an existing table with the room code your Banker shared, or host one if you are running the game.
-              </div>
-              {!room && (
-                <div className="space-y-1 text-xs text-slate-500">
-                  <p>Banker manages the bankroll and payouts; everyone else plays against them.</p>
-                  <p>Most visitors only need the Join form—create a table only if you are the Banker.</p>
+        {(!room || showLobby) ? (
+          <section className="card-surface p-4 flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-3 max-w-xl">
+                <div className="font-semibold text-base">Welcome to Kvitlach</div>
+                <div className="text-xs text-slate-500">
+                  Join an existing table with the room code your Banker shared, or host one if you are running the game.
                 </div>
-              )}
+                {!room && (
+                  <div className="space-y-1 text-xs text-slate-500">
+                    <p>Banker manages the bankroll and payouts; everyone else plays against them.</p>
+                    <p>Most visitors only need the Join form—create a table only if you are the Banker.</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  type="button"
+                  className="group inline-flex items-center gap-2 rounded-full border border-accent text-accent px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-accent hover:text-white"
+                  onClick={() => {
+                    setShowWhatIs(false);
+                    setShowHowTo(true);
+                  }}
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold transition-colors duration-200 group-hover:bg-white group-hover:text-accent">
+                    ?
+                  </span>
+                  <span>How to play</span>
+                </button>
+                <button
+                  type="button"
+                  className="group inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-600 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-blue-500 hover:text-white"
+                  onClick={() => {
+                    setShowHowTo(false);
+                    setShowWhatIs(true);
+                  }}
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-blue-500 p-[1px]">
+                    <img
+                      src="/blank.png"
+                      alt=""
+                      aria-hidden="true"
+                      className="h-full w-full object-contain"
+                      loading="lazy"
+                    />
+                  </span>
+                  <span>What is Kvitlach?</span>
+                </button>
+              </div>
             </div>
-            <div className="flex flex-col items-end gap-2">
-            <button
-              type="button"
-              className="group inline-flex items-center gap-2 rounded-full border border-accent text-accent px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-accent hover:text-white"
-              onClick={() => {
-                setShowWhatIs(false);
-                setShowHowTo(true);
-              }}
-            >
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold transition-colors duration-200 group-hover:bg-white group-hover:text-accent">
-                ?
-              </span>
-              <span>How to play</span>
-            </button>
+          </section>
+        ) : (
+          <section className="card-surface p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="space-y-0.5">
+              <div className="text-sm font-semibold text-ink">Table quick help</div>
+              <div className="text-[11px] text-slate-500">Open rules or story without leaving the table.</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
-              type="button"
-              className="group inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-600 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-blue-500 hover:text-white"
-              onClick={() => {
-                setShowHowTo(false);
-                setShowWhatIs(true);
-              }}
-            >
-                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-blue-500 p-[1px]">
+                type="button"
+                className="inline-flex items-center gap-2 rounded-full border border-accent text-accent px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors duration-200 hover:bg-accent hover:text-white"
+                onClick={() => {
+                  setShowWhatIs(false);
+                  setShowHowTo(true);
+                }}
+              >
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold">?</span>
+                <span>How to play</span>
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-600 px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors duration-200 hover:bg-blue-500 hover:text-white"
+                onClick={() => {
+                  setShowHowTo(false);
+                  setShowWhatIs(true);
+                }}
+              >
+                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm p-[1px]">
                   <img
                     src="/blank.png"
                     alt=""
@@ -1335,10 +1607,10 @@ export default function App() {
                   />
                 </span>
                 <span>What is Kvitlach?</span>
-            </button>
-          </div>
-        </div>
-      </section>
+              </button>
+            </div>
+          </section>
+        )}
 
         {(!room || showLobby) && (
           <section className="grid md:grid-cols-2 gap-4 items-start">
@@ -2102,8 +2374,25 @@ export default function App() {
           </div>
 
           <div className="card-surface p-3 border border-slate-200 bg-slate-50">
-            <div className="text-sm font-semibold mb-2">Table Overview</div>
-            <div className="grid gap-3 md:grid-cols-2 text-xs text-slate-700">
+            <div className="flex items-center justify-between mb-2 text-sm">
+              <span className="font-semibold">Table Overview</span>
+              <span className="text-[11px] text-slate-500 hidden md:inline">Click a slice for stats</span>
+            </div>
+
+            {radialEligible && (
+              <div className="block">
+                <RadialTableOverview
+                  turns={overviewTurns}
+                  room={room}
+                  activeTurnId={activeTurnId}
+                  nextTurnId={nextTurnId}
+                  onSelectPlayer={(id) => setStatsPlayerId(id)}
+                  roundState={round?.state}
+                />
+              </div>
+            )}
+
+            <div className={clsx("grid gap-3 md:grid-cols-2 text-xs text-slate-700", radialEligible ? "mt-3" : "mt-1")}> 
               {overviewTurns.map((t) => {
                 const isActive = round?.state !== "terminate" && t.state === "pending" && activeTurnId === t.player.id;
                 const isNext = round?.state !== "terminate" && t.state === "pending" && nextTurnId === t.player.id && !isActive;
@@ -2184,6 +2473,29 @@ export default function App() {
             </div>
           </div>
 
+          {isAdmin && (connections?.length ?? 0) > 0 && (
+            <div className="card-surface p-3 border border-blue-200 bg-blue-50/60">
+              <div className="text-sm font-semibold mb-2 flex items-center justify-between">
+                <span>Player connection info (banker only)</span>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 text-xs text-slate-800">
+                {connections?.map((meta) => {
+                  const player = room?.players.find((p) => p.id === meta.playerId);
+                  const name = player ? [player.firstName, player.lastName].filter(Boolean).join(" ") || player.firstName : meta.playerId;
+                  const lastSeen = meta.lastSeenAt ? new Date(meta.lastSeenAt).toLocaleString() : "";
+                  return (
+                    <div key={meta.playerId} className="rounded border border-slate-200 bg-white p-2 shadow-sm">
+                      <div className="font-semibold text-ink">{name}</div>
+                      <div className="text-[11px] text-slate-500 break-all">{meta.ip ?? "IP unknown"}</div>
+                      <div className="text-[11px] text-slate-500 break-all">{meta.userAgent ?? "User agent unknown"}</div>
+                      {lastSeen && <div className="text-[11px] text-slate-500">Last seen: {lastSeen}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
             <div className="grid gap-3">
               <div>
                 <div className="flex items-center gap-3 my-2">
@@ -2218,6 +2530,7 @@ export default function App() {
                     isCompact={bankerCompact && t.player.id !== playerId}
                     forceBankerReveal={round?.state === "terminate"}
                   firstBetCardIndex={firstBetCardIndex}
+                  turnTimer={activeTurnTimer?.playerId === t.player.id ? activeTurnTimer : undefined}
                 />
               ))}
             </div>
@@ -2268,6 +2581,7 @@ export default function App() {
                     betError={betError}
                       eleveroonSelected={eleveroonSelected}
                       onToggleEleveroon={(checked) => setEleveroonSelected(checked)}
+                    turnTimer={activeTurnTimer?.playerId === myPlayerTurn.player.id ? activeTurnTimer : undefined}
                   />
                 </div>
               )}
@@ -2289,6 +2603,7 @@ export default function App() {
                     onSkipOther={isAdmin ? (pid) => store.skip(pid) : undefined}
                     walletAmount={room?.wallets?.[t.player.id]}
                     firstBetCardIndex={firstBetCardIndex}
+                    turnTimer={activeTurnTimer?.playerId === t.player.id ? activeTurnTimer : undefined}
                   />
                 ))}
               </div>
@@ -2639,6 +2954,10 @@ export default function App() {
       <footer className="mt-8 border-t border-slate-200 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center gap-3">
           <span className="font-semibold text-slate-600">Kvitlach</span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+            v1.5
+            <span className="text-amber-700">Beta</span>
+          </span>
           <span
             className={clsx(
               "inline-flex items-center gap-1 rounded-full px-2 py-1 border text-[11px]",
@@ -2658,6 +2977,37 @@ export default function App() {
             <span className="uppercase tracking-wide">WS</span>
             <span className="text-[10px]">{status === "connected" ? "ok" : status === "connecting" ? "wait" : "down"}</span>
           </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] uppercase tracking-wide text-slate-500">Sound</span>
+          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              checked={musicEnabled}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setMusicEnabled(next);
+                setUserInteracted(true);
+                audioManager.noteInteraction();
+              }}
+            />
+            <span className="text-[11px] font-semibold text-ink">Music</span>
+          </label>
+          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              checked={sfxEnabled}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setSfxEnabled(next);
+                setUserInteracted(true);
+                audioManager.noteInteraction();
+              }}
+            />
+            <span className="text-[11px] font-semibold text-ink">SFX</span>
+          </label>
         </div>
         <nav className="flex items-center gap-4">
           <a href="/about" className="hover:text-ink underline-offset-4 hover:underline">About</a>
