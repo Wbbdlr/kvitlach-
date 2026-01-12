@@ -10,7 +10,7 @@ export default function About() {
           ← Back to table
         </a>
       </div>
-      <h1 className="text-2xl font-semibold text-ink">About Kvitlach</h1>
+      
 
       <section className="space-y-2">
         <h2 className="text-xl font-semibold text-ink">What is this?</h2>
