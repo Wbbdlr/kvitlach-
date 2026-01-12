@@ -357,7 +357,7 @@ function TurnCard({
       roundState !== "terminate"
   );
   const timerSecondsLeft = showTurnTimer ? Math.max(0, Math.ceil((turnTimer?.remainingMs ?? 0) / 1000)) : undefined;
-  const timerMsLeft = turnTimer?.remainingMs ?? 0;
+  const timerMsLeft = Math.max(0, turnTimer?.remainingMs ?? 0);
   const timerTone = timerMsLeft <= 20000 ? "danger" : timerMsLeft <= 45000 ? "warn" : "info";
   const timerColors =
     timerTone === "danger"
@@ -382,6 +382,12 @@ function TurnCard({
     <div className="flex justify-between items-center flex-wrap gap-2">
       <div className="flex items-center gap-2 font-semibold">
         <span className="inline-flex items-center gap-1">
+          <span className={clsx(isMe ? "text-blue-700" : undefined)}>
+            {nameLabel}
+          </span>
+          {isMe && !useCompact && (
+            <span className="italic text-slate-600" aria-label="You">(Me)</span>
+          )}
           {turn.player.type === "admin" && (
             <svg
               className="h-3.5 w-3.5 text-amber-600"
@@ -392,10 +398,6 @@ function TurnCard({
               <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
             </svg>
           )}
-          <span>
-            {nameLabel}
-            {isMe && !useCompact ? " (Me)" : ""}
-          </span>
         </span>
         {isMe && !useCompact && typeof walletAmount === "number" && (
           <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
@@ -449,7 +451,7 @@ function TurnCard({
         <div className="flex items-center gap-2 text-xs">
           <span
             className={clsx(
-              "inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold",
+              "inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold transition-colors duration-200",
               timerColors.pill
             )}
           >
@@ -458,7 +460,7 @@ function TurnCard({
           </span>
           <div className="flex-1 h-1.5 min-w-[96px] rounded-full bg-slate-200 overflow-hidden">
             <div
-              className={clsx("h-full transition-[width] duration-150 ease-linear", timerColors.bar)}
+              className={clsx("h-full transition-[width] duration-100 ease-linear", timerColors.bar)}
               style={{ width: `${turnTimer?.percent ?? 0}%` }}
               aria-hidden="true"
             ></div>
@@ -822,7 +824,7 @@ export default function App() {
   }, [audioManager, round]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNowTs(Date.now()), 200);
+    const interval = window.setInterval(() => setNowTs(Date.now()), 100);
     return () => window.clearInterval(interval);
   }, []);
 
