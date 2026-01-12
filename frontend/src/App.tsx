@@ -740,6 +740,7 @@ export default function App() {
   const [bankerFormExpanded, setBankerFormExpanded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showConnections, setShowConnections] = useState(true);
+  const [showBankerReactionPicker, setShowBankerReactionPicker] = useState(false);
   const [renameFirstName, setRenameFirst] = useState("");
   const [renameLastName, setRenameLast] = useState("");
   const [showRenameForm, setShowRenameForm] = useState(false);
@@ -1166,16 +1167,29 @@ export default function App() {
       })
       .join("\n");
 
-    const blob = new Blob([header, body].join("\n"), { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `kvitlach-history${room?.roomId ? `-${room.roomId}` : ""}.txt`;
-    anchor.rel = "noopener";
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
+    const content = [header, body].join("\n");
+    const filename = `kvitlach-history${room?.roomId ? `-${room.roomId}` : ""}.txt`;
+
+    const triggerDownload = (href: string) => {
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = filename;
+      anchor.rel = "noopener";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+    };
+
+    try {
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url);
+      requestAnimationFrame(() => URL.revokeObjectURL(url));
+    } catch (err) {
+      const dataUri = `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`;
+      triggerDownload(dataUri);
+    }
   };
 
   const onAdjustBankroll = () => {
@@ -2525,44 +2539,66 @@ export default function App() {
           )}
 
             <div className="grid gap-3">
-              <div>
-                <div className="flex items-center gap-3 my-2">
-                  <div className="flex-1 h-px bg-slate-200"></div>
-                  <span className="inline-flex items-center justify-center px-4 py-1 text-[11px] uppercase tracking-[0.3em] text-ink bg-slate-100 rounded-full border border-slate-300 shadow-sm">Banker</span>
-                  <div className="flex-1 h-px bg-slate-200"></div>
-                  {isAdmin && round?.state !== "terminate" && (
-                    <button
-                      type="button"
-                      className="ml-3 inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-rose-700 shadow-sm hover:border-rose-300 hover:text-rose-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() => store.endRoundDueToBank()}
-                      disabled={round?.bankLock?.stage !== "decision"}
-                      title={round?.bankLock?.stage === "decision" ? "End round after bank decision" : "End round available when bank is exhausted"}
-                    >
-                      End round
-                    </button>
+                <div>
+                  <div className="flex items-center gap-3 my-2">
+                    <div className="flex-1 h-px bg-slate-200"></div>
+                    <span className="inline-flex items-center justify-center px-4 py-1 text-[11px] uppercase tracking-[0.3em] text-ink bg-slate-100 rounded-full border border-slate-300 shadow-sm">Banker</span>
+                    <div className="flex-1 h-px bg-slate-200"></div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-ink shadow-sm hover:bg-slate-50"
+                          onClick={() => setShowBankerReactionPicker((v) => !v)}
+                        >
+                          REACT
+                        </button>
+                        {round?.state !== "terminate" && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-rose-700 shadow-sm hover:border-rose-300 hover:text-rose-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                            onClick={() => store.endRoundDueToBank()}
+                            disabled={round?.bankLock?.stage !== "decision"}
+                            title={round?.bankLock?.stage === "decision" ? "End round after bank decision" : "End round available when bank is exhausted"}
+                          >
+                            End round
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {isAdmin && showBankerReactionPicker && (
+                    <div className="mb-2">
+                      <ReactionPicker
+                        onPick={(emoji) => {
+                          sendReaction(emoji);
+                          setShowBankerReactionPicker(false);
+                        }}
+                        disabled={status !== "connected"}
+                      />
+                    </div>
                   )}
-                </div>
-                {bankerTurns.map((t) => (
-                <TurnCard
-                  key={t.player?.id ?? "banker"}
-                  turn={t}
-                  isAdmin={isAdmin}
-                  viewerId={playerId}
-                  isActiveTurn={activeTurnId === t.player.id}
-                  isNextTurn={nextTurnId === t.player.id}
-                  roundState={round?.state}
-                  highlightBanker
-                  walletAmount={room?.wallets?.[t.player.id]}
-                    onHit={() => store.hit({ eleveroon: t.player.type === "admin" ? true : eleveroonSelected })}
-                  onStand={() => store.stand()}
-                    isCompact={bankerCompact && t.player.id !== playerId}
-                    forceBankerReveal={round?.state === "terminate"}
-                  firstBetCardIndex={firstBetCardIndex}
-                  turnTimer={activeTurnTimer?.playerId === t.player.id ? activeTurnTimer : undefined}
-                  reactionEmoji={latestReactionByPlayer[t.player.id]?.emoji}
-                />
-              ))}
-            </div>
+                  {bankerTurns.map((t) => (
+                  <TurnCard
+                    key={t.player?.id ?? "banker"}
+                    turn={t}
+                    isAdmin={isAdmin}
+                    viewerId={playerId}
+                    isActiveTurn={activeTurnId === t.player.id}
+                    isNextTurn={nextTurnId === t.player.id}
+                    roundState={round?.state}
+                    highlightBanker
+                    walletAmount={room?.wallets?.[t.player.id]}
+                      onHit={() => store.hit({ eleveroon: t.player.type === "admin" ? true : eleveroonSelected })}
+                    onStand={() => store.stand()}
+                      isCompact={bankerCompact && t.player.id !== playerId}
+                      forceBankerReveal={round?.state === "terminate"}
+                    firstBetCardIndex={firstBetCardIndex}
+                    turnTimer={activeTurnTimer?.playerId === t.player.id ? activeTurnTimer : undefined}
+                    reactionEmoji={latestReactionByPlayer[t.player.id]?.emoji}
+                  />
+                ))}
+              </div>
             <div>
               {myPlayerTurn && (
                 <div className="mb-2">
@@ -2709,19 +2745,30 @@ export default function App() {
 
       {room && (
         <section className="card-surface p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              className="flex items-center justify-between text-sm font-semibold text-ink"
-              onClick={() => setShowHistory((prev) => !prev)}
-            >
+          <div
+            className="flex items-center justify-between gap-3 cursor-pointer select-none"
+            role="button"
+            tabIndex={0}
+            aria-expanded={showHistory}
+            onClick={() => setShowHistory((prev) => !prev)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setShowHistory((prev) => !prev);
+              }
+            }}
+          >
+            <div className="flex items-center gap-2">
               <span className="text-base font-semibold text-ink">Round History ({roundHistory?.length ?? 0})</span>
               <span className="ml-2 text-xs text-slate-500">{showHistory ? "Hide" : "Show"}</span>
-            </button>
+            </div>
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={exportRoundHistoryTxt}
+              onClick={(e) => {
+                e.stopPropagation();
+                exportRoundHistoryTxt();
+              }}
               disabled={!roundHistory?.length}
               title={roundHistory?.length ? "Export Game History and Details" : "No completed rounds yet"}
             >
