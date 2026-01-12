@@ -652,6 +652,7 @@ export default function App() {
   const [showLobby, setShowLobby] = useState(true);
   const [bankerFormExpanded, setBankerFormExpanded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showConnections, setShowConnections] = useState(true);
   const [renameFirstName, setRenameFirst] = useState("");
   const [renameLastName, setRenameLast] = useState("");
   const [showRenameForm, setShowRenameForm] = useState(false);
@@ -2340,24 +2341,38 @@ export default function App() {
 
           {isAdmin && (connections?.length ?? 0) > 0 && (
             <div className="card-surface p-3 border border-blue-200 bg-blue-50/60">
-              <div className="text-sm font-semibold mb-2 flex items-center justify-between">
-                <span>Player connection info (banker only)</span>
-              </div>
-              <div className="grid gap-2 md:grid-cols-2 text-xs text-slate-800">
-                {connections?.map((meta) => {
-                  const player = room?.players.find((p) => p.id === meta.playerId);
-                  const name = player ? [player.firstName, player.lastName].filter(Boolean).join(" ") || player.firstName : meta.playerId;
-                  const lastSeen = meta.lastSeenAt ? new Date(meta.lastSeenAt).toLocaleString() : "";
-                  return (
-                    <div key={meta.playerId} className="rounded border border-slate-200 bg-white p-2 shadow-sm">
-                      <div className="font-semibold text-ink">{name}</div>
-                      <div className="text-[11px] text-slate-500 break-all">{meta.ip ?? "IP unknown"}</div>
-                      <div className="text-[11px] text-slate-500 break-all">{meta.userAgent ?? "User agent unknown"}</div>
-                      {lastSeen && <div className="text-[11px] text-slate-500">Last seen: {lastSeen}</div>}
-                    </div>
-                  );
-                })}
-              </div>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-sm font-semibold text-ink"
+                onClick={() => setShowConnections((prev) => !prev)}
+              >
+                <span className="text-base font-semibold">Player Connection Details</span>
+                <span className="text-xs text-slate-600 flex items-center gap-2">
+                  <span>{connections?.length ?? 0} entries</span>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-2 py-0.5 text-[11px] uppercase tracking-wide">
+                    {showConnections ? "Hide" : "Show"}
+                  </span>
+                </span>
+              </button>
+              {showConnections && (
+                <div className="mt-3 grid gap-2 md:grid-cols-2 text-xs text-slate-800">
+                  {connections?.map((meta) => {
+                    const player = room?.players.find((p) => p.id === meta.playerId);
+                    const name = player
+                      ? [player.firstName, player.lastName].filter(Boolean).join(" ") || player.firstName
+                      : meta.playerId;
+                    const lastSeen = meta.lastSeenAt ? new Date(meta.lastSeenAt).toLocaleString() : "";
+                    return (
+                      <div key={meta.playerId} className="rounded border border-slate-200 bg-white p-2 shadow-sm">
+                        <div className="font-semibold text-ink">{name}</div>
+                        <div className="text-[11px] text-slate-500 break-all">{meta.ip ?? "IP unknown"}</div>
+                        <div className="text-[11px] text-slate-500 break-all">{meta.userAgent ?? "User agent unknown"}</div>
+                        {lastSeen && <div className="text-[11px] text-slate-500">Last Seen: {lastSeen}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
