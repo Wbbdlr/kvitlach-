@@ -67,8 +67,9 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
 
   const eleveroonActive = options?.eleveroon || turn.player.type === "admin";
   const isElevenCard = pickedCard.attributes.values?.includes(11);
+  const currentBestTotal = winningNumber(turn.cards);
   const cardWouldBust = calcState([...turn.cards, pickedCard]) === "lost";
-  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && cardWouldBust);
+  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && cardWouldBust && currentBestTotal === 11);
 
   const effectiveCard = shouldIgnoreEleven
     ? { ...pickedCard, attributes: { ...pickedCard.attributes, eleveroonIgnored: true } }

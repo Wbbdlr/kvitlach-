@@ -357,6 +357,26 @@ function TurnCard({
       roundState !== "terminate"
   );
   const timerSecondsLeft = showTurnTimer ? Math.max(0, Math.ceil((turnTimer?.remainingMs ?? 0) / 1000)) : undefined;
+  const timerMsLeft = turnTimer?.remainingMs ?? 0;
+  const timerTone = timerMsLeft <= 20000 ? "danger" : timerMsLeft <= 45000 ? "warn" : "info";
+  const timerColors =
+    timerTone === "danger"
+      ? {
+          dot: "bg-rose-500",
+          pill: "border-rose-200 bg-rose-50 text-rose-700",
+          bar: "bg-rose-500",
+        }
+      : timerTone === "warn"
+      ? {
+          dot: "bg-amber-500",
+          pill: "border-amber-200 bg-amber-50 text-amber-700",
+          bar: "bg-amber-500",
+        }
+      : {
+          dot: "bg-blue-500",
+          pill: "border-blue-200 bg-blue-50 text-blue-700",
+          bar: "bg-blue-500",
+        };
 
   const header = (
     <div className="flex justify-between items-center flex-wrap gap-2">
@@ -426,14 +446,19 @@ function TurnCard({
     >
       {header}
       {showTurnTimer && (
-        <div className="flex items-center gap-2 text-xs text-blue-700">
-          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 font-semibold">
-            <span className="h-2 w-2 rounded-full bg-blue-500" aria-hidden="true"></span>
+        <div className="flex items-center gap-2 text-xs">
+          <span
+            className={clsx(
+              "inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold",
+              timerColors.pill
+            )}
+          >
+            <span className={clsx("h-2 w-2 rounded-full", timerColors.dot)} aria-hidden="true"></span>
             <span>{timerSecondsLeft ?? 0}s left</span>
           </span>
           <div className="flex-1 h-1.5 min-w-[96px] rounded-full bg-slate-200 overflow-hidden">
             <div
-              className="h-full bg-blue-500 transition-[width] duration-300 ease-linear"
+              className={clsx("h-full transition-[width] duration-150 ease-linear", timerColors.bar)}
               style={{ width: `${turnTimer?.percent ?? 0}%` }}
               aria-hidden="true"
             ></div>
@@ -540,8 +565,8 @@ function TurnCard({
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
                 title={
                   isBanker
-                    ? "Eleveroon automatically ignores a single busting eleven for the banker."
-                    : "Eleveroon lets you ignore one busting eleven when your total was 11."
+                    ? "Eleveroon automatically ignores any busting elevens in a row when the banker was sitting on 11."
+                    : "Eleveroon ignores busting elevens in a row when your total was 11 (only after you toggle it on)."
                 }
               >
                 <input
@@ -594,7 +619,7 @@ function TurnCard({
             {showEleveroonToggle && (
               <label
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
-                title="Eleveroon automatically ignores a single busting eleven for the banker."
+                title="Eleveroon automatically ignores any busting elevens in a row when the banker was sitting on 11."
               >
                 <input
                   type="checkbox"
@@ -792,7 +817,7 @@ export default function App() {
   }, [audioManager, round]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNowTs(Date.now()), 500);
+    const interval = window.setInterval(() => setNowTs(Date.now()), 200);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -858,7 +883,7 @@ export default function App() {
   const turnTimerDurationMs = round?.turnTimerDurationMs ?? 90_000;
   const activeTurnTimer = useMemo(() => {
     if (!activeTimerPlayerId || activeTimerRemainingMs === undefined) return undefined;
-    const percent = Math.max(0, Math.min(100, Math.round((activeTimerRemainingMs / turnTimerDurationMs) * 100)));
+    const percent = Math.max(0, Math.min(100, (activeTimerRemainingMs / turnTimerDurationMs) * 100));
     return { playerId: activeTimerPlayerId, remainingMs: activeTimerRemainingMs, percent, durationMs: turnTimerDurationMs };
   }, [activeTimerPlayerId, activeTimerRemainingMs, turnTimerDurationMs]);
   const bankerActive = bankerTurns.some((t) => t.player?.id === activeTurnId);
