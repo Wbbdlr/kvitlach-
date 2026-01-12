@@ -612,125 +612,6 @@ function TurnCard({
   );
 }
 
-function RadialTableOverview({
-  turns,
-  room,
-  activeTurnId,
-  nextTurnId,
-  onSelectPlayer,
-  roundState,
-}: {
-  turns: Turn[];
-  room?: RoomState;
-  activeTurnId?: string;
-  nextTurnId?: string;
-  onSelectPlayer?: (playerId: string) => void;
-  roundState?: RoundPhase;
-}) {
-  const banker = room?.players.find((p) => p.type === "admin");
-  const bankerTurn = turns.find((t) => t.player.type === "admin");
-  const playerTurns = turns.filter((t) => t.player.type !== "admin");
-  const maxSlices = 12;
-  if (playerTurns.length === 0 || playerTurns.length > maxSlices) return null;
-
-  const manyPlayers = playerTurns.length > 8;
-  const radiusPercent = manyPlayers ? 46 : 40;
-  const sliceSizeClass = manyPlayers ? "w-28 h-22 sm:w-32 sm:h-24" : "w-32 h-24 sm:w-36 sm:h-28";
-
-  const centerWallet = banker ? room?.wallets?.[banker.id] : undefined;
-  const bankerStatus = bankerTurn ? statusDisplay(bankerTurn) : undefined;
-
-  return (
-    <div className="relative w-full max-w-4xl aspect-square mx-auto">
-      <div className="absolute inset-[28%] sm:inset-1/4 rounded-full border border-amber-200 bg-amber-50/80 shadow-inner flex flex-col items-center justify-center text-center px-3 py-3">
-        <div className="text-[11px] uppercase tracking-wide text-amber-700">Banker</div>
-        <div className="text-base font-semibold text-ink leading-tight">
-          {banker ? [banker.firstName, banker.lastName].filter(Boolean).join(" ") || banker.firstName : "Banker"}
-        </div>
-        {typeof centerWallet === "number" && (
-          <div className="text-xs text-amber-800">${centerWallet.toLocaleString()}</div>
-        )}
-        {bankerStatus?.label && (
-          <span className={clsx("mt-1 text-[11px] uppercase tracking-wide", bankerStatus.className)}>
-            {bankerStatus.label}
-          </span>
-        )}
-      </div>
-
-      {playerTurns.map((turn, idx) => {
-        const angle = (idx / playerTurns.length) * 360;
-        const isActive = activeTurnId === turn.player.id && turn.state === "pending";
-        const isNext = nextTurnId === turn.player.id && turn.state === "pending";
-        const statusInfo = statusDisplay(turn);
-        const betInfo = betDisplay(turn);
-        const wallet = room?.wallets?.[turn.player.id];
-        const totalInfo = totalDisplay(turn, undefined, roundState, {
-          forceBankerReveal: turn.player.type === "admin" || turn.state !== "pending" || roundState === "terminate",
-        });
-        const cardCount = turn.cards.length;
-
-        const tone =
-          turn.state === "won"
-            ? "from-emerald-100 to-emerald-200"
-            : turn.state === "lost"
-            ? "from-rose-100 to-rose-200"
-            : isActive
-            ? "from-blue-100 to-blue-200"
-            : isNext
-            ? "from-amber-100 to-amber-200"
-            : "from-slate-100 to-slate-200";
-
-        return (
-          <button
-            key={turn.player.id}
-            type="button"
-            className="absolute left-1/2 top-1/2 origin-center"
-            style={{ transform: `rotate(${angle}deg) translate(${radiusPercent}%) rotate(${-angle}deg)` }}
-            onClick={() => onSelectPlayer?.(turn.player.id)}
-            title="Click for stats"
-          >
-            <div
-              className={clsx(
-                "relative overflow-hidden rounded-lg border shadow-sm transition-transform duration-200 hover:-translate-y-0.5",
-                sliceSizeClass,
-                isActive && "ring-2 ring-blue-300 border-blue-200",
-                isNext && !isActive && "ring-1 ring-amber-200"
-              )}
-              style={{ clipPath: "polygon(50% 0%, 98% 100%, 2% 100%)" }}
-            >
-              <div className={clsx("absolute inset-0 bg-gradient-to-b", tone)} aria-hidden="true" />
-              <div className="relative h-full flex flex-col justify-between px-3 py-2 text-left">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-ink leading-tight">
-                      {[turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || "Player"}
-                    </span>
-                    <span className="text-[11px] text-slate-600">Cards: {cardCount}</span>
-                  </div>
-                  {statusInfo.label && (
-                    <span className={clsx("text-[10px] uppercase tracking-wide", statusInfo.className)}>
-                      {statusInfo.label}
-                    </span>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-700 flex flex-col gap-0.5">
-                  {typeof wallet === "number" && <span>Wallet: ${wallet.toLocaleString()}</span>}
-                  <span>
-                    Bet: <span className={betInfo.className}>{betInfo.label}</span>
-                  </span>
-                  <span className={clsx(totalInfo.wrapperClassName ?? "text-slate-600")}>
-                    {totalInfo.prefix} <span className={clsx(totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-600")}>{totalInfo.value}</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function App() {
   const store = useGameStore();
   const {
@@ -959,8 +840,6 @@ export default function App() {
     const others = turns.filter((t) => t.player.type !== "admin");
     return [...banker, ...others];
   }, [turns]);
-  const radialPlayers = overviewTurns.filter((t) => t.player.type !== "admin");
-  const radialEligible = radialPlayers.length > 0 && radialPlayers.length <= 12;
   const bankLock = round?.bankLock;
   const primaryBankerTurn = bankerTurns[0];
   const activeTurnId = useMemo(() => {
@@ -2376,23 +2255,9 @@ export default function App() {
           <div className="card-surface p-3 border border-slate-200 bg-slate-50">
             <div className="flex items-center justify-between mb-2 text-sm">
               <span className="font-semibold">Table Overview</span>
-              <span className="text-[11px] text-slate-500 hidden md:inline">Click a slice for stats</span>
             </div>
 
-            {radialEligible && (
-              <div className="block">
-                <RadialTableOverview
-                  turns={overviewTurns}
-                  room={room}
-                  activeTurnId={activeTurnId}
-                  nextTurnId={nextTurnId}
-                  onSelectPlayer={(id) => setStatsPlayerId(id)}
-                  roundState={round?.state}
-                />
-              </div>
-            )}
-
-            <div className={clsx("grid gap-3 md:grid-cols-2 text-xs text-slate-700", radialEligible ? "mt-3" : "mt-1")}> 
+            <div className="grid gap-3 md:grid-cols-2 text-xs text-slate-700 mt-1">
               {overviewTurns.map((t) => {
                 const isActive = round?.state !== "terminate" && t.state === "pending" && activeTurnId === t.player.id;
                 const isNext = round?.state !== "terminate" && t.state === "pending" && nextTurnId === t.player.id && !isActive;
