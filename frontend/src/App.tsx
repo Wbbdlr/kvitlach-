@@ -99,81 +99,85 @@ function isPushTurn(turn: Turn): boolean {
   const settled = turn.settledBet ?? wager;
   return turn.state === "won" && wager === 0 && settled === 0;
 }
-
-function totalDisplay(
-  turn: Turn,
-  viewerId?: string,
-  _roundState?: RoundPhase,
-  opts?: { forceBankerReveal?: boolean }
-): {
-  prefix: string;
-  value: string;
-  wrapperClassName?: string;
-  valueClassName?: string;
-} {
-  const roundState = _roundState;
-  const prefix = "Total:";
-  const { total, bustedTotal } = bestTotal(turn.cards);
-  const isOwnerView = viewerId === turn.player.id;
-  const isBanker = turn.player.type === "admin";
-  const isBlattPhase = (turn.bet ?? 0) === 0;
-  const bankerResolved = turn.state === "lost" || turn.state === "standby" || turn.state === "won";
-  const forceBankerReveal = opts?.forceBankerReveal;
-  const isPublicStandby = turn.state === "standby";
-
-  // For non-owners viewing player hands (including the banker), keep totals hidden until the hand resolves or the round ends.
-  if (
-    !isOwnerView &&
-    !isBanker &&
-    roundState !== "terminate" &&
-    turn.state !== "won" &&
-    turn.state !== "lost"
-  ) {
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-
-  if (!isOwnerView && isBanker && !bankerResolved && !forceBankerReveal) {
-    const visible = turn.cards.slice(1);
-    if (visible.length === 0)
-      return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (isPublicStandby) {
-    if (total !== undefined) return { prefix, value: `${total}` };
-    if (bustedTotal !== undefined) return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (!isOwnerView && isBlattPhase) {
-    const visible = turn.cards.slice(1);
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-
-  const canRevealTotal =
-    isOwnerView || turn.state === "won" || turn.state === "lost" || isPublicStandby || forceBankerReveal;
-  const revealForOwnerStandby = isOwnerView && turn.state === "standby";
-  if (!canRevealTotal && !revealForOwnerStandby) {
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (turn.state === "lost" && total === undefined && bustedTotal !== undefined) {
-    return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
-  }
-  if (total !== undefined) return { prefix, value: `${total}` };
-  if (bustedTotal !== undefined) return { prefix, value: `${bustedTotal}` };
-  return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-}
-
-function statusDisplay(turn: Turn): { label: string; className: string } {
-  if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
-  if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
-  if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };
-  if (turn.state === "lost") {
-    const { total, bustedTotal } = bestTotal(turn.cards);
+              <div>
+                <div className="mb-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="text-xs uppercase text-slate-500">Reactions</div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-ink shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => setShowReactionPicker((v) => !v)}
+                      disabled={status !== "connected"}
+                    >
+                      REACT
+                    </button>
+                  </div>
+                  {showReactionPicker && (
+                    <div className="mb-2">
+                      <ReactionPicker
+                        onPick={(emoji) => {
+                          sendReaction(emoji);
+                          setShowReactionPicker(false);
+                        }}
+                        disabled={status !== "connected"}
+                      />
+                    </div>
+                  )}
+                </div>
+                {myPlayerTurn && (
+                  <div className="mb-2">
+                    <div className="text-xs uppercase text-slate-500 mb-1">Your hand</div>
+                    <TurnCard
+                      key={myPlayerTurn.player?.id ?? "me"}
+                      turn={myPlayerTurn}
+                      isAdmin={isAdmin}
+                      viewerId={playerId}
+                      isActiveTurn={activeTurnId === myPlayerTurn.player.id}
+                      isNextTurn={nextTurnId === myPlayerTurn.player.id}
+                      roundState={round?.state}
+                      onSkipOther={isAdmin ? (pid) => store.skip(pid) : undefined}
+                      walletAmount={room?.wallets?.[myPlayerTurn.player.id]}
+                      betAmount={betAmount}
+                      onBetChange={(v) => {
+                        setBet(v);
+                        if (bankBetSelected) setBankBetSelected(false);
+                        setBetError(undefined);
+                      }}
+                      onBet={() => {
+                        const parsed = Number(betAmount);
+                        const amount = Number.isFinite(parsed) ? parsed : 0;
+                        const wallet = room?.wallets?.[playerId ?? ""] ?? 0;
+                        const existingBet = myPlayerTurn?.bet ?? 0;
+                        const nextTotal = existingBet + amount;
+                        if (nextTotal > wallet) {
+                          setBetError("Insufficient chips for this wager.");
+                          return;
+                        }
+                        store.bet(amount, { bank: bankBetSelected });
+                        if (bankBetSelected) setBankBetSelected(false);
+                        setBetError(undefined);
+                        setBet("");
+                      }}
+                        onHit={() => store.hit({ eleveroon: isAdmin ? true : eleveroonSelected })}
+                        onStand={() => store.stand()}
+                      bankAvailable={bankInfo?.available}
+                      bankAddAmount={bankIncrement}
+                      bankSelected={bankBetSelected}
+                      onToggleBank={(selected) => setBankBetSelected(selected)}
+                      bankDisabled={!canBank}
+                      bankDisabledReason={bankDisabledReason}
+                      betError={betError}
+                      firstBetCardIndex={firstBetCardIndex}
+                      bankDisabledReason={bankDisabledReason}
+                      bankDisabled={!canBank}
+                      eleveroonSelected={eleveroonSelected}
+                      onToggleEleveroon={(selected) => setEleveroonSelected(selected)}
+                      forceBankerReveal={round?.state === "terminate"}
+                      turnTimer={activeTurnTimer?.playerId === myPlayerTurn.player.id ? activeTurnTimer : undefined}
+                      reactionEmoji={latestReactionByPlayer[myPlayerTurn.player.id]?.emoji}
+                    />
+                  </div>
+                )}
     const busted = total === undefined && bustedTotal !== undefined;
     if (busted) return { label: "BUSTED", className: "text-rose-700 font-bold" };
     return { label: "LOST", className: "text-rose-600 font-semibold" };
