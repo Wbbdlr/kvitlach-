@@ -1111,6 +1111,54 @@ export default function App() {
     store.joinRoom(roomIdInput, joinFirstName, joinLastName, joinPassword || undefined);
   };
 
+  const exportRoundHistoryTxt = () => {
+    const rounds = roundHistory ?? [];
+    if (!rounds.length) return;
+    if (typeof window === "undefined") return;
+
+    const header = [
+      "Kvitlach Round History",
+      room?.roomId ? `Room: ${room.roomId}` : undefined,
+      `Exported: ${new Date().toLocaleString()}`,
+      "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const body = rounds
+      .map((r, idx) => {
+        const roundLines: string[] = [];
+        roundLines.push(`Round ${r.roundNumber ?? idx + 1}`);
+        roundLines.push(`Completed: ${new Date(r.completedAt).toLocaleString()}`);
+        roundLines.push(`Players: ${r.turns.length}`);
+        r.turns.forEach((turn) => {
+          const name = [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName || "Player";
+          const role = turn.player.type === "admin" ? "Banker" : "Player";
+          const bet = typeof turn.bet === "number" ? `$${turn.bet}` : "--";
+          const net = typeof turn.settledNet === "number" ? ` | Net: ${turn.settledNet >= 0 ? "+" : ""}$${Math.abs(turn.settledNet)}` : "";
+          const stateLabel = statusDisplay(turn).label || turn.state;
+          roundLines.push(`  - ${name} (${role}) | State: ${stateLabel} | Bet: ${bet}${net}`);
+        });
+        if (r.balances?.length) {
+          roundLines.push("  Balances:");
+          r.balances.forEach((b) => {
+            roundLines.push(`    • ${b.payer} -> ${b.payee}: $${b.amount}`);
+          });
+        }
+        roundLines.push("");
+        return roundLines.join("\n");
+      })
+      .join("\n");
+
+    const blob = new Blob([header, body].join("\n"), { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `kvitlach-history${room?.roomId ? `-${room.roomId}` : ""}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   const onAdjustBankroll = () => {
     if (!isAdmin) return;
     setBankAdjustError(undefined);
@@ -2635,6 +2683,25 @@ export default function App() {
           </button>
           {showHistory && (
             <div className="flex flex-col gap-3">
+              {(roundHistory ?? []).length > 0 && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-ink shadow-sm transition-colors hover:bg-slate-50"
+                    onClick={exportRoundHistoryTxt}
+                  >
+                    <svg
+                      className="h-3.5 w-3.5 text-ink"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 4a2 2 0 012-2h6l4 4v10a2 2 0 01-2 2H5a2 2 0 01-2-2V4zm8 8V9h2l-3-3-3 3h2v3h2z" />
+                    </svg>
+                    <span>Export .txt</span>
+                  </button>
+                </div>
+              )}
               {(roundHistory ?? []).length === 0 && (
                 <div className="text-xs text-slate-500">No completed rounds yet.</div>
               )}
