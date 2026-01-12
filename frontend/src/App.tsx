@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { useGameStore } from "./state";
-import { Card, Player, RoomState, RoundPhase, RoundState, Turn } from "./types";
+import { Card, Player, ReactionEvent, RoomState, RoundPhase, RoundState, Turn } from "./types";
 import { AudioManager } from "./audio";
 
 const cardImages: Record<string, string> = {
@@ -19,6 +19,8 @@ const cardImages: Record<string, string> = {
   "12": "/12.png",
   blank: "/blank.png",
 };
+
+const REACTION_EMOJIS = ["👏", "😂", "😮", "❤️", "🔥", "👍"];
 
 function usableCards(cards: Card[]): Card[] {
   return cards.filter((card) => !card.attributes?.eleveroonIgnored);
@@ -250,6 +252,51 @@ function WalletBadge({
           {turnPosition === "active" ? "Active" : "Next"}
         </span>
       )}
+    </div>
+  );
+}
+
+function ReactionTray({ reactions, players }: { reactions: ReactionEvent[]; players: Player[] }) {
+  if (!reactions.length || !players.length) return null;
+  const sorted = [...reactions].sort((a, b) => a.reactedAt - b.reactedAt).slice(-8);
+  return (
+    <div className="fixed top-4 left-4 z-40 flex flex-col gap-2 w-56">
+      {sorted.map((reaction) => {
+        const player = players.find((p) => p.id === reaction.playerId);
+        const name = player ? fullName(player) || player.firstName : "Player";
+        return (
+          <div
+            key={`${reaction.playerId}-${reaction.reactedAt}-${reaction.emoji}`}
+            className="flex items-center gap-2 rounded-lg bg-white/90 border border-slate-200 px-3 py-2 shadow-lg backdrop-blur-sm"
+          >
+            <span className="text-xl" aria-label="Reaction emoji">{reaction.emoji}</span>
+            <div className="flex flex-col leading-tight">
+              <span className="text-xs font-semibold text-ink truncate">{name || "Player"}</span>
+              <span className="text-[10px] text-slate-500">reacted</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReactionPicker({ onPick, disabled }: { onPick: (emoji: string) => void; disabled?: boolean }) {
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
+      <span className="text-[11px] font-semibold text-slate-600 px-1">React</span>
+      {REACTION_EMOJIS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          className="text-xl leading-none hover:scale-110 transition-transform disabled:opacity-40"
+          aria-label={`Send ${emoji}`}
+          onClick={() => onPick(emoji)}
+          disabled={disabled}
+        >
+          {emoji}
+        </button>
+      ))}
     </div>
   );
 }
@@ -658,6 +705,7 @@ export default function App() {
     notifications,
     bankerSummaryAt,
     connections,
+    reactions,
   } = store;
   const [statsPlayerId, setStatsPlayerId] = useState<string | undefined>(undefined);
   const [bankerFirstName, setBankerFirst] = useState("");
@@ -711,6 +759,7 @@ export default function App() {
   const formErrors = store.formErrors ?? {};
   const dismissNotification = store.dismissNotification;
   const dismissBankerSummary = store.dismissBankerSummary;
+  const sendReaction = store.sendReaction;
 
   // Normalize turns early so hooks below can safely depend on this array.
   const turns = round?.turns?.filter(Boolean) ?? [];
@@ -1164,6 +1213,7 @@ export default function App() {
 
   return (
     <>
+      {room && <ReactionTray reactions={reactions} players={room.players} />}
       {pendingKick && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
@@ -2283,6 +2333,11 @@ export default function App() {
               <span>Decks in play: {round.deckCount ?? 1}</span>
               <span>Cards remaining: {cardsRemaining}</span>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            <ReactionPicker onPick={(emoji) => sendReaction(emoji)} disabled={status !== "connected"} />
+            <span className="text-[11px] text-slate-500">Reactions flash to the table for ~10s.</span>
           </div>
 
           <div className="card-surface p-3 border border-slate-200 bg-slate-50">
