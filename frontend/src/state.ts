@@ -464,14 +464,24 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           update.message = "Session expired. Rejoin the game.";
           return update;
         }
+        // room_not_found with no pending action = stale auto-resume; clear silently
+        if (errorMessage === "room_not_found" && !state.pendingAction) {
+          update.session = undefined;
+          update.room = undefined;
+          update.round = undefined;
+          update.playerId = undefined;
+          return update;
+        }
         const pendingType = state.pendingAction?.type;
         const friendly =
           errorMessage === "maintenance_mode"
             ? "New games are temporarily paused for maintenance. Existing games are unaffected. Check back soon."
+            : errorMessage === "room_not_found"
+            ? "Room not found. Check the room ID and try again."
             : errorMessage === "room_full"
             ? "This table is full (100 players max). Try a different room."
             : errorMessage === "invalid_password"
-            ? "Incorrect password"
+            ? "Incorrect password."
             : errorMessage === "insufficient_bank"
             ? "Cannot remove more chips than the bank holds."
             : errorMessage === "bank_locked"
@@ -488,7 +498,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             ? "No bank decision is pending."
             : errorMessage === "deck_empty"
             ? "The deck needs to be replenished before play can continue."
-            : errorMessage;
+            : errorMessage === "rate_limited"
+            ? "Too many requests. Please slow down."
+            : errorMessage === "invalid_payload"
+            ? "Something went wrong. Please try again."
+            : (errorMessage ?? "Something went wrong.").replace(/_/g, " ");
         if (pendingType === "bet" || pendingType === "hit" || pendingType === "stand" || pendingType === "skip") {
           update.message = friendly;
         } else if (errorMessage === "maintenance_mode") {
