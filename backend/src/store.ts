@@ -6,9 +6,9 @@ import { Balance, Player, RenameRequest, RoomState, RoundState, BuyInRequest, Ba
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 
-const INACTIVITY_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours — rooms survive overnight pauses
+const INACTIVITY_TIMEOUT_MS = 21 * 24 * 60 * 60 * 1000; // 21 days
 const MAX_PLAYERS_PER_ROOM = 100;
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const TURN_TIMEOUT_MS = 90 * 1000;
 const MAX_NAME_LEN = 40;
 const MAX_ROOM_NAME_LEN = 80;
@@ -177,6 +177,11 @@ export class GameStore {
     const previous = prev ?? this.rounds.get(roundId);
     const withTimer = this.syncTurnTimer(roundId, next, previous);
     this.rounds.set(roundId, withTimer);
+    if (this.db) {
+      const { timer, turnTimer, ...serializable } = withTimer;
+      void this.db.saveRound(roundId, withTimer.roomId, serializable as Record<string, unknown>)
+        .catch((e) => console.error("db save round", roundId, e));
+    }
     return withTimer;
   }
 
@@ -232,7 +237,7 @@ export class GameStore {
     return { room, player, sessionToken };
   }
 
-    joinRoom(roomId: string, info: { firstName: string; lastName?: string; password?: string }) {
+    joinRoom(roomId: string, info: { firstName: string; lastName?: string; password?: string; spectator?: boolean }) {
       const normalizedId = roomId.trim().toUpperCase();
       const roomRec = this.rooms.get(normalizedId);
     if (!roomRec) throw new Error("room_not_found");
@@ -242,11 +247,11 @@ export class GameStore {
       id: uuid(),
       firstName: this.sanitizeName(info.firstName),
       lastName: this.sanitizeName(info.lastName),
-      type: "player",
+      type: info.spectator ? "spectator" : "player",
       presence: "online",
     };
     roomRec.room.players.push(player);
-    roomRec.room.wallets[player.id] = roomRec.room.buyIn;
+    if (!info.spectator) roomRec.room.wallets[player.id] = roomRec.room.buyIn;
     if (roomRec.room.roundId && this.rounds.has(roomRec.room.roundId)) {
       roomRec.room.waitingPlayerIds = [...new Set([...roomRec.room.waitingPlayerIds, player.id])];
     }
@@ -296,7 +301,7 @@ export class GameStore {
     const activePlayers = roomRec.room.players.filter((p) => p.presence === "online");
     const basePlayers = activePlayers.length > 0 ? activePlayers : roomRec.room.players;
     const admin = basePlayers.find((p) => p.type === "admin");
-    const others = basePlayers.filter((p) => p.type !== "admin");
+    const others = basePlayers.filter((p) => p.type === "player");
 
     const startIndex = roomRec.nextStart ?? 0;
     const normalizedStart = others.length ? startIndex % others.length : 0;
@@ -497,6 +502,7 @@ export class GameStore {
     if (round.timer) clearTimeout(round.timer);
     const balances = calculateBalances(round.turns);
     this.rounds.delete(roundId);
+    void this.db?.deleteRound(roundId).catch((e) => console.error("db delete round", roundId, e));
     const roomRec = this.rooms.get(round.roomId);
     if (roomRec) {
       roomRec.room.roundId = undefined;
@@ -904,8 +910,35 @@ export class GameStore {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return;
     if (roomRec.timer) clearTimeout(roomRec.timer);
+    if (this.db) {
+      void this.db.saveRoom(roomId, roomRec.room)
+        .catch((e) => console.error("db save room", roomId, e));
+    }
     roomRec.timer = setTimeout(() => {
       this.rooms.delete(roomId);
+      void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room", roomId, e));
     }, INACTIVITY_TIMEOUT_MS);
+  }
+
+  async loadFromDB() {
+    if (!this.db) return;
+    try {
+      const rows = await this.db.loadActiveRooms();
+      for (const { roomId, roomState, rounds } of rows) {
+        this.rooms.set(roomId, { room: roomState, nextStart: 0 });
+        this.bumpRoomTimer(roomId);
+        for (const { roundId, roundState } of rounds) {
+          const ctx: RoundContext = {
+            ...(roundState as any),
+            timer: undefined,
+            turnTimer: undefined,
+          };
+          this.persistRound(roundId, ctx);
+        }
+      }
+      if (rows.length) console.log(`Restored ${rows.length} room(s) from database`);
+    } catch (e) {
+      console.error("Failed to load rooms from database", e);
+    }
   }
 }

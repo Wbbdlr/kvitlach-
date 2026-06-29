@@ -89,9 +89,9 @@ export class WSServer {
           break;
         }
         case "room:join": {
-          const { roomId, firstName, lastName, password } = (payload as any) || {};
+          const { roomId, firstName, lastName, password, spectator } = (payload as any) || {};
           if (!roomId || !firstName) throw new Error("invalid_payload");
-          const { room, player, sessionToken } = this.store.joinRoom(roomId, { firstName, lastName, password });
+          const { room, player, sessionToken } = this.store.joinRoom(roomId, { firstName, lastName, password, spectator: Boolean(spectator) });
           await this.attach(socket, room.roomId, player.id);
           this.sendAck(socket, requestId, {
             room,

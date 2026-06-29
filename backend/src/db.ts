@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import type { RoomState } from "./types.js";
 
 export interface ConnectionSummary {
   playerId: string;
@@ -7,6 +8,12 @@ export interface ConnectionSummary {
   userAgent?: string;
   connectedAt?: number;
   lastSeenAt?: number;
+}
+
+export interface RoomRow {
+  roomId: string;
+  roomState: RoomState;
+  rounds: Array<{ roundId: string; roundState: Record<string, unknown> }>;
 }
 
 export class Database {
@@ -31,6 +38,22 @@ export class Database {
       );
       CREATE INDEX IF NOT EXISTS idx_connections_room_player ON connections (room_id, player_id);
       CREATE INDEX IF NOT EXISTS idx_connections_room ON connections (room_id);
+
+      CREATE TABLE IF NOT EXISTS rooms (
+        room_id TEXT PRIMARY KEY,
+        state JSONB NOT NULL,
+        last_active_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_rooms_last_active ON rooms (last_active_at);
+
+      CREATE TABLE IF NOT EXISTS rounds (
+        round_id TEXT PRIMARY KEY,
+        room_id TEXT NOT NULL,
+        state JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_rounds_room ON rounds (room_id);
     `);
   }
 
@@ -78,6 +101,56 @@ export class Database {
       connectedAt: row.connected_at ? new Date(row.connected_at).getTime() : undefined,
       lastSeenAt: row.last_seen ? new Date(row.last_seen).getTime() : undefined,
     }));
+  }
+
+  async saveRoom(roomId: string, state: RoomState): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO rooms (room_id, state, last_active_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (room_id) DO UPDATE
+         SET state = EXCLUDED.state, last_active_at = now()`,
+      [roomId, JSON.stringify(state)]
+    );
+  }
+
+  async deleteRoom(roomId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM rooms WHERE room_id = $1`, [roomId]);
+    await this.pool.query(`DELETE FROM rounds WHERE room_id = $1`, [roomId]);
+  }
+
+  async saveRound(roundId: string, roomId: string, state: Record<string, unknown>): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO rounds (round_id, room_id, state, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (round_id) DO UPDATE
+         SET state = EXCLUDED.state, updated_at = now()`,
+      [roundId, roomId, JSON.stringify(state)]
+    );
+  }
+
+  async deleteRound(roundId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM rounds WHERE round_id = $1`, [roundId]);
+  }
+
+  async loadActiveRooms(): Promise<RoomRow[]> {
+    const roomsResult = await this.pool.query(
+      `SELECT room_id, state FROM rooms ORDER BY last_active_at DESC`
+    );
+    const rows: RoomRow[] = [];
+    for (const roomRow of roomsResult.rows) {
+      const roomId: string = roomRow.room_id;
+      const roomState: RoomState = roomRow.state as RoomState;
+      const roundsResult = await this.pool.query(
+        `SELECT round_id, state FROM rounds WHERE room_id = $1`,
+        [roomId]
+      );
+      const rounds = roundsResult.rows.map((r) => ({
+        roundId: r.round_id as string,
+        roundState: r.state as Record<string, unknown>,
+      }));
+      rows.push({ roomId, roomState, rounds });
+    }
+    return rows;
   }
 
   async dispose() {

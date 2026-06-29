@@ -1,4 +1,4 @@
-export type PlayerType = "admin" | "player";
+export type PlayerType = "admin" | "player" | "spectator";
 export type Presence = "online" | "offline";
 export type TurnState = "pending" | "lost" | "won" | "standby" | "skipped";
 export type RoundPhase = "playing" | "final" | "terminate";

@@ -12,6 +12,7 @@ async function main() {
   if (!db) console.warn("DATABASE_URL not set; connection logs disabled");
   if (db) await db.init();
   const store = new GameStore(db);
+  await store.loadFromDB();
   new WSServer(store, PORT_WS);
 
   const app = createHttpServer();

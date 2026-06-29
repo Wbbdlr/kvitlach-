@@ -247,12 +247,13 @@ function WalletBadge({
 }) {
   const name = [player.firstName, player.lastName].filter(Boolean).join(" ");
   const isBanker = player.type === "admin";
+  const isSpectator = player.type === "spectator";
   const presenceTone = player.presence === "online" ? "bg-emerald-500" : "bg-slate-300";
   return (
     <div
       className={clsx(
         "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm bg-white",
-        isBanker ? "border-amber-200 text-amber-700" : "border-slate-200 text-slate-600"
+        isBanker ? "border-amber-200 text-amber-700" : isSpectator ? "border-slate-200 text-slate-400 italic" : "border-slate-200 text-slate-600"
       )}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : -1}
@@ -269,7 +270,8 @@ function WalletBadge({
         )}
         <span>{name || "Player"}</span>
       </span>
-      {typeof amount === "number" && <span className="text-[11px] text-slate-500">${amount}</span>}
+      {isSpectator && <span className="text-[10px] text-slate-400 uppercase tracking-wide">watching</span>}
+      {!isSpectator && typeof amount === "number" && <span className="text-[11px] text-slate-500">${amount}</span>}
       {turnPosition && (
         <span
           className={clsx(
@@ -1116,7 +1118,15 @@ export default function App() {
   const onJoin = (e: FormEvent) => {
     e.preventDefault();
     store.setFormError("join", undefined);
-    store.joinRoom(roomIdInput, joinFirstName, joinLastName, joinPassword || undefined);
+    store.joinRoom(roomIdInput, joinFirstName, joinLastName, joinPassword || undefined, false);
+  };
+
+  const onWatch = (e: React.MouseEvent) => {
+    e.preventDefault();
+    store.setFormError("join", undefined);
+    if (!roomIdInput) { store.setFormError("join", "Enter a room ID to watch."); return; }
+    if (!joinFirstName) { store.setFormError("join", "Enter your name so others know you're watching."); return; }
+    store.joinRoom(roomIdInput, joinFirstName, joinLastName, joinPassword || undefined, true);
   };
 
   const exportRoundHistoryTxt = () => {
@@ -1689,12 +1699,22 @@ export default function App() {
                 {formErrors.join}
               </div>
             )}
-              <button
-                type="submit"
-                className="bg-accent2 text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent2 hover:bg-accent2/80"
-              >
-                Join
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-accent2 text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 hover:bg-accent2/80"
+                >
+                  Join
+                </button>
+                <button
+                  type="button"
+                  onClick={onWatch}
+                  className="flex-1 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+                  title="Watch the game without being dealt in"
+                >
+                  Watch
+                </button>
+              </div>
           </form>
           <form
             className={clsx("card-surface p-4 flex flex-col", bankerFormExpanded ? "gap-3" : "gap-2")}
