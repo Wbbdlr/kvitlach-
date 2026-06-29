@@ -715,7 +715,8 @@ export default function App() {
   const [showLobby, setShowLobby] = useState(true);
   const [bankerFormExpanded, setBankerFormExpanded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [showConnections, setShowConnections] = useState(true);
+  const [showConnections, setShowConnections] = useState(false);
+  const [showPlayerMgmt, setShowPlayerMgmt] = useState(true);
   const [showBankerReactionPicker, setShowBankerReactionPicker] = useState(false);
   const [renameFirstName, setRenameFirst] = useState("");
   const [renameLastName, setRenameLast] = useState("");
@@ -1546,7 +1547,7 @@ export default function App() {
           </button>
         )}
       </header>
-        {(!room || showLobby) ? (
+        {(!room || showLobby) && (
           <section className="card-surface p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
@@ -1595,45 +1596,6 @@ export default function App() {
                   <span>What is Kvitlach?</span>
                 </button>
               </div>
-            </div>
-          </section>
-        ) : (
-          <section className="card-surface p-3 flex items-center justify-between gap-3 flex-wrap">
-            <div className="space-y-0.5">
-              <div className="text-sm font-semibold text-ink">Table quick help</div>
-              <div className="text-[11px] text-slate-500">Open rules or story without leaving the table.</div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-full border border-accent text-accent px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors duration-200 hover:bg-accent hover:text-white"
-                onClick={() => {
-                  setShowWhatIs(false);
-                  setShowHowTo(true);
-                }}
-              >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold">?</span>
-                <span>How to play</span>
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-600 px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors duration-200 hover:bg-blue-500 hover:text-white"
-                onClick={() => {
-                  setShowHowTo(false);
-                  setShowWhatIs(true);
-                }}
-              >
-                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm p-[1px]">
-                  <img
-                    src="/blank.png"
-                    alt=""
-                    aria-hidden="true"
-                    className="h-full w-full object-contain"
-                    loading="lazy"
-                  />
-                </span>
-                <span>What is Kvitlach?</span>
-              </button>
             </div>
           </section>
         )}
@@ -2078,13 +2040,104 @@ export default function App() {
               />
             ))}
           </div>
+          {isAdmin && pendingBankerTasks > 0 && (
+            <div className="border-t border-slate-200 pt-3 mt-3 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Banker approvals needed</div>
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">{pendingBankerTasks} pending</span>
+              </div>
+              {buyInRequests.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Chip top-ups</div>
+                  <ul className="flex flex-col gap-2">
+                    {buyInRequests.map((req) => {
+                      const player = room.players.find((p) => p.id === req.playerId);
+                      if (!player) return null;
+                      return (
+                        <li key={`buyin-${req.playerId}`} className="flex flex-col gap-2 border border-amber-200 rounded px-3 py-2 bg-amber-50 md:flex-row md:items-center md:justify-between">
+                          <div className="text-sm">
+                            <div className="font-semibold">
+                              {[player.firstName, player.lastName].filter(Boolean).join(" ")}
+                            </div>
+                            <div className="text-xs text-amber-700">${req.amount}{req.note ? ` · "${req.note}"` : ""}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="bg-emerald-600 text-white text-xs font-semibold rounded px-3 py-2"
+                              onClick={() => store.approveBuyIn(req.playerId)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="bg-rose-600 text-white text-xs font-semibold rounded px-3 py-2"
+                              onClick={() => store.rejectBuyIn(req.playerId)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              {renameRequests.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rename requests</div>
+                  <ul className="flex flex-col gap-2">
+                    {renameRequests.map((req) => {
+                      const player = room.players.find((p) => p.id === req.playerId);
+                      if (!player) return null;
+                      return (
+                        <li key={`rename-${req.playerId}`} className="flex flex-col gap-2 border border-slate-200 rounded px-3 py-2 bg-slate-50 md:flex-row md:items-center md:justify-between">
+                          <div className="text-sm">
+                            <div className="font-semibold">
+                              {[player.firstName, player.lastName].filter(Boolean).join(" ")}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              Requested → {req.firstName}
+                              {req.lastName ? ` ${req.lastName}` : ""}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              className="bg-emerald-600 text-white text-xs font-semibold rounded px-3 py-2"
+                              onClick={() => store.approveRename(req.playerId)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="bg-rose-600 text-white text-xs font-semibold rounded px-3 py-2"
+                              onClick={() => store.rejectRename(req.playerId)}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
             {isAdmin && room.players.some((p) => p.type !== "admin") && (
               <div className="w-full border-t border-slate-200 pt-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between text-left"
+                  onClick={() => setShowPlayerMgmt((v) => !v)}
+                >
                   <div className="text-sm font-semibold text-ink">Player management</div>
-                  <span className="text-[11px] uppercase tracking-wide text-slate-500">Adjust chips or remove</span>
-                </div>
-                <div className="grid md:grid-cols-2 gap-2">
+                  <span className="text-[11px] uppercase tracking-wide text-slate-500 flex items-center gap-1">
+                    {showPlayerMgmt ? "Hide" : "Show"}
+                  </span>
+                </button>
+                {showPlayerMgmt && <div className="grid md:grid-cols-2 gap-2">
                   {room.players
                     .filter((p) => p.type !== "admin")
                     .map((player) => {
@@ -2171,7 +2224,7 @@ export default function App() {
                         </div>
                       );
                     })}
-                </div>
+                </div>}
               </div>
             )}
           {round && waitingPlayers.length > 0 && (
@@ -2252,7 +2305,7 @@ export default function App() {
                 {myBuyInRequest && (
                   <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                     Pending banker approval for ${myBuyInRequest.amount}
-                    {myBuyInRequest.note ? ` Â· "${myBuyInRequest.note}"` : ""}.
+                    {myBuyInRequest.note ? ` · "${myBuyInRequest.note}"` : ""}.
                   </div>
                 )}
                 {showBuyInForm && (
@@ -2300,112 +2353,25 @@ export default function App() {
               </div>
             </div>
           )}
-          {isAdmin && pendingBankerTasks > 0 && (
-            <div className="border-t border-slate-200 pt-3 mt-3 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">Banker approvals needed</div>
-                <span className="text-[11px] uppercase tracking-wide text-slate-500">{pendingBankerTasks} pending</span>
-              </div>
-              {buyInRequests.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Chip top-ups</div>
-                  <ul className="flex flex-col gap-2">
-                    {buyInRequests.map((req) => {
-                      const player = room.players.find((p) => p.id === req.playerId);
-                      if (!player) return null;
-                      return (
-                        <li key={`buyin-${req.playerId}`} className="flex flex-col gap-2 border border-amber-200 rounded px-3 py-2 bg-amber-50 md:flex-row md:items-center md:justify-between">
-                          <div className="text-sm">
-                            <div className="font-semibold">
-                              {[player.firstName, player.lastName].filter(Boolean).join(" ")}
-                            </div>
-                            <div className="text-xs text-amber-700">${req.amount}{req.note ? ` Â· "${req.note}"` : ""}</div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              className="bg-emerald-600 text-white text-xs font-semibold rounded px-3 py-2"
-                              onClick={() => store.approveBuyIn(req.playerId)}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="bg-rose-600 text-white text-xs font-semibold rounded px-3 py-2"
-                              onClick={() => store.rejectBuyIn(req.playerId)}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-              {renameRequests.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Rename requests</div>
-                  <ul className="flex flex-col gap-2">
-                    {renameRequests.map((req) => {
-                      const player = room.players.find((p) => p.id === req.playerId);
-                      if (!player) return null;
-                      return (
-                        <li key={`rename-${req.playerId}`} className="flex flex-col gap-2 border border-slate-200 rounded px-3 py-2 bg-slate-50 md:flex-row md:items-center md:justify-between">
-                          <div className="text-sm">
-                            <div className="font-semibold">
-                              {[player.firstName, player.lastName].filter(Boolean).join(" ")}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              Requested â†’ {req.firstName}
-                              {req.lastName ? ` ${req.lastName}` : ""}
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              className="bg-emerald-600 text-white text-xs font-semibold rounded px-3 py-2"
-                              onClick={() => store.approveRename(req.playerId)}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="bg-rose-600 text-white text-xs font-semibold rounded px-3 py-2"
-                              onClick={() => store.rejectRename(req.playerId)}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
         </section>
       )}
 
       {round && (
         <section className="card-surface p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="font-semibold">
-                Round {round?.roundNumber ?? 1}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-slate-500">
-              <span className="uppercase tracking-wide">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 justify-between">
+            <div className="flex items-center gap-3">
+              <span className="font-semibold">Round {round?.roundNumber ?? 1}</span>
+              <span className="text-xs uppercase tracking-wide text-slate-500">
                 {round.state === "terminate" ? "Complete" : round.state === "final" ? "Final" : "Playing"}
               </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
               <span>
-                Total stakes: ${totalStakes.toLocaleString()}
-                {typeof bankerWalletTotal === "number"
-                  ? ` of $${bankerWalletTotal.toLocaleString()} available`
-                  : ""}
+                Stakes: <span className="font-medium text-slate-700">${totalStakes.toLocaleString()}</span>
+                {typeof bankerWalletTotal === "number" ? ` / $${bankerWalletTotal.toLocaleString()}` : ""}
               </span>
-              <span>Decks in play: {round.deckCount ?? 1}</span>
-              <span>Cards remaining: {cardsRemaining}</span>
+              <span>Decks: {round.deckCount ?? 1}</span>
+              <span>Cards left: {cardsRemaining}</span>
             </div>
           </div>
 
@@ -2496,22 +2462,16 @@ export default function App() {
           </div>
 
           {isAdmin && (connections?.length ?? 0) > 0 && (
-            <div className="card-surface p-3 border border-blue-200 bg-blue-50/60">
+            <div className="text-right">
               <button
                 type="button"
-                className="flex w-full items-center justify-between text-sm font-semibold text-ink"
+                className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2"
                 onClick={() => setShowConnections((prev) => !prev)}
               >
-                <span className="text-base font-semibold">Player Connection Details</span>
-                <span className="text-xs text-slate-600 flex items-center gap-2">
-                  <span>{connections?.length ?? 0} entries</span>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-2 py-0.5 text-[11px] uppercase tracking-wide">
-                    {showConnections ? "Hide" : "Show"}
-                  </span>
-                </span>
+                {showConnections ? "Hide" : "Show"} connection details ({connections?.length})
               </button>
               {showConnections && (
-                <div className="mt-3 grid gap-2 md:grid-cols-2 text-xs text-slate-800">
+                <div className="mt-2 grid gap-2 md:grid-cols-2 text-xs text-slate-800 text-left">
                   {connections?.map((meta) => {
                     const player = room?.players.find((p) => p.id === meta.playerId);
                     const name = player
