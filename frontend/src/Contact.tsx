@@ -11,8 +11,8 @@ export default function Contact() {
         </p>
         <p>
           Reach us at{" "}
-          <a href="mailto:kvitlach@swdhs.com" className="text-amber-700 font-semibold hover:underline">
-            kvitlach@swdhs.com
+          <a href="mailto:info@kvitlach.us" className="text-amber-700 font-semibold hover:underline">
+            info@kvitlach.us
           </a>
           .
         </p>
