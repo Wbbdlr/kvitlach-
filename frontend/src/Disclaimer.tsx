@@ -1,15 +1,9 @@
+import PageShell from "./PageShell";
+
 export default function Disclaimer() {
   return (
-    <div className="max-w-3xl mx-auto px-4 py-10 space-y-4 text-slate-700">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-semibold text-ink">Disclaimer</h1>
-        <a
-          href="/"
-          className="inline-flex items-center gap-2 rounded-full border border-ink text-ink px-3 py-1.5 text-sm font-semibold shadow-sm hover:bg-ink hover:text-white"
-        >
-          Back to table
-        </a>
-      </div>
+    <PageShell active="/disclaimer">
+      <h1 className="text-2xl font-semibold text-ink">Disclaimer</h1>
 
       <section className="space-y-2">
         <h2 className="text-xl font-semibold text-ink">No gambling, no real money</h2>
@@ -53,6 +47,6 @@ export default function Disclaimer() {
           <li>Report issues or feedback so we can improve stability and clarity.</li>
         </ul>
       </section>
-    </div>
+    </PageShell>
   );
 }

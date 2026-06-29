@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { useGameStore } from "./state";
 import { Card, Player, ReactionEvent, RoomState, RoundPhase, RoundState, Turn } from "./types";
@@ -726,7 +726,6 @@ export default function App() {
   const [bankBetSelected, setBankBetSelected] = useState(false);
   const [betError, setBetError] = useState<string | undefined>(undefined);
   const [eleveroonSelected, setEleveroonSelected] = useState(false);
-  const [showContact, setShowContact] = useState(false);
   const [firstBetCardIndex, setFirstBetCardIndex] = useState<Record<string, number>>({});
   const [walletAdjustTarget, setWalletAdjustTarget] = useState<string | null>(null);
   const [walletAdjustAmount, setWalletAdjustAmount] = useState("");
@@ -735,7 +734,7 @@ export default function App() {
   const [pendingKick, setPendingKick] = useState<{ playerId: string; label: string } | null>(null);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [musicEnabled, setMusicEnabled] = useState(false);
-  const [sfxEnabled, setSfxEnabled] = useState(false);
+  const [sfxEnabled, setSfxEnabled] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false);
@@ -3133,63 +3132,11 @@ export default function App() {
         <nav className="flex items-center gap-4">
           <a href="/about" className="hover:text-ink underline-offset-4 hover:underline">About</a>
           <a href="/disclaimer" className="hover:text-ink underline-offset-4 hover:underline">Disclaimer</a>
-          <button
-            type="button"
-            onClick={() => setShowContact(true)}
-            className="hover:text-ink underline-offset-4 hover:underline"
-          >
-            Contact
-          </button>
+          <a href="/contact" className="hover:text-ink underline-offset-4 hover:underline">Contact</a>
         </nav>
         <span>Â© SWS 2026</span>
       </footer>
 
-      {showContact && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center bg-black/30 px-4" onClick={() => setShowContact(false)}>
-          <div
-            className="w-full max-w-md rounded-lg bg-white shadow-xl border border-slate-200 p-4 space-y-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-2">
-                <h2 className="text-base font-semibold text-ink">Contact the Kvitlach team</h2>
-                <p className="text-sm text-slate-700">
-                  Questions, concerns, bug reports, or feature ideas? Drop us a note at
-                  {' '}<a className="text-amber-700 font-semibold hover:underline" href="mailto:kvitlach@swdhs.com">kvitlach@swdhs.com</a>.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowContact(false)}
-                className="text-slate-500 hover:text-ink"
-                aria-label="Close contact panel"
-              >
-                X
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 border border-amber-100">Support</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 border border-blue-100">Bugs</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 border border-emerald-100">Feature ideas</span>
-            </div>
-            <div className="flex justify-end gap-2 text-sm">
-              <button
-                type="button"
-                className="px-3 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
-                onClick={() => setShowContact(false)}
-              >
-                Dismiss
-              </button>
-              <a
-                href="mailto:kvitlach@swdhs.com"
-                className="px-3 py-1 rounded bg-amber-600 text-white hover:bg-amber-700"
-              >
-                Email us
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
 
       </div>
 
