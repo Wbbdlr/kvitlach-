@@ -869,7 +869,7 @@ export default function App() {
           const isRosier = isRosierPair(turn.cards);
           const isPush = isPushTurn(turn);
           if (isRosier) {
-            newTiles.push({ id: `${turn.player.id}-rosier-${Date.now()}`, label: "ROSIER!", color: "#d97706", playerId: turn.player.id });
+            newTiles.push({ id: `${turn.player.id}-rosier-${Date.now()}`, label: "FRAMES!", color: "#d97706", playerId: turn.player.id });
           } else if (isPush) {
             newTiles.push({ id: `${turn.player.id}-push-${Date.now()}`, label: "PUSH", color: "#64748b", playerId: turn.player.id });
           } else {
