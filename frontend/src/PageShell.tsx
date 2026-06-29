@@ -28,7 +28,7 @@ export default function PageShell({ children, active }: { children: ReactNode; a
               loading="lazy"
             />
           </span>
-          <span>Kvitlach</span>
+          <span className="text-amber-600">Kvitlach</span>
         </a>
         <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-amber-700 leading-tight">
           Ah Heimishe Chanukah Shpil
