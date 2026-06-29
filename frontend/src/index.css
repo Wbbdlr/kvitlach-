@@ -14,25 +14,23 @@
 body {
   font-family: theme('fontFamily.body');
   min-height: 100vh;
-  background: radial-gradient(ellipse at top, #2a5298 0%, #1a3a6e 45%, #0f2552 100%);
-  color: #8bafd4;
-  font-weight: 300;
+  background: #f5f3ee;
+  color: #2d3748;
 }
 
 /* ── Card surfaces ── */
 .card-surface {
-  @apply rounded-xl shadow-lg;
-  background: rgba(20, 45, 95, 0.88);
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  color: #8bafd4;
+  @apply rounded-xl shadow-sm;
+  background: #ffffff;
+  border: 1px solid #e8e0d0;
+  color: #2d3748;
 }
 
 /* ── Card face (playing card) ── */
 .card-face {
   @apply rounded-lg shadow-sm relative overflow-hidden;
-  border: 1px solid rgba(255,255,255,0.15);
-  background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.06), transparent 45%),
-              radial-gradient(circle at 80% 0%, rgba(255,255,255,0.04), transparent 35%),
+  border: 1px solid rgba(0,0,0,0.10);
+  background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.8), transparent 45%),
               #fefefe;
 }
 
@@ -40,7 +38,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(0,0,0,0.04));
+  background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(0,0,0,0.03));
   pointer-events: none;
 }
 
@@ -55,21 +53,21 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background: rgba(15, 35, 75, 0.80);
-  border: 1px solid rgba(255,255,255,0.15);
+  background: #ffffff;
+  border: 1px solid #ddd6c8;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .player-card-active {
-  border-color: rgba(212, 175, 55, 0.85) !important;
-  box-shadow: 0 0 20px rgba(212, 175, 55, 0.35), inset 0 0 12px rgba(212, 175, 55, 0.06) !important;
+  border-color: #c9981f !important;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.25), 0 2px 8px rgba(212, 175, 55, 0.15) !important;
 }
 .player-card-next {
-  border-color: rgba(99, 179, 237, 0.65) !important;
-  box-shadow: 0 0 12px rgba(99, 179, 237, 0.25) !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18) !important;
 }
 .player-card-banker {
-  border-color: rgba(212, 175, 55, 0.55) !important;
-  background: rgba(30, 20, 5, 0.85) !important;
+  border-color: #c9981f !important;
+  background: #fffdf5 !important;
 }
 
 /* ── Animations ── */
@@ -79,7 +77,7 @@ body {
 
 @keyframes waitingPulse {
   0%   { filter: drop-shadow(0 0 0px rgba(212, 175, 55, 0.3)); }
-  50%  { filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.65)); }
+  50%  { filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.55)); }
   100% { filter: drop-shadow(0 0 0px rgba(212, 175, 55, 0.3)); }
 }
 
@@ -88,16 +86,16 @@ body {
 }
 
 @keyframes waitingJoinPulse {
-  0%   { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.3)); }
-  50%  { transform: translateY(-1px); filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5)); }
-  100% { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.3)); }
+  0%   { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.2)); }
+  50%  { transform: translateY(-1px); filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.4)); }
+  100% { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.2)); }
 }
 
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: rgba(15,37,82,0.4); }
-::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.35); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(212,175,55,0.6); }
+::-webkit-scrollbar-track { background: #f0ece4; }
+::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(212,175,55,0.65); }
 
 /* ── Utility classes ── */
 .input-dark {
@@ -107,16 +105,16 @@ body {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   font-weight: 400;
-  background: rgba(10, 25, 60, 0.65);
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  color: #c5daf0;
+  background: #ffffff;
+  border: 1px solid #d4c8b0;
+  color: #2d3748;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .input-dark::placeholder {
-  color: rgba(186, 210, 240, 0.45);
+  color: #a09070;
 }
 .input-dark:focus {
-  border-color: rgba(212, 175, 55, 0.65);
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.15);
+  border-color: #c9981f;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.18);
 }

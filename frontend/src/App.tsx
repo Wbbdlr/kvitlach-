@@ -1327,7 +1327,7 @@ export default function App() {
       {pendingKick && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(5,14,31,0.8)" }}
+          style={{ background: "rgba(30,40,60,0.55)" }}
           role="dialog"
           aria-modal="true"
           onClick={cancelKick}
@@ -1426,7 +1426,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded bg-navy-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-navy-700"
+                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:opacity-80"
                 onClick={dismissBankerSummary}
               >
                 Done
@@ -2050,7 +2050,7 @@ export default function App() {
                     store.startRound(deckToUse);
                   }}
                 >
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(10,22,40,0.3)" }}>
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(180,140,30,0.25)" }}>
                     <svg
                       className="h-3 w-3"
                       viewBox="0 0 20 20"
@@ -2438,7 +2438,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="card-surface p-3" style={{ background: "rgba(7,16,32,0.7)", border: "1px solid rgba(212,175,55,0.15)" }}>
+          <div className="card-surface p-3" style={{ background: "rgba(255,251,240,0.95)", border: "1px solid rgba(212,175,55,0.35)" }}>
             <div className="flex items-center justify-between mb-2 text-sm">
               <span className="font-semibold text-slate-300">Table Overview</span>
             </div>
@@ -2731,7 +2731,7 @@ export default function App() {
                   store.startRound(deckToUse);
                 }}
               >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(10,22,40,0.3)" }}>
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(180,140,30,0.25)" }}>
                   <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                     <path d="M6 4l10 6-10 6V4z" />
                   </svg>
@@ -2826,7 +2826,7 @@ export default function App() {
       {showHowTo && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(5,14,31,0.85)" }}
+          style={{ background: "rgba(30,40,60,0.6)" }}
           onClick={() => setShowHowTo(false)}
         >
           <div
@@ -2897,7 +2897,7 @@ export default function App() {
       {pendingKick && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(5,14,31,0.8)" }}
+          style={{ background: "rgba(30,40,60,0.55)" }}
           role="dialog"
           aria-modal="true"
           onClick={cancelKick}
@@ -2996,7 +2996,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded bg-navy-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-navy-700"
+                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:opacity-80"
                 onClick={dismissBankerSummary}
               >
                 Done
@@ -3039,7 +3039,7 @@ export default function App() {
       {showWhatIs && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(5,14,31,0.85)" }}
+          style={{ background: "rgba(30,40,60,0.6)" }}
           onClick={() => setShowWhatIs(false)}
         >
           <div
@@ -3143,7 +3143,7 @@ export default function App() {
       </footer>
 
       {showContact && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center px-4" style={{ background: "rgba(5,14,31,0.75)" }} onClick={() => setShowContact(false)}>
+        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center px-4" style={{ background: "rgba(30,40,60,0.5)" }} onClick={() => setShowContact(false)}>
           <div
             className="w-full max-w-md card-surface p-4 space-y-3"
             onClick={(e) => e.stopPropagation()}
