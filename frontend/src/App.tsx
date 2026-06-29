@@ -3134,7 +3134,7 @@ export default function App() {
           <a href="/disclaimer" className="hover:text-ink underline-offset-4 hover:underline">Disclaimer</a>
           <a href="/contact" className="hover:text-ink underline-offset-4 hover:underline">Contact</a>
         </nav>
-        <span>Â© SWS 2026</span>
+        <span>© SWS 2026</span>
       </footer>
 
 

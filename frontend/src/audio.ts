@@ -77,7 +77,7 @@ export class AudioManager {
     if (!this.bgm) {
       const el = new Audio(BGM_PATH);
       el.loop = true;
-      el.volume = 0.2;
+      el.volume = 0.07;
       el.preload = "auto";
       this.bgm = el;
     }
