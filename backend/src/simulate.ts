@@ -8,6 +8,7 @@
 import { newDeck } from "./deck.js";
 import { calcState, getSums } from "./turn.js";
 import { createRound, handleBet, handleHit, handleStand, winningNumber, playerWon, calculateEndState } from "./round.js";
+import type { RoundContext } from "./round.js";
 import { Player, Turn, Card } from "./types.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -140,6 +141,80 @@ console.log("\n── Eleveroon ──");
   // Card 12 + 11 can reach 21 (10+11), so no eleveroon needed
   assert(calcState([C12, C11]) === "won",
     "Card 12 + 11 → won via 10+11=21");
+}
+
+// Eleveroon via handleHit — full game path with controlled deck
+console.log("\n── Eleveroon via handleHit (real game path) ──");
+{
+  // Helper: build a minimal round state with a specific deck and a player at a known total
+  function makeRound(playerCards: Card[], deckTop: Card[]): RoundContext {
+    const player = makePl("p");
+    const banker = makePl("b", "admin");
+    return {
+      roundId: "test",
+      roomId: "test",
+      deckCount: 1,
+      roundNumber: 1,
+      state: "playing",
+      deck: deckTop,
+      turns: [
+        { player, cards: playerCards, bet: 10, state: "pending" },
+        { player: banker, cards: [C1],  bet: 0,  state: "pending" },
+      ],
+    };
+  }
+
+  // ── Scenario 1: Eleveroon ON, player at 11, draws an 11 → ignored, stays pending ──
+  {
+    const round = makeRound([C3, C8], [C11, C5]); // 3+8=11, deck top = 11
+    const after = handleHit(round, "p", { eleveroon: true });
+    const turn = after.turns.find((t) => t.player.id === "p")!;
+    assert(turn.cards.length === 3,                      "Eleveroon ON + draws 11 at 11: card is added");
+    assert(turn.cards[2].attributes.eleveroonIgnored === true, "Eleveroon ON + draws 11 at 11: card marked ignored");
+    assert(turn.state === "pending",                     "Eleveroon ON + draws 11 at 11: hand stays pending");
+    assert(winningNumber(turn.cards) === 11,             "Eleveroon ON + draws 11 at 11: winning number still 11");
+  }
+
+  // ── Scenario 2: Eleveroon ON, player at 11, draws a non-11 card → normal draw ──
+  {
+    const round = makeRound([C3, C8], [C5, C11]); // 3+8=11, deck top = 5 (not an 11)
+    const after = handleHit(round, "p", { eleveroon: true });
+    const turn = after.turns.find((t) => t.player.id === "p")!;
+    assert(!turn.cards[2].attributes.eleveroonIgnored,   "Eleveroon ON + draws 5 at 11: card NOT ignored");
+    assert(turn.state === "pending",                     "Eleveroon ON + draws 5 at 11: hand at 16, still pending");
+    assert(winningNumber(turn.cards) === 16,             "Eleveroon ON + draws 5 at 11: total = 16");
+  }
+
+  // ── Scenario 3: Eleveroon OFF, player at 11, draws an 11 → busts ──
+  {
+    const round = makeRound([C3, C8], [C11, C5]); // 3+8=11, deck top = 11
+    const after = handleHit(round, "p", { eleveroon: false });
+    const turn = after.turns.find((t) => t.player.id === "p")!;
+    assert(!turn.cards[2].attributes.eleveroonIgnored,   "Eleveroon OFF + draws 11 at 11: card NOT ignored");
+    assert(turn.state === "lost",                        "Eleveroon OFF + draws 11 at 11: hand busts (3+8+11=22)");
+    assert(winningNumber(turn.cards) === undefined,      "Eleveroon OFF + draws 11 at 11: no valid total (all > 21)");
+  }
+
+  // ── Scenario 4: Eleveroon ON, player at 12 (not 11), draws an 11 → no eleveroon ──
+  {
+    const round = makeRound([C4, C8], [C11, C5]); // 4+8=12, deck top = 11
+    const after = handleHit(round, "p", { eleveroon: true });
+    const turn = after.turns.find((t) => t.player.id === "p")!;
+    // 4+8+11=23 bust; eleveroon does NOT fire because total wasn't exactly 11
+    assert(!turn.cards[2].attributes.eleveroonIgnored,   "Eleveroon ON + draws 11 at 12: NOT ignored (must be at exactly 11)");
+    assert(turn.state === "lost",                        "Eleveroon ON + draws 11 at 12: busts (not at 11)");
+  }
+
+  // ── Scenario 5: Eleveroon ON, player at 11, draws again after being saved → can continue ──
+  {
+    let round = makeRound([C3, C8], [C11, C7]); // 3+8=11, deck: [11, 7]
+    round = handleHit(round, "p", { eleveroon: true });  // 11 ignored, still at 11
+    round = handleHit(round, "p", { eleveroon: true });  // draws 7, total = 18
+    const turn = round.turns.find((t) => t.player.id === "p")!;
+    assert(turn.cards.length === 4,                      "Eleveroon save then continue: 4 cards total");
+    assert(turn.state === "pending",                     "Eleveroon save then continue: still pending at 18");
+    assert(winningNumber(turn.cards) === 18,             "Eleveroon save then continue: total = 18");
+  }
 }
 
 // Tie-breaking
