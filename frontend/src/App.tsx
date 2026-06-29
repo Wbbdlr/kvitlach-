@@ -1426,7 +1426,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
+                className="inline-flex items-center justify-center rounded bg-navy-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-navy-700"
                 onClick={dismissBankerSummary}
               >
                 Done
@@ -2038,12 +2038,8 @@ export default function App() {
                   <span className="text-xs text-slate-500">leave blank to auto-size</span>
                 </label>
                 <button
-                  className={clsx(
-                    "group inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-                    roundInProgress
-                      ? "border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed"
-                      : "border-ink text-ink hover:bg-ink hover:text-white focus-visible:outline-ink"
-                  )}
+                  className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold tracking-wide shadow-md transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: "linear-gradient(135deg, #d4af37 0%, #f9d05e 50%, #d4af37 100%)", color: "#0a1628", border: "1px solid rgba(212,175,55,0.6)" }}
                   disabled={roundInProgress}
                   aria-disabled={roundInProgress}
                   onClick={() => {
@@ -2054,14 +2050,7 @@ export default function App() {
                     store.startRound(deckToUse);
                   }}
                 >
-                  <span
-                    className={clsx(
-                      "inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors duration-200",
-                      roundInProgress
-                        ? "bg-slate-300 text-slate-500"
-                        : "bg-ink text-white group-hover:bg-white group-hover:text-ink"
-                    )}
-                  >
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(10,22,40,0.3)" }}>
                     <svg
                       className="h-3 w-3"
                       viewBox="0 0 20 20"
@@ -3007,7 +2996,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
+                className="inline-flex items-center justify-center rounded bg-navy-800 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-navy-700"
                 onClick={dismissBankerSummary}
               >
                 Done
