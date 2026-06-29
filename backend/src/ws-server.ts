@@ -384,8 +384,9 @@ export class WSServer {
           const room = this.store.getRoom(roomId);
           const isMember = room?.players.some((p) => p.id === actorId);
           if (!isMember) throw new Error("forbidden");
-          const allowed: string[] = ["👏", "😂", "😮", "❤️", "🔥", "👍"];
-          const normalized = allowed.includes(emoji.trim()) ? emoji.trim() : allowed[0];
+          const allowed = new Set(["👏","😂","😮","❤️","🔥","👍","😢","🤯","😎","🙌","😡","🤔","🎉","🤞","🙏","🍀","🍻","🍕","💤","💯","✅","❌","🤑","😭","🤡"]);
+          const trimmed = emoji.trim();
+          const normalized = allowed.has(trimmed) ? trimmed : "👏";
           const payloadOut: ReactionEvent = { playerId: actorId, emoji: normalized, reactedAt: Date.now() };
           this.broadcast(roomId, { type: "reaction:new", roomId, payload: payloadOut });
           this.sendAck(socket, requestId, {});

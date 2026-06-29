@@ -364,7 +364,9 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         }
         const pendingType = state.pendingAction?.type;
         const friendly =
-          errorMessage === "invalid_password"
+          errorMessage === "room_full"
+            ? "This table is full (100 players max). Try a different room."
+            : errorMessage === "invalid_password"
             ? "Incorrect password"
             : errorMessage === "insufficient_bank"
             ? "Cannot remove more chips than the bank holds."

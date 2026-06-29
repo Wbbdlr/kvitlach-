@@ -6,7 +6,8 @@ import { Balance, Player, RenameRequest, RoomState, RoundState, BuyInRequest, Ba
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+const INACTIVITY_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours — rooms survive overnight pauses
+const MAX_PLAYERS_PER_ROOM = 100;
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const TURN_TIMEOUT_MS = 90 * 1000;
 const MAX_NAME_LEN = 40;
@@ -236,6 +237,7 @@ export class GameStore {
       const roomRec = this.rooms.get(normalizedId);
     if (!roomRec) throw new Error("room_not_found");
     if (roomRec.room.password && roomRec.room.password !== info.password) throw new Error("invalid_password");
+    if (roomRec.room.players.length >= MAX_PLAYERS_PER_ROOM) throw new Error("room_full");
     const player: Player = {
       id: uuid(),
       firstName: this.sanitizeName(info.firstName),

@@ -158,7 +158,7 @@ function isPushTurn(turn: Turn): boolean {
                         setBetError(undefined);
                         setBet("");
                       }}
-                        onHit={() => store.hit({ eleveroon: isAdmin ? true : eleveroonSelected })}
+                        onHit={() => store.hit({ eleveroon: eleveroonSelected })}
                         onStand={() => store.stand()}
                       bankAvailable={bankInfo?.available}
                       bankAddAmount={bankIncrement}
@@ -179,7 +179,7 @@ function isPushTurn(turn: Turn): boolean {
                   </div>
                 )}
     const busted = total === undefined && bustedTotal !== undefined;
-    if (busted) return { label: "BUSTED", className: "text-rose-700 font-bold" };
+    if (busted) return { label: "FUTCHED!", className: "text-rose-700 font-bold" };
     return { label: "LOST", className: "text-rose-600 font-semibold" };
   }
   if (turn.state === "skipped") return { label: "Skipped", className: "text-slate-500" };
@@ -632,13 +632,12 @@ function TurnCard({
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  checked={Boolean(isBanker ? true : eleveroonSelected)}
-                  disabled={isBanker}
+                  checked={Boolean(eleveroonSelected)}
+                  disabled={false}
                   onChange={(event) => onToggleEleveroon?.(event.target.checked)}
                 />
                 <span>Eleveroon</span>
-                {isBanker && <span className="text-[11px] font-normal text-slate-500">Always on</span>}
-                {!isBanker && (
+                {(
                   <span className="text-[11px] font-normal text-slate-500">
                     If off, an 11 at 11 will bust you.
                   </span>
@@ -684,16 +683,16 @@ function TurnCard({
             {showEleveroonToggle && (
               <label
                 className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
-                title="Eleveroon automatically ignores any busting elevens in a row when the banker was sitting on 11."
+                title="Eleveroon: if your total is 11 and you draw an 11, toggle this on to reject the card and draw again."
               >
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border-slate-300 text-blue-600"
-                  checked={true}
-                  disabled
+                  checked={Boolean(eleveroonSelected)}
+                  onChange={(event) => onToggleEleveroon?.(event.target.checked)}
                 />
                 <span>Eleveroon</span>
-                <span className="text-[11px] font-normal text-slate-500">Always on</span>
+                <span className="text-[11px] font-normal text-slate-500">If off, an 11 at 11 will bust you.</span>
               </label>
             )}
         </div>
@@ -763,7 +762,7 @@ export default function App() {
   const [pendingKick, setPendingKick] = useState<{ playerId: string; label: string } | null>(null);
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [musicEnabled, setMusicEnabled] = useState(false);
-  const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [sfxEnabled, setSfxEnabled] = useState(false);
   const [userInteracted, setUserInteracted] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const audioManager = useMemo(() => new AudioManager(), []);
@@ -1080,7 +1079,7 @@ export default function App() {
     }[];
     if (!entries.length) return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false };
     const wins = entries.filter((e) => e.status === "WON").length;
-    const losses = entries.filter((e) => e.status === "LOST" || e.status === "BUSTED").length;
+    const losses = entries.filter((e) => e.status === "LOST" || e.status === "FUTCHED!").length;
     const pushes = entries.filter((e) => e.status === "PUSH").length;
     const playerRecord = room?.players.find((p) => p.id === statsPlayerId);
     const playerName =
@@ -2658,7 +2657,7 @@ export default function App() {
                       setBetError(undefined);
                       setBet("");
                     }}
-                      onHit={() => store.hit({ eleveroon: isAdmin ? true : eleveroonSelected })}
+                      onHit={() => store.hit({ eleveroon: eleveroonSelected })}
                       onStand={() => store.stand()}
                     bankAvailable={bankInfo?.available}
                     bankAddAmount={bankIncrement}
