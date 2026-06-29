@@ -812,6 +812,11 @@ export default function App() {
   }, [round?.roundId]);
 
   useEffect(() => {
+    // Auto-expand other players when round ends so everyone can see results
+    if (round?.state === "terminate") setShowOtherPlayers(true);
+  }, [round?.state]);
+
+  useEffect(() => {
     // Record the index of the first card drawn with a wager so we can keep earlier Blatt cards visible to others.
     if (!round) return;
     const next: Record<string, number> = { ...firstBetCardIndex };
@@ -1312,11 +1317,11 @@ export default function App() {
     <>
       {floatTiles.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
-          {floatTiles.map((tile) => (
+          {floatTiles.map((tile, idx) => (
             <div
               key={tile.id}
-              className="float-tile absolute bottom-1/3 left-1/2"
-              style={{ marginLeft: `${Math.floor((tile.id.charCodeAt(tile.id.length - 3) % 120) - 60)}px` }}
+              className="float-tile absolute bottom-1/3 left-1/2 -translate-x-1/2"
+              style={{ marginLeft: `${(idx % 3 - 1) * 90}px`, animationDelay: `${idx * 80}ms` }}
             >
               <span
                 className="inline-flex items-center justify-center rounded-2xl px-5 py-2 text-xl font-extrabold text-white shadow-2xl"
@@ -1415,7 +1420,7 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-slate-600">Preparing summaryâ€¦</div>
+              <div className="text-sm text-slate-600">Preparing summary…</div>
             )}
             <div className="flex flex-wrap justify-end gap-2">
               <button
@@ -2999,7 +3004,7 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-slate-600">Preparing summaryâ€¦</div>
+              <div className="text-sm text-slate-600">Preparing summary…</div>
             )}
             <div className="flex flex-wrap justify-end gap-2">
               <button
