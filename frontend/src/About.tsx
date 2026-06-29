@@ -77,6 +77,35 @@ export default function About() {
           welcome so we can refine before the next release.
         </p>
       </section>
+
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold text-ink">Credits</h2>
+        <ul className="list-disc list-inside space-y-1">
+          <li>
+            Background music: <strong>Chanuka Medley</strong> by{" "}
+            <a
+              href="https://www.youtube.com/@MichaGamerman"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-700 hover:underline font-semibold"
+            >
+              Micha Gamerman
+            </a>
+            . Used with appreciation.
+          </li>
+          <li>
+            Sound effects: <a
+              href="https://kenney.nl/assets/casino-audio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-700 hover:underline"
+            >
+              Casino Audio pack
+            </a>{" "}
+            by Kenney (CC0 / public domain).
+          </li>
+        </ul>
+      </section>
     </div>
   );
 }
