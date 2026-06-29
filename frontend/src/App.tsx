@@ -99,80 +99,85 @@ function isPushTurn(turn: Turn): boolean {
   const settled = turn.settledBet ?? wager;
   return turn.state === "won" && wager === 0 && settled === 0;
 }
-
-function totalDisplay(
-  turn: Turn,
-  viewerId?: string,
-  _roundState?: RoundPhase,
-  opts?: { forceBankerReveal?: boolean }
-): {
-  prefix: string;
-  value: string;
-  wrapperClassName?: string;
-  valueClassName?: string;
-} {
-  const roundState = _roundState;
-  const prefix = "Total:";
-  const { total, bustedTotal } = bestTotal(turn.cards);
-  const isOwnerView = viewerId === turn.player.id;
-  const isBanker = turn.player.type === "admin";
-  const isBlattPhase = (turn.bet ?? 0) === 0;
-  const bankerResolved = turn.state === "lost" || turn.state === "standby" || turn.state === "won";
-  const forceBankerReveal = opts?.forceBankerReveal;
-  const isPublicStandby = turn.state === "standby";
-
-  if (
-    !isOwnerView &&
-    !isBanker &&
-    roundState !== "terminate" &&
-    turn.state !== "won" &&
-    turn.state !== "lost"
-  ) {
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-
-  if (!isOwnerView && isBanker && !bankerResolved && !forceBankerReveal) {
-    const visible = turn.cards.slice(1);
-    if (visible.length === 0)
-      return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (isPublicStandby) {
-    if (total !== undefined) return { prefix, value: `${total}` };
-    if (bustedTotal !== undefined) return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (!isOwnerView && isBlattPhase) {
-    const visible = turn.cards.slice(1);
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-
-  const canRevealTotal =
-    isOwnerView || turn.state === "won" || turn.state === "lost" || isPublicStandby || forceBankerReveal;
-  const revealForOwnerStandby = isOwnerView && turn.state === "standby";
-  if (!canRevealTotal && !revealForOwnerStandby) {
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (turn.state === "lost" && total === undefined && bustedTotal !== undefined) {
-    return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
-  }
-  if (total !== undefined) return { prefix, value: `${total}` };
-  if (bustedTotal !== undefined) return { prefix, value: `${bustedTotal}` };
-  return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-}
-
-function statusDisplay(turn: Turn): { label: string; className: string } {
-  if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
-  if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
-  if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };
-  if (turn.state === "lost") {
-    const { total, bustedTotal } = bestTotal(turn.cards);
+              <div>
+                <div className="mb-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="text-xs uppercase text-slate-500">Reactions</div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-ink shadow-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => setShowReactionPicker((v) => !v)}
+                      disabled={status !== "connected"}
+                    >
+                      REACT
+                    </button>
+                  </div>
+                  {showReactionPicker && (
+                    <div className="mb-2">
+                      <ReactionPicker
+                        onPick={(emoji) => {
+                          sendReaction(emoji);
+                          setShowReactionPicker(false);
+                        }}
+                        disabled={status !== "connected"}
+                      />
+                    </div>
+                  )}
+                </div>
+                {myPlayerTurn && (
+                  <div className="mb-2">
+                    <div className="text-xs uppercase text-slate-500 mb-1">Your hand</div>
+                    <TurnCard
+                      key={myPlayerTurn.player?.id ?? "me"}
+                      turn={myPlayerTurn}
+                      isAdmin={isAdmin}
+                      viewerId={playerId}
+                      isActiveTurn={activeTurnId === myPlayerTurn.player.id}
+                      isNextTurn={nextTurnId === myPlayerTurn.player.id}
+                      roundState={round?.state}
+                      onSkipOther={isAdmin ? (pid) => store.skip(pid) : undefined}
+                      walletAmount={room?.wallets?.[myPlayerTurn.player.id]}
+                      betAmount={betAmount}
+                      onBetChange={(v) => {
+                        setBet(v);
+                        if (bankBetSelected) setBankBetSelected(false);
+                        setBetError(undefined);
+                      }}
+                      onBet={() => {
+                        const parsed = Number(betAmount);
+                        const amount = Number.isFinite(parsed) ? parsed : 0;
+                        const wallet = room?.wallets?.[playerId ?? ""] ?? 0;
+                        const existingBet = myPlayerTurn?.bet ?? 0;
+                        const nextTotal = existingBet + amount;
+                        if (nextTotal > wallet) {
+                          setBetError("Insufficient chips for this wager.");
+                          return;
+                        }
+                        store.bet(amount, { bank: bankBetSelected });
+                        if (bankBetSelected) setBankBetSelected(false);
+                        setBetError(undefined);
+                        setBet("");
+                      }}
+                        onHit={() => store.hit({ eleveroon: eleveroonSelected })}
+                        onStand={() => store.stand()}
+                      bankAvailable={bankInfo?.available}
+                      bankAddAmount={bankIncrement}
+                      bankSelected={bankBetSelected}
+                      onToggleBank={(selected) => setBankBetSelected(selected)}
+                      bankDisabled={!canBank}
+                      bankDisabledReason={bankDisabledReason}
+                      betError={betError}
+                      firstBetCardIndex={firstBetCardIndex}
+                      bankDisabledReason={bankDisabledReason}
+                      bankDisabled={!canBank}
+                      eleveroonSelected={eleveroonSelected}
+                      onToggleEleveroon={(selected) => setEleveroonSelected(selected)}
+                      forceBankerReveal={round?.state === "terminate"}
+                      turnTimer={activeTurnTimer?.playerId === myPlayerTurn.player.id ? activeTurnTimer : undefined}
+                      reactionEmoji={latestReactionByPlayer[myPlayerTurn.player.id]?.emoji}
+                    />
+                  </div>
+                )}
     const busted = total === undefined && bustedTotal !== undefined;
     if (busted) return { label: "FUTCHED!", className: "text-rose-700 font-bold" };
     return { label: "LOST", className: "text-rose-600 font-semibold" };
@@ -365,7 +370,7 @@ function TurnCard({
   const canActTurn = isMe && turn.state === "pending" && isActiveTurn;
   const showPlayerControls = canActTurn && !isBanker && onBet && onHit && onStand && betAmount !== undefined && onBetChange;
   const showBankerControls = canActTurn && isBanker && !forceBankerReveal && onHit && onStand;
-  const showEleveroonToggle = showPlayerControls; // banker gets eleveroon automatically; no toggle needed
+  const showEleveroonToggle = showPlayerControls;
   const isCurrentTurn = Boolean(isActiveTurn && turn.state === "pending" && roundState !== "terminate");
   const isNextPlayer = Boolean(isNextTurn && !isCurrentTurn && turn.state === "pending" && roundState !== "terminate");
   const waitingForTurn = isMe && turn.state === "pending" && !canActTurn && roundState !== "terminate";
@@ -376,9 +381,8 @@ function TurnCard({
   const betInfo = betDisplay(turn);
   const bankerStyle = highlightBanker
     ? {
-        background: "linear-gradient(135deg, rgba(20,14,4,0.95) 0%, rgba(25,18,4,0.92) 100%)",
-        borderColor: "rgba(212,175,55,0.45)",
-        boxShadow: "0 0 16px rgba(212,175,55,0.12)",
+        background: "linear-gradient(135deg, #eef2ff 0%, #e0f2fe 50%, #f8fafc 100%)",
+        borderColor: "#bfdbfe",
       }
     : undefined;
   const useCompact = Boolean(isCompact && !isCurrentTurn);
@@ -411,50 +415,46 @@ function TurnCard({
   const timerColors =
     timerTone === "danger"
       ? {
-          dot: "bg-rose-400",
-          pill: "text-rose-400",
+          dot: "bg-rose-500",
+          pill: "border-rose-200 bg-rose-50 text-rose-700",
           bar: "bg-rose-500",
-          pillStyle: { border: "1px solid rgba(239,68,68,0.35)", background: "rgba(127,29,29,0.3)" },
         }
       : timerTone === "warn"
       ? {
-          dot: "bg-amber-400",
-          pill: "text-amber-400",
+          dot: "bg-amber-500",
+          pill: "border-amber-200 bg-amber-50 text-amber-700",
           bar: "bg-amber-500",
-          pillStyle: { border: "1px solid rgba(245,158,11,0.35)", background: "rgba(78,46,3,0.3)" },
         }
       : {
-          dot: "bg-blue-400",
-          pill: "text-blue-300",
+          dot: "bg-blue-500",
+          pill: "border-blue-200 bg-blue-50 text-blue-700",
           bar: "bg-blue-500",
-          pillStyle: { border: "1px solid rgba(59,130,246,0.35)", background: "rgba(23,37,84,0.4)" },
         };
 
   const header = (
     <div className="flex justify-between items-center flex-wrap gap-2">
       <div className="flex items-center gap-2 font-semibold">
         <span className="inline-flex items-center gap-1">
-          <span style={isMe ? { color: "#93c5fd" } : { color: "#e2e8f0" }}>
+          <span className={clsx(isMe ? "text-blue-700" : undefined)}>
             {nameLabel}
           </span>
           {isMe && !useCompact && (
-            <span className="italic text-slate-400" aria-label="You">(Me)</span>
+            <span className="italic text-slate-600" aria-label="You">(Me)</span>
           )}
           {turn.player.type === "admin" && (
             <svg
-              className="h-3.5 w-3.5"
+              className="h-3.5 w-3.5 text-amber-600"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
-              style={{ color: "#d4af37" }}
             >
               <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
             </svg>
           )}
         </span>
         {isMe && !useCompact && typeof walletAmount === "number" && (
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold" style={{ border: "1px solid rgba(16,185,129,0.3)", background: "rgba(6,78,59,0.3)", color: "#34d399" }}>
-            <span className="text-[9px] uppercase tracking-[0.3em]" style={{ color: "#34d399", opacity: 0.8 }}>Cash</span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+            <span className="text-[9px] uppercase tracking-[0.3em] text-emerald-600">Cash</span>
             <span>${walletAmount}</span>
           </span>
         )}
@@ -464,12 +464,12 @@ function TurnCard({
           <span className={clsx("text-xs uppercase tracking-wide", headerStatus.className)}>{headerStatus.label}</span>
         )}
         {isNextPlayer && (
-          <span className="text-xs font-semibold rounded px-2 py-0.5 uppercase tracking-wide" style={{ color: "#93c5fd", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)" }}>
+          <span className="text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-2 py-0.5 uppercase tracking-wide">
             Up next
           </span>
         )}
         {isCurrentTurn && !useCompact && (
-          <span className="text-xs font-semibold rounded px-2 py-0.5 uppercase tracking-wide" style={{ color: "#d4af37", background: "rgba(212,175,55,0.15)", border: "1px solid rgba(212,175,55,0.4)" }}>
+          <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 uppercase tracking-wide">
             {isMe ? "Your turn" : "Active turn"}
           </span>
         )}
@@ -479,13 +479,13 @@ function TurnCard({
 
   if (useCompact) {
     return (
-      <div className="card-surface p-3 flex flex-col gap-2 text-sm" style={bankerStyle}>
+      <div className={clsx("card-surface p-3 flex flex-col gap-2 text-sm border border-slate-200")} style={bankerStyle}>
         {header}
-        <div className="flex items-center gap-3 text-xs text-slate-400">
-          <div className="w-12 h-16 rounded-lg overflow-hidden" style={{ opacity: 0.7 }}>
-            <img src="/blank.png" alt="Banker card back" className="w-full h-full object-contain" />
+        <div className="flex items-center gap-3 text-xs text-slate-500">
+          <div className="w-12 h-16 rounded-lg border border-transparent bg-transparent shadow-none overflow-hidden">
+            <img src="/blank.png" alt="Banker card back" className="w-full h-full object-contain opacity-80" />
           </div>
-          <span>Banker reveals after all players finish; expands when their turn comes.</span>
+          <span>Banker reveals after every player finishes; the area expands once it is their turn.</span>
         </div>
       </div>
     );
@@ -493,14 +493,14 @@ function TurnCard({
 
   return (
     <div
-      className={clsx("card-surface p-4 flex flex-col gap-2 relative")}
-      style={{
-        ...bankerStyle,
-        ...(isCurrentTurn ? { borderColor: "rgba(212,175,55,0.7)", boxShadow: "0 0 18px rgba(212,175,55,0.28), inset 0 0 12px rgba(212,175,55,0.04)" } : {}),
-      }}
+      className={clsx(
+        "card-surface p-4 flex flex-col gap-2 relative",
+        isCurrentTurn && "ring-2 ring-blue-300 border-blue-300"
+      )}
+      style={bankerStyle}
     >
       {reactionEmoji && (
-        <div className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-lg" style={{ background: "rgba(5,14,31,0.7)", border: "1px solid rgba(255,255,255,0.15)" }}>
+        <div className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm text-lg">
           <span aria-label="Reaction">{reactionEmoji}</span>
         </div>
       )}
@@ -508,13 +508,15 @@ function TurnCard({
       {showTurnTimer && (
         <div className="flex items-center gap-2 text-xs">
           <span
-            className={clsx("inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold transition-colors duration-200", timerColors.pill)}
-            style={timerColors.pillStyle}
+            className={clsx(
+              "inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold transition-colors duration-200",
+              timerColors.pill
+            )}
           >
             <span className={clsx("h-2 w-2 rounded-full", timerColors.dot)} aria-hidden="true"></span>
             <span>{timerSecondsLeft ?? 0}s left</span>
           </span>
-          <div className="flex-1 h-1.5 min-w-[96px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+          <div className="flex-1 h-1.5 min-w-[96px] rounded-full bg-slate-200 overflow-hidden">
             <div
               className={clsx("h-full transition-[width] duration-100 ease-linear", timerColors.bar)}
               style={{ width: `${turnTimer?.percent ?? 0}%` }}
@@ -565,21 +567,20 @@ function TurnCard({
           return <CardView key={idx} card={c} hidden={hide} size={cardSize} />;
         })}
       </div>
-      <div className={clsx("text-xs", totalInfo.wrapperClassName ?? "text-slate-400")}>
+      <div className={clsx("text-xs", totalInfo.wrapperClassName ?? "text-slate-600")}> 
         {totalInfo.prefix}
-        <span className={clsx("ml-1", totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-400")}>
+        <span className={clsx("ml-1", totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-600")}> 
           {totalInfo.value}
         </span>
       </div>
       {turn.player.type !== "admin" && (
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-slate-600">
           Bet: <span className={clsx(betInfo.className)}>{betInfo.label}</span>
         </div>
       )}
       {canAdminSkip && (
         <button
-          className="self-start inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition-all"
-          style={{ border: "1px solid rgba(239,68,68,0.3)", color: "#fca5a5", background: "rgba(127,29,29,0.2)" }}
+          className="self-start inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-rose-700 shadow-sm hover:border-rose-300 hover:text-rose-800"
           onClick={() => onSkipOther?.(turn.player.id)}
         >
           Skip player
@@ -593,75 +594,68 @@ function TurnCard({
             min={0}
             step={1}
             onChange={(e) => onBetChange?.(e.target.value)}
-            className="input-dark w-24"
+            className="border rounded px-3 py-2 w-24"
             onFocus={(event) => event.target.select()}
           />
-          {betError && <span className="text-xs whitespace-nowrap" style={{ color: "#fca5a5" }}>{betError}</span>}
+          {betError && <span className="text-xs text-rose-600 whitespace-nowrap">{betError}</span>}
           <label
-            className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold cursor-pointer transition-all"
-            style={{ border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", background: "rgba(212,175,55,0.08)" }}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-300"
             title="BANK! bets the remaining available bank for your seat; the banker must resolve this wager immediately for you and any already-standing players."
           >
             <input
               type="checkbox"
-              className="h-4 w-4 rounded"
+              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
               checked={bankSelected}
               disabled={bankDisabled}
               onChange={(event) => onToggleBank?.(event.target.checked)}
             />
             <span>BANK!</span>
             {typeof bankAvailable === "number" && (
-              <span className="text-[11px] font-normal text-slate-400">Bank ${bankAvailable.toLocaleString()}</span>
+              <span className="text-[11px] font-normal text-slate-500">Bank ${bankAvailable.toLocaleString()}</span>
             )}
             {typeof bankAddAmount === "number" && bankAddAmount > 0 && (
-              <span className="text-[11px] font-normal text-slate-400">Adds ${bankAddAmount.toLocaleString()}</span>
+              <span className="text-[11px] font-normal text-slate-500">Adds ${bankAddAmount.toLocaleString()}</span>
             )}
           </label>
           {bankDisabled && bankDisabledReason && (
-            <span className="text-[11px]" style={{ color: "#fca5a5" }}>{bankDisabledReason}</span>
+            <span className="text-[11px] text-rose-600">{bankDisabledReason}</span>
           )}
-          {showEleveroonToggle && (
-            <label
-              className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold cursor-pointer transition-all"
-              style={{ border: "1px solid rgba(59,130,246,0.25)", color: "#93c5fd", background: "rgba(59,130,246,0.08)" }}
-              title={
-                isBanker
-                  ? "Eleveroon: if your total is 11 and you draw an 11, toggle this on to reject the card and draw again."
-                  : "Eleveroon ignores busting elevens when your total was 11."
-              }
-            >
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded"
-                checked={Boolean(eleveroonSelected)}
-                disabled={false}
-                onChange={(event) => onToggleEleveroon?.(event.target.checked)}
-              />
-              <span>Eleveroon</span>
-              <span className="text-[11px] font-normal text-slate-400">
-                If off, an 11 at 11 will bust you.
-              </span>
-            </label>
-          )}
+            {showEleveroonToggle && (
+              <label
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
+                title={
+                  isBanker
+                    ? "Eleveroon automatically ignores any busting elevens in a row when the banker was sitting on 11."
+                    : "Eleveroon ignores busting elevens in a row when your total was 11 (only after you toggle it on)."
+                }
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  checked={Boolean(eleveroonSelected)}
+                  disabled={false}
+                  onChange={(event) => onToggleEleveroon?.(event.target.checked)}
+                />
+                <span>Eleveroon</span>
+                {(
+                  <span className="text-[11px] font-normal text-slate-500">
+                    If off, an 11 at 11 will bust you.
+                  </span>
+                )}
+              </label>
+            )}
           <button
-            className="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition-all"
-            style={{ background: "linear-gradient(135deg, #d4af37 0%, #f9d05e 50%, #d4af37 100%)", color: "#0a1628", border: "1px solid rgba(212,175,55,0.5)" }}
+            className="bg-accent text-white px-3 py-2 rounded"
             title="Place or raise your wager; each bet also deals you one more card."
             onClick={onBet}
           >
             Bet
           </button>
-          <button
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all"
-            style={{ background: "linear-gradient(135deg, #1a4fcc 0%, #2563eb 100%)", border: "1px solid rgba(59,130,246,0.4)" }}
-            title={drawButtonTitle}
-            onClick={onHit}
-          >
+          <button className="bg-blue-600 text-white px-3 py-2 rounded" title={drawButtonTitle} onClick={onHit}>
             {drawButtonLabel}
           </button>
           <button
-            className="rounded-lg px-4 py-2 text-sm font-semibold transition-all"
-            style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)", color: "#e2e8f0" }}
+            className="bg-ink text-white px-3 py-2 rounded"
             title="End your turn and keep the hand and wager you have."
             onClick={onStand}
           >
@@ -670,58 +664,25 @@ function TurnCard({
         </div>
       )}
 
-      {waitingForTurn && <div className="text-xs text-slate-400 mt-2">Waiting for your turn...</div>}
+      {waitingForTurn && <div className="text-xs text-slate-500 mt-2">Waiting for your turn...</div>}
 
       {showBankerResolutionWait && (
-        <div className="mt-2 text-xs font-semibold animate-pulse" style={{ color: "#d4af37" }}>
+        <div className="mt-2 text-xs font-semibold text-amber-700 animate-pulse">
           Waiting for Banker to Play You Out
         </div>
       )}
 
       {showBankerControls && (
         <div className="flex flex-wrap gap-2 items-center mt-2">
-          <button
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all"
-            style={{ background: "linear-gradient(135deg, #1a4fcc 0%, #2563eb 100%)", border: "1px solid rgba(59,130,246,0.4)" }}
-            title="Draw one more card."
-            onClick={onHit}
-          >
+          <button className="bg-blue-600 text-white px-3 py-2 rounded" title="Draw one more card." onClick={onHit}>
             Hit
           </button>
-          <button
-            className="rounded-lg px-4 py-2 text-sm font-semibold transition-all"
-            style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.2)", color: "#e2e8f0" }}
-            title="End your turn."
-            onClick={onStand}
-          >
+          <button className="bg-ink text-white px-3 py-2 rounded" title="End your turn." onClick={onStand}>
             Stand
           </button>
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
-            style={{ border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", background: "rgba(212,175,55,0.08)" }}
-            title="Eleveroon is always active for the Banker — an 11 drawn on a total of 11 is automatically skipped."
-          >
-            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-            </svg>
-            Eleveroon: Auto
+          <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+            ✓ Eleveroon: Auto
           </span>
-          {showEleveroonToggle && (
-            <label
-              className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold cursor-pointer transition-all"
-              style={{ border: "1px solid rgba(59,130,246,0.25)", color: "#93c5fd", background: "rgba(59,130,246,0.08)" }}
-              title="Eleveroon: if your total is 11 and you draw an 11, toggle this on to reject the card and draw again."
-            >
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded"
-                checked={Boolean(eleveroonSelected)}
-                onChange={(event) => onToggleEleveroon?.(event.target.checked)}
-              />
-              <span>Eleveroon</span>
-              <span className="text-[11px] font-normal text-slate-400">If off, an 11 at 11 will bust you.</span>
-            </label>
-          )}
         </div>
       )}
     </div>
@@ -1326,8 +1287,7 @@ export default function App() {
     <>
       {pendingKick && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(30,40,60,0.55)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
           role="dialog"
           aria-modal="true"
           onClick={cancelKick}
@@ -1336,21 +1296,19 @@ export default function App() {
             className="relative w-full max-w-md card-surface p-5 flex flex-col gap-4"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="text-lg font-semibold text-slate-100">Remove player?</div>
-            <p className="text-sm text-slate-400">Are you sure you want to remove {pendingKick.label} from the table?</p>
+            <div className="text-lg font-semibold text-ink">Remove player?</div>
+            <p className="text-sm text-slate-600">Are you sure you want to remove {pendingKick.label} from the table?</p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded-lg px-3 py-2 text-sm font-semibold transition-all"
-                style={{ border: "1px solid rgba(255,255,255,0.15)", color: "#94a3b8" }}
+                className="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
                 onClick={cancelKick}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all"
-                style={{ background: "rgba(220,38,38,0.8)", border: "1px solid rgba(239,68,68,0.4)" }}
+                className="rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
                 onClick={confirmKick}
               >
                 Remove
@@ -1426,7 +1384,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:opacity-80"
+                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
                 onClick={dismissBankerSummary}
               >
                 Done
@@ -1514,7 +1472,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <div className="max-w-6xl mx-auto px-4 py-6 flex flex-col gap-5">
+      <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col gap-6">
         {message && !formErrors.join && (
         <div className="card-surface border border-red-200 bg-red-50 text-red-700 px-4 py-2 text-sm">
           {message}
@@ -1566,32 +1524,29 @@ export default function App() {
               src="/11.png"
               alt=""
               aria-hidden="true"
-              className="absolute h-9 w-auto -rotate-[24deg] -translate-x-[2px] drop-shadow-md z-10"
+              className="absolute h-9 w-auto -rotate-[24deg] -translate-x-[2px] drop-shadow-sm z-10"
               loading="lazy"
             />
             <img
               src="/12.png"
               alt=""
               aria-hidden="true"
-              className="absolute h-9 w-auto rotate-[23deg] translate-x-[16px] drop-shadow-md"
+              className="absolute h-9 w-auto rotate-[23deg] translate-x-[16px] drop-shadow-sm"
               loading="lazy"
             />
           </span>
-          <span style={{ background: "linear-gradient(135deg, #d4af37 0%, #f9d05e 40%, #d4af37 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-            Kvitlach
-          </span>
+          <span>Kvitlach</span>
         </h1>
-        <span className="self-end -translate-y-[4px] transform text-[10px] font-serif uppercase tracking-[0.2em] leading-tight" style={{ color: "#d4af37", opacity: 0.85 }}>
+        <span className="self-end -translate-y-[4px] transform text-[10px] font-serif uppercase tracking-[0.2em] text-amber-700 leading-tight">
           Ah Heimishe Chanukah Shpil
         </span>
-        <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide shadow-sm" style={{ background: "rgba(212,175,55,0.12)", border: "1px solid rgba(212,175,55,0.4)", color: "#d4af37" }}>
+        <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 shadow-sm">
           Beta
         </span>
         {room && isAdmin && (
           <button
             type="button"
-            className="text-xs font-semibold underline"
-            style={{ color: "#d4af37" }}
+            className="text-xs font-semibold text-accent underline"
             onClick={() => setShowLobby((v) => !v)}
           >
             {showLobby ? "Hide lobby" : "Show lobby"}
@@ -1602,12 +1557,12 @@ export default function App() {
           <section className="card-surface p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
-                <div className="font-semibold text-base" style={{ color: "#d4af37" }}>Welcome to Kvitlach</div>
-                <div className="text-xs text-slate-400">
+                <div className="font-semibold text-base">Welcome to Kvitlach</div>
+                <div className="text-xs text-slate-500">
                   Join an existing table with the room code your Banker shared, or host one if you are running the game.
                 </div>
                 {!room && (
-                  <div className="space-y-1 text-xs text-slate-400">
+                  <div className="space-y-1 text-xs text-slate-500">
                     <p>Banker manages the bankroll and payouts; everyone else plays against them.</p>
                     <p>Most visitors only need the Join form—create a table only if you are the Banker.</p>
                   </div>
@@ -1616,28 +1571,26 @@ export default function App() {
               <div className="flex flex-col items-end gap-2">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-all duration-200"
-                  style={{ background: "rgba(212,175,55,0.12)", border: "1px solid rgba(212,175,55,0.4)", color: "#d4af37" }}
+                  className="group inline-flex items-center gap-2 rounded-full border border-accent text-accent px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-accent hover:text-white"
                   onClick={() => {
                     setShowWhatIs(false);
                     setShowHowTo(true);
                   }}
                 >
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: "rgba(212,175,55,0.3)", color: "#d4af37" }}>
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold transition-colors duration-200 group-hover:bg-white group-hover:text-accent">
                     ?
                   </span>
                   <span>How to play</span>
                 </button>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-all duration-200"
-                  style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.35)", color: "#93c5fd" }}
+                  className="group inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-600 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-blue-500 hover:text-white"
                   onClick={() => {
                     setShowHowTo(false);
                     setShowWhatIs(true);
                   }}
                 >
-                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded p-[1px]" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(59,130,246,0.3)" }}>
+                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-blue-500 p-[1px]">
                     <img
                       src="/blank.png"
                       alt=""
@@ -1695,12 +1648,12 @@ export default function App() {
         {(!room || showLobby) && (
           <section className="grid md:grid-cols-2 gap-4 items-start">
           <form className="card-surface p-4 flex flex-col gap-3" onSubmit={onJoin}>
-            <header className="flex flex-col gap-1 pb-3" style={{ borderBottom: "1px solid rgba(212,175,55,0.2)" }}>
-              <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: "#e2e8f0" }}>
+            <header className="flex flex-col gap-1 pb-3 border-b border-slate-200">
+              <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
                 Join Game
-                <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em]" style={{ color: "#93c5fd" }}>
+                <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
                   <svg
-                    className="h-3 w-3"
+                    className="h-3 w-3 text-blue-500"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                     aria-hidden="true"
@@ -1710,55 +1663,57 @@ export default function App() {
                   (Player)
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">Enter the code you received from the Banker to take a seat.</p>
+              <p className="text-xs text-slate-500">Enter the code you received from the Banker to take a seat.</p>
             </header>
-            <label className="text-sm text-slate-300">Game ID
-                <input required className="input-dark mt-1" value={roomIdInput} onChange={(e) => setRoomId(e.target.value)} />
+            <label className="text-sm">Game ID
+                <input required className="mt-1 w-full rounded border px-3 py-2" value={roomIdInput} onChange={(e) => setRoomId(e.target.value)} />
             </label>
-            <label className="text-sm text-slate-300">First name (required)
-                <input required className="input-dark mt-1" value={joinFirstName} onChange={(e) => setJoinFirst(e.target.value)} />
+              <label className="text-sm">First name (required)
+                <input required className="mt-1 w-full rounded border px-3 py-2" value={joinFirstName} onChange={(e) => setJoinFirst(e.target.value)} />
             </label>
-            <label className="text-sm text-slate-300">Last name (optional)
-                <input className="input-dark mt-1" value={joinLastName} onChange={(e) => setJoinLast(e.target.value)} />
+              <label className="text-sm">Last name (optional)
+                <input className="mt-1 w-full rounded border px-3 py-2" value={joinLastName} onChange={(e) => setJoinLast(e.target.value)} />
             </label>
-            <label className="text-sm text-slate-300">Password (if required)
+            <label className="text-sm">Password (if required)
               <input
-                className={clsx("input-dark mt-1", formErrors.join ? "!border-red-500" : "")}
+                className={clsx(
+                  "mt-1 w-full rounded border px-3 py-2",
+                  formErrors.join ? "border-red-300 focus:border-red-400 focus:ring-red-200" : ""
+                )}
                 value={joinPassword}
                 onChange={(e) => setJoinPassword(e.target.value)}
               />
             </label>
             {formErrors.join && (
-              <div className="text-xs rounded px-3 py-2" style={{ color: "#fca5a5", background: "rgba(127,29,29,0.4)", border: "1px solid rgba(239,68,68,0.3)" }}>
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
                 {formErrors.join}
               </div>
             )}
               <button
                 type="submit"
-                className="rounded-lg px-4 py-2.5 font-semibold shadow-md transition-all duration-200"
-                style={{ background: "linear-gradient(135deg, #1a4fcc 0%, #2563eb 100%)", color: "#fff", border: "1px solid rgba(59,130,246,0.4)" }}
+                className="bg-accent2 text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent2 hover:bg-accent2/80"
               >
-                Join Game
+                Join
               </button>
           </form>
           <form
             className={clsx("card-surface p-4 flex flex-col", bankerFormExpanded ? "gap-3" : "gap-2")}
             onSubmit={onCreate}
           >
-          <header className={clsx("transition-all", bankerFormExpanded ? "pb-3" : "pb-0")} style={bankerFormExpanded ? { borderBottom: "1px solid rgba(212,175,55,0.2)" } : {}}>
+          <header className={clsx("transition-all", bankerFormExpanded ? "pb-3 border-b border-slate-200" : "pb-0")}
+          >
             <button
               type="button"
-              className="w-full rounded-lg px-4 py-3 text-sm font-semibold transition-all flex items-center justify-between gap-3"
-              style={bankerFormExpanded
-                ? { background: "rgba(212,175,55,0.15)", border: "1px solid rgba(212,175,55,0.4)", color: "#d4af37" }
-                : { background: "rgba(212,175,55,0.06)", border: "1px solid rgba(212,175,55,0.2)", color: "#94a3b8" }
-              }
+              className={clsx(
+                "w-full rounded-lg border px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between gap-3",
+                bankerFormExpanded ? "bg-ink text-white border-ink" : "border-slate-300 text-slate-700 hover:bg-slate-100"
+              )}
               onClick={() => setBankerFormExpanded((v) => !v)}
               aria-expanded={bankerFormExpanded}
               aria-controls="banker-create-fields"
             >
               <span className="inline-flex items-center gap-2">
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style={{ color: "#d4af37" }}>
+                <svg className="h-4 w-4 text-amber-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
                 </svg>
                 <span>Banker: Host the table, set wagers, etc.</span>
@@ -1774,40 +1729,44 @@ export default function App() {
             </button>
           </header>
           {formErrors.create && (
-            <div className="text-xs rounded px-3 py-2" style={{ color: "#fca5a5", background: "rgba(127,29,29,0.4)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded px-3 py-2">
               {formErrors.create}
             </div>
           )}
           {bankerFormExpanded && (
             <div className="flex flex-col gap-3" id="banker-create-fields">
-              <label className="text-sm text-slate-300">Game Name
-                <input className="input-dark mt-1" value={roomName} onChange={(e) => setRoomName(e.target.value)} />
-              </label>
-              <label className="text-sm text-slate-300">Custom Game ID (optional)
+              <label className="text-sm">Game Name
                 <input
-                  className="input-dark mt-1 uppercase"
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
+                />
+              </label>
+              <label className="text-sm">Custom Game ID (optional)
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2 uppercase"
                   value={customRoomId}
                   onChange={(e) => setCustomRoomId(e.target.value.toUpperCase())}
                   placeholder="e.g. CHOLENT-613"
                   maxLength={20}
                 />
-                <span className="text-xs text-slate-400">Use 4–20 characters with letters, numbers, or hyphen.</span>
+                <span className="text-xs text-slate-500">Use 4-20 characters with letters, numbers, or hyphen.</span>
               </label>
-              <label className="text-sm text-slate-300">First name (required)
-                <input required className="input-dark mt-1" value={bankerFirstName} onChange={(e) => setBankerFirst(e.target.value)} />
+              <label className="text-sm">First name (required)
+                <input required className="mt-1 w-full rounded border px-3 py-2" value={bankerFirstName} onChange={(e) => setBankerFirst(e.target.value)} />
               </label>
-              <label className="text-sm text-slate-300">Last name (optional)
-                <input className="input-dark mt-1" value={bankerLastName} onChange={(e) => setBankerLast(e.target.value)} />
+              <label className="text-sm">Last name (optional)
+                <input className="mt-1 w-full rounded border px-3 py-2" value={bankerLastName} onChange={(e) => setBankerLast(e.target.value)} />
               </label>
-              <label className="text-sm text-slate-300">Password (optional for joining)
-                <input className="input-dark mt-1" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
+              <label className="text-sm">Password (optional for joining)
+                <input className="mt-1 w-full rounded border px-3 py-2" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
               </label>
-              <label className="text-sm text-slate-300">Buy-in per player
-                <input className="input-dark mt-1" type="number" min={1} value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} />
+              <label className="text-sm">Buy-in per player
+                <input className="mt-1 w-full rounded border px-3 py-2" type="number" min={1} value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} />
               </label>
-              <label className="text-sm text-slate-300">Banker starting bankroll
+              <label className="text-sm">Banker starting bankroll
                 <input
-                  className="input-dark mt-1"
+                  className="mt-1 w-full rounded border px-3 py-2"
                   type="number"
                   min={1}
                   value={bankerBankroll}
@@ -1824,13 +1783,12 @@ export default function App() {
                   }}
                 />
               </label>
-              <div className="flex items-center justify-between text-xs text-slate-400 -mt-1">
+              <div className="flex items-center justify-between text-xs text-slate-500 -mt-1">
                 <span>Defaults to the player buy-in amount.</span>
                 {bankerBankrollManuallySet && (
                   <button
                     type="button"
-                    className="font-semibold"
-                    style={{ color: "#d4af37" }}
+                    className="text-accent font-semibold"
                     onClick={() => {
                       setBankerBankroll(buyIn);
                       setBankerBankrollManuallySet(false);
@@ -1840,17 +1798,16 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <label className="text-sm text-slate-300">Decks to use (optional)
-                <input className="input-dark mt-1" type="number" min={1} max={16} placeholder="auto" value={preferredDecks} onChange={(e) => setPreferredDecks(e.target.value)} />
-                <span className="text-xs text-slate-400">Leave blank to auto-size by player count.</span>
+              <label className="text-sm">Decks to use (optional)
+                <input className="mt-1 w-full rounded border px-3 py-2" type="number" min={1} max={16} placeholder="auto" value={preferredDecks} onChange={(e) => setPreferredDecks(e.target.value)} />
+                <span className="text-xs text-slate-500">Set this before starting the first round; leave blank to auto-size by players (supports large tables).</span>
               </label>
-              <button
-                type="submit"
-                className="rounded-lg px-4 py-2.5 font-semibold shadow-md transition-all duration-200"
-                style={{ background: "linear-gradient(135deg, #d4af37 0%, #f9d05e 50%, #d4af37 100%)", color: "#0a1628", border: "1px solid rgba(212,175,55,0.6)" }}
-              >
-                Create Table
-              </button>
+                <button
+                  type="submit"
+                  className="bg-accent text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent hover:bg-accent/90"
+                >
+                  Create
+                </button>
             </div>
           )}
         </form>
@@ -1860,10 +1817,10 @@ export default function App() {
 
         {room && (
           (!round || round.state === "terminate") && (
-          <div className="mx-auto max-w-md p-3 text-sm flex items-center justify-center gap-2 text-center waiting-flash rounded-full" style={{ background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37" }}>
-            <span className="h-2 w-2 rounded-full" style={{ background: "#d4af37" }}></span>
-            <span className="font-semibold uppercase text-xs tracking-widest">Waiting for Banker to start the round</span>
-            <span className="h-2 w-2 rounded-full" style={{ background: "#d4af37" }}></span>
+          <div className="card-surface mx-auto max-w-md p-3 text-sm text-amber-800 flex items-center justify-center gap-2 text-center waiting-flash">
+            <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+            <span className="font-semibold uppercase">Waiting for Banker to start the round</span>
+            <span className="h-2 w-2 rounded-full bg-amber-500"></span>
           </div>
         )
       )}
@@ -2038,8 +1995,12 @@ export default function App() {
                   <span className="text-xs text-slate-500">leave blank to auto-size</span>
                 </label>
                 <button
-                  className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold tracking-wide shadow-md transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ background: "linear-gradient(135deg, #d4af37 0%, #f9d05e 50%, #d4af37 100%)", color: "#0a1628", border: "1px solid rgba(212,175,55,0.6)" }}
+                  className={clsx(
+                    "group inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                    roundInProgress
+                      ? "border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed"
+                      : "border-ink text-ink hover:bg-ink hover:text-white focus-visible:outline-ink"
+                  )}
                   disabled={roundInProgress}
                   aria-disabled={roundInProgress}
                   onClick={() => {
@@ -2050,7 +2011,14 @@ export default function App() {
                     store.startRound(deckToUse);
                   }}
                 >
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(180,140,30,0.25)" }}>
+                  <span
+                    className={clsx(
+                      "inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors duration-200",
+                      roundInProgress
+                        ? "bg-slate-300 text-slate-500"
+                        : "bg-ink text-white group-hover:bg-white group-hover:text-ink"
+                    )}
+                  >
                     <svg
                       className="h-3 w-3"
                       viewBox="0 0 20 20"
@@ -2419,37 +2387,36 @@ export default function App() {
 
       {round && (
         <section className="card-surface p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="font-semibold text-slate-200">
-              Round {round?.roundNumber ?? 1}
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">
+                Round {round?.roundNumber ?? 1}
             </div>
-            <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
-              <span className="uppercase tracking-wide" style={{ color: round.state === "terminate" ? "#10b981" : round.state === "final" ? "#d4af37" : "#93c5fd" }}>
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+              <span className="uppercase tracking-wide">
                 {round.state === "terminate" ? "Complete" : round.state === "final" ? "Final" : "Playing"}
               </span>
               <span>
-                Stakes: ${totalStakes.toLocaleString()}
+                Total stakes: ${totalStakes.toLocaleString()}
                 {typeof bankerWalletTotal === "number"
-                  ? ` / $${bankerWalletTotal.toLocaleString()}`
+                  ? ` of $${bankerWalletTotal.toLocaleString()} available`
                   : ""}
               </span>
-              <span>Decks: {round.deckCount ?? 1}</span>
-              <span>Cards left: {cardsRemaining}</span>
+              <span>Decks in play: {round.deckCount ?? 1}</span>
+              <span>Cards remaining: {cardsRemaining}</span>
             </div>
           </div>
 
-          <div className="card-surface p-3" style={{ background: "rgba(255,251,240,0.95)", border: "1px solid rgba(212,175,55,0.35)" }}>
+          <div className="card-surface p-3 border border-slate-200 bg-slate-50">
             <div className="flex items-center justify-between mb-2 text-sm">
-              <span className="font-semibold text-slate-300">Table Overview</span>
+              <span className="font-semibold">Table Overview</span>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-2 text-xs mt-1">
+            <div className="grid gap-3 md:grid-cols-2 text-xs text-slate-700 mt-1">
               {overviewTurns.map((t) => {
                 const isActive = round?.state !== "terminate" && t.state === "pending" && activeTurnId === t.player.id;
                 const isNext = round?.state !== "terminate" && t.state === "pending" && nextTurnId === t.player.id && !isActive;
-                const isBanker = t.player.type === "admin";
                 const statusInfo = statusDisplay(t);
-                const shouldForceReveal = isBanker && round?.state === "terminate";
+                const shouldForceReveal = t.player.type === "admin" && round?.state === "terminate";
                 const totalInfo = totalDisplay(t, playerId, round?.state, { forceBankerReveal: shouldForceReveal });
                 const betInfo = betDisplay(t);
                 const showStatusLabel = !isActive && Boolean(statusInfo.label);
@@ -2457,18 +2424,28 @@ export default function App() {
                 return (
                   <div
                     key={t.player.id}
-                    className={clsx("player-card", isActive && "player-card-active", isNext && !isActive && "player-card-next", isBanker && "player-card-banker")}
+                    className={clsx(
+                      "flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 shadow-sm",
+                      isActive && "border-blue-400 bg-gradient-to-r from-blue-50 via-blue-100 to-blue-50 shadow-md",
+                      isNext && !isActive && "border-amber-200 bg-amber-50/60",
+                      t.player.type === "admin" && "border-amber-300 bg-amber-50/90"
+                    )}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-200">{[t.player.firstName, t.player.lastName].filter(Boolean).join(" ")}</span>
-                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded" style={{ background: "rgba(212,175,55,0.1)", color: isBanker ? "#d4af37" : "#94a3b8", border: `1px solid ${isBanker ? "rgba(212,175,55,0.3)" : "rgba(255,255,255,0.1)"}` }}>
-                          {isBanker && (
-                            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style={{ color: "#d4af37" }}>
+                        <span className="font-semibold text-slate-800">{[t.player.firstName, t.player.lastName].filter(Boolean).join(" ")}</span>
+                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                          {t.player.type === "admin" && (
+                            <svg
+                              className="h-3 w-3 text-amber-600"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
                               <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
                             </svg>
                           )}
-                          {isBanker ? "Banker" : "Player"}
+                          {t.player.type !== "admin" && "Player"}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -2476,30 +2453,37 @@ export default function App() {
                           <span className={clsx("text-[11px] uppercase tracking-wide", statusInfo.className)}>{statusInfo.label}</span>
                         )}
                         {isActive && (
-                          <span className="text-[10px] font-semibold rounded px-2 py-0.5 uppercase tracking-wide" style={{ color: "#d4af37", background: "rgba(212,175,55,0.15)", border: "1px solid rgba(212,175,55,0.35)" }}>Active</span>
+                          <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 uppercase tracking-wide">Active</span>
                         )}
                         {isNext && (
-                          <span className="text-[10px] font-semibold rounded px-2 py-0.5 uppercase tracking-wide" style={{ color: "#93c5fd", background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)" }}>Next</span>
+                          <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-2 py-0.5 uppercase tracking-wide">Next</span>
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-3 text-slate-400">
+                    <div className="flex flex-wrap gap-3 text-slate-600">
                       {typeof walletAmount === "number" && (
-                        <span className="inline-flex items-center gap-1">
-                          <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <span className="inline-flex items-center gap-1 text-slate-700">
+                          <svg
+                            className="h-4 w-4 text-emerald-500"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            aria-hidden="true"
+                          >
                             <path d="M2.25 7.5A2.25 2.25 0 014.5 5.25h15a.75.75 0 010 1.5H4.5a.75.75 0 00-.75.75v7.5c0 .414.336.75.75.75h15a.75.75 0 010 1.5h-15A2.25 2.25 0 012.25 15V7.5z" />
                             <path d="M18.75 9A2.25 2.25 0 0016.5 11.25v1.5A2.25 2.25 0 0018.75 15H21V9h-2.25z" />
                             <path d="M20.25 13.5a.75.75 0 100-1.5.75.75 0 000 1.5z" />
                           </svg>
-                          <span className="text-sm font-semibold text-slate-200">${walletAmount.toLocaleString()}</span>
+                          <span className="text-sm font-semibold">${walletAmount.toLocaleString()}</span>
                         </span>
                       )}
                       {t.player.type !== "admin" && (
-                        <span>Bet: <span className={betInfo.className}>{betInfo.label}</span></span>
+                        <span>
+                          Bet: <span className={betInfo.className}>{betInfo.label}</span>
+                        </span>
                       )}
                       <span>Cards: {t.cards.length}</span>
-                      <span className={clsx(totalInfo.wrapperClassName ?? "text-slate-400")}>
-                        {totalInfo.prefix} <span className={clsx(totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-400")}>{totalInfo.value}</span>
+                      <span className={clsx(totalInfo.wrapperClassName ?? "text-slate-500")}> 
+                        {totalInfo.prefix} <span className={clsx(totalInfo.valueClassName ?? totalInfo.wrapperClassName ?? "text-slate-500")}>{totalInfo.value}</span>
                       </span>
                     </div>
                   </div>
@@ -2548,9 +2532,9 @@ export default function App() {
             <div className="grid gap-3">
                 <div>
                   <div className="flex items-center gap-3 my-2">
-                    <div className="flex-1 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(212,175,55,0.4), transparent)" }}></div>
-                    <span className="inline-flex items-center justify-center px-4 py-1 text-[11px] uppercase tracking-[0.3em] rounded-full" style={{ color: "#d4af37", background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.35)" }}>Banker</span>
-                    <div className="flex-1 h-px" style={{ background: "linear-gradient(to right, rgba(212,175,55,0.4), transparent)" }}></div>
+                    <div className="flex-1 h-px bg-slate-200"></div>
+                    <span className="inline-flex items-center justify-center px-4 py-1 text-[11px] uppercase tracking-[0.3em] text-ink bg-slate-100 rounded-full border border-slate-300 shadow-sm">Banker</span>
+                    <div className="flex-1 h-px bg-slate-200"></div>
                     {isAdmin && (
                       <div className="flex items-center gap-2">
                         <button
@@ -2679,9 +2663,9 @@ export default function App() {
                 </div>
               )}
                 <div className="flex items-center gap-3 my-2">
-                  <div className="flex-1 h-px" style={{ background: "linear-gradient(to right, transparent, rgba(59,130,246,0.3), transparent)" }}></div>
-                  <span className="inline-flex items-center justify-center px-4 py-1 text-[11px] uppercase tracking-[0.3em] rounded-full" style={{ color: "#93c5fd", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)" }}>Other Players</span>
-                  <div className="flex-1 h-px" style={{ background: "linear-gradient(to right, rgba(59,130,246,0.3), transparent)" }}></div>
+                  <div className="flex-1 h-px bg-slate-200"></div>
+                  <span className="inline-flex items-center justify-center px-4 py-1 text-[11px] uppercase tracking-[0.3em] text-ink bg-slate-100 rounded-full border border-slate-300 shadow-sm">Other Players</span>
+                  <div className="flex-1 h-px bg-slate-200"></div>
                 </div>
               <div className="grid md:grid-cols-2 gap-3">
                 {otherPlayerTurns.map((t) => (
@@ -2712,18 +2696,20 @@ export default function App() {
             </div>
           )}
           {round.state === "terminate" && !isAdmin && (
-            <div className="mx-auto max-w-md p-3 text-xs flex items-center justify-center gap-2 text-center waiting-flash mt-3 rounded-full" style={{ background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37" }}>
-              <span className="h-2 w-2 rounded-full" style={{ background: "#d4af37" }}></span>
-              <span className="font-semibold uppercase tracking-widest">Waiting for Banker to start the round</span>
-              <span className="h-2 w-2 rounded-full" style={{ background: "#d4af37" }}></span>
+            <div className="card-surface mx-auto max-w-md p-3 text-xs text-amber-800 flex items-center justify-center gap-2 text-center waiting-flash mt-3">
+              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+              <span className="font-semibold uppercase">Waiting for Banker to start the round</span>
+              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
             </div>
           )}
           {round.state === "terminate" && isAdmin && (
-            <div className="mt-3 rounded-lg px-3 py-2 flex items-center justify-between gap-3 flex-wrap" style={{ background: "rgba(212,175,55,0.08)", border: "1px solid rgba(212,175,55,0.25)" }}>
-              <span className="text-xs font-semibold" style={{ color: "#d4af37" }}>Round complete. Start a new round when ready.</span>
+            <div className="mt-3 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
+              <span>Round complete. Start a new round when ready.</span>
               <button
-                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold tracking-wide shadow-md transition-all duration-200"
-                style={{ background: "linear-gradient(135deg, #d4af37 0%, #f9d05e 50%, #d4af37 100%)", color: "#0a1628", border: "1px solid rgba(212,175,55,0.6)" }}
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                  "border-ink text-ink hover:bg-ink hover:text-white focus-visible:outline-ink"
+                )}
                 onClick={() => {
                   const parsedOverride = deckCount === "" ? undefined : Number(deckCount);
                   const parsedPreferred = preferredDecks === "" ? undefined : Number(preferredDecks);
@@ -2731,8 +2717,13 @@ export default function App() {
                   store.startRound(deckToUse);
                 }}
               >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: "rgba(180,140,30,0.25)" }}>
-                  <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white">
+                  <svg
+                    className="h-3 w-3"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
                     <path d="M6 4l10 6-10 6V4z" />
                   </svg>
                 </span>
@@ -2825,25 +2816,24 @@ export default function App() {
 
       {showHowTo && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(30,40,60,0.6)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
           onClick={() => setShowHowTo(false)}
         >
           <div
-            className="relative w-full max-w-xl max-h-[90vh] card-surface p-6 overflow-y-auto"
+            className="relative w-full max-w-xl max-h-[90vh] card-surface bg-amber-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
           >
             <button
               type="button"
-              className="absolute top-3 right-3 text-xs font-semibold underline text-slate-400"
+              className="absolute top-3 right-3 text-xs font-semibold text-slate-500 underline"
               onClick={() => setShowHowTo(false)}
             >
               Close
             </button>
-            <div className="space-y-3 text-sm text-slate-300">
-              <h2 className="text-lg font-semibold" style={{ color: "#d4af37" }}>How To Play Kvitlach</h2>
+            <div className="space-y-3 text-sm text-slate-700">
+              <h2 className="text-lg font-semibold">How To Play Kvitlach</h2>
               <div>
                 <div className="font-semibold">Objective</div>
                 <p>Reach 21 or the closest total without exceeding it.</p>
@@ -2896,8 +2886,7 @@ export default function App() {
 
       {pendingKick && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(30,40,60,0.55)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
           role="dialog"
           aria-modal="true"
           onClick={cancelKick}
@@ -2906,21 +2895,19 @@ export default function App() {
             className="relative w-full max-w-md card-surface p-5 flex flex-col gap-4"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="text-lg font-semibold text-slate-100">Remove player?</div>
-            <p className="text-sm text-slate-400">Are you sure you want to remove {pendingKick.label} from the table?</p>
+            <div className="text-lg font-semibold text-ink">Remove player?</div>
+            <p className="text-sm text-slate-600">Are you sure you want to remove {pendingKick.label} from the table?</p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded-lg px-3 py-2 text-sm font-semibold transition-all"
-                style={{ border: "1px solid rgba(255,255,255,0.15)", color: "#94a3b8" }}
+                className="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
                 onClick={cancelKick}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded-lg px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all"
-                style={{ background: "rgba(220,38,38,0.8)", border: "1px solid rgba(239,68,68,0.4)" }}
+                className="rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
                 onClick={confirmKick}
               >
                 Remove
@@ -2996,7 +2983,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:opacity-80"
+                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
                 onClick={dismissBankerSummary}
               >
                 Done
@@ -3038,25 +3025,24 @@ export default function App() {
       )}
       {showWhatIs && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center px-4"
-          style={{ background: "rgba(30,40,60,0.6)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
           onClick={() => setShowWhatIs(false)}
         >
           <div
-            className="relative w-full max-w-xl max-h-[85vh] card-surface p-6 overflow-y-auto"
+            className="relative w-full max-w-xl max-h-[85vh] card-surface bg-amber-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
           >
             <button
               type="button"
-              className="absolute top-3 right-3 text-xs font-semibold underline text-slate-400"
+              className="absolute top-3 right-3 text-xs font-semibold text-slate-500 underline"
               onClick={() => setShowWhatIs(false)}
             >
               Close
             </button>
-            <div className="space-y-3 text-sm text-slate-300">
-              <h2 className="text-lg font-semibold" style={{ color: "#d4af37" }}>What Is Kvitlach?</h2>
+            <div className="space-y-3 text-sm text-slate-700">
+              <h2 className="text-lg font-semibold">What Is Kvitlach?</h2>
               <p>
                 Kvitlech (Yiddish: קוויטלעך, lit. “notes” or “slips”) is a traditional card game similar to Twenty-One and modern Blackjack, commonly played in some Ashkenazi Jewish homes during the Chanuka season.
               </p>
@@ -3073,24 +3059,27 @@ export default function App() {
           </div>
         </div>
       )}
-      <footer className="mt-6 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2" style={{ borderTop: "1px solid rgba(212,175,55,0.15)" }}>
+      <footer className="mt-8 border-t border-slate-200 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center gap-3">
-          <span className="font-semibold" style={{ color: "#d4af37" }}>Kvitlach</span>
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold" style={{ border: "1px solid rgba(212,175,55,0.25)", color: "#d4af37" }}>
-            v1.5 <span style={{ color: "#94a3b8" }}>Beta</span>
+          <span className="font-semibold text-slate-600">Kvitlach</span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+            v1.5
+            <span className="text-amber-700">Beta</span>
           </span>
           <span
-            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]"
-            style={{
-              border: `1px solid ${status === "connected" ? "rgba(16,185,129,0.3)" : status === "connecting" ? "rgba(245,158,11,0.3)" : "rgba(148,163,184,0.2)"}`,
-              color: status === "connected" ? "#34d399" : status === "connecting" ? "#fbbf24" : "#94a3b8",
-              background: "transparent"
-            }}
+            className={clsx(
+              "inline-flex items-center gap-1 rounded-full px-2 py-1 border text-[11px]",
+              status === "connected"
+                ? "border-green-200 bg-green-50 text-green-700"
+                : status === "connecting"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-slate-200 bg-slate-50 text-slate-700"
+            )}
             title={`WebSocket: ${status} (${wsUrl})`}
           >
             <span
               className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: status === "connected" ? "#34d399" : status === "connecting" ? "#fbbf24" : "#94a3b8" }}
+              style={{ backgroundColor: status === "connected" ? "#16a34a" : status === "connecting" ? "#f59e0b" : "#94a3b8" }}
               aria-hidden="true"
             />
             <span className="uppercase tracking-wide">WS</span>
@@ -3099,10 +3088,10 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-[11px] uppercase tracking-wide text-slate-500">Sound</span>
-          <label className="inline-flex items-center gap-1 rounded-full px-2 py-1 cursor-pointer" style={{ border: "1px solid rgba(212,175,55,0.2)", color: "#94a3b8" }}>
+          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded"
+              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
               checked={musicEnabled}
               onChange={(e) => {
                 const next = e.target.checked;
@@ -3111,12 +3100,12 @@ export default function App() {
                 audioManager.noteInteraction();
               }}
             />
-            <span className="text-[11px] font-semibold">Music</span>
+            <span className="text-[11px] font-semibold text-ink">Music</span>
           </label>
-          <label className="inline-flex items-center gap-1 rounded-full px-2 py-1 cursor-pointer" style={{ border: "1px solid rgba(212,175,55,0.2)", color: "#94a3b8" }}>
+          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded"
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               checked={sfxEnabled}
               onChange={(e) => {
                 const next = e.target.checked;
@@ -3125,64 +3114,62 @@ export default function App() {
                 audioManager.noteInteraction();
               }}
             />
-            <span className="text-[11px] font-semibold">SFX</span>
+            <span className="text-[11px] font-semibold text-ink">SFX</span>
           </label>
         </div>
-        <nav className="flex items-center gap-4 text-slate-500">
-          <a href="/about" className="hover:text-slate-200 underline-offset-4 hover:underline">About</a>
-          <a href="/disclaimer" className="hover:text-slate-200 underline-offset-4 hover:underline">Disclaimer</a>
+        <nav className="flex items-center gap-4">
+          <a href="/about" className="hover:text-ink underline-offset-4 hover:underline">About</a>
+          <a href="/disclaimer" className="hover:text-ink underline-offset-4 hover:underline">Disclaimer</a>
           <button
             type="button"
             onClick={() => setShowContact(true)}
-            className="hover:text-slate-200 underline-offset-4 hover:underline"
+            className="hover:text-ink underline-offset-4 hover:underline"
           >
             Contact
           </button>
         </nav>
-        <span className="text-slate-600">© SWS 2026</span>
+        <span>© SWS 2026</span>
       </footer>
 
       {showContact && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center px-4" style={{ background: "rgba(30,40,60,0.5)" }} onClick={() => setShowContact(false)}>
+        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center bg-black/30 px-4" onClick={() => setShowContact(false)}>
           <div
-            className="w-full max-w-md card-surface p-4 space-y-3"
+            className="w-full max-w-md rounded-lg bg-white shadow-xl border border-slate-200 p-4 space-y-3"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-2">
-                <h2 className="text-base font-semibold text-slate-100">Contact the Kvitlach team</h2>
-                <p className="text-sm text-slate-400">
+                <h2 className="text-base font-semibold text-ink">Contact the Kvitlach team</h2>
+                <p className="text-sm text-slate-700">
                   Questions, concerns, bug reports, or feature ideas? Drop us a note at
-                  {' '}<a className="font-semibold hover:underline" style={{ color: "#d4af37" }} href="mailto:kvitlach@swdhs.com">kvitlach@swdhs.com</a>.
+                  {' '}<a className="text-amber-700 font-semibold hover:underline" href="mailto:kvitlach@swdhs.com">kvitlach@swdhs.com</a>.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowContact(false)}
-                className="text-slate-500"
+                className="text-slate-500 hover:text-ink"
                 aria-label="Close contact panel"
               >
-                ✕
+                X
               </button>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-slate-400">
-              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1" style={{ background: "rgba(212,175,55,0.1)", border: "1px solid rgba(212,175,55,0.2)" }}>Support</span>
-              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1" style={{ background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.2)" }}>Bugs</span>
-              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }}>Feature ideas</span>
+            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 border border-amber-100">Support</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 border border-blue-100">Bugs</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 border border-emerald-100">Feature ideas</span>
             </div>
             <div className="flex justify-end gap-2 text-sm">
               <button
                 type="button"
-                className="px-3 py-1.5 rounded-lg text-slate-400 transition-all"
-                style={{ border: "1px solid rgba(255,255,255,0.12)" }}
+                className="px-3 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
                 onClick={() => setShowContact(false)}
               >
                 Dismiss
               </button>
               <a
                 href="mailto:kvitlach@swdhs.com"
-                className="px-3 py-1.5 rounded-lg font-semibold transition-all"
-                style={{ background: "linear-gradient(135deg, #d4af37 0%, #f9d05e 50%, #d4af37 100%)", color: "#0a1628" }}
+                className="px-3 py-1 rounded bg-amber-600 text-white hover:bg-amber-700"
               >
                 Email us
               </a>
