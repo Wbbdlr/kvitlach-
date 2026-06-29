@@ -365,7 +365,7 @@ function TurnCard({
   const canActTurn = isMe && turn.state === "pending" && isActiveTurn;
   const showPlayerControls = canActTurn && !isBanker && onBet && onHit && onStand && betAmount !== undefined && onBetChange;
   const showBankerControls = canActTurn && isBanker && !forceBankerReveal && onHit && onStand;
-  const showEleveroonToggle = showPlayerControls || showBankerControls;
+  const showEleveroonToggle = showPlayerControls; // banker gets eleveroon automatically; no toggle needed
   const isCurrentTurn = Boolean(isActiveTurn && turn.state === "pending" && roundState !== "terminate");
   const isNextPlayer = Boolean(isNextTurn && !isCurrentTurn && turn.state === "pending" && roundState !== "terminate");
   const waitingForTurn = isMe && turn.state === "pending" && !canActTurn && roundState !== "terminate";
@@ -696,6 +696,16 @@ function TurnCard({
           >
             Stand
           </button>
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+            style={{ border: "1px solid rgba(212,175,55,0.3)", color: "#d4af37", background: "rgba(212,175,55,0.08)" }}
+            title="Eleveroon is always active for the Banker — an 11 drawn on a total of 11 is automatically skipped."
+          >
+            <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            Eleveroon: Auto
+          </span>
           {showEleveroonToggle && (
             <label
               className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold cursor-pointer transition-all"

@@ -65,7 +65,7 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   const [pickedCard, ...remainingDeck] = state.deck;
   if (!pickedCard) throw new Error("deck_empty");
 
-  const eleveroonActive = Boolean(options?.eleveroon);
+  const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
   const isElevenCard = pickedCard.attributes.values?.includes(11);
   const currentBestTotal = winningNumber(turn.cards);
   const cardWouldBust = calcState([...turn.cards, pickedCard]) === "lost";
