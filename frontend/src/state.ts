@@ -68,7 +68,15 @@ interface UIState {
 
 const SESSION_STORAGE_KEY = "kvitlach.session";
 const LAST_ROOM_STORAGE_KEY = "kvitlach.lastRoomId";
+const SESSION_MAX_AGE_MS = 21 * 24 * 60 * 60 * 1000; // 21 days
 const historyKey = (roomId: string) => `kvitlach.history.${roomId}`;
+const roomSessionKey = (roomId: string) => `kvitlach.session.${roomId}`;
+
+interface PersistedRoomSession extends SessionData {
+  firstName?: string;
+  lastName?: string;
+  savedAt: number;
+}
 
 const loadSession = (): SessionData | undefined => {
   if (typeof window === "undefined" || !window.localStorage) return undefined;
@@ -89,6 +97,62 @@ const loadSession = (): SessionData | undefined => {
     console.warn("Failed to load session", err);
   }
   return undefined;
+};
+
+const loadRoomSession = (roomId: string): PersistedRoomSession | undefined => {
+  if (typeof window === "undefined" || !window.localStorage) return undefined;
+  try {
+    const raw = window.localStorage.getItem(roomSessionKey(roomId));
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.roomId === "string" &&
+      typeof parsed.playerId === "string" &&
+      typeof parsed.token === "string" &&
+      typeof parsed.savedAt === "number"
+    ) {
+      if (Date.now() - parsed.savedAt > SESSION_MAX_AGE_MS) {
+        window.localStorage.removeItem(roomSessionKey(roomId));
+        return undefined;
+      }
+      return parsed as PersistedRoomSession;
+    }
+  } catch (err) {
+    console.warn("Failed to load room session", err);
+  }
+  return undefined;
+};
+
+const persistRoomSession = (session: SessionData, firstName?: string, lastName?: string) => {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    const entry: PersistedRoomSession = { ...session, firstName, lastName, savedAt: Date.now() };
+    window.localStorage.setItem(roomSessionKey(session.roomId), JSON.stringify(entry));
+  } catch (err) {
+    console.warn("Failed to persist room session", err);
+  }
+};
+
+const clearRoomSession = (roomId: string) => {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(roomSessionKey(roomId));
+  } catch (err) {
+    console.warn("Failed to clear room session", err);
+  }
+};
+
+const getUrlRoomId = (): string | undefined => {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get("room");
+    return roomId ? roomId.trim().toUpperCase() : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 const loadLastRoomId = (): string | undefined => {
@@ -198,6 +262,21 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     }
     const playerId = state.playerId;
     const prevRoom = state.room;
+
+    // If we have a playerId and were just removed from the room (kicked), clear the
+    // per-room session so we don't auto-reconnect as that player again.
+    if (playerId && prevRoom && prevRoom.roomId === nextRoom.roomId) {
+      const wasPresent = prevRoom.players.some((p) => p.id === playerId);
+      const stillPresent = nextRoom.players.some((p) => p.id === playerId);
+      if (wasPresent && !stillPresent) {
+        clearRoomSession(nextRoom.roomId);
+        persistSession(undefined);
+        updates.session = undefined;
+        updates.playerId = undefined;
+        updates.round = undefined;
+      }
+    }
+
     if (!playerId || !prevRoom) return updates;
 
     let notifications = state.notifications;
@@ -350,6 +429,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const priorRoom = state.session?.roomId || state.room?.roomId;
         if (priorRoom) persistLastRoomId(priorRoom);
         persistSession(undefined);
+        // Do NOT clear per-room session on invalid_session — the server session TTL
+        // is 24 hours but the per-room localStorage key lasts 21 days. If the server
+        // restarted (in-memory state lost), the user should fall through to the join
+        // form, not have their room session wiped. We only clear it on explicit leave.
       }
       set((state: UIState) => {
           const update: Partial<UIState> = {};
@@ -428,6 +511,12 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           update.session = sessionPayload;
           update.playerId = sessionPayload.playerId;
           persistLastRoomId(sessionPayload.roomId);
+          // Also persist per-room session for URL-param-based reconnect.
+          const playerFromPayload = payload.player as { firstName?: string; lastName?: string } | undefined;
+          const existingPlayer = state.room?.players.find((p) => p.id === sessionPayload.playerId);
+          const firstName = playerFromPayload?.firstName ?? existingPlayer?.firstName;
+          const lastName = playerFromPayload?.lastName ?? existingPlayer?.lastName;
+          persistRoomSession(sessionPayload, firstName, lastName);
         } else if (payload.player) {
           update.playerId = payload.player.id;
         }
@@ -442,6 +531,19 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     if (connectTimer) clearTimeout(connectTimer);
     connectTimer = undefined;
     set({ status: "connected", message: undefined, pendingAction: undefined });
+
+    // Priority 1: URL param ?room=ROOMID — try per-room saved session first.
+    const urlRoomId = getUrlRoomId();
+    if (urlRoomId) {
+      const roomSession = loadRoomSession(urlRoomId);
+      if (roomSession) {
+        client.send("room:resume", { roomId: roomSession.roomId, playerId: roomSession.playerId, token: roomSession.token });
+        persistLastRoomId(roomSession.roomId);
+        return;
+      }
+    }
+
+    // Priority 2: In-memory or single-key localStorage session (existing behavior).
     const session = get().session ?? loadSession();
     if (session) {
       client.send("room:resume", session);
