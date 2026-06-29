@@ -52,7 +52,7 @@ export class AudioManager {
     const pool = this.sfxPool[name];
     const idle = pool?.find((a) => a.paused || a.ended);
     const el = idle ?? new Audio(path);
-    el.src = path;
+    if (!idle) el.src = path;
     el.currentTime = 0;
     el.volume = 0.5;
     void el.play().catch(() => { /* blocked before interaction */ });
