@@ -15,7 +15,8 @@ body {
   font-family: theme('fontFamily.body');
   min-height: 100vh;
   background: radial-gradient(ellipse at top, #2a5298 0%, #1a3a6e 45%, #0f2552 100%);
-  color: #f1f5f9;
+  color: #8bafd4;
+  font-weight: 300;
 }
 
 /* ── Card surfaces ── */
@@ -23,7 +24,7 @@ body {
   @apply rounded-xl shadow-lg;
   background: rgba(20, 45, 95, 0.88);
   border: 1px solid rgba(212, 175, 55, 0.3);
-  color: #f1f5f9;
+  color: #8bafd4;
 }
 
 /* ── Card face (playing card) ── */
@@ -105,10 +106,10 @@ body {
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 400;
   background: rgba(10, 25, 60, 0.65);
   border: 1px solid rgba(212, 175, 55, 0.3);
-  color: #f1f5f9;
+  color: #c5daf0;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
