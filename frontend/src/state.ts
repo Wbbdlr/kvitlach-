@@ -466,7 +466,9 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         }
         const pendingType = state.pendingAction?.type;
         const friendly =
-          errorMessage === "room_full"
+          errorMessage === "maintenance_mode"
+            ? "New games are temporarily paused for maintenance. Existing games are unaffected. Check back soon."
+            : errorMessage === "room_full"
             ? "This table is full (100 players max). Try a different room."
             : errorMessage === "invalid_password"
             ? "Incorrect password"
@@ -489,6 +491,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             : errorMessage;
         if (pendingType === "bet" || pendingType === "hit" || pendingType === "stand" || pendingType === "skip") {
           update.message = friendly;
+        } else if (errorMessage === "maintenance_mode") {
+          update.formErrors = { ...state.formErrors, create: friendly };
         } else {
           const nextErrors = { ...state.formErrors, join: friendly };
           update.formErrors = nextErrors;

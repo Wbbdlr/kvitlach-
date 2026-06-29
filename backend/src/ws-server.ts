@@ -75,6 +75,7 @@ export class WSServer {
     try {
       switch (type) {
         case "room:create": {
+          if (process.env.MAINTENANCE_MODE === "true") throw new Error("maintenance_mode");
           const { firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll } = (payload as any) || {};
           if (!firstName) throw new Error("invalid_payload");
           const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll });

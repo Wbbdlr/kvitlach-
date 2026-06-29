@@ -24,6 +24,7 @@ services:
       - PORT=25000
       - WS_PORT=25001
       - DATABASE_URL=postgres://kvitlach:kvitlach@db:5432/kvitlach
+      - MAINTENANCE_MODE=${MAINTENANCE_MODE:-}
     restart: unless-stopped
     ports:
       - "127.0.0.1:25000:25000"
