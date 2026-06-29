@@ -738,6 +738,7 @@ export default function App() {
   const [sfxEnabled, setSfxEnabled] = useState(false);
   const [userInteracted, setUserInteracted] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false);
   const audioManager = useMemo(() => new AudioManager(), []);
   const prevRoundRef = useRef<RoundState | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
@@ -1539,7 +1540,7 @@ export default function App() {
         {room && isAdmin && (
           <button
             type="button"
-            className="text-xs font-semibold text-accent underline"
+            className="text-xs font-semibold text-blue-600 underline"
             onClick={() => setShowLobby((v) => !v)}
           >
             {showLobby ? "Hide lobby" : "Show lobby"}
@@ -1791,7 +1792,7 @@ export default function App() {
                 {bankerBankrollManuallySet && (
                   <button
                     type="button"
-                    className="text-accent font-semibold"
+                    className="text-blue-600 font-semibold"
                     onClick={() => {
                       setBankerBankroll(buyIn);
                       setBankerBankrollManuallySet(false);
@@ -2708,30 +2709,39 @@ export default function App() {
           {round.state === "terminate" && isAdmin && (
             <div className="mt-3 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
               <span>Round complete. Start a new round when ready.</span>
-              <button
-                className={clsx(
-                  "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
-                  "border-ink text-ink hover:bg-ink hover:text-white focus-visible:outline-ink"
-                )}
-                onClick={() => {
-                  const parsedOverride = deckCount === "" ? undefined : Number(deckCount);
-                  const parsedPreferred = preferredDecks === "" ? undefined : Number(preferredDecks);
-                  const deckToUse = parsedOverride ?? parsedPreferred;
-                  store.startRound(deckToUse);
-                }}
-              >
-                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white">
-                  <svg
-                    className="h-3 w-3"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path d="M6 4l10 6-10 6V4z" />
-                  </svg>
-                </span>
-                <span>Start round</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition-colors hover:bg-rose-50"
+                  onClick={() => setShowEndSessionConfirm(true)}
+                >
+                  End Session
+                </button>
+                <button
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold tracking-wide shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2",
+                    "border-ink text-ink hover:bg-ink hover:text-white focus-visible:outline-ink"
+                  )}
+                  onClick={() => {
+                    const parsedOverride = deckCount === "" ? undefined : Number(deckCount);
+                    const parsedPreferred = preferredDecks === "" ? undefined : Number(preferredDecks);
+                    const deckToUse = parsedOverride ?? parsedPreferred;
+                    store.startRound(deckToUse);
+                  }}
+                >
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-ink text-white">
+                    <svg
+                      className="h-3 w-3"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path d="M6 4l10 6-10 6V4z" />
+                    </svg>
+                  </span>
+                  <span>Start round</span>
+                </button>
+              </div>
             </div>
           )}
         </section>
@@ -3182,6 +3192,58 @@ export default function App() {
       )}
 
       </div>
+
+      {showEndSessionConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowEndSessionConfirm(false)}
+        >
+          <div
+            className="relative w-full max-w-md card-surface p-5 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-lg font-semibold text-ink">End this session?</div>
+            <p className="text-sm text-slate-600">
+              This will close the room for everyone. All players will be disconnected. The session data is only available in the Round History until you leave.
+            </p>
+            {(roundHistory?.length ?? 0) > 0 && (
+              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <strong>Tip:</strong> Export your round history before closing so you have a record of all bets and outcomes.
+              </div>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              {(roundHistory?.length ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  onClick={() => { exportRoundHistoryTxt(); }}
+                >
+                  Export history first
+                </button>
+              )}
+              <button
+                type="button"
+                className="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                onClick={() => setShowEndSessionConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-rose-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-500"
+                onClick={() => {
+                  setShowEndSessionConfirm(false);
+                  store.closeRoom();
+                }}
+              >
+                Close session for everyone
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

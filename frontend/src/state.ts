@@ -64,6 +64,7 @@ interface UIState {
   dismissBankerSummary: () => void;
   kickPlayer: (playerId: string) => void;
   adjustPlayerBankroll: (playerId: string, amount: number, note?: string) => void;
+  closeRoom: () => void;
 }
 
 const SESSION_STORAGE_KEY = "kvitlach.session";
@@ -370,6 +371,24 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       const payload = (msg.payload as any) || {};
       const players = (payload.players as ConnectionSummary[]) || [];
       set({ connections: players });
+      return;
+    }
+    if (msg.type === "room:closed") {
+      set((s: UIState) => {
+        const roomId = s.room?.roomId;
+        if (roomId) {
+          clearRoomSession(roomId);
+          persistSession(undefined);
+        }
+        return {
+          room: undefined,
+          round: undefined,
+          balances: [],
+          playerId: undefined,
+          session: undefined,
+          notifications: [...s.notifications, makeNotification("The banker has closed this session.", "info")].slice(-5),
+        };
+      });
       return;
     }
     if (msg.type === "room:banker-topup") {
@@ -780,6 +799,17 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("player:bank-adjust", { roomId, playerId, amount: normalizedAmount, note });
+    },
+    closeRoom: () => {
+      const roomId = get().room?.roomId;
+      const actorId = get().playerId;
+      if (!roomId || !actorId) return;
+      const actor = get().room?.players.find((p) => p.id === actorId);
+      if (actor?.type !== "admin") {
+        set({ message: "Only the banker can close the session." });
+        return;
+      }
+      client.send("room:close", { roomId });
     },
   };
 };

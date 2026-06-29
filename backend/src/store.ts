@@ -375,6 +375,15 @@ export class GameStore {
     return roomRec.room;
   }
 
+  closeRoom(roomId: string, adminId: string): void {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    if (roomRec.timer) clearTimeout(roomRec.timer);
+    this.rooms.delete(roomId);
+    void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room (close)", roomId, e));
+  }
+
   adjustPlayerWallet(roomId: string, adminId: string, targetPlayerId: string, amount: number, note?: string) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");

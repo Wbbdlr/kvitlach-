@@ -331,6 +331,17 @@ export class WSServer {
           this.sendAck(socket, requestId, { room: updatedRoom });
           break;
         }
+        case "room:close": {
+          const { roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          this.store.closeRoom(roomId, actorId);
+          this.broadcast(roomId, { type: "room:closed", roomId, payload: { reason: "banker_closed" } });
+          this.sendAck(socket, requestId, {});
+          break;
+        }
         case "player:bank-adjust": {
           const { playerId: targetPlayerId, amount, note, roomId: roomFromPayload } = (payload as any) || {};
           const meta = this.meta.get(socket);
