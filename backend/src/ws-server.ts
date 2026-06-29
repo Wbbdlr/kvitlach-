@@ -12,11 +12,17 @@ interface ConnectionMeta {
   connectionId?: number;
 }
 
+const MAX_CONNS_PER_IP = 8;
+const MAX_MSGS_PER_WINDOW = 30;
+const MSG_WINDOW_MS = 10_000;
+
 export class WSServer {
   private wss: WebSocketServer;
   private store: GameStore;
   private rooms = new Map<string, Set<WebSocket>>();
   private meta = new WeakMap<WebSocket, ConnectionMeta>();
+  private connsByIp = new Map<string, Set<WebSocket>>();
+  private msgCount = new WeakMap<WebSocket, { count: number; resetAt: number }>();
 
   constructor(store: GameStore, port: number) {
     this.store = store;
@@ -36,7 +42,18 @@ export class WSServer {
     const userAgentHeader = request.headers["user-agent"];
     const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
 
+    const ipKey = ip ?? "unknown";
+    const existing = this.connsByIp.get(ipKey) ?? new Set();
+    if (existing.size >= MAX_CONNS_PER_IP) {
+      console.warn(`Rate limit: too many connections from ${ipKey} (${existing.size}), dropping`);
+      socket.close(1008, "too_many_connections");
+      return;
+    }
+    existing.add(socket);
+    this.connsByIp.set(ipKey, existing);
+
     this.meta.set(socket, { ip: ip ?? undefined, userAgent: userAgent ?? undefined });
+    this.msgCount.set(socket, { count: 0, resetAt: Date.now() + MSG_WINDOW_MS });
     socket.on("message", (data: RawData) => void this.onMessage(socket, data));
     socket.on("close", () => this.onClose(socket));
     socket.on("error", (err: Error) => console.error("ws error", err));
@@ -44,6 +61,13 @@ export class WSServer {
 
   private onClose(socket: WebSocket) {
     const info = this.meta.get(socket);
+    if (info?.ip) {
+      const ipSet = this.connsByIp.get(info.ip);
+      if (ipSet) {
+        ipSet.delete(socket);
+        if (ipSet.size === 0) this.connsByIp.delete(info.ip);
+      }
+    }
     if (info?.roomId) {
       const roomSockets = this.rooms.get(info.roomId);
       roomSockets?.delete(socket);
@@ -63,6 +87,18 @@ export class WSServer {
   }
 
   private async onMessage(socket: WebSocket, data: RawData) {
+    const rate = this.msgCount.get(socket);
+    if (rate) {
+      const now = Date.now();
+      if (now > rate.resetAt) { rate.count = 0; rate.resetAt = now + MSG_WINDOW_MS; }
+      rate.count++;
+      if (rate.count > MAX_MSGS_PER_WINDOW) {
+        this.send(socket, { type: "error", error: { message: "rate_limited" } });
+        socket.close(1008, "rate_limited");
+        return;
+      }
+    }
+
     let msg: ClientEnvelope;
     try {
       msg = JSON.parse(data.toString());
