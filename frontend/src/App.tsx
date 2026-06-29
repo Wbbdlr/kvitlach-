@@ -737,6 +737,7 @@ export default function App() {
   const [userInteracted, setUserInteracted] = useState(false);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false);
+  const [floatTiles, setFloatTiles] = useState<Array<{ id: string; label: string; color: string; playerId: string }>>([]);
   const audioManager = useMemo(() => new AudioManager(), []);
   const prevRoundRef = useRef<RoundState | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
@@ -845,21 +846,48 @@ export default function App() {
       return;
     }
 
+    const newTiles: Array<{ id: string; label: string; color: string; playerId: string }> = [];
+
     round.turns.forEach((turn) => {
       const prevTurn = prev.turns.find((t) => t.player.id === turn.player.id);
       if (!prevTurn) return;
       if ((turn.cards?.length ?? 0) > (prevTurn.cards?.length ?? 0)) {
         audioManager.playSfx("deal");
+        const lastCard = turn.cards[turn.cards.length - 1];
+        if (lastCard?.attributes?.eleveroonIgnored) {
+          newTiles.push({ id: `${turn.player.id}-elev-${Date.now()}`, label: "ELEVEROON!", color: "#0ea5e9", playerId: turn.player.id });
+        }
       }
       if (turn.state !== prevTurn.state) {
-        if (turn.state === "won") audioManager.playSfx("win");
+        if (turn.state === "won") {
+          audioManager.playSfx("win");
+          const isRosier = isRosierPair(turn.cards);
+          const isPush = isPushTurn(turn);
+          if (isRosier) {
+            newTiles.push({ id: `${turn.player.id}-rosier-${Date.now()}`, label: "ROSIER!", color: "#d97706", playerId: turn.player.id });
+          } else if (isPush) {
+            newTiles.push({ id: `${turn.player.id}-push-${Date.now()}`, label: "PUSH", color: "#64748b", playerId: turn.player.id });
+          } else {
+            newTiles.push({ id: `${turn.player.id}-win-${Date.now()}`, label: "WINNER!", color: "#16a34a", playerId: turn.player.id });
+          }
+        }
         if (turn.state === "lost") {
           const { total, bustedTotal } = bestTotal(turn.cards);
           const busted = total === undefined && bustedTotal !== undefined;
           if (busted) audioManager.playSfx("bust");
+          newTiles.push({ id: `${turn.player.id}-futch-${Date.now()}`, label: "FUTCHED!", color: "#dc2626", playerId: turn.player.id });
         }
       }
     });
+
+    if (newTiles.length > 0) {
+      setFloatTiles((prev) => [...prev, ...newTiles]);
+      newTiles.forEach((tile) => {
+        setTimeout(() => {
+          setFloatTiles((prev) => prev.filter((t) => t.id !== tile.id));
+        }, 2400);
+      });
+    }
 
     prevRoundRef.current = round;
   }, [audioManager, round]);
@@ -1277,6 +1305,24 @@ export default function App() {
 
   return (
     <>
+      {floatTiles.length > 0 && (
+        <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
+          {floatTiles.map((tile) => (
+            <div
+              key={tile.id}
+              className="float-tile absolute bottom-1/3 left-1/2"
+              style={{ marginLeft: `${Math.floor((tile.id.charCodeAt(tile.id.length - 3) % 120) - 60)}px` }}
+            >
+              <span
+                className="inline-flex items-center justify-center rounded-2xl px-5 py-2 text-xl font-extrabold text-white shadow-2xl"
+                style={{ backgroundColor: tile.color, textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}
+              >
+                {tile.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {pendingKick && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
