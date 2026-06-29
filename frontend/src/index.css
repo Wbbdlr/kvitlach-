@@ -10,19 +10,28 @@
   font-display: swap;
 }
 
+/* ── Base ── */
 body {
   font-family: theme('fontFamily.body');
   min-height: 100vh;
+  background: radial-gradient(ellipse at top, #0f2052 0%, #071020 60%, #050e1f 100%);
+  color: #e2e8f0;
 }
 
+/* ── Card surfaces ── */
 .card-surface {
-  @apply rounded-xl shadow-md bg-white/90 border border-slate-200;
+  @apply rounded-xl shadow-lg;
+  background: rgba(10, 22, 40, 0.92);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  color: #e2e8f0;
 }
 
+/* ── Card face (playing card) ── */
 .card-face {
-  @apply rounded-lg border border-slate-300 shadow-sm bg-white relative overflow-hidden;
-  background: radial-gradient(circle at 20% 20%, rgba(0,0,0,0.03), transparent 45%),
-              radial-gradient(circle at 80% 0%, rgba(0,0,0,0.03), transparent 35%),
+  @apply rounded-lg shadow-sm relative overflow-hidden;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.06), transparent 45%),
+              radial-gradient(circle at 80% 0%, rgba(255,255,255,0.04), transparent 35%),
               #fefefe;
 }
 
@@ -30,7 +39,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(0,0,0,0.04));
+  background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(0,0,0,0.04));
   pointer-events: none;
 }
 
@@ -38,14 +47,39 @@ body {
   @apply w-full h-full object-contain;
 }
 
+/* ── Player turn card ── */
+.player-card {
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: rgba(7, 16, 32, 0.85);
+  border: 1px solid rgba(255,255,255,0.09);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.player-card-active {
+  border-color: rgba(212, 175, 55, 0.75) !important;
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.28), inset 0 0 12px rgba(212, 175, 55, 0.04) !important;
+}
+.player-card-next {
+  border-color: rgba(59, 130, 246, 0.55) !important;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.18) !important;
+}
+.player-card-banker {
+  border-color: rgba(212, 175, 55, 0.45) !important;
+  background: rgba(20, 14, 4, 0.92) !important;
+}
+
+/* ── Animations ── */
 .waiting-flash {
   animation: waitingPulse 1.1s ease-in-out infinite;
 }
 
 @keyframes waitingPulse {
-  0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(251, 191, 36, 0.4)); }
-  50% { transform: scale(1.02); filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.5)); }
-  100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(251, 191, 36, 0.4)); }
+  0%   { filter: drop-shadow(0 0 0px rgba(212, 175, 55, 0.3)); }
+  50%  { filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.65)); }
+  100% { filter: drop-shadow(0 0 0px rgba(212, 175, 55, 0.3)); }
 }
 
 .waiting-join-flash {
@@ -53,7 +87,35 @@ body {
 }
 
 @keyframes waitingJoinPulse {
-  0% { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.35)); }
-  50% { transform: translateY(-1px); filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.45)); }
-  100% { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.35)); }
+  0%   { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.3)); }
+  50%  { transform: translateY(-1px); filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5)); }
+  100% { transform: translateY(0); filter: drop-shadow(0 0 0 rgba(59, 130, 246, 0.3)); }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: rgba(5,14,31,0.3); }
+::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(212,175,55,0.5); }
+
+/* ── Utility classes ── */
+.input-dark {
+  display: block;
+  width: 100%;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: rgba(5, 14, 31, 0.7);
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  color: #e2e8f0;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-dark::placeholder {
+  color: rgba(148, 163, 184, 0.5);
+}
+.input-dark:focus {
+  border-color: rgba(212, 175, 55, 0.5);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.12);
 }
