@@ -42,6 +42,7 @@ export interface Turn {
   bankRequest?: boolean;
   settledBet?: number;
   settledNet?: number;
+  settled?: boolean;
 }
 
 export interface BankLockState {
@@ -88,6 +89,7 @@ export interface RoomState {
   waitingPlayerIds: string[];
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
+  feltWatermark?: string;
 }
 
 export interface ConnectionSummary {

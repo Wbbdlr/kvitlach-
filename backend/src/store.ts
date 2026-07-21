@@ -13,6 +13,7 @@ const TURN_TIMEOUT_MS = 90 * 1000;
 const MAX_NAME_LEN = 40;
 const MAX_ROOM_NAME_LEN = 80;
 const MAX_NOTE_LEN = 160;
+const MAX_WATERMARK_LEN = 60;
 const shortId = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 6);
 const ROOM_NAME_POOL = [
   "Tish Time Tables",
@@ -63,10 +64,10 @@ export class GameStore {
     return (value ?? "").trim().slice(0, max);
   }
 
-  private sanitizeNote(value: string | undefined) {
+  private sanitizeNote(value: string | undefined, max = MAX_NOTE_LEN) {
     const trimmed = (value ?? "").trim();
     if (!trimmed) return undefined;
-    return trimmed.slice(0, MAX_NOTE_LEN);
+    return trimmed.slice(0, max);
   }
 
   private audit(action: string, roomId: string, actorId: string, details?: Record<string, unknown>) {
@@ -400,6 +401,34 @@ export class GameStore {
     return { amount, total: updatedTotal, note: trimmedNote };
   }
 
+  setFeltWatermark(roomId: string, adminId: string, text: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    const sanitized = this.sanitizeNote(text, MAX_WATERMARK_LEN);
+    roomRec.room.feltWatermark = sanitized;
+    this.audit("set-watermark", roomId, adminId, { text: sanitized });
+    this.bumpRoomTimer(roomId);
+    return { feltWatermark: sanitized };
+  }
+
+  private settleImmediateTurn(round: RoundContext, roomRec: RoomRecord, turnIndex: number): void {
+    const turn = round.turns[turnIndex];
+    if (!turn || turn.player.type === "admin" || turn.settled) return;
+    if (turn.state !== "won" && turn.state !== "lost") return;
+    const bankerId = this.getBankerId(round);
+    if (!bankerId) return;
+    const amount = turn.bet ?? 0;
+    const balance: Balance =
+      turn.state === "lost"
+        ? { amount, payer: turn.player.id, payee: bankerId }
+        : { amount, payer: bankerId, payee: turn.player.id };
+    roomRec.room.wallets[balance.payer] = (roomRec.room.wallets[balance.payer] ?? 0) - amount;
+    roomRec.room.wallets[balance.payee] = (roomRec.room.wallets[balance.payee] ?? 0) + amount;
+    if (amount > 0) roomRec.room.balances = [balance, ...roomRec.room.balances];
+    round.turns[turnIndex] = { ...turn, settled: true, settledBet: turn.bet };
+  }
+
   applyBet(roundId: string, playerId: string, amount: number, options?: { bank?: boolean }) {
     const round = this.rounds.get(roundId);
     if (!round) throw new Error("round_not_found");
@@ -425,6 +454,8 @@ export class GameStore {
     if (newBet > available) throw new Error(`bank_limit:${available}`);
 
     const updated = handleBet(round, playerId, amount);
+    const settledIndex = updated.turns.findIndex((t) => t.player.id === playerId);
+    if (settledIndex >= 0) this.settleImmediateTurn(updated, roomRec, settledIndex);
 
     const shouldBank = Boolean(options?.bank || newBet === available);
 
@@ -464,6 +495,8 @@ export class GameStore {
       if (lock.stage === "decision") throw new Error("banker_deciding");
     }
     const updated = handleHit(round, playerId, { eleveroon: options?.eleveroon });
+    const settledIndex = updated.turns.findIndex((t) => t.player.id === playerId);
+    if (settledIndex >= 0) this.settleImmediateTurn(updated, roomRec, settledIndex);
     const processed = this.processBankLock(updated, roomRec);
     return this.persistRound(roundId, processed, round);
   }
@@ -757,7 +790,7 @@ export class GameStore {
     if (playerIndex < 0) throw new Error("turn_not_found");
     const outstanding = round.turns
       .slice(0, playerIndex)
-      .filter((turn) => turn.player.type !== "admin" && turn.state !== "lost" && turn.state !== "skipped")
+      .filter((turn) => turn.player.type !== "admin" && turn.state !== "lost" && turn.state !== "skipped" && !turn.settled)
       .reduce((sum, turn) => sum + (turn.bet ?? 0), 0);
     const available = Math.max(bankerWallet - outstanding, 0);
     return { available, outstanding, bankerId, playerIndex };

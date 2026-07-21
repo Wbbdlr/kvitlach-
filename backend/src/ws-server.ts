@@ -423,6 +423,17 @@ export class WSServer {
           this.sendAck(socket, requestId, { room, topUp: result });
           break;
         }
+        case "room:set-watermark": {
+          const { text, roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || typeof text !== "string") throw new Error("invalid_payload");
+          const result = this.store.setFeltWatermark(roomId, actorId, text);
+          this.broadcastRoom(roomId);
+          this.sendAck(socket, requestId, { result });
+          break;
+        }
         case "player:react": {
           const { emoji } = (payload as any) || {};
           const meta = this.meta.get(socket);

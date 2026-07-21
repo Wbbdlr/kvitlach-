@@ -17,7 +17,7 @@ interface SessionData {
   token: string;
 }
 
-interface CompletedRoundSummary {
+export interface CompletedRoundSummary {
   roundId: string;
   roundNumber: number;
   turns: Turn[];
@@ -64,6 +64,7 @@ interface UIState {
   dismissBankerSummary: () => void;
   kickPlayer: (playerId: string) => void;
   adjustPlayerBankroll: (playerId: string, amount: number, note?: string) => void;
+  setFeltWatermark: (text: string) => void;
   closeRoom: () => void;
 }
 
@@ -817,6 +818,20 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("player:bank-adjust", { roomId, playerId, amount: normalizedAmount, note });
+    },
+    setFeltWatermark: (text: string) => {
+      const roomId = get().room?.roomId;
+      const actorId = get().playerId;
+      if (!roomId || !actorId) {
+        set({ message: "Join a game first." });
+        return;
+      }
+      const actor = get().room?.players.find((p) => p.id === actorId);
+      if (actor?.type !== "admin") {
+        set({ message: "Only the banker can set the table watermark." });
+        return;
+      }
+      client.send("room:set-watermark", { roomId, text });
     },
     closeRoom: () => {
       const roomId = get().room?.roomId;

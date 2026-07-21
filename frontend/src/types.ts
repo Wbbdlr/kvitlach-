@@ -1,4 +1,4 @@
-export type PlayerType = "admin" | "player";
+export type PlayerType = "admin" | "player" | "spectator";
 export type Presence = "online" | "offline";
 export type TurnState = "pending" | "lost" | "won" | "standby" | "skipped";
 export type RoundPhase = "playing" | "final" | "terminate";
@@ -42,6 +42,7 @@ export interface Turn {
   bankRequest?: boolean;
   settledBet?: number;
   settledNet?: number;
+  settled?: boolean;
 }
 
 export interface BankLockState {
@@ -88,6 +89,7 @@ export interface RoomState {
   waitingPlayerIds: string[];
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
+  feltWatermark?: string;
 }
 
 export interface ConnectionSummary {

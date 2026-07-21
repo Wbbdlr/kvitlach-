@@ -67,6 +67,72 @@ console.log("── Deck composition ──");
   assert(identicalPairs === 0, "Shuffle produces unique orderings across 500 pairs");
 }
 
+// Shuffle randomness — chi-square goodness-of-fit against a uniform distribution.
+// Fisher-Yates (used in deck.ts) is unbiased by construction, but this verifies
+// the actual Math.random()-driven output isn't skewed in practice, at several
+// positions in the deck (start, middle, end) and across deck sizes.
+console.log("\n── Shuffle randomness (chi-square goodness-of-fit) ──");
+{
+  // Chi-square critical value for 11 degrees of freedom (12 card values - 1) at p=0.01.
+  // A statistic above this would mean "reject uniformity" with 99% confidence —
+  // i.e. real bias, not sampling noise. We use the looser p=0.01 threshold (vs 0.05)
+  // to avoid flaky failures from ordinary statistical variance.
+  const CHI_SQUARE_CRITICAL_11DOF_P01 = 24.725;
+  const TRIALS = 24_000;
+
+  function chiSquareForPosition(deckCount: number, position: number): number {
+    const counts = new Map<string, number>();
+    for (let i = 1; i <= 12; i++) counts.set(String(i), 0);
+    for (let t = 0; t < TRIALS; t++) {
+      let deck: Card[] = [];
+      for (let d = 0; d < deckCount; d++) deck = deck.concat(newDeck());
+      const c = deck[position];
+      counts.set(c.name, (counts.get(c.name) ?? 0) + 1);
+    }
+    const expected = TRIALS / 12;
+    let chiSquare = 0;
+    for (const n of counts.values()) chiSquare += ((n - expected) ** 2) / expected;
+    return chiSquare;
+  }
+
+  for (const pos of [0, 23, 47] as const) {
+    const chiSquare = chiSquareForPosition(1, pos);
+    assert(
+      chiSquare < CHI_SQUARE_CRITICAL_11DOF_P01,
+      `1-deck shuffle: card value at position ${pos} is uniformly distributed over ${TRIALS} trials`,
+      `chi-square=${chiSquare.toFixed(2)} (critical=${CHI_SQUARE_CRITICAL_11DOF_P01})`
+    );
+  }
+
+  // Multi-deck shoe (2 decks concatenated, each independently shuffled) — same check.
+  const chiSquareMultiDeck = chiSquareForPosition(2, 0);
+  assert(
+    chiSquareMultiDeck < CHI_SQUARE_CRITICAL_11DOF_P01,
+    "2-deck shoe: card value at position 0 is uniformly distributed",
+    `chi-square=${chiSquareMultiDeck.toFixed(2)} (critical=${CHI_SQUARE_CRITICAL_11DOF_P01})`
+  );
+
+  // Adjacent-position independence: value at position 0 shouldn't predict value at
+  // position 1 (would indicate a shuffle bug, e.g. swap-range or seeding error).
+  {
+    const pairCounts = new Map<string, number>();
+    for (let t = 0; t < TRIALS; t++) {
+      const deck = newDeck();
+      const key = `${deck[0].name}|${deck[1].name}`;
+      pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+    }
+    // Expected count per ordered pair of distinct positions ≈ TRIALS / (12*12),
+    // generously bounded since card[0]!=card[1] removes a small number of combos.
+    const expectedPair = TRIALS / (12 * 12);
+    const maxObserved = Math.max(...pairCounts.values());
+    assert(
+      maxObserved < expectedPair * 3,
+      "No (position 0, position 1) card-value pair is anomalously over-represented",
+      `max observed=${maxObserved}, expected~${expectedPair.toFixed(1)}`
+    );
+  }
+}
+
 // Card 12 multi-value
 console.log("\n── Card 12 values [12, 9, 10] ──");
 {
@@ -195,14 +261,28 @@ console.log("\n── Eleveroon via handleHit (real game path) ──");
     assert(winningNumber(turn.cards) === undefined,      "Eleveroon OFF + draws 11 at 11: no valid total (all > 21)");
   }
 
-  // ── Scenario 4: Eleveroon ON, player at 12 (not 11), draws an 11 → no eleveroon ──
+  // ── Scenario 4: Eleveroon ON, player at a HARD 12 (two ordinary cards, 4+8),
+  //    draws an 11 → no eleveroon, busts. This is NOT the special card "12"
+  //    (which has values [12,9,10] and would instead WIN via 10+11=21 — see
+  //    Scenario 4b below, and the calcState-level "Card 12 + 11" test above). ──
   {
-    const round = makeRound([C4, C8], [C11, C5]); // 4+8=12, deck top = 11
+    const round = makeRound([C4, C8], [C11, C5]); // hard 12: 4+8=12, deck top = 11
     const after = handleHit(round, "p", { eleveroon: true });
     const turn = after.turns.find((t) => t.player.id === "p")!;
     // 4+8+11=23 bust; eleveroon does NOT fire because total wasn't exactly 11
-    assert(!turn.cards[2].attributes.eleveroonIgnored,   "Eleveroon ON + draws 11 at 12: NOT ignored (must be at exactly 11)");
-    assert(turn.state === "lost",                        "Eleveroon ON + draws 11 at 12: busts (not at 11)");
+    assert(!turn.cards[2].attributes.eleveroonIgnored,   "Eleveroon ON + draws 11 at HARD 12 (4+8): NOT ignored (must be at exactly 11)");
+    assert(turn.state === "lost",                        "Eleveroon ON + draws 11 at HARD 12 (4+8): busts (not at 11)");
+  }
+
+  // ── Scenario 4b: Eleveroon ON, player holds the special card 12 ([12,9,10]),
+  //    draws an 11 → eleveroon irrelevant, hand WINS via 10+11=21 (not a bust). ──
+  {
+    const round = makeRound([C12], [C11, C5]); // special card 12 alone, deck top = 11
+    const after = handleHit(round, "p", { eleveroon: true });
+    const turn = after.turns.find((t) => t.player.id === "p")!;
+    assert(!turn.cards[1].attributes.eleveroonIgnored,   "Eleveroon ON + draws 11 holding card 12: NOT ignored (total isn't 11)");
+    assert(turn.state === "won",                         "Eleveroon ON + draws 11 holding card 12: WINS via 10+11=21");
+    assert(winningNumber(turn.cards) === 21,             "Eleveroon ON + draws 11 holding card 12: winning total = 21");
   }
 
   // ── Scenario 5: Eleveroon ON, player at 11, draws again after being saved → can continue ──

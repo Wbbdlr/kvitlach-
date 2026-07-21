@@ -19,6 +19,7 @@ vi.mock("./state", () => {
       notifications: [],
       bankerSummaryAt: undefined,
       connections: [],
+      reactions: [],
       formErrors: {},
       dismissNotification: noop,
       dismissBankerSummary: noop,

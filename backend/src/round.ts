@@ -216,7 +216,7 @@ export function calculateEndState(turns: Turn[]): Turn[] {
 
 export function calculateBalances(turns: Turn[]): Balance[] {
   const adminTurn = turns.find((t) => t.player.type === "admin");
-  const playerTurns = turns.filter((t) => t.player.type !== "admin" && t.state !== "skipped");
+  const playerTurns = turns.filter((t) => t.player.type !== "admin" && t.state !== "skipped" && !t.settled);
   if (!adminTurn) return [];
 
   return playerTurns.map((turn) => {

@@ -1,221 +1,14 @@
 ﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { useGameStore } from "./state";
-import { Card, Player, ReactionEvent, RoomState, RoundPhase, RoundState, Turn } from "./types";
+import { Card, Player, RoomState, RoundPhase, RoundState, Turn } from "./types";
 import { AudioManager } from "./audio";
 
-const cardImages: Record<string, string> = {
-  "1": "/1.png",
-  "2": "/2.png",
-  "3": "/3.png",
-  "4": "/4.png",
-  "5": "/5.png",
-  "6": "/6.png",
-  "7": "/7.png",
-  "8": "/8.png",
-  "9": "/9.png",
-  "10": "/10.png",
-  "11": "/11.png",
-  "12": "/12.png",
-  blank: "/blank.png",
-};
-
-const REACTION_EMOJIS = [
-  "ðŸ‘",
-  "ðŸ˜‚",
-  "ðŸ˜®",
-  "â¤ï¸",
-  "ðŸ”¥",
-  "ðŸ‘",
-  "ðŸ˜¢",
-  "ðŸ¤¯",
-  "ðŸ˜Ž",
-  "ðŸ™Œ",
-  "ðŸ˜¡",
-  "ðŸ¤”",
-  "ðŸŽ‰",
-  "ðŸ¤ž",
-  "ðŸ™",
-  "ðŸ€",
-  "ðŸ»",
-  "ðŸ•",
-  "ðŸ’¤",
-  "ðŸ’¯",
-  "âœ…",
-  "âŒ",
-  "ðŸ¤‘",
-  "ðŸ˜­",
-  "ðŸ¤¡",
-];
-
-function usableCards(cards: Card[]): Card[] {
-  return cards.filter((card) => !card.attributes?.eleveroonIgnored);
-}
-
-function isRosierPair(cards: Card[]): boolean {
-  const visible = usableCards(cards);
-  if (visible.length < 2) return false;
-  const [first, second] = visible;
-  return first.attributes.type === "rosier" && second.attributes.type === "rosier";
-}
-
-function allTotals(cards: Card[]): number[] {
-  const visible = usableCards(cards);
-  if (visible.length === 0) return [0];
-  return visible.reduce<number[]>((sums, card, index) => {
-    const values = (card.attributes?.values?.length ? card.attributes.values : [Number(card.name)])
-      .filter((v) => Number.isFinite(v));
-    if (index === 0) return [...values];
-    const combos: number[] = [];
-    sums.forEach((sum) => values.forEach((value) => combos.push(sum + value)));
-    return combos;
-  }, []);
-}
-
-function bestTotal(cards: Card[]): { total?: number; bustedTotal?: number } {
-  const visible = usableCards(cards);
-  if (visible.length === 0) return { total: 0 };
-  if (isRosierPair(visible)) return { total: 21 };
-  const totals = allTotals(visible);
-  const valid = totals.filter((sum) => sum <= 21);
-  if (valid.length > 0) return { total: Math.max(...valid) };
-  if (totals.length === 0) return { total: 0 };
-  return { bustedTotal: Math.min(...totals) };
-}
-
-function fullName(player: Player): string {
-  return [player.firstName, player.lastName].filter(Boolean).join(" ").trim();
-}
-
-function formatNames(names: string[]): string {
-  if (names.length === 0) return "";
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
-}
-
-function isPushTurn(turn: Turn): boolean {
-  const wager = turn.bet ?? 0;
-  const settled = turn.settledBet ?? wager;
-  return turn.state === "won" && wager === 0 && settled === 0;
-}
-function totalDisplay(
-  turn: Turn,
-  viewerId?: string,
-  _roundState?: RoundPhase,
-  opts?: { forceBankerReveal?: boolean }
-): {
-  prefix: string;
-  value: string;
-  wrapperClassName?: string;
-  valueClassName?: string;
-} {
-  const prefix = "Total:";
-  const { total, bustedTotal } = bestTotal(turn.cards);
-  const isOwnerView = viewerId === turn.player.id;
-  const isBanker = turn.player.type === "admin";
-  const isBlattPhase = (turn.bet ?? 0) === 0;
-  const bankerResolved = turn.state === "lost" || turn.state === "standby" || turn.state === "won";
-  const forceBankerReveal = opts?.forceBankerReveal;
-  const isPublicStandby = turn.state === "standby";
-
-  if (!isOwnerView && isBanker && !bankerResolved && !forceBankerReveal) {
-    const visible = turn.cards.slice(1);
-    if (visible.length === 0)
-      return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (isPublicStandby) {
-    if (total !== undefined) return { prefix, value: `${total}` };
-    if (bustedTotal !== undefined) return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (!isOwnerView && isBlattPhase) {
-    const visible = turn.cards.slice(1);
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-
-  const canRevealTotal =
-    isOwnerView || turn.state === "won" || turn.state === "lost" || isPublicStandby || forceBankerReveal;
-  const revealForOwnerStandby = isOwnerView && turn.state === "standby";
-  if (!canRevealTotal && !revealForOwnerStandby) {
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
-  if (turn.state === "lost" && total === undefined && bustedTotal !== undefined) {
-    return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
-  }
-  if (total !== undefined) return { prefix, value: `${total}` };
-  if (bustedTotal !== undefined) return { prefix, value: `${bustedTotal}` };
-  return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-}
-
-function statusDisplay(turn: Turn): { label: string; className: string } {
-  if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
-  if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
-  if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };
-  if (turn.state === "lost") {
-    const { total, bustedTotal } = bestTotal(turn.cards);
-    const busted = total === undefined && bustedTotal !== undefined;
-    if (busted) return { label: "FUTCHED!", className: "text-rose-700 font-bold" };
-    return { label: "LOST", className: "text-rose-600 font-semibold" };
-  }
-  if (turn.state === "skipped") return { label: "Skipped", className: "text-slate-500" };
-  if (turn.state === "pending") return { label: "Waiting...", className: "text-slate-500" };
-  return { label: "", className: "text-slate-500" };
-}
-
-function betDisplay(turn: Turn, includeBanker = false): { label: string; className: string } {
-  if (turn.player.type === "admin" && !includeBanker) return { label: "—", className: "text-slate-400" };
-  if (turn.player.type === "admin" && includeBanker && typeof turn.settledNet === "number") {
-    const signed = turn.settledNet >= 0 ? `+$${Math.abs(turn.settledNet)}` : `-$${Math.abs(turn.settledNet)}`;
-    const tone = turn.settledNet >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold";
-    return { label: signed, className: tone };
-  }
-  const baseBet = turn.bet ?? 0;
-  const amount = baseBet > 0 ? baseBet : turn.settledBet ?? baseBet;
-  if (isPushTurn(turn)) return { label: "$0", className: "text-slate-500" };
-  if (turn.state === "won") return { label: `+$${Math.abs(amount)}`, className: "text-emerald-600 font-semibold" };
-  if (turn.state === "lost") return { label: `-$${Math.abs(amount)}`, className: "text-rose-600 font-semibold" };
-  if (amount === 0) return { label: "$0", className: "text-slate-400" };
-  return { label: `$${amount}`, className: "text-slate-600" };
-}
-
-function CardView({ card, hidden, size = "md" }: { card: Card; hidden?: boolean; size?: "md" | "lg" }) {
-  const key = hidden ? "blank" : card.name;
-  const src = cardImages[key] ?? cardImages.blank;
-  const alt = hidden ? "Face-down card" : `Card ${card.name}`;
-  const showFallback = !hidden && !cardImages[key];
-  const sizeClass = size === "lg" ? "w-12 h-[4.5rem] sm:w-16 sm:h-24" : "w-10 h-14 sm:w-12 sm:h-16";
-  const ignored = Boolean(card.attributes?.eleveroonIgnored);
-
-  return (
-    <div
-      className={clsx(
-        `${sizeClass} rounded-lg border bg-transparent shadow-none overflow-hidden relative`,
-        hidden ? "border-transparent" : "border-transparent",
-        ignored && "opacity-60 grayscale border-slate-300"
-      )}
-    >
-      <img src={src} alt={alt} className="w-full h-full object-contain" />
-      {showFallback && (
-        <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-slate-700">
-          {card.name}
-        </span>
-      )}
-      {ignored && !hidden && (
-        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-slate-600 bg-white/40">
-          Eleveroon
-        </span>
-      )}
-    </div>
-  );
-}
+import { cardImages, REACTION_EMOJIS, usableCards, isRosierPair, allTotals, bestTotal, fullName, formatNames, isPushTurn, totalDisplay, statusDisplay, betDisplay } from "./table/selectors";
+import { useTableData } from "./table/useTableData";
+import { CardView } from "./table/CardView";
+import { useTableUIFlag } from "./table/flag";
+import { TableRoot } from "./table/TableRoot";
 
 function WalletBadge({
   player,
@@ -677,6 +470,7 @@ function TurnCard({
 
 export default function App() {
   const store = useGameStore();
+  const [tableUIEnabled, setTableUIEnabled] = useTableUIFlag();
   const {
     room,
     round,
@@ -752,14 +546,20 @@ export default function App() {
 
   // Normalize turns early so hooks below can safely depend on this array.
   const turns = round?.turns?.filter(Boolean) ?? [];
-  const latestReactionByPlayer = useMemo(() => {
-    const map: Record<string, ReactionEvent> = {};
-    reactions.forEach((r) => {
-      const prev = map[r.playerId];
-      if (!prev || r.reactedAt > prev.reactedAt) map[r.playerId] = r;
-    });
-    return map;
-  }, [reactions]);
+  const {
+    latestReactionByPlayer,
+    pendingTurns,
+    overviewTurns,
+    activeTurnId,
+    nextTurnId,
+    activeTurnTimer,
+    bankerPlayer,
+    bankInfo,
+    bankIncrement,
+    bankDisabledReason,
+    totalStakes,
+    statsData,
+  } = useTableData({ room, round, playerId, reactions, nowTs, statsPlayerId, roundHistory });
 
   useEffect(() => {
     if (prefilledRoomIdRef.current) return;
@@ -946,32 +746,11 @@ export default function App() {
   const myPlayerTurn = playerTurns.find((t) => t.player?.id === playerId);
   const otherPlayerTurns = playerTurns.filter((t) => t.player?.id !== playerId);
   const isAdmin = room?.players.find((p) => p.id === playerId)?.type === "admin";
-  const pendingTurns = useMemo(() => turns.filter((t) => t.state === "pending"), [turns]);
-  const overviewTurns = useMemo(() => {
-    const banker = turns.filter((t) => t.player.type === "admin");
-    const others = turns.filter((t) => t.player.type !== "admin");
-    return [...banker, ...others];
-  }, [turns]);
   const bankLock = round?.bankLock;
   const primaryBankerTurn = bankerTurns[0];
-  const activeTurnId = useMemo(() => {
-    if (round?.state === "final" && primaryBankerTurn?.player?.id) return primaryBankerTurn.player.id;
-    if (bankLock?.stage === "banker" && primaryBankerTurn?.player?.id) return primaryBankerTurn.player.id;
-    if (bankLock?.stage === "player" && bankLock.playerId) return bankLock.playerId;
-    return pendingTurns[0]?.player.id;
-  }, [round?.state, bankLock?.playerId, bankLock?.stage, pendingTurns, primaryBankerTurn?.player?.id]);
-  const nextTurnId = useMemo(() => {
-    if (bankLock?.stage === "banker") return pendingTurns[0]?.player.id;
-    return pendingTurns[1]?.player.id;
-  }, [bankLock?.stage, pendingTurns]);
   const activeTimerPlayerId = round?.turnTimerPlayerId;
   const activeTimerRemainingMs = round?.turnTimerExpiresAt ? Math.max(round.turnTimerExpiresAt - nowTs, 0) : undefined;
   const turnTimerDurationMs = round?.turnTimerDurationMs ?? 90_000;
-  const activeTurnTimer = useMemo(() => {
-    if (!activeTimerPlayerId || activeTimerRemainingMs === undefined) return undefined;
-    const percent = Math.max(0, Math.min(100, (activeTimerRemainingMs / turnTimerDurationMs) * 100));
-    return { playerId: activeTimerPlayerId, remainingMs: activeTimerRemainingMs, percent, durationMs: turnTimerDurationMs };
-  }, [activeTimerPlayerId, activeTimerRemainingMs, turnTimerDurationMs]);
   const bankerActive = bankerTurns.some((t) => t.player?.id === activeTurnId);
   const bankerCompact = Boolean(round && !bankerActive && round.state !== "terminate" && round.state !== "final");
   const canAct =
@@ -980,31 +759,8 @@ export default function App() {
     myTurn.state === "pending" &&
     activeTurnId === playerId &&
     bankLock?.stage !== "decision";
-  const bankerPlayer = useMemo(() => room?.players.find((p) => p.type === "admin"), [room?.players]);
-  const bankInfo = useMemo(() => {
-    if (!round || !bankerPlayer || !myPlayerTurn) return undefined;
-    const bankerWallet = room?.wallets?.[bankerPlayer.id] ?? 0;
-    const playerIndex = round.turns.findIndex((turn) => turn.player.id === myPlayerTurn.player.id);
-    if (playerIndex < 0) return undefined;
-    const outstanding = round.turns
-      .slice(0, playerIndex)
-      .filter((turn) => turn.player.type !== "admin" && turn.state !== "lost" && turn.state !== "skipped")
-      .reduce((sum, turn) => sum + (turn.bet ?? 0), 0);
-    const available = Math.max(bankerWallet - outstanding, 0);
-    return { available, outstanding, bankerWallet, playerIndex };
-  }, [round, bankerPlayer, myPlayerTurn, room?.wallets]);
   const currentBetAmount = myPlayerTurn?.bet ?? 0;
-  const bankIncrement = useMemo(() => {
-    if (!bankInfo) return 0;
-    return Math.max(bankInfo.available - currentBetAmount, 0);
-  }, [bankInfo, currentBetAmount]);
   const canBank = Boolean(bankInfo && bankInfo.available > 0 && bankIncrement > 0);
-  const bankDisabledReason = useMemo(() => {
-    if (!bankInfo) return "Bank unavailable.";
-    if (bankInfo.available <= 0) return "Bank is empty.";
-    if (bankIncrement <= 0) return "Current wager already matches the bank.";
-    return undefined;
-  }, [bankInfo, bankIncrement]);
   const bankerDecisionRequired = Boolean(isAdmin && bankLock?.stage === "decision");
   const viewerWaitingForBankDecision = Boolean(!isAdmin && bankLock?.stage === "decision");
   const bankShowdownActive = bankLock?.stage === "banker";
@@ -1015,13 +771,6 @@ export default function App() {
   const bankPlayerActing = bankLock?.stage === "player";
   const showBankSummary = Boolean(bankerSummaryAt);
   const latestSummary = roundHistory?.[0];
-  const totalStakes = useMemo(
-    () =>
-      turns
-        .filter((t) => t.player.type !== "admin")
-        .reduce((sum, turn) => sum + Math.max(0, turn.bet ?? 0), 0),
-    [turns]
-  );
   const bankerWalletTotal = bankerPlayer ? room?.wallets?.[bankerPlayer.id] ?? 0 : undefined;
 
   useEffect(() => {
@@ -1062,43 +811,6 @@ export default function App() {
     return parsed;
   })();
   const decksInPlay = round?.deckCount ?? preferredDeckCountValue ?? 1;
-
-  const statsData = useMemo(() => {
-    if (!statsPlayerId) return undefined;
-    const rounds = roundHistory ?? [];
-    const entries = rounds
-      .map((r) => {
-        const turn = r.turns.find((t) => t.player.id === statsPlayerId);
-        if (!turn) return undefined;
-        const status = statusDisplay(turn);
-        const betInfo = betDisplay(turn, true);
-        return {
-          roundNumber: r.roundNumber,
-          status: status.label || "",
-          statusClass: status.className,
-          bet: betInfo.label,
-          betClass: betInfo.className,
-        };
-      })
-      .filter(Boolean) as {
-      roundNumber: number;
-      status: string;
-      statusClass: string;
-      bet: string;
-      betClass: string;
-    }[];
-    if (!entries.length) return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false };
-    const wins = entries.filter((e) => e.status === "WON").length;
-    const losses = entries.filter((e) => e.status === "LOST" || e.status === "FUTCHED!").length;
-    const pushes = entries.filter((e) => e.status === "PUSH").length;
-    const playerRecord = room?.players.find((p) => p.id === statsPlayerId);
-    const playerName =
-      playerRecord?.firstName ??
-      rounds.find((r) => r.turns.some((t) => t.player.id === statsPlayerId))?.turns.find((t) => t.player.id === statsPlayerId)?.player
-        ?.firstName ?? "Player";
-    const isBanker = playerRecord?.type === "admin";
-    return { name: playerName, entries: entries.slice(0, 10), wins, losses, pushes, isBanker };
-  }, [statsPlayerId, roundHistory, room?.players]);
 
   useEffect(() => {
     if (me) {
@@ -1313,8 +1025,49 @@ export default function App() {
     setBetError(undefined);
   };
 
-  return (
+  const tableUIToggle = (
+    <label
+      className="fixed top-2 left-2 z-50 inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm"
+      title="Try the new around-the-table layout (in progress)"
+    >
+      <input type="checkbox" checked={tableUIEnabled} onChange={(e) => setTableUIEnabled(e.target.checked)} />
+      New table view
+    </label>
+  );
+
+  return tableUIEnabled && room && round ? (
     <>
+      {tableUIToggle}
+      <TableRoot
+        room={room}
+        round={round}
+        playerId={playerId}
+        isAdmin={isAdmin}
+        bankerTurn={primaryBankerTurn}
+        playerTurns={playerTurns}
+        myPlayerTurn={myPlayerTurn}
+        activeTurnId={activeTurnId}
+        nextTurnId={nextTurnId}
+        activeTurnTimer={activeTurnTimer}
+        bankerPlayer={bankerPlayer}
+        bankInfo={bankInfo}
+        bankIncrement={bankIncrement}
+        bankDisabledReason={bankDisabledReason}
+        canBank={canBank}
+        firstBetCardIndex={firstBetCardIndex}
+        latestReactionByPlayer={latestReactionByPlayer}
+        onBet={(amount, options) => store.bet(amount, options)}
+        onHit={(options) => store.hit(options)}
+        onStand={() => store.stand()}
+        onSkip={(pid) => store.skip(pid)}
+        onReact={(emoji) => sendReaction(emoji)}
+        onTopUp={(amount, note) => store.topUpBanker(amount, note)}
+        onSetWatermark={(text) => store.setFeltWatermark(text)}
+      />
+    </>
+  ) : (
+    <>
+      {tableUIToggle}
       {floatTiles.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
           {floatTiles.map((tile, idx) => (
@@ -1591,6 +1344,30 @@ export default function App() {
         <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 shadow-sm">
           Beta
         </span>
+        {room && (
+          <>
+            <button
+              type="button"
+              className="text-xs font-semibold text-accent underline"
+              onClick={() => {
+                setShowWhatIs(false);
+                setShowHowTo(true);
+              }}
+            >
+              How to play
+            </button>
+            <button
+              type="button"
+              className="text-xs font-semibold text-blue-600 underline"
+              onClick={() => {
+                setShowHowTo(false);
+                setShowWhatIs(true);
+              }}
+            >
+              What is Kvitlach?
+            </button>
+          </>
+        )}
         {room && isAdmin && (
           <button
             type="button"
@@ -2290,7 +2067,7 @@ export default function App() {
               )}
             </div>
           )}
-          {!isAdmin && me && (
+          {!isAdmin && me && me.type !== "spectator" && (
             <div className="border-t border-slate-200 pt-3 mt-3 flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
@@ -2917,145 +2694,6 @@ export default function App() {
         </div>
       )}
 
-      {pendingKick && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
-          role="dialog"
-          aria-modal="true"
-          onClick={cancelKick}
-        >
-          <div
-            className="relative w-full max-w-md card-surface p-5 flex flex-col gap-4"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="text-lg font-semibold text-ink">Remove player?</div>
-            <p className="text-sm text-slate-600">Are you sure you want to remove {pendingKick.label} from the table?</p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                onClick={cancelKick}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
-                onClick={confirmKick}
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showBankSummary && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
-          role="dialog"
-          aria-modal="true"
-          onClick={dismissBankerSummary}
-        >
-          <div
-            className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto card-surface p-6 flex flex-col gap-4"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="absolute top-3 right-3 text-xs font-semibold text-slate-500 underline"
-              onClick={dismissBankerSummary}
-            >
-              Close
-            </button>
-            <div className="space-y-2">
-              <div className="text-lg font-semibold text-ink">Bank showdown summary</div>
-              <div className="text-xs text-slate-500">
-                The banker ended the round after the bank was depleted. Review the results below or print/save for your records.
-              </div>
-            </div>
-            {latestSummary ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>Round {latestSummary.roundNumber}</span>
-                  <span>{new Date(latestSummary.completedAt).toLocaleString()}</span>
-                </div>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {latestSummary.turns.map((turn) => {
-                    const statusInfo = statusDisplay(turn);
-                    const betInfo = betDisplay(turn, true);
-                    const name = [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ");
-                    const roleLabel = turn.player.type === "admin" ? "Banker" : "Player";
-                    return (
-                      <div
-                        key={`${latestSummary.roundId}-${turn.player.id}`}
-                        className="flex justify-between items-start gap-3 border border-slate-200 bg-white rounded px-3 py-2"
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-sm text-ink">{name || "Unnamed"}</span>
-                          <span className="text-[11px] uppercase tracking-wide text-slate-500">{roleLabel}</span>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className={statusInfo.className}>{statusInfo.label}</span>
-                          <span className={clsx("text-xs", betInfo.className)}>{betInfo.label}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-slate-600">Preparing summary…</div>
-            )}
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-700"
-                onClick={() => window.print()}
-              >
-                Print / Save PDF
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-900"
-                onClick={dismissBankerSummary}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {notifications.length > 0 && (
-        <div className="fixed top-4 left-3 right-3 sm:left-auto sm:right-4 sm:max-w-sm z-50 flex flex-col gap-2">
-          {notifications.map((note) => {
-            const toneClass =
-              note.tone === "success"
-                ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-                : note.tone === "error"
-                ? "bg-rose-50 border border-rose-200 text-rose-700"
-                : "bg-blue-50 border border-blue-200 text-blue-700";
-            return (
-              <div
-                key={note.id}
-                className={`rounded-lg px-4 py-3 shadow-md ${toneClass}`}
-                role="alert"
-                aria-live="assertive"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="flex-1 text-sm font-medium whitespace-pre-line">{note.message}</span>
-                  <button
-                    type="button"
-                    className="text-xs uppercase tracking-wide"
-                    onClick={() => dismissNotification(note.id)}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
       {showWhatIs && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"

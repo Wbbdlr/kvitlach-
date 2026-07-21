@@ -68,3 +68,114 @@ body {
   animation: floatUp 2.2s ease-out forwards;
   pointer-events: none;
 }
+
+/* ── Table overhaul foundations (Phase 0) ─────────────────────────────── */
+
+/* Felt theme — overridden per-user at runtime by theme.ts (applyFelt). */
+:root {
+  --felt-hi: #24503a;
+  --felt-lo: #12271c;
+  --felt-rail: #4a3320;
+  --gold: #e6a44b;
+}
+
+/* The felt surface. Components add their own layout on top. */
+.felt-table {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(ellipse 90% 70% at 50% 44%, var(--felt-hi), var(--felt-lo) 82%);
+}
+
+/* Room-wide, admin-set table label (App.tsx's TableRoot sets --wm from
+   room.feltWatermark). Empty by default so tables without one show nothing. */
+.felt-table::after {
+  content: var(--wm, "");
+  position: absolute;
+  top: 46%;
+  left: 50%;
+  direction: rtl;
+  transform: translate(-50%, -50%);
+  font-size: 28px;
+  letter-spacing: 2px;
+  color: rgba(230, 164, 75, 0.09);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Turn countdown bar — depletes as the auto-skip timer runs down.
+   Width is driven by the existing activeTurnTimer.percent; these classes
+   handle the color escalation and urgency pulse. */
+.turn-bar-track {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.turn-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold), #d97706);
+  transition: width 0.25s linear, background-color 0.3s ease;
+}
+.turn-bar-fill.is-warning { background: linear-gradient(90deg, #f0b24a, #d97706); }
+.turn-bar-fill.is-urgent {
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
+  animation: turnBarPulse 0.8s ease-in-out infinite;
+}
+@keyframes turnBarPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* "Your move" — fired once when it becomes the local player's turn. */
+@keyframes yourMovePulse {
+  0% { box-shadow: 0 0 0 0 rgba(230, 164, 75, 0.55); transform: scale(1); }
+  50% { box-shadow: 0 0 22px 4px rgba(230, 164, 75, 0.55); transform: scale(1.015); }
+  100% { box-shadow: 0 0 0 0 rgba(230, 164, 75, 0); transform: scale(1); }
+}
+.your-move-alert {
+  animation: yourMovePulse 1.1s ease-in-out 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-bar-fill.is-urgent,
+  .your-move-alert {
+    animation: none;
+  }
+}
+
+/* Button accents — retinted per-felt by theme.ts's applyFelt(). */
+:root {
+  --btn-bet: #d97706;
+  --btn-hit: #2f7dc9;
+  --btn-stand: #a8532e;
+}
+
+/* Card fly-in — a transient fixed-position node animated from the deck to a
+   hand via left/top transitions (table/animations.ts's flyCard helper),
+   then removed once the real card renders in place. */
+.table-fly-card {
+  position: fixed;
+  z-index: 80;
+  pointer-events: none;
+  transition: left 0.48s cubic-bezier(0.2, 0.7, 0.3, 1), top 0.48s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Press feedback for dock buttons (table/animations.ts's pressFx helper). */
+@keyframes tablePressFx {
+  0% { transform: scale(1); }
+  40% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+.table-press-fx {
+  animation: tablePressFx 0.22s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-fly-card {
+    transition: none;
+  }
+  .table-press-fx {
+    animation: none;
+  }
+}
