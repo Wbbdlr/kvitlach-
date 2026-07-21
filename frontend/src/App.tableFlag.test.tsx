@@ -117,4 +117,17 @@ describe("table UI feature flag", () => {
     expect(container.querySelector(".felt-table")).toBeNull();
     expect(getByText(/Waiting for Banker to start the round/i)).toBeInTheDocument();
   });
+
+  it("falls back to the old UI once a round terminates, even though `round` stays defined", () => {
+    // The backend never clears room.roundId's corresponding `round` object to
+    // undefined after a round ends -- it just flips round.state to "terminate"
+    // (a new round object only replaces it once the banker starts the next one).
+    // The old UI's own `roundInProgress` check (App.tsx) already accounts for
+    // this by checking `round.state !== "terminate"`, not `!!round` -- the new
+    // UI's gate must match, or it gets stuck showing the finished round forever.
+    window.localStorage.setItem("kvitlach.tableUI", "1");
+    mockState.round = { ...round, state: "terminate" };
+    const { container } = render(<App />);
+    expect(container.querySelector(".felt-table")).toBeNull();
+  });
 });

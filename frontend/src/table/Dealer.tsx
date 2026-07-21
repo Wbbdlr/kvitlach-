@@ -29,7 +29,7 @@ export function Dealer({ turn, bankerPlayer, viewerId, isViewerBanker, roundStat
   const name = bankerPlayer ? fullName(bankerPlayer) || bankerPlayer.firstName : "Bank";
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+    <div className="absolute top-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
       <div className="rounded-xl bg-white/95 px-4 py-2 shadow-lg flex flex-col items-center gap-1 min-w-[140px] border border-amber-200">
         <div className="flex items-center gap-1 text-sm font-semibold text-slate-800">
           <Icon name="bank" size={14} className="text-amber-700" />

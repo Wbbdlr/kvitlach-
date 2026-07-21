@@ -7,6 +7,7 @@ import { Dealer } from "./Dealer";
 import { PlayerDock } from "./PlayerDock";
 import { BankPanel } from "./BankPanel";
 import { ReactionLayer } from "./ReactionLayer";
+import { FeltSwitcher } from "./FeltSwitcher";
 
 export interface BankInfo {
   available: number;
@@ -68,7 +69,7 @@ export function TableRoot({
   onTopUp,
   onSetWatermark,
 }: TableRootProps) {
-  useFelt(); // applies the viewer's felt color + matching button accents on mount
+  const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
 
   useEffect(() => {
     document.documentElement.style.setProperty("--wm", JSON.stringify(room.feltWatermark ?? ""));
@@ -95,6 +96,8 @@ export function TableRoot({
 
   return (
     <div className="felt-table relative w-full min-h-[520px] rounded-2xl">
+      <FeltSwitcher felt={felt} onChange={setFelt} />
+
       {bankerTurn && (
         <Dealer
           turn={bankerTurn}

@@ -1035,7 +1035,7 @@ export default function App() {
     </label>
   );
 
-  return tableUIEnabled && room && round ? (
+  return tableUIEnabled && room && round && round.state !== "terminate" ? (
     <>
       {tableUIToggle}
       <TableRoot
