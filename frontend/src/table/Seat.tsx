@@ -78,6 +78,11 @@ export function Seat({
         )}
       >
         <div className="flex items-center gap-1 text-xs font-semibold text-slate-800">
+          <span
+            className={clsx("h-2 w-2 rounded-full", turn.player.presence === "online" ? "bg-emerald-500" : "bg-slate-300")}
+            aria-label={turn.player.presence === "online" ? "Online" : "Offline"}
+            title={turn.player.presence === "online" ? "Online" : "Offline"}
+          />
           <span className={clsx(isMe && "text-blue-700")}>{displayName}</span>
           {isMe && <span className="italic text-slate-500" aria-label="You">(Me)</span>}
         </div>

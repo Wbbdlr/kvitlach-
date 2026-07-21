@@ -33,6 +33,13 @@ export function Dealer({ turn, bankerPlayer, viewerId, isViewerBanker, roundStat
       <div className="rounded-xl bg-white/95 px-4 py-2 shadow-lg flex flex-col items-center gap-1 min-w-[140px] border border-amber-200">
         <div className="flex items-center gap-1 text-sm font-semibold text-slate-800">
           <Icon name="bank" size={14} className="text-amber-700" />
+          {bankerPlayer && (
+            <span
+              className={clsx("h-2 w-2 rounded-full", bankerPlayer.presence === "online" ? "bg-emerald-500" : "bg-slate-300")}
+              aria-label={bankerPlayer.presence === "online" ? "Online" : "Offline"}
+              title={bankerPlayer.presence === "online" ? "Online" : "Offline"}
+            />
+          )}
           <span>{name}</span>
           {isViewerBanker && <span className="italic text-slate-500" aria-label="You">(Me)</span>}
         </div>

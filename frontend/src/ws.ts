@@ -10,6 +10,7 @@ export type ErrorListener = (err: Event) => void;
 
 export class WSClient {
   private socket?: WebSocket;
+  private connecting = false;
   private listeners = new Set<Listener>();
   private openListeners = new Set<OpenListener>();
   private closeListeners = new Set<CloseListener>();
@@ -21,9 +22,16 @@ export class WSClient {
 
   connect(onReconnect?: ReconnectListener) {
     if (onReconnect) this.reconnectListeners.add(onReconnect);
+    // Guard against duplicate concurrent sockets (e.g. React StrictMode's dev-only
+    // double-invoked effects calling connect() twice in quick succession) — a second
+    // live socket would race the first to resume the same session token, and the
+    // loser's invalid_session error would wipe out the winner's just-restored state.
+    if (this.connecting || this.socket?.readyState === WebSocket.OPEN) return;
+    this.connecting = true;
     try {
       this.socket = new WebSocket(this.url);
     } catch (err) {
+      this.connecting = false;
       this.closeListeners.forEach((fn) => fn());
       setTimeout(() => {
         this.reconnectListeners.forEach((fn) => fn());
@@ -32,6 +40,7 @@ export class WSClient {
       return;
     }
     this.socket.onopen = () => {
+      this.connecting = false;
       this.flushQueue();
       this.openListeners.forEach((fn) => fn());
     };
@@ -43,6 +52,7 @@ export class WSClient {
       this.errorListeners.forEach((fn) => fn(event));
     };
     this.socket.onclose = () => {
+      this.connecting = false;
       this.closeListeners.forEach((fn) => fn());
       setTimeout(() => {
         this.reconnectListeners.forEach((fn) => fn());
