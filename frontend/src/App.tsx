@@ -1035,7 +1035,7 @@ export default function App() {
     </label>
   );
 
-  return tableUIEnabled && room && round && round.state !== "terminate" ? (
+  return tableUIEnabled && room && round ? (
     <>
       {tableUIToggle}
       <TableRoot
@@ -1063,6 +1063,20 @@ export default function App() {
         onReact={(emoji) => sendReaction(emoji)}
         onTopUp={(amount, note) => store.topUpBanker(amount, note)}
         onSetWatermark={(text) => store.setFeltWatermark(text)}
+        roundHistoryCount={roundHistory?.length ?? 0}
+        onApproveRename={(id) => store.approveRename(id)}
+        onRejectRename={(id) => store.rejectRename(id)}
+        onApproveBuyIn={(id) => store.approveBuyIn(id)}
+        onRejectBuyIn={(id) => store.rejectBuyIn(id)}
+        onAdjustChips={(id, amount, note) => store.adjustPlayerBankroll(id, amount, note)}
+        onKick={(id) => store.kickPlayer(id)}
+        onExportHistory={() => exportRoundHistoryTxt()}
+        onCloseRoom={() => store.closeRoom()}
+        onStartNextRound={() => {
+          const parsedOverride = deckCount === "" ? undefined : Number(deckCount);
+          const parsedPreferred = preferredDecks === "" ? undefined : Number(preferredDecks);
+          store.startRound(parsedOverride ?? parsedPreferred);
+        }}
       />
     </>
   ) : (

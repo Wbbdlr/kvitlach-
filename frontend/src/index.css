@@ -79,11 +79,19 @@ body {
   --gold: #e6a44b;
 }
 
-/* The felt surface. Components add their own layout on top. */
+/* The felt surface. Components add their own layout on top. Fills the
+   viewport (not a fixed px height) so it reads as full-screen on phones;
+   dvh is preferred where supported since mobile browser chrome makes vh
+   unreliable, with a vh fallback for engines that lack it. The inset
+   box-shadow is the wood rail around the felt -- layout-neutral (doesn't
+   consume space like a border would). */
 .felt-table {
   position: relative;
   overflow: hidden;
+  min-height: 100vh;
+  min-height: 100dvh;
   background: radial-gradient(ellipse 90% 70% at 50% 44%, var(--felt-hi), var(--felt-lo) 82%);
+  box-shadow: inset 0 0 0 10px var(--felt-rail), inset 0 0 0 13px rgba(0, 0, 0, 0.35);
 }
 
 /* Room-wide, admin-set table label (App.tsx's TableRoot sets --wm from

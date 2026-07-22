@@ -118,16 +118,22 @@ describe("table UI feature flag", () => {
     expect(getByText(/Waiting for Banker to start the round/i)).toBeInTheDocument();
   });
 
-  it("falls back to the old UI once a round terminates, even though `round` stays defined", () => {
+  it("stays on the felt table with a results banner once a round terminates, rather than falling back to the old UI", () => {
     // The backend never clears room.roundId's corresponding `round` object to
     // undefined after a round ends -- it just flips round.state to "terminate"
     // (a new round object only replaces it once the banker starts the next one).
-    // The old UI's own `roundInProgress` check (App.tsx) already accounts for
-    // this by checking `round.state !== "terminate"`, not `!!round` -- the new
-    // UI's gate must match, or it gets stuck showing the finished round forever.
+    // An earlier version fell back to the old UI here (a stopgap to avoid
+    // getting stuck showing a frozen round with no way to start the next one)
+    // -- the new UI now has its own in-theme results screen instead, so it
+    // should stay on .felt-table and surface a "Start next round" trigger.
     window.localStorage.setItem("kvitlach.tableUI", "1");
     mockState.round = { ...round, state: "terminate" };
-    const { container } = render(<App />);
-    expect(container.querySelector(".felt-table")).toBeNull();
+    // Viewer here (playerAId) is a non-admin, so they see the "waiting on the
+    // banker" message rather than the "Start next round" button itself --
+    // the button's admin-gating is covered by the live browser verification.
+    const { container, getByText } = render(<App />);
+    expect(container.querySelector(".felt-table")).not.toBeNull();
+    expect(getByText(/Round complete/i)).toBeInTheDocument();
+    expect(getByText(/Waiting for the banker to start the next round/i)).toBeInTheDocument();
   });
 });

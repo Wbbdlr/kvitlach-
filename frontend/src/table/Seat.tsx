@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { RoundPhase, Turn } from "../types";
+import { Player, RoundPhase, Turn } from "../types";
 import { totalDisplay, statusDisplay, betDisplay } from "./selectors";
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
@@ -16,6 +16,7 @@ export interface SeatProps {
   turnTimer?: { playerId: string; remainingMs: number; percent: number; durationMs: number };
   reactionEmoji?: string;
   walletAmount?: number;
+  presence?: Player["presence"];
   position: SeatPosition;
   onSkipOther?: (playerId: string) => void;
 }
@@ -32,6 +33,7 @@ export function Seat({
   turnTimer,
   reactionEmoji,
   walletAmount,
+  presence,
   position,
   onSkipOther,
 }: SeatProps) {
@@ -39,7 +41,9 @@ export function Seat({
   const isBanker = turn.player.type === "admin";
   const isCurrentTurn = Boolean(isActiveTurn && turn.state === "pending" && roundState !== "terminate");
   const isNextPlayer = Boolean(isNextTurn && !isCurrentTurn && turn.state === "pending" && roundState !== "terminate");
-  const shouldForceReveal = isBanker && (forceBankerReveal || roundState === "final" || roundState === "terminate");
+  // See Dealer.tsx: round.state === "final" means the banker's turn just
+  // began, not that it's over -- don't treat it as a reveal signal.
+  const shouldForceReveal = isBanker && (forceBankerReveal || roundState === "terminate");
   const totalInfo = totalDisplay(turn, viewerId, roundState, { forceBankerReveal: shouldForceReveal });
   const statusInfo = statusDisplay(turn);
   const betInfo = betDisplay(turn);
@@ -60,6 +64,7 @@ export function Seat({
   const resolved = turn.state === "lost" || turn.state === "won";
   const isPublicStandby = turn.state === "standby";
   const hasBet = typeof betStart === "number";
+  const isOffline = (presence ?? turn.player.presence) !== "online";
 
   return (
     <div
@@ -74,17 +79,19 @@ export function Seat({
       <div
         className={clsx(
           "rounded-xl bg-white/95 px-3 py-2 shadow-md flex flex-col items-center gap-1 min-w-[104px]",
-          isCurrentTurn && "ring-2 ring-amber-400"
+          isCurrentTurn && "ring-2 ring-amber-400",
+          isOffline && "opacity-50 grayscale"
         )}
       >
         <div className="flex items-center gap-1 text-xs font-semibold text-slate-800">
           <span
-            className={clsx("h-2 w-2 rounded-full", turn.player.presence === "online" ? "bg-emerald-500" : "bg-slate-300")}
-            aria-label={turn.player.presence === "online" ? "Online" : "Offline"}
-            title={turn.player.presence === "online" ? "Online" : "Offline"}
+            className={clsx("h-2 w-2 rounded-full", isOffline ? "bg-slate-300" : "bg-emerald-500")}
+            aria-label={isOffline ? "Offline" : "Online"}
+            title={isOffline ? "Offline" : "Online"}
           />
           <span className={clsx(isMe && "text-blue-700")}>{displayName}</span>
           {isMe && <span className="italic text-slate-500" aria-label="You">(Me)</span>}
+          {isOffline && <span className="text-[10px] font-normal text-slate-400">(offline)</span>}
         </div>
         {isNextPlayer && <span className="text-[10px] font-semibold text-amber-700">Up next</span>}
         {isCurrentTurn && <span className="text-[10px] font-semibold text-blue-600">{isMe ? "Your turn" : "Active"}</span>}

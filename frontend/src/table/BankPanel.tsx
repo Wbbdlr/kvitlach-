@@ -9,13 +9,14 @@ export interface BankPanelProps {
   feltWatermark?: string;
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
+  onOpenManage?: () => void;
 }
 
 // Bank total display, visible to everyone. The banker gets an "Adjust"
 // control that opens a popup to add or subtract a chosen amount (with an
 // optional note) rather than a single fixed top-up button, plus a watermark
 // editor for the table's felt label.
-export function BankPanel({ bankerName, bankerWallet, isBanker, feltWatermark, onTopUp, onSetWatermark }: BankPanelProps) {
+export function BankPanel({ bankerName, bankerWallet, isBanker, feltWatermark, onTopUp, onSetWatermark, onOpenManage }: BankPanelProps) {
   const [showTopUp, setShowTopUp] = useState(false);
   const [topUpSign, setTopUpSign] = useState<1 | -1>(1);
   const [topUpAmount, setTopUpAmount] = useState("500");
@@ -57,6 +58,11 @@ export function BankPanel({ bankerName, bankerWallet, isBanker, feltWatermark, o
         {isBanker && (
           <button type="button" className="text-slate-500 underline" onClick={() => setShowWatermark((v) => !v)}>
             <Icon name="pencil" size={11} />
+          </button>
+        )}
+        {isBanker && onOpenManage && (
+          <button type="button" className="text-slate-500 underline" onClick={onOpenManage} title="Manage table">
+            <Icon name="users" size={11} />
           </button>
         )}
       </div>
