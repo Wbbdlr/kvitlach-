@@ -34,7 +34,9 @@ export type IconName =
   | "laugh"
   | "heart"
   | "chevron-up"
-  | "chevron-down";
+  | "chevron-down"
+  | "expand"
+  | "compress";
 
 // Inner <svg> markup for each icon, static and developer-authored (no user
 // data ever flows through this map) — safe to inject verbatim.
@@ -70,6 +72,8 @@ const ICON_PATHS: Record<IconName, string> = {
   heart: '<path d="M12 19.5s-7.5-4.3-7.5-10a4.5 4.5 0 0 1 7.5-3.4 4.5 4.5 0 0 1 7.5 3.4c0 5.7-7.5 10-7.5 10z"/>',
   "chevron-up": '<path d="M5 15l7-7 7 7"/>',
   "chevron-down": '<path d="M5 9l7 7 7-7"/>',
+  expand: '<path d="M9 4H4v5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M15 20h5v-5"/>',
+  compress: '<path d="M4 9h5V4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M20 15h-5v5"/>',
 };
 
 export function Icon({ name, size = 15, className }: { name: IconName; size?: number; className?: string }) {

@@ -10,13 +10,27 @@ export interface BankPanelProps {
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
   onOpenManage?: () => void;
+  fullscreenSupported?: boolean;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 // Bank total display, visible to everyone. The banker gets an "Adjust"
 // control that opens a popup to add or subtract a chosen amount (with an
 // optional note) rather than a single fixed top-up button, plus a watermark
 // editor for the table's felt label.
-export function BankPanel({ bankerName, bankerWallet, isBanker, feltWatermark, onTopUp, onSetWatermark, onOpenManage }: BankPanelProps) {
+export function BankPanel({
+  bankerName,
+  bankerWallet,
+  isBanker,
+  feltWatermark,
+  onTopUp,
+  onSetWatermark,
+  onOpenManage,
+  fullscreenSupported,
+  isFullscreen,
+  onToggleFullscreen,
+}: BankPanelProps) {
   const [showTopUp, setShowTopUp] = useState(false);
   const [topUpSign, setTopUpSign] = useState<1 | -1>(1);
   const [topUpAmount, setTopUpAmount] = useState("500");
@@ -50,6 +64,17 @@ export function BankPanel({ bankerName, bankerWallet, isBanker, feltWatermark, o
         <Icon name="bank" size={13} className="text-amber-700" />
         <span>{bankerName}</span>
         <span>${bankerWallet.toLocaleString()}</span>
+        {fullscreenSupported && onToggleFullscreen && (
+          <button
+            type="button"
+            className="text-slate-500"
+            onClick={onToggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            <Icon name={isFullscreen ? "compress" : "expand"} size={12} />
+          </button>
+        )}
         {isBanker && (
           <button type="button" className="text-blue-600 underline" onClick={() => setShowTopUp((v) => !v)}>
             Adjust

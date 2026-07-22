@@ -9,6 +9,7 @@ import { BankPanel } from "./BankPanel";
 import { ReactionLayer } from "./ReactionLayer";
 import { FeltSwitcher } from "./FeltSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
+import { useFullscreen } from "./fullscreen";
 
 export interface BankInfo {
   available: number;
@@ -92,6 +93,7 @@ export function TableRoot({
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
+  const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
 
   useEffect(() => {
     document.documentElement.style.setProperty("--wm", JSON.stringify(room.feltWatermark ?? ""));
@@ -175,6 +177,9 @@ export function TableRoot({
           onTopUp={onTopUp}
           onSetWatermark={onSetWatermark}
           onOpenManage={isAdmin ? () => setManageOpen(true) : undefined}
+          fullscreenSupported={fullscreenSupported}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
       )}
 
