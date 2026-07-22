@@ -177,9 +177,9 @@ export class WSServer {
           break;
         }
         case "turn:bet": {
-          const { roundId, amount, playerId: actorFromPayload, bank } = (payload as any) || {};
+          const { roundId, amount, bank } = (payload as any) || {};
           const meta = this.meta.get(socket);
-          const actorId = actorFromPayload ?? meta?.playerId;
+          const actorId = meta?.playerId;
           if (!roundId || typeof amount !== "number" || !actorId) throw new Error("invalid_payload");
           const round = this.store.applyBet(roundId, actorId, amount, { bank: Boolean(bank) });
           this.handleRoundUpdate(round);
@@ -187,9 +187,9 @@ export class WSServer {
           break;
         }
         case "turn:stand": {
-          const { roundId, playerId: actorFromPayload } = (payload as any) || {};
+          const { roundId } = (payload as any) || {};
           const meta = this.meta.get(socket);
-          const actorId = actorFromPayload ?? meta?.playerId;
+          const actorId = meta?.playerId;
           if (!roundId || !actorId) throw new Error("invalid_payload");
           const round = this.store.applyStand(roundId, actorId);
           this.handleRoundUpdate(round);
@@ -197,9 +197,9 @@ export class WSServer {
           break;
         }
         case "turn:hit": {
-          const { roundId, playerId: actorFromPayload, eleveroon } = (payload as any) || {};
+          const { roundId, eleveroon } = (payload as any) || {};
           const meta = this.meta.get(socket);
-          const actorId = actorFromPayload ?? meta?.playerId;
+          const actorId = meta?.playerId;
           if (!roundId || !actorId) throw new Error("invalid_payload");
           const round = this.store.applyHit(roundId, actorId, { eleveroon: Boolean(eleveroon) });
           this.handleRoundUpdate(round);
@@ -207,9 +207,9 @@ export class WSServer {
           break;
         }
         case "turn:skip": {
-          const { roundId, playerId: targetId, actorId: actorFromPayload } = (payload as any) || {};
+          const { roundId, playerId: targetId } = (payload as any) || {};
           const meta = this.meta.get(socket);
-          const actorId = actorFromPayload ?? meta?.playerId;
+          const actorId = meta?.playerId;
           if (!roundId || !actorId) throw new Error("invalid_payload");
           const roundCtx = this.store.getRound(roundId);
           if (!roundCtx) throw new Error("round_not_found");
