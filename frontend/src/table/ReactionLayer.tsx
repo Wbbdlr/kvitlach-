@@ -7,23 +7,24 @@ export interface ReactionLayerProps {
   disabled?: boolean;
 }
 
-// The reaction picker control — floating reaction badges over each seat are
+// The reaction picker control -- floating reaction badges over each seat are
 // rendered by Seat.tsx/Dealer.tsx directly (driven by latestReactionByPlayer
 // from useTableData), so this component is just the send button + popover.
+// Absolutely positioned within the stage (not fixed) so it scales with it.
 export function ReactionLayer({ onReact, disabled }: ReactionLayerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside([ref], () => setOpen(false), open);
 
   return (
-    <div ref={ref} className="fixed bottom-20 right-3 z-30">
+    <div ref={ref} className="absolute right-4 z-30" style={{ bottom: "100px" }}>
       {open && (
-        <div className="mb-2 grid grid-cols-5 gap-1 rounded-lg bg-white shadow-lg border border-slate-200 p-2">
+        <div className="mb-2 grid grid-cols-5 gap-1 rounded-lg border border-amber-500/30 bg-[rgba(12,20,15,0.96)] p-2 shadow-xl">
           {REACTION_EMOJIS.map((emoji) => (
             <button
               key={emoji}
               type="button"
-              className="text-lg hover:scale-110 transition-transform"
+              className="text-lg transition-transform hover:scale-110"
               onClick={() => {
                 onReact(emoji);
                 setOpen(false);
@@ -36,7 +37,7 @@ export function ReactionLayer({ onReact, disabled }: ReactionLayerProps) {
       )}
       <button
         type="button"
-        className="h-11 w-11 rounded-full bg-white shadow-lg border border-slate-200 flex items-center justify-center text-lg"
+        className="k-chip-btn h-9 w-9 justify-center p-0 text-lg"
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
         aria-label="React"

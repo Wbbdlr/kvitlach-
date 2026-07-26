@@ -3,33 +3,24 @@ import { Icon } from "./icons";
 import { useClickOutside } from "./clickOutside";
 
 export interface BankPanelProps {
-  bankerName: string;
   bankerWallet: number;
+  bankAvailable?: number;
   isBanker: boolean;
   feltWatermark?: string;
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
-  onOpenManage?: () => void;
-  fullscreenSupported?: boolean;
-  isFullscreen?: boolean;
-  onToggleFullscreen?: () => void;
 }
 
-// Bank total display, visible to everyone. The banker gets an "Adjust"
-// control that opens a popup to add or subtract a chosen amount (with an
-// optional note) rather than a single fixed top-up button, plus a watermark
-// editor for the table's felt label.
+// The bank's total, centered on the felt where everyone can see it (the
+// mockup's `.bank` cluster). The banker additionally gets an add/subtract
+// popup and the felt-watermark editor.
 export function BankPanel({
-  bankerName,
   bankerWallet,
+  bankAvailable,
   isBanker,
   feltWatermark,
   onTopUp,
   onSetWatermark,
-  onOpenManage,
-  fullscreenSupported,
-  isFullscreen,
-  onToggleFullscreen,
 }: BankPanelProps) {
   const [showTopUp, setShowTopUp] = useState(false);
   const [topUpSign, setTopUpSign] = useState<1 | -1>(1);
@@ -59,41 +50,28 @@ export function BankPanel({
   };
 
   return (
-    <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-20">
-      <div className="rounded-lg bg-white/95 px-3 py-1.5 shadow flex items-center gap-2 text-xs font-semibold text-slate-800">
-        <Icon name="bank" size={13} className="text-amber-700" />
-        <span>{bankerName}</span>
-        <span>${bankerWallet.toLocaleString()}</span>
-        {fullscreenSupported && onToggleFullscreen && (
-          <button
-            type="button"
-            className="text-slate-500"
-            onClick={onToggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            <Icon name={isFullscreen ? "compress" : "expand"} size={12} />
-          </button>
-        )}
-        {isBanker && (
-          <button type="button" className="text-blue-600 underline" onClick={() => setShowTopUp((v) => !v)}>
+    <div className="absolute left-1/2 -translate-x-1/2 z-[8] flex flex-col items-center gap-1.5" style={{ top: "300px" }}>
+      <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
+      {typeof bankAvailable === "number" && bankAvailable !== bankerWallet && (
+        <div className="k-readout">
+          available <b>${bankAvailable.toLocaleString()}</b>
+        </div>
+      )}
+
+      {isBanker && (
+        <div className="flex gap-1.5">
+          <button type="button" className="k-chip-btn" onClick={() => setShowTopUp((v) => !v)}>
+            <Icon name="coins" size={11} />
             Adjust
           </button>
-        )}
-        {isBanker && (
-          <button type="button" className="text-slate-500 underline" onClick={() => setShowWatermark((v) => !v)}>
+          <button type="button" className="k-chip-btn" onClick={() => setShowWatermark((v) => !v)} title="Table label">
             <Icon name="pencil" size={11} />
           </button>
-        )}
-        {isBanker && onOpenManage && (
-          <button type="button" className="text-slate-500 underline" onClick={onOpenManage} title="Manage table">
-            <Icon name="users" size={11} />
-          </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {showTopUp && (
-        <div ref={topUpRef} className="rounded-lg bg-white shadow-lg border border-slate-200 p-3 w-64 text-sm">
+        <div ref={topUpRef} className="rounded-lg bg-white shadow-lg border border-slate-200 p-3 w-64 text-sm text-slate-800">
           <div className="flex gap-1 mb-2">
             <button
               type="button"
@@ -139,13 +117,13 @@ export function BankPanel({
       )}
 
       {showWatermark && (
-        <div ref={watermarkRef} className="rounded-lg bg-white shadow-lg border border-slate-200 p-3 w-64 text-sm">
-          <label className="block text-xs text-slate-500 mb-1">Table watermark</label>
+        <div ref={watermarkRef} className="rounded-lg bg-white shadow-lg border border-slate-200 p-3 w-64 text-sm text-slate-800">
+          <label className="block text-xs text-slate-500 mb-1">Table label (shown faintly on the felt)</label>
           <input
             type="text"
             value={watermarkInput}
             onChange={(e) => setWatermarkInput(e.target.value)}
-            placeholder="e.g. the Smith family's table"
+            placeholder="e.g. the Schlesinger family's table"
             className="w-full border rounded px-2 py-1 mb-2"
             maxLength={60}
           />

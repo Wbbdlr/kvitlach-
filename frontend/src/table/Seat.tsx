@@ -3,6 +3,7 @@ import { Player, RoundPhase, Turn } from "../types";
 import { totalDisplay, statusDisplay, betDisplay } from "./selectors";
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
+import { Icon } from "./icons";
 
 export interface SeatProps {
   turn: Turn;
@@ -19,6 +20,25 @@ export interface SeatProps {
   presence?: Player["presence"];
   position: SeatPosition;
   onSkipOther?: (playerId: string) => void;
+}
+
+export function initialsOf(player: { firstName?: string; lastName?: string }): string {
+  const first = (player.firstName ?? "").trim();
+  const last = (player.lastName ?? "").trim();
+  const a = first.charAt(0);
+  const b = last.charAt(0) || first.charAt(1) || "";
+  return (a + b).toUpperCase() || "?";
+}
+
+// Maps the shared statusDisplay() label onto the mockup's pill variants.
+// statusDisplay stays the single source of truth for WHAT the label says;
+// this only decides how the pill is tinted.
+function tagVariant(label: string, isCurrentTurn: boolean): string {
+  if (isCurrentTurn) return "turn";
+  if (label === "WON") return "won";
+  if (label === "LOST" || label === "FUTCHED!") return "bust";
+  if (label === "STANDING") return "stand";
+  return "muted";
 }
 
 export function Seat({
@@ -66,87 +86,88 @@ export function Seat({
   const hasBet = typeof betStart === "number";
   const isOffline = (presence ?? turn.player.presence) !== "online";
 
+  const label = isNextPlayer ? "Up next" : isCurrentTurn ? (isMe ? "Your turn" : "Active") : statusInfo.label;
+  const variant = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
+
   return (
     <div
-      className="absolute flex flex-col items-center gap-1 -translate-x-1/2 -translate-y-1/2"
-      style={{ left: `${position.xPercent}%`, top: `${position.yPercent}%` }}
+      className={clsx("k-seat", isCurrentTurn && "is-active")}
+      style={{ left: `${position.x}px`, top: `${position.y}px` }}
     >
       {reactionEmoji && (
-        <div className="absolute -top-6 rounded-full bg-white/90 px-2 py-0.5 text-sm shadow" aria-label="Reaction">
+        <div className="k-reaction" aria-label="Reaction">
           {reactionEmoji}
         </div>
       )}
-      <div
-        className={clsx(
-          "rounded-xl bg-white/95 px-3 py-2 shadow-md flex flex-col items-center gap-1 min-w-[104px]",
-          isCurrentTurn && "ring-2 ring-amber-400",
-          isOffline && "opacity-50 grayscale"
-        )}
-      >
-        <div className="flex items-center gap-1 text-xs font-semibold text-slate-800">
-          <span
-            className={clsx("h-2 w-2 rounded-full", isOffline ? "bg-slate-300" : "bg-emerald-500")}
-            aria-label={isOffline ? "Offline" : "Online"}
-            title={isOffline ? "Offline" : "Online"}
-          />
-          <span className={clsx(isMe && "text-blue-700")}>{displayName}</span>
-          {isMe && <span className="italic text-slate-500" aria-label="You">(Me)</span>}
-          {isOffline && <span className="text-[10px] font-normal text-slate-400">(offline)</span>}
-        </div>
-        {isNextPlayer && <span className="text-[10px] font-semibold text-amber-700">Up next</span>}
-        {isCurrentTurn && <span className="text-[10px] font-semibold text-blue-600">{isMe ? "Your turn" : "Active"}</span>}
 
-        {showTurnTimer && (
-          <div className="w-full h-1 rounded-full bg-slate-200 overflow-hidden">
-            <div
-              className={clsx(
-                "h-full transition-[width] duration-100 ease-linear",
-                timerTone === "urgent" ? "bg-rose-500" : timerTone === "warning" ? "bg-amber-500" : "bg-blue-500"
-              )}
-              style={{ width: `${turnTimer?.percent ?? 0}%` }}
-            />
-          </div>
-        )}
-
-        <div className="flex gap-1 flex-wrap justify-center">
-          {turn.cards.map((c, idx) => {
-            const isInitialCard = idx === 0;
-            const isBlattCard = hasBet ? idx > 0 && idx < (betStart as number) : isBlattPhase && idx > 0;
-            const isBetOrHitCard = hasBet ? idx >= (betStart as number) : false;
-
-            let hide = true;
-            if (isOwnerView) hide = false;
-            else if (isBanker) hide = idx === 0 && !bankerReveal;
-            else if (resolved || roundFinished) hide = false;
-            else if (isPublicStandby) hide = !(isBlattCard && !isInitialCard);
-            else if (isBlattPhase) hide = idx === 0;
-            else if (hasBet) hide = isInitialCard || isBetOrHitCard ? true : !isBlattCard;
-
-            return <CardView key={idx} card={c} hidden={hide} size="md" />;
-          })}
-        </div>
-
-        <div className={clsx("text-[11px]", totalInfo.wrapperClassName ?? "text-slate-600")}>
-          {totalInfo.prefix} <span className={totalInfo.valueClassName}>{totalInfo.value}</span>
-        </div>
-        {!isBanker && (
-          <div className="text-[11px] text-slate-600">
-            Bet: <span className={betInfo.className}>{betInfo.label}</span>
-          </div>
-        )}
-        {statusInfo.label && <div className={clsx("text-[10px] uppercase", statusInfo.className)}>{statusInfo.label}</div>}
-        {isMe && typeof walletAmount === "number" && (
-          <div className="text-[10px] font-semibold text-emerald-700">Cash ${walletAmount}</div>
-        )}
-        {canAdminSkip && (
-          <button
-            className="text-[10px] font-semibold text-rose-700 underline"
-            onClick={() => onSkipOther?.(turn.player.id)}
-          >
-            Skip player
-          </button>
-        )}
+      <div className={clsx("k-plate", isCurrentTurn && "is-active", isOffline && "is-offline")}>
+        <span className="k-av">
+          {initialsOf(turn.player)}
+          {isBanker && (
+            <span className="k-bankmark">
+              <Icon name="bank" size={8} />
+            </span>
+          )}
+        </span>
+        <span className="flex flex-col items-start leading-tight min-w-0">
+          <span className="k-plate-name">
+            {displayName}
+            {isMe && <span className="k-plate-sub"> (you)</span>}
+          </span>
+          <span className="k-plate-sub">
+            {typeof walletAmount === "number" ? `$${walletAmount.toLocaleString()}` : ""}
+            {!isBanker && betInfo.label !== "—" ? ` · bet ${betInfo.label}` : ""}
+          </span>
+        </span>
+        <span
+          className={clsx("h-2 w-2 rounded-full flex-none", isOffline ? "bg-slate-400" : "bg-emerald-500")}
+          aria-label={isOffline ? "Offline" : "Online"}
+          title={isOffline ? "Offline" : "Online"}
+        />
       </div>
+
+      {showTurnTimer && (
+        <div className="turn-bar-track w-[110px] h-[3px]">
+          <div
+            className={clsx(
+              "turn-bar-fill",
+              timerTone === "urgent" ? "is-urgent" : timerTone === "warning" ? "is-warning" : ""
+            )}
+            style={{ width: `${turnTimer?.percent ?? 0}%` }}
+          />
+        </div>
+      )}
+
+      <div className={clsx("k-hand", isMe && "is-me")}>
+        {turn.cards.map((c, idx) => {
+          const isInitialCard = idx === 0;
+          const isBlattCard = hasBet ? idx > 0 && idx < (betStart as number) : isBlattPhase && idx > 0;
+          const isBetOrHitCard = hasBet ? idx >= (betStart as number) : false;
+
+          let hide = true;
+          if (isOwnerView) hide = false;
+          else if (isBanker) hide = idx === 0 && !bankerReveal;
+          else if (resolved || roundFinished) hide = false;
+          else if (isPublicStandby) hide = !(isBlattCard && !isInitialCard);
+          else if (isBlattPhase) hide = idx === 0;
+          else if (hasBet) hide = isInitialCard || isBetOrHitCard ? true : !isBlattCard;
+
+          return <CardView key={idx} card={c} hidden={hide} />;
+        })}
+      </div>
+
+      <div className="k-readout">
+        {totalInfo.prefix} <b>{totalInfo.value}</b>
+      </div>
+
+      {label && <div className={clsx("k-tag", variant)}>{label}</div>}
+
+      {canAdminSkip && (
+        <button type="button" className="k-chip-btn" onClick={() => onSkipOther?.(turn.player.id)}>
+          <Icon name="skip" size={10} />
+          Skip
+        </button>
+      )}
     </div>
   );
 }

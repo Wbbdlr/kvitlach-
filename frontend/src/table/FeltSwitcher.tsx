@@ -10,16 +10,18 @@ export interface FeltSwitcherProps {
 
 // A per-user preference (like sound/music), never synced to other players.
 // Swatch colors retint the table AND the bet/hit/stand dock buttons together.
+// Rendered inside the topbar's utility cluster -- deliberately NOT fixed
+// positioned, since anything fixed escapes the scaled stage's transform.
 export function FeltSwitcher({ felt, onChange }: FeltSwitcherProps) {
   return (
-    <div className="fixed top-12 left-2 z-30 flex items-center gap-1 rounded-full bg-white/95 px-2 py-1.5 shadow">
+    <div className="flex items-center gap-1">
       {FELT_ORDER.map((name) => (
         <button
           key={name}
           type="button"
           className={clsx(
-            "h-6 w-6 rounded-full border-2 transition-transform",
-            felt === name ? "border-slate-700 scale-110" : "border-white"
+            "h-5 w-5 rounded-full border transition-transform",
+            felt === name ? "border-amber-400 scale-110" : "border-white/30"
           )}
           style={{ background: FELTS[name].hi }}
           title={FELTS[name].label}
