@@ -15,6 +15,11 @@ interface SessionData {
   roomId: string;
   playerId: string;
   token: string;
+  // Lets a SessionData value be passed directly as a WSClient.send() payload
+  // (MessagePayload = Record<string, unknown> | undefined) -- named
+  // interfaces aren't structurally assignable to an indexed type without
+  // this, unlike object literals, which TS checks more leniently.
+  [key: string]: unknown;
 }
 
 export interface CompletedRoundSummary {
@@ -71,13 +76,27 @@ interface UIState {
 
 const SESSION_STORAGE_KEY = "kvitlach.session";
 const LAST_ROOM_STORAGE_KEY = "kvitlach.lastRoomId";
-// How long a saved session may silently auto-resume for. Deliberately much
-// shorter than the server's own room/session TTLs (21 days / 7 days) -- those
-// exist so a genuinely-paused game survives, but the CLIENT shouldn't drop
-// someone back into a days-old game with no indication it happened. Past this
-// window the session is treated as stale and cleared, landing on a fresh join
-// screen instead (the "Leave game" button clears it immediately, on demand).
+// How long the GENERIC "last active room" session may silently auto-resume
+// for. This is the ambient "whatever I was last doing" key with no age check
+// at all -- the cause of the original "dropped back into a game from last
+// week" bug. Deliberately much shorter than the server's own room/session
+// TTLs (server session token: 7 days, SESSION_TTL_MS in backend/store.ts;
+// room inactivity GC: 21 days, INACTIVITY_TIMEOUT_MS) -- those exist so a
+// genuinely-paused game survives server-side, but the CLIENT shouldn't drop
+// someone back into a days-old game with no indication it happened. Past
+// this window the session is treated as stale and cleared, landing on a
+// fresh join screen instead (the "Leave game" button clears it immediately,
+// on demand).
 const AUTO_RESUME_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+// How long a PER-ROOM session (reached via a ?room=CODE URL -- a bookmark or
+// a restored browser tab) may resume for. Unlike the generic key above, this
+// is a deliberate return to one specific, named room, not an accidental
+// stale resume -- so it's allowed to track the server's own room lifetime
+// instead of the much stricter window above. If the room has actually
+// expired server-side by then, room:resume just fails with room_not_found
+// and the client falls through to a fresh join screen anyway (see the
+// silent-stale-resume handling below), so this can't leave anyone stuck.
+const ROOM_SESSION_MAX_AGE_MS = 21 * 24 * 60 * 60 * 1000; // 21 days
 const historyKey = (roomId: string) => `kvitlach.history.${roomId}`;
 const roomSessionKey = (roomId: string) => `kvitlach.session.${roomId}`;
 
@@ -132,7 +151,7 @@ const loadRoomSession = (roomId: string): PersistedRoomSession | undefined => {
       typeof parsed.token === "string" &&
       typeof parsed.savedAt === "number"
     ) {
-      if (Date.now() - parsed.savedAt > AUTO_RESUME_MAX_AGE_MS) {
+      if (Date.now() - parsed.savedAt > ROOM_SESSION_MAX_AGE_MS) {
         window.localStorage.removeItem(roomSessionKey(roomId));
         return undefined;
       }
@@ -283,6 +302,14 @@ const initialSession = loadSession();
 const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   const client = new WSClient(WS_URL);
   let connectTimer: ReturnType<typeof setTimeout> | undefined;
+  // requestId of the room:resume sent automatically from onOpen (if any), so
+  // a resulting room_not_found can be told apart from one caused by a user
+  // manually submitting the join form with a mistyped room code -- both
+  // produce the identical error shape from the server (see ws-server.ts's
+  // room:join/room:resume handlers), so requestId is the only reliable way
+  // to distinguish "silently clear a stale auto-resume" from "show the user
+  // their typo".
+  let autoResumeRequestId: string | undefined;
 
   const makeNotification = (message: string, tone: NotificationTone): UINotification => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -481,15 +508,19 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     }
     if (msg.type === "error" && msg.error) {
       const errorMessage = msg.error?.message;
+      const isAutoResumeError = Boolean(msg.requestId && msg.requestId === autoResumeRequestId);
+      if (isAutoResumeError) autoResumeRequestId = undefined;
       if (errorMessage === "invalid_session") {
-        const priorRoom = state.session?.roomId || state.room?.roomId;
+        const priorRoom = get().session?.roomId || get().room?.roomId;
         if (priorRoom) persistLastRoomId(priorRoom);
         persistSession(undefined);
         setUrlRoomId(undefined);
-        // Do NOT clear per-room session on invalid_session — the server session TTL
-        // is 24 hours but the per-room localStorage key lasts 21 days. If the server
-        // restarted (in-memory state lost), the user should fall through to the join
-        // form, not have their room session wiped. We only clear it on explicit leave.
+        // Do NOT clear per-room session on invalid_session — the server session token
+        // lasts 7 days but the per-room localStorage key lasts 21 days (ROOM_SESSION_
+        // MAX_AGE_MS, matching the server's own room-inactivity GC window). If the
+        // server restarted (in-memory state lost) or the token simply expired, the user
+        // should fall through to the join form, not have their room session wiped.
+        // We only clear it on explicit leave.
       }
       set((state: UIState) => {
           const update: Partial<UIState> = {};
@@ -502,8 +533,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           update.message = "Session expired. Rejoin the game.";
           return update;
         }
-        // room_not_found with no pending action = stale auto-resume; clear silently
-        if (errorMessage === "room_not_found" && !state.pendingAction) {
+        // room_not_found from the automatic resume-on-connect attempt = stale
+        // auto-resume; clear silently. A room_not_found from a manual join
+        // (or any other action) falls through to the friendly-message branch
+        // below instead, so a mistyped room code isn't swallowed silently.
+        if (errorMessage === "room_not_found" && isAutoResumeError) {
           setUrlRoomId(undefined);
           update.session = undefined;
           update.room = undefined;
@@ -573,6 +607,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       return;
     }
     if (msg.type === "ack") {
+      if (msg.requestId && msg.requestId === autoResumeRequestId) autoResumeRequestId = undefined;
       set((state: UIState) => {
         const update: Partial<UIState> = { message: undefined };
         const nextErrors = { ...state.formErrors };
@@ -614,7 +649,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     if (urlRoomId) {
       const roomSession = loadRoomSession(urlRoomId);
       if (roomSession) {
-        client.send("room:resume", { roomId: roomSession.roomId, playerId: roomSession.playerId, token: roomSession.token });
+        autoResumeRequestId = client.send("room:resume", { roomId: roomSession.roomId, playerId: roomSession.playerId, token: roomSession.token });
         persistLastRoomId(roomSession.roomId);
         return;
       }
@@ -623,7 +658,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     // Priority 2: In-memory or single-key localStorage session (existing behavior).
     const session = get().session ?? loadSession();
     if (session) {
-      client.send("room:resume", session);
+      autoResumeRequestId = client.send("room:resume", session);
       persistLastRoomId(session.roomId);
     }
   });
@@ -887,6 +922,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       const roomId = get().room?.roomId ?? get().session?.roomId;
       if (roomId) clearRoomSession(roomId);
       persistSession(undefined);
+      // Close the socket before navigating: an in-flight room:resume ack
+      // (e.g. one sent right after the 1.5s auto-reconnect, landing just as
+      // the user clicks Leave) would otherwise still be able to fire after
+      // the clears above and re-persist a session, undoing the leave.
+      get().client.close();
       // A hard navigation (not just clearing in-memory state) is deliberate:
       // the existing WebSocket stays attached server-side to this room/player,
       // so anything short of tearing down the socket would let the next

@@ -11,6 +11,7 @@ class MockWebSocket {
   onmessage: ((event: { data: string }) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   onclose: (() => void) | null = null;
+  closeCalls = 0;
 
   constructor(public url: string) {
     MockWebSocket.instances.push(this);
@@ -27,6 +28,15 @@ class MockWebSocket {
   }
 
   send() {}
+
+  // Real browsers fire "close" asynchronously and only look up the current
+  // onclose handler at dispatch time -- mimic that here (rather than no-op)
+  // so a test can prove WSClient.close() nulled the handler BEFORE this runs.
+  close() {
+    this.closeCalls += 1;
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.();
+  }
 }
 
 describe("WSClient", () => {
@@ -68,5 +78,52 @@ describe("WSClient", () => {
     client.connect();
     MockWebSocket.instances[0].triggerOpen();
     expect(openSpy).toHaveBeenCalledTimes(1);
+  });
+
+  describe("close()", () => {
+    it("closes the underlying socket and does not schedule a reconnect", () => {
+      vi.useFakeTimers();
+      const client = new WSClient("ws://test");
+      const reconnectSpy = vi.fn();
+      client.connect(reconnectSpy);
+      MockWebSocket.instances[0].triggerOpen();
+
+      client.close();
+
+      expect(MockWebSocket.instances[0].closeCalls).toBe(1);
+      // The mock's close() invokes onclose synchronously, exactly like a real
+      // socket eventually would -- if WSClient.close() didn't null the
+      // handler first, this would schedule a reconnect via setTimeout.
+      vi.advanceTimersByTime(5000);
+      expect(MockWebSocket.instances).toHaveLength(1);
+      expect(reconnectSpy).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it("delivers no further messages after close(), even if one was already in flight", () => {
+      const client = new WSClient("ws://test");
+      const messageSpy = vi.fn();
+      client.onMessage(messageSpy);
+      client.connect();
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+
+      client.close();
+      // Simulate a message that was already in transit when close() ran --
+      // event-handler IDL attributes are read at dispatch time, so nulling
+      // onmessage in close() must win even here.
+      socket.onmessage?.({ data: JSON.stringify({ type: "ack" }) });
+
+      expect(messageSpy).not.toHaveBeenCalled();
+    });
+
+    it("allows a fresh connect() after close()", () => {
+      const client = new WSClient("ws://test");
+      client.connect();
+      MockWebSocket.instances[0].triggerOpen();
+      client.close();
+      client.connect();
+      expect(MockWebSocket.instances).toHaveLength(2);
+    });
   });
 });

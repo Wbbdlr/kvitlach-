@@ -103,4 +103,24 @@ export class WSClient {
     });
     this.queue = [];
   }
+
+  // Deliberate, permanent disconnect (e.g. the user clicked "Leave"), as
+  // opposed to a network drop. Nulls the socket's handlers BEFORE closing it
+  // so no in-flight message can still reach a listener (event-handler IDL
+  // attributes are read at dispatch time, so this reliably wins even against
+  // a message already in transit) and so onclose's own auto-reconnect never
+  // fires -- both of which would otherwise be able to resurrect a session
+  // the caller just deliberately cleared.
+  close() {
+    this.queue = [];
+    if (this.socket) {
+      this.socket.onopen = null;
+      this.socket.onmessage = null;
+      this.socket.onerror = null;
+      this.socket.onclose = null;
+      this.socket.close();
+      this.socket = undefined;
+    }
+    this.connecting = false;
+  }
 }
