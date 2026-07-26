@@ -94,8 +94,15 @@ body {
   --k-gold-soft: rgba(230, 164, 75, 0.16);
 }
 
-/* Letterbox wrapper -- centers the stage and paints the surround. */
+/* Letterbox wrapper -- centers the stage and paints the surround.
+   `position: relative` matters: the interactive chrome (dock, topbar
+   controls, reactions) is positioned against THIS, deliberately outside the
+   scaled stage, so it stays at true viewport size. Scaling the controls with
+   the table made them unusable on a phone (a 14px button at 0.43 scale is
+   ~6px with a sub-20px tap target). The table scales as artwork; the
+   controls do not. */
 .k-fit {
+  position: relative;
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -104,6 +111,15 @@ body {
   justify-content: center;
   overflow: hidden;
   background: #060d09;
+}
+
+/* Body sets min-height:100vh; on mobile the large-viewport 100vh exceeds
+   100dvh, which left a strip of the light page background below the stage
+   that the user could scroll to. Lock the document to the viewport while
+   the table view is mounted. */
+body:has(.k-fit) {
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* The felt surface itself (kept as .felt-table -- existing selector). */
@@ -228,7 +244,7 @@ body {
   align-items: center;
   gap: 6px;
   z-index: 10;
-  transform: translate(-50%, -50%);
+  /* transform is set inline by Seat.tsx (translate + per-count scale). */
 }
 
 /* Parchment nameplate -- the mockup's signature element. */
@@ -299,9 +315,14 @@ body {
 }
 
 /* Hand + cards. */
+/* Hands must wrap: a seat column is a hard 168px, and a player who blatts
+   then hits several times can hold 5+ cards. Without wrapping the row
+   overflows into the neighbouring seats and it stops being clear whose
+   cards are whose. */
 .k-hand {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 3px;
   min-height: 66px;
@@ -372,6 +393,18 @@ body {
 .k-readout b {
   color: #e6a44b;
 }
+/* A concealed total must not read like a real number, and a bust must be
+   scannable at a glance -- selectors.ts encodes both, and the light-theme
+   Tailwind classes it returns are unreadable on this dark pill, so the
+   same distinctions are re-expressed here in dark-theme colours. */
+.k-readout.is-muted,
+.k-readout.is-muted b {
+  color: #9aa79c;
+  font-weight: 400;
+}
+.k-readout.is-bust b {
+  color: #f0b4b4;
+}
 
 /* Centered bank total. */
 .k-banktotal {
@@ -413,6 +446,26 @@ body {
   background: url("/blank.png") center/contain no-repeat;
   border-radius: 5px;
   aspect-ratio: 170 / 272;
+}
+
+/* Chrome layer -- interactive controls, rendered as a sibling of the stage
+   inside .k-fit so they are NOT affected by the stage's scale transform. */
+.k-chrome-top {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.k-chrome-react {
+  position: absolute;
+  right: 10px;
+  bottom: 96px;
+  z-index: 40;
 }
 
 /* Control dock -- dark gradient bar with a gold top hairline. */
@@ -560,22 +613,10 @@ body {
   z-index: 45;
 }
 
-/* Room-wide, admin-set table label (App.tsx's TableRoot sets --wm from
-   room.feltWatermark). Empty by default so tables without one show nothing. */
-.felt-table::after {
-  content: var(--wm, "");
-  position: absolute;
-  top: 46%;
-  left: 50%;
-  direction: rtl;
-  transform: translate(-50%, -50%);
-  font-size: 28px;
-  letter-spacing: 2px;
-  color: rgba(230, 164, 75, 0.09);
-  font-weight: 700;
-  white-space: nowrap;
-  pointer-events: none;
-}
+/* NOTE: the watermark used to be painted here on .felt-table::after. It now
+   lives on .k-oval::after (above) so it sits on the table itself rather than
+   the whole stage -- keeping both rendered it twice, ~2px apart, at double
+   the intended 0.09 alpha. */
 
 /* Turn countdown bar — depletes as the auto-skip timer runs down.
    Width is driven by the existing activeTurnTimer.percent; these classes

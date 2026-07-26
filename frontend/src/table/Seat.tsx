@@ -19,6 +19,7 @@ export interface SeatProps {
   walletAmount?: number;
   presence?: Player["presence"];
   position: SeatPosition;
+  scale?: number;
   onSkipOther?: (playerId: string) => void;
 }
 
@@ -55,6 +56,7 @@ export function Seat({
   walletAmount,
   presence,
   position,
+  scale = 1,
   onSkipOther,
 }: SeatProps) {
   const isMe = viewerId === turn.player.id;
@@ -88,11 +90,23 @@ export function Seat({
 
   const label = isNextPlayer ? "Up next" : isCurrentTurn ? (isMe ? "Your turn" : "Active") : statusInfo.label;
   const variant = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
+  const showBet = !isBanker && betInfo.label !== "—";
+  // selectors.ts distinguishes a real number from a concealed one ("hidden",
+  // "--") and flags a bust; both distinctions have to survive here or every
+  // total reads alike. Derived from the data rather than string-matching the
+  // light-theme Tailwind classes selectors returns, which are unreadable on
+  // this dark pill anyway.
+  const totalIsConcealed = !/^\d/.test(totalInfo.value);
+  const totalIsBust = statusInfo.label === "FUTCHED!";
 
   return (
     <div
       className={clsx("k-seat", isCurrentTurn && "is-active")}
-      style={{ left: `${position.x}px`, top: `${position.y}px` }}
+      style={{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        transform: `translate(-50%, -50%) scale(${scale})`,
+      }}
     >
       {reactionEmoji && (
         <div className="k-reaction" aria-label="Reaction">
@@ -115,8 +129,16 @@ export function Seat({
             {isMe && <span className="k-plate-sub"> (you)</span>}
           </span>
           <span className="k-plate-sub">
-            {typeof walletAmount === "number" ? `$${walletAmount.toLocaleString()}` : ""}
-            {!isBanker && betInfo.label !== "—" ? ` · bet ${betInfo.label}` : ""}
+            {typeof walletAmount === "number" && <>${walletAmount.toLocaleString()}</>}
+            {showBet && (
+              <>
+                {typeof walletAmount === "number" ? " · " : ""}
+                {/* betDisplay encodes the settled outcome in colour (green
+                    won / red lost / grey push) -- keep it, it's the only
+                    per-seat signal of who took chips off the table. */}
+                <span className={betInfo.className}>{betInfo.label}</span>
+              </>
+            )}
           </span>
         </span>
         <span
@@ -156,7 +178,7 @@ export function Seat({
         })}
       </div>
 
-      <div className="k-readout">
+      <div className={clsx("k-readout", totalIsConcealed && "is-muted", totalIsBust && "is-bust")}>
         {totalInfo.prefix} <b>{totalInfo.value}</b>
       </div>
 

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { orderSeatsForViewer, seatPositions, viewerSlotIndex, STAGE_WIDTH } from "../layout";
+import {
+  orderSeatsForViewer,
+  seatPositions,
+  seatScale,
+  viewerSlotIndex,
+  SEAT_HEIGHT,
+  SEAT_WIDTH,
+  STAGE_WIDTH,
+} from "../layout";
 
 const CENTER_X = STAGE_WIDTH / 2;
 
@@ -16,6 +24,35 @@ describe("seat layout", () => {
       expect(viewer.x).toBeCloseTo(CENTER_X, 6);
       expect(viewer.angleDeg).toBeCloseTo(180, 6);
     }
+  });
+
+  it("never lets two seats overlap once the fitted seat scale is applied", () => {
+    // Regression: equal-ANGLE spacing bunched seats on the flanks of this
+    // eccentric ellipse -- 6 players produced three overlapping pairs, so
+    // nameplates and card fans collided. Equal-ARC spacing fixes 6-7; past
+    // that the arc genuinely cannot fit full-size seats, so seatScale()
+    // shrinks them. Between them, nothing should ever overlap.
+    for (let count = 2; count <= 10; count += 1) {
+      const positions = seatPositions(count);
+      const s = seatScale(positions);
+      const w = SEAT_WIDTH * s;
+      const h = SEAT_HEIGHT * s;
+      for (let i = 0; i < positions.length; i += 1) {
+        for (let j = i + 1; j < positions.length; j += 1) {
+          const dx = Math.abs(positions[i].x - positions[j].x);
+          const dy = Math.abs(positions[i].y - positions[j].y);
+          const clear = dx >= w - 1e-6 || dy >= h - 1e-6;
+          expect(clear, `seats ${i}/${j} overlap at count=${count} (dx=${dx}, dy=${dy}, scale=${s})`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("keeps seats full size for realistic table sizes and only shrinks when crowded", () => {
+    for (let count = 1; count <= 7; count += 1) {
+      expect(seatScale(seatPositions(count))).toBe(1);
+    }
+    expect(seatScale(seatPositions(9))).toBeLessThan(1);
   });
 
   it("keeps every seat inside the stage bounds", () => {

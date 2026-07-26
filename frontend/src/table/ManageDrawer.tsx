@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BuyInRequest, Player, RenameRequest } from "../types";
 import { Icon } from "./icons";
+import { StageOverlay } from "./StageOverlay";
 
 export interface ManageDrawerProps {
   open: boolean;
@@ -10,6 +11,10 @@ export interface ManageDrawerProps {
   renameRequests: RenameRequest[];
   buyInRequests: BuyInRequest[];
   roundHistoryCount: number;
+  bankerWallet: number;
+  feltWatermark?: string;
+  onTopUp: (amount: number, note?: string) => void;
+  onSetWatermark: (text: string) => void;
   onApproveRename: (playerId: string) => void;
   onRejectRename: (playerId: string) => void;
   onApproveBuyIn: (playerId: string) => void;
@@ -35,6 +40,10 @@ export function ManageDrawer({
   renameRequests,
   buyInRequests,
   roundHistoryCount,
+  bankerWallet,
+  feltWatermark,
+  onTopUp,
+  onSetWatermark,
   onApproveRename,
   onRejectRename,
   onApproveBuyIn,
@@ -49,6 +58,10 @@ export function ManageDrawer({
   const [adjustNote, setAdjustNote] = useState("");
   const [kickTarget, setKickTarget] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [topUpSign, setTopUpSign] = useState<1 | -1>(1);
+  const [topUpAmount, setTopUpAmount] = useState("500");
+  const [topUpNote, setTopUpNote] = useState("");
+  const [watermarkInput, setWatermarkInput] = useState(feltWatermark ?? "");
 
   if (!open) return null;
 
@@ -65,12 +78,21 @@ export function ManageDrawer({
     setAdjustNote("");
   };
 
+  const applyTopUp = () => {
+    const amount = Math.round(Number(topUpAmount));
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    onTopUp(amount * topUpSign, topUpNote.trim() || undefined);
+    setTopUpAmount("500");
+    setTopUpNote("");
+  };
+
   const nameOf = (playerId: string) => {
     const p = players.find((pl) => pl.id === playerId);
     return p ? [p.firstName, p.lastName].filter(Boolean).join(" ") : "Player";
   };
 
   return (
+    <StageOverlay>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
       role="dialog"
@@ -132,6 +154,71 @@ export function ManageDrawer({
             ))}
           </div>
         )}
+
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bank</span>
+            <span className="text-sm font-semibold">${bankerWallet.toLocaleString()}</span>
+          </div>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className={`flex-1 rounded px-2 py-1 text-xs font-semibold ${topUpSign === 1 ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-white text-slate-500 border border-slate-200"}`}
+              onClick={() => setTopUpSign(1)}
+            >
+              + Add
+            </button>
+            <button
+              type="button"
+              className={`flex-1 rounded px-2 py-1 text-xs font-semibold ${topUpSign === -1 ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-white text-slate-500 border border-slate-200"}`}
+              onClick={() => setTopUpSign(-1)}
+            >
+              &minus; Subtract
+            </button>
+          </div>
+          <input
+            type="number"
+            min={1}
+            value={topUpAmount}
+            onChange={(e) => setTopUpAmount(e.target.value)}
+            placeholder="Amount"
+            className="w-full rounded border px-2 py-1 text-sm"
+          />
+          <input
+            type="text"
+            value={topUpNote}
+            onChange={(e) => setTopUpNote(e.target.value)}
+            placeholder="Note (optional)"
+            className="w-full rounded border px-2 py-1 text-sm"
+          />
+          <div className="flex justify-end">
+            <button type="button" className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white" onClick={applyTopUp}>
+              Apply to bank
+            </button>
+          </div>
+          <div className="text-[11px] text-slate-400">Everyone at the table sees a notification when the bank total changes.</div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Table label (faint, on the felt)</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={watermarkInput}
+              onChange={(e) => setWatermarkInput(e.target.value)}
+              placeholder="e.g. the Schlesinger family's table"
+              className="min-w-0 flex-1 rounded border px-2 py-1 text-sm"
+              maxLength={60}
+            />
+            <button
+              type="button"
+              className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white"
+              onClick={() => onSetWatermark(watermarkInput.trim())}
+            >
+              Save
+            </button>
+          </div>
+        </div>
 
         <div className="flex flex-col gap-2">
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Players</div>
@@ -237,5 +324,6 @@ export function ManageDrawer({
         </div>
       </div>
     </div>
+    </StageOverlay>
   );
 }

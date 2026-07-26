@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { useFelt } from "../theme";
-import { orderSeatsForViewer, seatPositions, STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
+import { orderSeatsForViewer, seatPositions, seatScale, STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 import { useStageScale } from "./stage";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
@@ -111,6 +111,7 @@ export function TableRoot({
     [playerTurns, playerId]
   );
   const positions = seatPositions(seatedTurns.length);
+  const seatShrink = seatScale(positions);
 
   // turn.player is a snapshot taken at round-init time and never updated in
   // place (see store.ts's setPresence, which only mutates room.players) --
@@ -151,32 +152,13 @@ export function TableRoot({
         <div className="k-oval" />
         <div className="k-ring" />
 
+        {/* Decorative branding only -- scales with the table. The interactive
+            chrome lives outside the stage (see .k-chrome-top below). */}
         <div className="k-topbar">
           <div className="flex items-end gap-3">
             <span className="k-logo-word">Kvitlach</span>
             <span className="k-logo-tag">Ah Heimishe Chanukah Shpil</span>
             <span className="k-beta">Beta</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <FeltSwitcher felt={felt} onChange={setFelt} />
-            {fullscreenSupported && (
-              <button
-                type="button"
-                className="k-chip-btn"
-                onClick={toggleFullscreen}
-                title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
-                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              >
-                <Icon name={isFullscreen ? "compress" : "expand"} size={12} />
-              </button>
-            )}
-            {isAdmin && (
-              <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
-                <Icon name="users" size={12} />
-                Manage
-              </button>
-            )}
-            <span className="k-room">{room.roomId}</span>
           </div>
         </div>
 
@@ -209,70 +191,93 @@ export function TableRoot({
             walletAmount={room.wallets?.[turn.player.id]}
             presence={presenceByPlayerId[turn.player.id]}
             position={positions[idx]}
+            scale={seatShrink}
             onSkipOther={isAdmin ? onSkip : undefined}
           />
         ))}
 
-        {bankerPlayer && (
-          <BankPanel
-            bankerWallet={bankerWallet}
-            bankAvailable={bankInfo?.available}
-            isBanker={isAdmin}
-            feltWatermark={room.feltWatermark}
-            onTopUp={onTopUp}
-            onSetWatermark={onSetWatermark}
-          />
-        )}
+        {bankerPlayer && <BankPanel bankerWallet={bankerWallet} bankAvailable={bankInfo?.available} />}
 
-        <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
-
-        {canPlayerAct && myPlayerTurn && !roundOver && (
-          <PlayerDock
-            turn={myPlayerTurn}
-            wallet={room.wallets?.[playerId ?? ""] ?? 0}
-            bankAvailable={bankInfo?.available}
-            bankIncrement={bankIncrement}
-            canBank={canBank}
-            bankDisabledReason={bankDisabledReason}
-            onBet={onBet}
-            onHit={onHit}
-            onStand={onStand}
-          />
-        )}
-
-        {roundOver && (
-          <div className="k-dock">
-            <span className="k-banktotal">Round complete</span>
-            {isAdmin ? (
-              <button type="button" className="k-btn bet" onClick={onStartNextRound}>
-                Start next round
-              </button>
-            ) : (
-              <span className="k-tag muted">Waiting for the banker to start the next round…</span>
-            )}
-          </div>
-        )}
-
-        {isAdmin && (
-          <ManageDrawer
-            open={manageOpen}
-            onClose={() => setManageOpen(false)}
-            players={room.players}
-            wallets={room.wallets ?? {}}
-            renameRequests={room.renameRequests ?? []}
-            buyInRequests={room.buyInRequests ?? []}
-            roundHistoryCount={roundHistoryCount}
-            onApproveRename={onApproveRename}
-            onRejectRename={onRejectRename}
-            onApproveBuyIn={onApproveBuyIn}
-            onRejectBuyIn={onRejectBuyIn}
-            onAdjustChips={onAdjustChips}
-            onKick={onKick}
-            onExportHistory={onExportHistory}
-            onCloseRoom={onCloseRoom}
-          />
-        )}
       </div>
+
+      {/* ---- Chrome: outside the stage, so NOT scaled. Controls stay at
+           true viewport size and remain readable/tappable on a phone. ---- */}
+      <div className="k-chrome-top">
+        <FeltSwitcher felt={felt} onChange={setFelt} />
+        {fullscreenSupported && (
+          <button
+            type="button"
+            className="k-chip-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
+          </button>
+        )}
+        {isAdmin && (
+          <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
+            <Icon name="users" size={13} />
+            Manage
+          </button>
+        )}
+        <span className="k-room">{room.roomId}</span>
+      </div>
+
+      <div className="k-chrome-react">
+        <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
+      </div>
+
+      {canPlayerAct && myPlayerTurn && !roundOver && (
+        <PlayerDock
+          turn={myPlayerTurn}
+          wallet={room.wallets?.[playerId ?? ""] ?? 0}
+          bankAvailable={bankInfo?.available}
+          bankIncrement={bankIncrement}
+          canBank={canBank}
+          bankDisabledReason={bankDisabledReason}
+          onBet={onBet}
+          onHit={onHit}
+          onStand={onStand}
+        />
+      )}
+
+      {roundOver && (
+        <div className="k-dock">
+          <span className="k-banktotal">Round complete</span>
+          {isAdmin ? (
+            <button type="button" className="k-btn bet" onClick={onStartNextRound}>
+              Start next round
+            </button>
+          ) : (
+            <span className="k-tag muted">Waiting for the banker to start the next round…</span>
+          )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <ManageDrawer
+          open={manageOpen}
+          onClose={() => setManageOpen(false)}
+          players={room.players}
+          wallets={room.wallets ?? {}}
+          renameRequests={room.renameRequests ?? []}
+          buyInRequests={room.buyInRequests ?? []}
+          roundHistoryCount={roundHistoryCount}
+          bankerWallet={bankerWallet}
+          feltWatermark={room.feltWatermark}
+          onTopUp={onTopUp}
+          onSetWatermark={onSetWatermark}
+          onApproveRename={onApproveRename}
+          onRejectRename={onRejectRename}
+          onApproveBuyIn={onApproveBuyIn}
+          onRejectBuyIn={onRejectBuyIn}
+          onAdjustChips={onAdjustChips}
+          onKick={onKick}
+          onExportHistory={onExportHistory}
+          onCloseRoom={onCloseRoom}
+        />
+      )}
     </div>
   );
 }

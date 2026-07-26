@@ -101,6 +101,10 @@ export function PlayerDock({
         type="button"
         className="k-btn bankall sm"
         disabled={!canBank}
+        // This wagers the entire remaining bank, so its armed state has to be
+        // exposed programmatically, not just via the label text (it was a
+        // real checkbox before this became a button).
+        aria-pressed={bankSelected}
         style={!canBank ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
         onClick={() => toggleBank(!bankSelected)}
         title="BANK! wagers the remaining available bank for your seat; the banker must resolve it immediately."

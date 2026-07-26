@@ -47,7 +47,7 @@ export function Dealer({
 
   return (
     <>
-      <div className="k-seat" style={{ left: "640px", top: "160px" }}>
+      <div className="k-seat" style={{ left: "640px", top: "160px", transform: "translate(-50%, -50%)" }}>
         <div className={clsx("k-plate", isActive && "is-active", isOffline && "is-offline")}>
           <span className="k-av">
             {bankerPlayer ? initialsOf(bankerPlayer) : "BK"}
@@ -77,7 +77,7 @@ export function Dealer({
           ))}
         </div>
 
-        <div className="k-readout">
+        <div className={clsx("k-readout", !/^\d/.test(totalInfo.value) && "is-muted")}>
           {totalInfo.prefix} <b>{totalInfo.value}</b>
         </div>
         {statusInfo.label && (
