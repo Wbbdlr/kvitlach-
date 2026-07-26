@@ -559,6 +559,7 @@ export default function App() {
     bankDisabledReason,
     totalStakes,
     statsData,
+    waitingInfo,
   } = useTableData({ room, round, playerId, reactions, nowTs, statsPlayerId, roundHistory });
 
   useEffect(() => {
@@ -1054,6 +1055,7 @@ export default function App() {
         bankIncrement={bankIncrement}
         bankDisabledReason={bankDisabledReason}
         canBank={canBank}
+        waitingInfo={waitingInfo}
         firstBetCardIndex={firstBetCardIndex}
         latestReactionByPlayer={latestReactionByPlayer}
         onBet={(amount, options) => store.bet(amount, options)}

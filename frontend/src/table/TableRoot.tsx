@@ -36,6 +36,7 @@ export interface TableRootProps {
   bankIncrement: number;
   bankDisabledReason?: string;
   canBank: boolean;
+  waitingInfo?: { count: number; isViewerWaiting: boolean; namesLabel: string };
   firstBetCardIndex?: Record<string, number>;
   latestReactionByPlayer: Record<string, ReactionEvent>;
   onBet: (amount: number, options: { bank: boolean }) => void;
@@ -74,6 +75,7 @@ export function TableRoot({
   bankIncrement,
   bankDisabledReason,
   canBank,
+  waitingInfo,
   firstBetCardIndex,
   latestReactionByPlayer,
   onBet,
@@ -222,6 +224,15 @@ export function TableRoot({
             <Icon name="users" size={13} />
             Manage
           </button>
+        )}
+        {waitingInfo && (
+          <span className="k-tag muted" title={`${waitingInfo.namesLabel} will join after this round ends.`}>
+            {waitingInfo.isViewerWaiting
+              ? waitingInfo.count > 1
+                ? `You + ${waitingInfo.count - 1} queued`
+                : "You're queued — next round"
+              : `${waitingInfo.count} queued for next round`}
+          </span>
         )}
         <span className="k-room">{room.roomId}</span>
         <button type="button" className="k-chip-btn" onClick={onLeave} title="Leave this game and return to the join screen">

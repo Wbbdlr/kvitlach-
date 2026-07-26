@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { ReactionEvent, RoomState, RoundState } from "../types";
+import { Player, ReactionEvent, RoomState, RoundState } from "../types";
 import { CompletedRoundSummary } from "../state";
-import { statusDisplay, betDisplay } from "./selectors";
+import { statusDisplay, betDisplay, fullName, formatNames } from "./selectors";
 
 export interface TableDataInput {
   room?: RoomState;
@@ -64,6 +64,22 @@ export function useTableData({
   }, [activeTimerPlayerId, activeTimerRemainingMs, turnTimerDurationMs]);
 
   const bankerPlayer = useMemo(() => room?.players.find((p) => p.type === "admin"), [room?.players]);
+
+  // Players cut from this round by the seat cap (store.ts's
+  // MAX_SEATED_PLAYERS_PER_ROUND) or who joined mid-round -- both land in
+  // room.waitingPlayerIds and are seated automatically next round.
+  const waitingInfo = useMemo(() => {
+    const ids = room?.waitingPlayerIds ?? [];
+    if (!round || ids.length === 0) return undefined;
+    const isViewerWaiting = Boolean(playerId && ids.includes(playerId));
+    const otherNames = ids
+      .filter((id) => id !== playerId)
+      .map((id) => room?.players.find((p) => p.id === id))
+      .filter((p): p is Player => Boolean(p))
+      .map((p) => fullName(p) || "New player");
+    const namesLabel = formatNames([...(isViewerWaiting ? ["You"] : []), ...otherNames]);
+    return { count: ids.length, isViewerWaiting, namesLabel };
+  }, [room?.waitingPlayerIds, room?.players, round, playerId]);
 
   const playerTurns = turns.filter((t) => t.player?.type !== "admin");
   const myPlayerTurn = playerTurns.find((t) => t.player?.id === playerId);
@@ -150,5 +166,6 @@ export function useTableData({
     bankDisabledReason,
     totalStakes,
     statsData,
+    waitingInfo,
   };
 }

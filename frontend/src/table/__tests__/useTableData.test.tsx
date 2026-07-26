@@ -117,4 +117,49 @@ describe("useTableData", () => {
     // pendingTurns includes anyone (incl. the banker) whose turn.state is "pending"
     expect(result.current.pendingTurns.map((t) => t.player.id)).toEqual([p1.id, banker.id]);
   });
+
+  describe("waitingInfo", () => {
+    const round: RoundState = {
+      roundId: "R4",
+      roomId: "ROOM1",
+      deck: [],
+      turns: [makeTurn(banker)],
+      state: "playing",
+      roundNumber: 1,
+    };
+
+    it("is undefined when nobody is waiting", () => {
+      const room = makeRoom({ waitingPlayerIds: [] });
+      const { result } = renderHook(() =>
+        useTableData({ room, round, playerId: banker.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
+      );
+      expect(result.current.waitingInfo).toBeUndefined();
+    });
+
+    it("is undefined before a round exists, even if waitingPlayerIds is populated", () => {
+      // A seat-cap overflow list from the previous round can still be present
+      // in room state right up until the next round overwrites it.
+      const room = makeRoom({ waitingPlayerIds: [p2.id] });
+      const { result } = renderHook(() =>
+        useTableData({ room, round: undefined, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
+      );
+      expect(result.current.waitingInfo).toBeUndefined();
+    });
+
+    it("reports another player's name when the viewer isn't the one waiting", () => {
+      const room = makeRoom({ waitingPlayerIds: [p2.id] });
+      const { result } = renderHook(() =>
+        useTableData({ room, round, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
+      );
+      expect(result.current.waitingInfo).toEqual({ count: 1, isViewerWaiting: false, namesLabel: "P2" });
+    });
+
+    it("flags isViewerWaiting when the viewer themself is queued", () => {
+      const room = makeRoom({ waitingPlayerIds: [p1.id, p2.id] });
+      const { result } = renderHook(() =>
+        useTableData({ room, round, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
+      );
+      expect(result.current.waitingInfo).toEqual({ count: 2, isViewerWaiting: true, namesLabel: "You and P2" });
+    });
+  });
 });

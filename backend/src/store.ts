@@ -8,6 +8,14 @@ import type { Database } from "./db.js";
 
 const INACTIVITY_TIMEOUT_MS = 21 * 24 * 60 * 60 * 1000; // 21 days
 const MAX_PLAYERS_PER_ROOM = 100;
+// How many non-banker players get an active seat in a single round. The felt
+// table's oval seating (frontend/src/table/layout.ts) can only fit players
+// without overlapping seat plates up to this count -- numerically confirmed
+// (seatScale's hard 0.55 floor first produces overlaps at 12 seated
+// players). Anyone beyond this per round rotates into waitingPlayerIds and
+// is guaranteed a seat within the next `others.length` rounds, since
+// startRound()'s rotation advances by exactly one player per round.
+const MAX_SEATED_PLAYERS_PER_ROUND = 11;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const TURN_TIMEOUT_MS = 90 * 1000;
 const MAX_NAME_LEN = 40;
@@ -309,7 +317,13 @@ export class GameStore {
     const rotated = others.length
       ? others.slice(normalizedStart).concat(others.slice(0, normalizedStart))
       : [];
-    const playersForRound = admin ? rotated.concat(admin) : rotated;
+    // Cap active seats at what the table can actually render without
+    // overlapping seats (MAX_SEATED_PLAYERS_PER_ROUND); the rest queue into
+    // waitingPlayerIds exactly like a mid-round joiner, and rotate into a
+    // seat automatically as nextStart advances in later rounds.
+    const seated = rotated.slice(0, MAX_SEATED_PLAYERS_PER_ROUND);
+    const overflow = rotated.slice(MAX_SEATED_PLAYERS_PER_ROUND);
+    const playersForRound = admin ? seated.concat(admin) : seated;
 
     if (others.length > 0) {
       roomRec.nextStart = (normalizedStart + 1) % others.length;
@@ -319,7 +333,7 @@ export class GameStore {
     const round = createRound(playersForRound, roomId, deckCount, roundNumber);
     const stored = this.persistRound(round.roundId, round);
     roomRec.room.roundId = stored.roundId;
-    roomRec.room.waitingPlayerIds = [];
+    roomRec.room.waitingPlayerIds = overflow.map((p) => p.id);
     this.bumpRoomTimer(roomId);
     return stored;
   }
