@@ -12,7 +12,12 @@ interface ConnectionMeta {
   connectionId?: number;
 }
 
-const MAX_CONNS_PER_IP = 8;
+// Bounds accidental abuse (e.g. a buggy client stuck in a reconnect loop),
+// not determined attackers -- those just rotate IPs regardless. Needs to
+// comfortably clear a real family/friends game night, where a dozen-plus
+// players are commonly behind the same home-WiFi NAT and would otherwise
+// all share one IP and get throttled together.
+const MAX_CONNS_PER_IP = 40;
 const MAX_MSGS_PER_WINDOW = 30;
 const MSG_WINDOW_MS = 10_000;
 
