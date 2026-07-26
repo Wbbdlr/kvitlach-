@@ -55,6 +55,7 @@ export interface TableRootProps {
   onExportHistory: () => void;
   onCloseRoom: () => void;
   onStartNextRound: () => void;
+  onLeave: () => void;
 }
 
 export function TableRoot({
@@ -92,6 +93,7 @@ export function TableRoot({
   onExportHistory,
   onCloseRoom,
   onStartNextRound,
+  onLeave,
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
@@ -222,6 +224,10 @@ export function TableRoot({
           </button>
         )}
         <span className="k-room">{room.roomId}</span>
+        <button type="button" className="k-chip-btn" onClick={onLeave} title="Leave this game and return to the join screen">
+          <Icon name="door" size={13} />
+          Leave
+        </button>
       </div>
 
       <div className="k-chrome-react">

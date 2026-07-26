@@ -1028,10 +1028,10 @@ export default function App() {
   const tableUIToggle = (
     <label
       className="fixed top-2 left-2 z-50 inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm"
-      title="Try the new around-the-table layout (in progress)"
+      title="Table view is the default. Uncheck to switch back to the classic list layout."
     >
       <input type="checkbox" checked={tableUIEnabled} onChange={(e) => setTableUIEnabled(e.target.checked)} />
-      New table view
+      Table view
     </label>
   );
 
@@ -1072,6 +1072,7 @@ export default function App() {
         onKick={(id) => store.kickPlayer(id)}
         onExportHistory={() => exportRoundHistoryTxt()}
         onCloseRoom={() => store.closeRoom()}
+        onLeave={() => store.leaveGame()}
         onStartNextRound={() => {
           const parsedOverride = deckCount === "" ? undefined : Number(deckCount);
           const parsedPreferred = preferredDecks === "" ? undefined : Number(preferredDecks);
@@ -1389,6 +1390,16 @@ export default function App() {
             onClick={() => setShowLobby((v) => !v)}
           >
             {showLobby ? "Hide lobby" : "Show lobby"}
+          </button>
+        )}
+        {room && (
+          <button
+            type="button"
+            className="text-xs font-semibold text-slate-500 underline"
+            onClick={() => store.leaveGame()}
+            title="Leave this game and return to the join screen"
+          >
+            Leave game
           </button>
         )}
       </header>

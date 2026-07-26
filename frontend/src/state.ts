@@ -66,13 +66,24 @@ interface UIState {
   adjustPlayerBankroll: (playerId: string, amount: number, note?: string) => void;
   setFeltWatermark: (text: string) => void;
   closeRoom: () => void;
+  leaveGame: () => void;
 }
 
 const SESSION_STORAGE_KEY = "kvitlach.session";
 const LAST_ROOM_STORAGE_KEY = "kvitlach.lastRoomId";
-const SESSION_MAX_AGE_MS = 21 * 24 * 60 * 60 * 1000; // 21 days
+// How long a saved session may silently auto-resume for. Deliberately much
+// shorter than the server's own room/session TTLs (21 days / 7 days) -- those
+// exist so a genuinely-paused game survives, but the CLIENT shouldn't drop
+// someone back into a days-old game with no indication it happened. Past this
+// window the session is treated as stale and cleared, landing on a fresh join
+// screen instead (the "Leave game" button clears it immediately, on demand).
+const AUTO_RESUME_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const historyKey = (roomId: string) => `kvitlach.history.${roomId}`;
 const roomSessionKey = (roomId: string) => `kvitlach.session.${roomId}`;
+
+interface PersistedSession extends SessionData {
+  savedAt: number;
+}
 
 interface PersistedRoomSession extends SessionData {
   firstName?: string;
@@ -93,6 +104,12 @@ const loadSession = (): SessionData | undefined => {
       typeof parsed.playerId === "string" &&
       typeof parsed.token === "string"
     ) {
+      // Entries saved before `savedAt` existed, or older than the auto-resume
+      // window, are treated as stale rather than silently resumed.
+      if (typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > AUTO_RESUME_MAX_AGE_MS) {
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        return undefined;
+      }
       return parsed as SessionData;
     }
   } catch (err) {
@@ -115,7 +132,7 @@ const loadRoomSession = (roomId: string): PersistedRoomSession | undefined => {
       typeof parsed.token === "string" &&
       typeof parsed.savedAt === "number"
     ) {
-      if (Date.now() - parsed.savedAt > SESSION_MAX_AGE_MS) {
+      if (Date.now() - parsed.savedAt > AUTO_RESUME_MAX_AGE_MS) {
         window.localStorage.removeItem(roomSessionKey(roomId));
         return undefined;
       }
@@ -188,11 +205,28 @@ const persistSession = (session?: SessionData) => {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
       persistLastRoomId(undefined);
     } else {
-      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      const entry: PersistedSession = { ...session, savedAt: Date.now() };
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(entry));
       persistLastRoomId(session.roomId);
     }
   } catch (err) {
     console.warn("Failed to persist session", err);
+  }
+};
+
+// Reflects which room we're in directly in the address bar (?room=CODE) so the
+// URL is meaningful to share/bookmark and isn't identical across every stage
+// of the app. Uses replaceState, not pushState -- in-game transitions aren't
+// meant to create back-button history entries.
+const setUrlRoomId = (roomId?: string) => {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    if (roomId) url.searchParams.set("room", roomId);
+    else url.searchParams.delete("room");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  } catch {
+    /* ignore -- URL sync is a nicety, never worth breaking the app over */
   }
 };
 
@@ -273,6 +307,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (wasPresent && !stillPresent) {
         clearRoomSession(nextRoom.roomId);
         persistSession(undefined);
+        setUrlRoomId(undefined);
         updates.session = undefined;
         updates.playerId = undefined;
         updates.round = undefined;
@@ -380,6 +415,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         if (roomId) {
           clearRoomSession(roomId);
           persistSession(undefined);
+          setUrlRoomId(undefined);
         }
         return {
           room: undefined,
@@ -449,6 +485,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const priorRoom = state.session?.roomId || state.room?.roomId;
         if (priorRoom) persistLastRoomId(priorRoom);
         persistSession(undefined);
+        setUrlRoomId(undefined);
         // Do NOT clear per-room session on invalid_session — the server session TTL
         // is 24 hours but the per-room localStorage key lasts 21 days. If the server
         // restarted (in-memory state lost), the user should fall through to the join
@@ -467,6 +504,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         }
         // room_not_found with no pending action = stale auto-resume; clear silently
         if (errorMessage === "room_not_found" && !state.pendingAction) {
+          setUrlRoomId(undefined);
           update.session = undefined;
           update.room = undefined;
           update.round = undefined;
@@ -546,6 +584,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const sessionPayload = payload.session as SessionData | undefined;
         if (sessionPayload && sessionPayload.roomId && sessionPayload.playerId && sessionPayload.token) {
           persistSession(sessionPayload);
+          setUrlRoomId(sessionPayload.roomId);
           update.session = sessionPayload;
           update.playerId = sessionPayload.playerId;
           persistLastRoomId(sessionPayload.roomId);
@@ -843,6 +882,19 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("room:close", { roomId });
+    },
+    leaveGame: () => {
+      const roomId = get().room?.roomId ?? get().session?.roomId;
+      if (roomId) clearRoomSession(roomId);
+      persistSession(undefined);
+      // A hard navigation (not just clearing in-memory state) is deliberate:
+      // the existing WebSocket stays attached server-side to this room/player,
+      // so anything short of tearing down the socket would let the next
+      // broadcast from that still-live room silently repopulate state and
+      // undo the "leave". Reloading also resets the URL and gives everyone --
+      // stale session or active game -- the same clean way back to the join
+      // screen.
+      if (typeof window !== "undefined") window.location.assign("/");
     },
   };
 };

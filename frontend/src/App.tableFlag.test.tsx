@@ -85,6 +85,7 @@ vi.mock("./state", () => {
       setFormError: noop,
       sendReaction: noop,
       closeRoom: noop,
+      leaveGame: noop,
     }),
   };
 });
@@ -99,15 +100,21 @@ describe("table UI feature flag", () => {
     mockState.round = round;
   });
 
-  it("renders the existing seat-list UI when the flag is off (default)", () => {
+  it("renders the new felt-table UI by default (no stored preference)", () => {
     const { container } = render(<App />);
-    expect(container.querySelector(".felt-table")).toBeNull();
+    expect(container.querySelector(".felt-table")).not.toBeNull();
   });
 
-  it("renders the new felt-table UI once the flag is turned on and a round is active", () => {
+  it("renders the new felt-table UI when the flag is explicitly on", () => {
     window.localStorage.setItem("kvitlach.tableUI", "1");
     const { container } = render(<App />);
     expect(container.querySelector(".felt-table")).not.toBeNull();
+  });
+
+  it("falls back to the classic seat-list UI when explicitly opted out", () => {
+    window.localStorage.setItem("kvitlach.tableUI", "0");
+    const { container } = render(<App />);
+    expect(container.querySelector(".felt-table")).toBeNull();
   });
 
   it("still shows the old room-management screen (Start round, roster, etc.) pre-round even with the flag on", () => {
