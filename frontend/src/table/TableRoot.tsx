@@ -14,6 +14,7 @@ import { ManageDrawer } from "./ManageDrawer";
 import { Icon } from "./icons";
 import { useFullscreen } from "./fullscreen";
 import { useWakeLock } from "./wakeLock";
+import { isIOS, isStandaloneDisplay } from "./platform";
 
 // Shown on the felt until a banker sets their own watermark via Manage ->
 // table settings -- a fixed default rather than the room's own (randomly
@@ -143,6 +144,30 @@ export function TableRoot({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullscreen]);
 
+  // iOS Safari can't enter fullscreen at all (fullscreenSupported is always
+  // false there) -- the only real chrome-free path on an iPhone is adding the
+  // page to the home screen, so give those visitors a different, one-time
+  // nudge toward that instead of just silently having no fullscreen control.
+  const IOS_HINT_KEY = "kvitlach.iosInstallHintSeen";
+  const [showIOSInstallHint, setShowIOSInstallHint] = useState(() => {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    if (!isIOS() || isStandaloneDisplay()) return false;
+    try {
+      return window.localStorage.getItem(IOS_HINT_KEY) !== "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissIOSInstallHint = () => {
+    setShowIOSInstallHint(false);
+    if (typeof window === "undefined" || !window.localStorage) return;
+    try {
+      window.localStorage.setItem(IOS_HINT_KEY, "1");
+    } catch {
+      /* ignore -- the hint just reappears next visit, not worth failing over */
+    }
+  };
+
   useEffect(() => {
     // Every table should show SOME branding by default, not just once a
     // banker bothers to set one.
@@ -271,6 +296,19 @@ export function TableRoot({
                 </button>
               </div>
             )}
+          </span>
+        )}
+        {showIOSInstallHint && (
+          <span className="relative inline-flex">
+            <span className="k-chip-btn" style={{ cursor: "default" }}>
+              <Icon name="share" size={13} />
+            </span>
+            <div className="k-fs-hint">
+              Add to Home Screen (tap Share, then "Add to Home Screen") for a full-screen table.
+              <button type="button" onClick={dismissIOSInstallHint}>
+                Got it
+              </button>
+            </div>
           </span>
         )}
         {isAdmin && (

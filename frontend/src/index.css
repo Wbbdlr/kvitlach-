@@ -111,6 +111,40 @@ body {
   justify-content: center;
   overflow: hidden;
   background: #060d09;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Card art and avatars trigger iOS's long-press "Save Image" callout on
+   rapid taps during play -- this is purely game chrome, never content a
+   player needs to save or select. Scoped to <img> so it never touches the
+   Manage drawer's real text inputs. */
+.k-fit img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* touch-action: manipulation drops the ~300ms tap delay and suppresses
+   double-tap-to-zoom, both of which misfire during fast bet/hit/stand
+   tapping on a phone. Scoped to actual controls, not text inputs. */
+.k-fit button,
+.k-fit .k-chip-btn {
+  touch-action: manipulation;
+}
+
+/* iOS Safari zooms the whole page in when focusing any text input under
+   16px -- jarring mid-round on the Manage drawer's amount/note/watermark
+   fields. A blanket floor on mobile fixes every current and future input
+   without hand-editing each one's Tailwind classes. */
+@media (max-width: 767px) {
+  /* !important is deliberate here: Tailwind's text-sm/text-xs utility
+     classes (0,1,0 specificity) outrank a bare tag selector and would
+     otherwise silently win, defeating this override entirely. */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }
 
 /* requestFullscreen() targets <html> (see fullscreen.ts). Some engines
@@ -465,6 +499,11 @@ body:has(.k-fit) {
   position: absolute;
   top: 8px;
   right: 8px;
+  /* Progressive enhancement: clears the notch/Dynamic Island on iPhones in
+     landscape (viewport-fit=cover in index.html is what activates env()).
+     Falls back to the plain 8px above on browsers without env() support. */
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
   z-index: 40;
   display: flex;
   align-items: center;
@@ -475,6 +514,7 @@ body:has(.k-fit) {
 .k-chrome-react {
   position: absolute;
   right: 10px;
+  right: max(10px, env(safe-area-inset-right));
   bottom: 96px;
   z-index: 40;
 }
@@ -520,6 +560,8 @@ body:has(.k-fit) {
   position: absolute;
   top: 8px;
   left: 8px;
+  top: max(8px, env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
   z-index: 45;
   display: flex;
   flex-direction: column;
@@ -577,6 +619,13 @@ body:has(.k-fit) {
   flex-wrap: wrap;
   gap: 12px;
   padding: 10px 16px;
+  /* The dock sits flush against the bottom/side edges -- on notched iPhones
+     in landscape that's exactly where the home-indicator bar and the notch
+     sit, so pad by the real inset (0 on non-notch devices) on top of the
+     existing padding rather than replacing it. */
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
   z-index: 25;
 }
 .k-betbox {
@@ -683,6 +732,9 @@ body:has(.k-fit) {
     min-height: 60px;
     gap: 6px;
     padding: 6px 8px;
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
   }
   .k-betbox {
     padding: 4px 6px;

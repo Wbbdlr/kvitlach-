@@ -1,0 +1,16 @@
+{
+  "name": "Kvitlach",
+  "short_name": "Kvitlach",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#060d09",
+  "theme_color": "#12271c",
+  "icons": [
+    {
+      "src": "/ChatGPT%20Image%20Jan%2011,%202026,%2001_49_49%20PM.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}

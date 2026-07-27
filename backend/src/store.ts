@@ -267,7 +267,10 @@ export class GameStore {
     };
     roomRec.room.players.push(player);
     if (!info.spectator) roomRec.room.wallets[player.id] = roomRec.room.buyIn;
-    if (roomRec.room.roundId && this.rounds.has(roomRec.room.roundId)) {
+    // Spectators are never dealt into a round (startRound's `others` filter
+    // excludes them), so queuing one here would leave them permanently
+    // showing as "queued for next round" with no round ever seating them.
+    if (!info.spectator && roomRec.room.roundId && this.rounds.has(roomRec.room.roundId)) {
       roomRec.room.waitingPlayerIds = [...new Set([...roomRec.room.waitingPlayerIds, player.id])];
     }
       this.bumpRoomTimer(roomRec.room.roomId);
