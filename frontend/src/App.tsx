@@ -671,9 +671,10 @@ export default function App() {
       }
       if (turn.state !== prevTurn.state) {
         if (turn.state === "won") {
-          audioManager.playSfx("win");
           const isRosier = isRosierPair(turn.cards);
           const isPush = isPushTurn(turn);
+          // A push returns the wager, not a win -- it shouldn't sound like one.
+          if (!isPush) audioManager.playSfx("win");
           if (isRosier) {
             newTiles.push({ id: `${turn.player.id}-rosier-${Date.now()}`, label: "FRAMES!", color: "#d97706", playerId: turn.player.id });
           } else if (isPush) {
@@ -683,9 +684,9 @@ export default function App() {
           }
         }
         if (turn.state === "lost") {
-          const { total, bustedTotal } = bestTotal(turn.cards);
-          const busted = total === undefined && bustedTotal !== undefined;
-          if (busted) audioManager.playSfx("bust");
+          // Every loss gets a sound now, not just a bust -- "bust"/"futch"
+          // are the same audio file, so there's nothing to distinguish here.
+          audioManager.playSfx("bust");
           newTiles.push({ id: `${turn.player.id}-futch-${Date.now()}`, label: "FUTCHED!", color: "#dc2626", playerId: turn.player.id });
         }
       }
@@ -1086,6 +1087,18 @@ export default function App() {
         statsData={statsData}
         onOpenStats={(id) => setStatsPlayerId(id)}
         onCloseStats={() => setStatsPlayerId(undefined)}
+        musicEnabled={musicEnabled}
+        sfxEnabled={sfxEnabled}
+        onToggleMusic={() => {
+          setMusicEnabled((prev) => !prev);
+          setUserInteracted(true);
+          audioManager.noteInteraction();
+        }}
+        onToggleSfx={() => {
+          setSfxEnabled((prev) => !prev);
+          setUserInteracted(true);
+          audioManager.noteInteraction();
+        }}
       />
     </>
   ) : (

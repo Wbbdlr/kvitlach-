@@ -73,6 +73,10 @@ export interface TableRootProps {
   statsData?: StatsData;
   onOpenStats: (playerId: string) => void;
   onCloseStats: () => void;
+  musicEnabled: boolean;
+  sfxEnabled: boolean;
+  onToggleMusic: () => void;
+  onToggleSfx: () => void;
 }
 
 export function TableRoot({
@@ -118,6 +122,10 @@ export function TableRoot({
   statsData,
   onOpenStats,
   onCloseStats,
+  musicEnabled,
+  sfxEnabled,
+  onToggleMusic,
+  onToggleSfx,
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
@@ -287,6 +295,26 @@ export function TableRoot({
            true viewport size and remain readable/tappable on a phone. ---- */}
       <div className="k-chrome-top">
         <FeltSwitcher felt={felt} onChange={setFelt} />
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={onToggleMusic}
+          aria-pressed={musicEnabled}
+          style={!musicEnabled ? { opacity: 0.45 } : undefined}
+          title={musicEnabled ? "Mute background music" : "Play background music"}
+        >
+          <Icon name="music" size={13} />
+        </button>
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={onToggleSfx}
+          aria-pressed={sfxEnabled}
+          style={!sfxEnabled ? { opacity: 0.45 } : undefined}
+          title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+        >
+          <Icon name="speaker" size={13} />
+        </button>
         {fullscreenSupported && (
           <span className="relative inline-flex">
             <button
