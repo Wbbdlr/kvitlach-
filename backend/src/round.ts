@@ -15,11 +15,38 @@ export interface RoundContext extends RoundState {
   turnTimerDurationMs?: number;
 }
 
-export function createRound(players: Player[], roomId: string, deckCountInput?: number, roundNumber = 1): RoundContext {
-  const deckCount = sanitizeDeckCount(deckCountInput ?? recommendedDeckCount(players.length));
+// Builds a fresh shuffled shoe of `deckCount` decks -- used both for a brand
+// new room and for a reshuffle triggered by the shoe running out mid-play.
+export function buildShoe(deckCount: number): Card[] {
   const decks: Card[][] = [];
   for (let i = 0; i < deckCount; i += 1) decks.push(newDeck());
-  const deck = decks.flat();
+  return decks.flat();
+}
+
+// `existingDeck` carries the leftover shoe forward from the room's previous
+// round (see GameStore.finalizeRound/startRound) -- the deck should only be
+// reshuffled when it's actually run out, not on every round. If there isn't
+// even enough left for one card per seated player, deal a fresh shoe now
+// (rather than let initializeTurns throw) and flag deckReshuffledAt so
+// clients can be told a fresh deck came into play.
+export function createRound(
+  players: Player[],
+  roomId: string,
+  deckCountInput?: number,
+  roundNumber = 1,
+  existingDeck?: Card[]
+): RoundContext {
+  const deckCount = sanitizeDeckCount(deckCountInput ?? recommendedDeckCount(players.length));
+  let deck = existingDeck ?? [];
+  let deckReshuffledAt: number | undefined;
+  if (deck.length < players.length) {
+    // Only a genuine carried-over shoe running short counts as a reshuffle
+    // worth telling players about -- a brand new room's very first round
+    // (existingDeck undefined) is just ordinary setup, not "running low".
+    const hadPriorDeck = existingDeck !== undefined;
+    deck = buildShoe(deckCount);
+    if (hadPriorDeck) deckReshuffledAt = Date.now();
+  }
 
   const { turns, deck: remaining } = initializeTurns(players, deck);
 
@@ -31,7 +58,20 @@ export function createRound(players: Player[], roomId: string, deckCountInput?: 
     state: "playing",
     deckCount,
     roundNumber,
+    deckReshuffledAt,
   };
+}
+
+// Draws one card, reshuffling a fresh shoe in when the current one has run
+// out mid-round instead of failing the action outright.
+function drawCard(state: RoundContext): { card: Card; deck: Card[]; reshuffledAt?: number } {
+  if (state.deck.length > 0) {
+    const [card, ...rest] = state.deck;
+    return { card, deck: rest };
+  }
+  const fresh = buildShoe(state.deckCount ?? 1);
+  const [card, ...rest] = fresh;
+  return { card, deck: rest, reshuffledAt: Date.now() };
 }
 
 export function handleBet(state: RoundContext, playerId: string, amount: number) {
@@ -40,8 +80,7 @@ export function handleBet(state: RoundContext, playerId: string, amount: number)
   const turn = state.turns[turnIndex];
   if (state.state === "terminate") throw new Error("round_terminated");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("invalid_bet");
-  const [pickedCard, ...remainingDeck] = state.deck;
-  if (!pickedCard) throw new Error("deck_empty");
+  const { card: pickedCard, deck: remainingDeck, reshuffledAt } = drawCard(state);
 
   const newBet = turn.bet + amount;
 
@@ -54,7 +93,12 @@ export function handleBet(state: RoundContext, playerId: string, amount: number)
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
-  return advanceState({ ...state, turns, deck: remainingDeck });
+  return advanceState({
+    ...state,
+    turns,
+    deck: remainingDeck,
+    deckReshuffledAt: reshuffledAt ?? state.deckReshuffledAt,
+  });
 }
 
 export function handleHit(state: RoundContext, playerId: string, options?: { eleveroon?: boolean }) {
@@ -62,8 +106,7 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
   if (state.state === "terminate") throw new Error("round_terminated");
-  const [pickedCard, ...remainingDeck] = state.deck;
-  if (!pickedCard) throw new Error("deck_empty");
+  const { card: pickedCard, deck: remainingDeck, reshuffledAt } = drawCard(state);
 
   const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
   const isElevenCard = pickedCard.attributes.values?.includes(11);
@@ -96,7 +139,12 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
-  return advanceState({ ...state, turns, deck: remainingDeck });
+  return advanceState({
+    ...state,
+    turns,
+    deck: remainingDeck,
+    deckReshuffledAt: reshuffledAt ?? state.deckReshuffledAt,
+  });
 }
 
 export function handleStand(state: RoundContext, playerId: string) {

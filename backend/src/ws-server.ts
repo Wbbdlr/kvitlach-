@@ -439,6 +439,16 @@ export class WSServer {
           this.sendAck(socket, requestId, { result });
           break;
         }
+        case "room:reshuffle-deck": {
+          const { roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          this.store.reshuffleDeck(roomId, actorId);
+          this.sendAck(socket, requestId, {});
+          break;
+        }
         case "player:react": {
           const { emoji } = (payload as any) || {};
           const meta = this.meta.get(socket);
@@ -448,7 +458,11 @@ export class WSServer {
           const room = this.store.getRoom(roomId);
           const isMember = room?.players.some((p) => p.id === actorId);
           if (!isMember) throw new Error("forbidden");
-          const allowed = new Set(["👏","😂","😮","❤️","🔥","👍","😢","🤯","😎","🙌","😡","🤔","🎉","🤞","🙏","🍀","🍻","🍕","💤","💯","✅","❌","🤑","😭","🤡"]);
+          const allowed = new Set([
+            "👏","😂","😮","❤️","🔥","👍","😢","🤯","😎","🙌","😡","🤔","🎉","🤞","🙏","🍀","🍻","🍕","💤","💯","✅","❌","🤑","😭","🤡",
+            // Yiddish/Hebrew text reactions (frontend/src/table/selectors.ts's REACTION_PHRASES).
+            "בהצלחה","מזל טוב","אוי וויי","קיין עין הרע","גוואלד","נו?",
+          ]);
           const trimmed = emoji.trim();
           const normalized = allowed.has(trimmed) ? trimmed : "👏";
           const payloadOut: ReactionEvent = { playerId: actorId, emoji: normalized, reactedAt: Date.now() };

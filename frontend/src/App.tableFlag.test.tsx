@@ -82,6 +82,7 @@ vi.mock("./state", () => {
       kickPlayer: noop,
       adjustPlayerBankroll: noop,
       setFeltWatermark: noop,
+      reshuffleDeck: noop,
       setFormError: noop,
       sendReaction: noop,
       closeRoom: noop,

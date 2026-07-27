@@ -3,7 +3,7 @@ import { Turn } from "../types";
 import { Icon } from "./icons";
 
 const DEFAULT_BET = 5;
-const BET_STEP = 5;
+const BET_STEP = 1;
 
 export interface PlayerDockProps {
   turn: Turn;

@@ -66,6 +66,9 @@ export interface RoundState {
   turns: Turn[];
   state: RoundPhase;
   deckCount?: number;
+  // Set whenever a fresh shoe was just shuffled in server-side -- diffed
+  // against the previous round's value to show a one-time notice.
+  deckReshuffledAt?: number;
   roundNumber: number;
   bankLock?: BankLockState;
   turnTimerPlayerId?: string;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
+import { UINotification } from "../state";
 import { useFelt } from "../theme";
 import { orderSeatsForViewer, seatPositions, seatScale, STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 import { useStageScale } from "./stage";
@@ -12,6 +13,12 @@ import { FeltSwitcher } from "./FeltSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
 import { Icon } from "./icons";
 import { useFullscreen } from "./fullscreen";
+import { useWakeLock } from "./wakeLock";
+
+// Shown on the felt until a banker sets their own watermark via Manage ->
+// table settings -- a fixed default rather than the room's own (randomly
+// assigned) name, per the family this app was originally built for.
+const DEFAULT_WATERMARK = "משפחת שלזינגר קוויטלאך";
 
 export interface BankInfo {
   available: number;
@@ -57,6 +64,9 @@ export interface TableRootProps {
   onCloseRoom: () => void;
   onStartNextRound: () => void;
   onLeave: () => void;
+  onReshuffleDeck: () => void;
+  notifications: UINotification[];
+  onDismissNotification: (id: string) => void;
 }
 
 export function TableRoot({
@@ -96,14 +106,48 @@ export function TableRoot({
   onCloseRoom,
   onStartNextRound,
   onLeave,
+  onReshuffleDeck,
+  notifications,
+  onDismissNotification,
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
   const { wrapRef, scale } = useStageScale();
+  useWakeLock(true); // the felt table only ever mounts while a room+round is active
+
+  // The Fullscreen API can only be entered from a real tap (see
+  // fullscreen.ts), so it can never auto-start -- nudge new visitors to tap
+  // it themselves instead, once, and never again once they've either done
+  // so or dismissed the hint.
+  const FULLSCREEN_HINT_KEY = "kvitlach.fullscreenHintSeen";
+  const [showFullscreenHint, setShowFullscreenHint] = useState(() => {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    try {
+      return window.localStorage.getItem(FULLSCREEN_HINT_KEY) !== "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissFullscreenHint = () => {
+    setShowFullscreenHint(false);
+    if (typeof window === "undefined" || !window.localStorage) return;
+    try {
+      window.localStorage.setItem(FULLSCREEN_HINT_KEY, "1");
+    } catch {
+      /* ignore -- the hint just reappears next visit, not worth failing over */
+    }
+  };
+  useEffect(() => {
+    if (isFullscreen) dismissFullscreenHint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty("--wm", JSON.stringify(room.feltWatermark ?? ""));
+    // Every table should show SOME branding by default, not just once a
+    // banker bothers to set one.
+    const watermark = room.feltWatermark || DEFAULT_WATERMARK;
+    document.documentElement.style.setProperty("--wm", JSON.stringify(watermark));
   }, [room.feltWatermark]);
 
   const bankLockStage = round?.bankLock?.stage;
@@ -209,15 +253,25 @@ export function TableRoot({
       <div className="k-chrome-top">
         <FeltSwitcher felt={felt} onChange={setFelt} />
         {fullscreenSupported && (
-          <button
-            type="button"
-            className="k-chip-btn"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
-          </button>
+          <span className="relative inline-flex">
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
+            </button>
+            {showFullscreenHint && !isFullscreen && (
+              <div className="k-fs-hint">
+                Tap for fullscreen -- best in landscape.
+                <button type="button" onClick={dismissFullscreenHint}>
+                  Got it
+                </button>
+              </div>
+            )}
+          </span>
         )}
         {isAdmin && (
           <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
@@ -244,6 +298,19 @@ export function TableRoot({
       <div className="k-chrome-react">
         <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
       </div>
+
+      {notifications.length > 0 && (
+        <div className="k-toast-stack">
+          {notifications.map((note) => (
+            <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
+              <span>{note.message}</span>
+              <button type="button" onClick={() => onDismissNotification(note.id)}>
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {canPlayerAct && myPlayerTurn && !roundOver && (
         <PlayerDock
@@ -293,6 +360,8 @@ export function TableRoot({
           onKick={onKick}
           onExportHistory={onExportHistory}
           onCloseRoom={onCloseRoom}
+          canReshuffle={roundOver}
+          onReshuffleDeck={onReshuffleDeck}
         />
       )}
     </div>

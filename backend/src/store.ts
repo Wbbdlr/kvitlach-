@@ -1,8 +1,8 @@
 import { v4 as uuid } from "uuid";
 import { customAlphabet } from "nanoid";
-import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState } from "./round.js";
+import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe } from "./round.js";
 import { handleHit } from "./round.js";
-import { Balance, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
+import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 
@@ -49,6 +49,12 @@ interface RoomRecord {
   room: RoomState;
   timer?: NodeJS.Timeout;
   nextStart?: number;
+  // The leftover shoe from the room's last completed round (captured in
+  // finalizeRound before the round record is deleted), and the deck count
+  // it was built from -- startRound() carries these into the next round so
+  // the deck only reshuffles when it actually runs out, not every round.
+  deck?: Card[];
+  lastDeckCount?: number;
 }
 
 interface SessionRecord {
@@ -330,7 +336,10 @@ export class GameStore {
     }
     if (playersForRound.length < 1) throw new Error("not_enough_players");
     const roundNumber = (roomRec.room.completedRounds ?? 0) + 1;
-    const round = createRound(playersForRound, roomId, deckCount, roundNumber);
+    // Carry the previous round's leftover shoe forward instead of dealing a
+    // brand new one every round -- createRound only reshuffles if it's
+    // actually run low.
+    const round = createRound(playersForRound, roomId, deckCount ?? roomRec.lastDeckCount, roundNumber, roomRec.deck);
     const stored = this.persistRound(round.roundId, round);
     roomRec.room.roundId = stored.roundId;
     roomRec.room.waitingPlayerIds = overflow.map((p) => p.id);
@@ -424,6 +433,21 @@ export class GameStore {
     this.audit("set-watermark", roomId, adminId, { text: sanitized });
     this.bumpRoomTimer(roomId);
     return { feltWatermark: sanitized };
+  }
+
+  // Discards the carried-over shoe between rounds only -- a round in
+  // progress already has its own live deck (RoundContext.deck), which this
+  // deliberately never touches, so "reshuffle" can't disrupt an active hand.
+  // The next startRound() call rebuilds a fresh shoe automatically, since
+  // createRound() always reshuffles when the carried-over deck is empty.
+  reshuffleDeck(roomId: string, adminId: string): void {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    if (roomRec.room.roundId) throw new Error("round_in_progress");
+    roomRec.deck = [];
+    this.audit("reshuffle-deck", roomId, adminId, {});
+    this.bumpRoomTimer(roomId);
   }
 
   private settleImmediateTurn(round: RoundContext, roomRec: RoomRecord, turnIndex: number): void {
@@ -561,6 +585,11 @@ export class GameStore {
     void this.db?.deleteRound(roundId).catch((e) => console.error("db delete round", roundId, e));
     const roomRec = this.rooms.get(round.roomId);
     if (roomRec) {
+      // Carry the leftover shoe forward to the next round instead of
+      // discarding it -- this is the only point where the round's deck is
+      // still reachable before its record is deleted above.
+      roomRec.deck = round.deck;
+      roomRec.lastDeckCount = round.deckCount;
       roomRec.room.roundId = undefined;
       roomRec.room.balances = [...balances, ...roomRec.room.balances];
       roomRec.room.completedRounds = (roomRec.room.completedRounds ?? 0) + 1;
@@ -776,8 +805,7 @@ export class GameStore {
       if (roundCtx && roundCtx.bankLock?.stage === "decision") {
         const bankerIndex = roundCtx.turns.findIndex((turn) => turn.player.id === adminId);
         if (bankerIndex >= 0 && nextWallet > 0) {
-          const nextCard = roundCtx.deck.shift();
-          if (!nextCard) throw new Error("deck_empty");
+          const nextCard = this.drawCard(roundCtx);
           roundCtx.turns[bankerIndex] = {
             ...roundCtx.turns[bankerIndex],
             cards: [nextCard],
@@ -920,9 +948,7 @@ export class GameStore {
       round.bankLock = undefined;
       return round;
     }
-    const nextDeck = [...round.deck];
-    const nextCard = nextDeck.shift();
-    if (!nextCard) throw new Error("deck_empty");
+    const nextCard = this.drawCard(round);
     round.turns[bankerIndex] = {
       ...round.turns[bankerIndex],
       cards: [nextCard],
@@ -931,9 +957,21 @@ export class GameStore {
       bankRequest: false,
       settledNet: undefined,
     };
-    round.deck = nextDeck;
     round.bankLock = undefined;
     return round;
+  }
+
+  // Draws one card from a round's live deck, reshuffling a fresh shoe in
+  // (and flagging deckReshuffledAt) if it's run out -- mirrors round.ts's
+  // own drawCard for the two banker-redeal paths that live in this class.
+  private drawCard(round: RoundContext): Card {
+    if (round.deck.length === 0) {
+      round.deck = buildShoe(round.deckCount ?? 1);
+      round.deckReshuffledAt = Date.now();
+    }
+    const card = round.deck.shift();
+    if (!card) throw new Error("deck_empty"); // unreachable: buildShoe always yields cards
+    return card;
   }
 
   resumePlayer(roomId: string, playerId: string, token: string) {

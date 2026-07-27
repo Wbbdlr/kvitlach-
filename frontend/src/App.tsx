@@ -1075,11 +1075,14 @@ export default function App() {
         onExportHistory={() => exportRoundHistoryTxt()}
         onCloseRoom={() => store.closeRoom()}
         onLeave={() => store.leaveGame()}
+        onReshuffleDeck={() => store.reshuffleDeck()}
         onStartNextRound={() => {
           const parsedOverride = deckCount === "" ? undefined : Number(deckCount);
           const parsedPreferred = preferredDecks === "" ? undefined : Number(preferredDecks);
           store.startRound(parsedOverride ?? parsedPreferred);
         }}
+        notifications={notifications}
+        onDismissNotification={dismissNotification}
       />
     </>
   ) : (

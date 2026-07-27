@@ -43,6 +43,18 @@ export const REACTION_EMOJIS = [
   "🤡",
 ];
 
+// Short Yiddish/Hebrew exclamations, alongside the emoji above -- rendered
+// as text pills rather than single glyphs (see ReactionLayer.tsx). Kept to a
+// tasteful handful rather than an exhaustive phrasebook.
+export const REACTION_PHRASES = [
+  "בהצלחה", // B'hatzlacha! -- good luck
+  "מזל טוב", // Mazel tov! -- congratulations
+  "אוי וויי", // Oy vey -- dismay
+  "קיין עין הרע", // Kein ayin hara -- no evil eye / knock wood
+  "גוואלד", // Gevalt! -- shock/alarm
+  "נו?", // Nu? -- well?/c'mon
+];
+
 export function usableCards(cards: Card[]): Card[] {
   return cards.filter((card) => !card.attributes?.eleveroonIgnored);
 }

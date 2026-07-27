@@ -2,10 +2,11 @@ import { create, StateCreator } from "zustand";
 import { WSClient } from "./ws";
 import { Balance, RoomState, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 import { ReactionEvent } from "./types";
+import { bestTotal, isPushTurn } from "./table/selectors";
 
 type NotificationTone = "success" | "info" | "error";
 
-interface UINotification {
+export interface UINotification {
   id: string;
   message: string;
   tone: NotificationTone;
@@ -70,6 +71,7 @@ interface UIState {
   kickPlayer: (playerId: string) => void;
   adjustPlayerBankroll: (playerId: string, amount: number, note?: string) => void;
   setFeltWatermark: (text: string) => void;
+  reshuffleDeck: () => void;
   closeRoom: () => void;
   leaveGame: () => void;
 }
@@ -310,12 +312,54 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // to distinguish "silently clear a stale auto-resume" from "show the user
   // their typo".
   let autoResumeRequestId: string | undefined;
+  // requestIds for banker "settings" actions that otherwise have no visible
+  // result -- the ManageDrawer is a popover the banker might already have
+  // closed by the time the ack lands, so success/failure has to surface as a
+  // notification (seen from anywhere) rather than inline form state.
+  let pendingWatermarkRequestId: string | undefined;
+  let pendingReshuffleRequestId: string | undefined;
 
   const makeNotification = (message: string, tone: NotificationTone): UINotification => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     message,
     tone,
   });
+
+  // The server flips deckReshuffledAt to a new timestamp every time (and
+  // only when) a fresh shoe comes into play -- diff against the round
+  // already in state so this fires once per reshuffle, not on every one of
+  // the many round:state broadcasts that follow it.
+  const deckReshuffleNotification = (
+    prevRound: RoundState | undefined,
+    nextRound: RoundState
+  ): UINotification | undefined => {
+    if (!nextRound.deckReshuffledAt || nextRound.deckReshuffledAt === prevRound?.deckReshuffledAt) return undefined;
+    return makeNotification("Fresh deck shuffled in -- the shoe ran low.", "info");
+  };
+
+  // Fires once, for the viewer specifically, the moment their OWN turn
+  // resolves to a terminal state -- whether that's an immediate bust/21
+  // mid-round or the standby -> won/lost resolution at round-terminate.
+  // Diffed the same way as the deck-reshuffle notice: only when the
+  // viewer's turn state actually CHANGES into won/lost this update, not on
+  // every subsequent re-broadcast of an already-resolved turn.
+  const outcomeNotification = (
+    prevRound: RoundState | undefined,
+    nextRound: RoundState,
+    playerId: string | undefined
+  ): UINotification | undefined => {
+    if (!playerId) return undefined;
+    const nextTurn = nextRound.turns.find((t) => t.player.id === playerId);
+    if (!nextTurn || (nextTurn.state !== "won" && nextTurn.state !== "lost")) return undefined;
+    const prevTurn =
+      prevRound?.roundId === nextRound.roundId ? prevRound?.turns.find((t) => t.player.id === playerId) : undefined;
+    if (prevTurn && (prevTurn.state === "won" || prevTurn.state === "lost")) return undefined;
+    if (isPushTurn(nextTurn)) return makeNotification("Push -- your wager is returned.", "info");
+    if (nextTurn.state === "won") return makeNotification("You won this hand!", "success");
+    const { total, bustedTotal } = bestTotal(nextTurn.cards);
+    const busted = total === undefined && bustedTotal !== undefined;
+    return makeNotification(busted ? "Futched! You busted this hand." : "You lost this hand.", "error");
+  };
 
   const analyzeRoomTransition = (state: UIState, nextRoom: RoomState): Partial<UIState> => {
     const updates: Partial<UIState> = { room: nextRoom };
@@ -389,7 +433,19 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   const handleMessage = (msg: ServerEnvelope) => {
     if (msg.type === "room:state" && msg.payload)
       set((state: UIState) => analyzeRoomTransition(state, msg.payload as RoomState));
-    if (msg.type === "round:state" && msg.payload) set({ round: msg.payload as RoundState });
+    if (msg.type === "round:state" && msg.payload) {
+      set((state: UIState) => {
+        const nextRound = msg.payload as RoundState;
+        const notifications = [
+          deckReshuffleNotification(state.round, nextRound),
+          outcomeNotification(state.round, nextRound, state.playerId),
+        ].filter((n): n is UINotification => Boolean(n));
+        return {
+          round: nextRound,
+          notifications: notifications.length ? [...state.notifications, ...notifications].slice(-5) : state.notifications,
+        };
+      });
+    }
     if (msg.type === "round:ended") {
       const payload = (msg.payload as any) || {};
       const balances = payload.balances ?? [];
@@ -510,6 +566,22 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       const errorMessage = msg.error?.message;
       const isAutoResumeError = Boolean(msg.requestId && msg.requestId === autoResumeRequestId);
       if (isAutoResumeError) autoResumeRequestId = undefined;
+      const isWatermarkError = Boolean(msg.requestId && msg.requestId === pendingWatermarkRequestId);
+      if (isWatermarkError) pendingWatermarkRequestId = undefined;
+      const isReshuffleError = Boolean(msg.requestId && msg.requestId === pendingReshuffleRequestId);
+      if (isReshuffleError) pendingReshuffleRequestId = undefined;
+      if (isWatermarkError || isReshuffleError) {
+        const friendly =
+          errorMessage === "round_in_progress"
+            ? "Finish the current round before reshuffling."
+            : errorMessage === "forbidden"
+            ? "Only the banker can do that."
+            : "Something went wrong. Please try again.";
+        set((state: UIState) => ({
+          notifications: [...state.notifications, makeNotification(friendly, "error")].slice(-5),
+        }));
+        return;
+      }
       if (errorMessage === "invalid_session") {
         const priorRoom = get().session?.roomId || get().room?.roomId;
         if (priorRoom) persistLastRoomId(priorRoom);
@@ -608,6 +680,18 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     }
     if (msg.type === "ack") {
       if (msg.requestId && msg.requestId === autoResumeRequestId) autoResumeRequestId = undefined;
+      if (msg.requestId && msg.requestId === pendingWatermarkRequestId) {
+        pendingWatermarkRequestId = undefined;
+        set((state: UIState) => ({
+          notifications: [...state.notifications, makeNotification("Table label saved.", "success")].slice(-5),
+        }));
+      }
+      if (msg.requestId && msg.requestId === pendingReshuffleRequestId) {
+        pendingReshuffleRequestId = undefined;
+        set((state: UIState) => ({
+          notifications: [...state.notifications, makeNotification("Deck reshuffled -- ready for the next round.", "success")].slice(-5),
+        }));
+      }
       set((state: UIState) => {
         const update: Partial<UIState> = { message: undefined };
         const nextErrors = { ...state.formErrors };
@@ -615,7 +699,17 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         if (payload.room) Object.assign(update, analyzeRoomTransition(state, payload.room as RoomState));
         if (payload.room) nextErrors.join = undefined;
         if (msg.requestId && state.pendingAction?.requestId === msg.requestId) update.pendingAction = undefined;
-        if (payload.round) update.round = payload.round as RoundState;
+        if (payload.round) {
+          const nextRound = payload.round as RoundState;
+          update.round = nextRound;
+          const newNotifications = [
+            deckReshuffleNotification(state.round, nextRound),
+            outcomeNotification(state.round, nextRound, state.playerId),
+          ].filter((n): n is UINotification => Boolean(n));
+          if (newNotifications.length) {
+            update.notifications = [...(update.notifications ?? state.notifications), ...newNotifications].slice(-5);
+          }
+        }
         const sessionPayload = payload.session as SessionData | undefined;
         if (sessionPayload && sessionPayload.roomId && sessionPayload.playerId && sessionPayload.token) {
           persistSession(sessionPayload);
@@ -905,7 +999,25 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set({ message: "Only the banker can set the table watermark." });
         return;
       }
-      client.send("room:set-watermark", { roomId, text });
+      pendingWatermarkRequestId = client.send("room:set-watermark", { roomId, text });
+    },
+    reshuffleDeck: () => {
+      const roomId = get().room?.roomId;
+      const actorId = get().playerId;
+      if (!roomId || !actorId) {
+        set({ message: "Join a game first." });
+        return;
+      }
+      const actor = get().room?.players.find((p) => p.id === actorId);
+      if (actor?.type !== "admin") {
+        set({ message: "Only the banker can reshuffle the deck." });
+        return;
+      }
+      if (get().round && get().round?.state !== "terminate") {
+        set({ message: "Finish the current round before reshuffling." });
+        return;
+      }
+      pendingReshuffleRequestId = client.send("room:reshuffle-deck", { roomId });
     },
     closeRoom: () => {
       const roomId = get().room?.roomId;

@@ -66,6 +66,11 @@ export interface RoundState {
   turns: Turn[];
   state: RoundPhase;
   deckCount?: number;
+  // Set whenever a fresh shoe was just shuffled in (either because the
+  // carried-over deck ran out mid-round, or there wasn't enough left to
+  // deal this round) -- clients diff this against the previous round's
+  // value to show a one-time "fresh deck" notice, not a per-broadcast one.
+  deckReshuffledAt?: number;
   roundNumber: number;
   bankLock?: BankLockState;
   turnTimerPlayerId?: string;

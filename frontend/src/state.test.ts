@@ -218,3 +218,90 @@ describe("state.ts room_not_found handling", () => {
     expect(useGameStore.getState().session).toBeUndefined();
   });
 });
+
+describe("deck reshuffle notification", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub
+    global.WebSocket = MockWebSocket;
+  });
+
+  const baseRound = {
+    roundId: "R1",
+    roomId: "ROOM1",
+    deck: [],
+    turns: [],
+    state: "playing",
+    roundNumber: 1,
+  };
+
+  it("shows a notification the first time deckReshuffledAt appears on a round:state broadcast", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: { ...baseRound, deckReshuffledAt: 1000 } }),
+    });
+
+    const notifications = useGameStore.getState().notifications;
+    expect(notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
+  });
+
+  it("does not repeat the notification on a later broadcast carrying the same deckReshuffledAt", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: { ...baseRound, deckReshuffledAt: 1000 } }),
+    });
+    useGameStore.getState().dismissNotification(useGameStore.getState().notifications[0].id);
+
+    // A later, unrelated round:state broadcast still carries the SAME deckReshuffledAt --
+    // must not re-fire just because the round object was rebroadcast.
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: { ...baseRound, deckReshuffledAt: 1000, turns: [{}] } }),
+    });
+
+    const notifications = useGameStore.getState().notifications;
+    expect(notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
+  });
+
+  it("fires again for a genuinely new, later deckReshuffledAt", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: { ...baseRound, deckReshuffledAt: 1000 } }),
+    });
+    useGameStore.getState().dismissNotification(useGameStore.getState().notifications[0].id);
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: { ...baseRound, deckReshuffledAt: 2000 } }),
+    });
+
+    const notifications = useGameStore.getState().notifications;
+    expect(notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
+  });
+
+  it("does not show a notification when a round:state broadcast has no deckReshuffledAt", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: baseRound }),
+    });
+
+    const notifications = useGameStore.getState().notifications;
+    expect(notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
+  });
+});

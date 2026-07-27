@@ -40,7 +40,11 @@ export function Dealer({
   const shouldForceReveal = forceBankerReveal || roundState === "terminate";
   const totalInfo = totalDisplay(turn, viewerId, roundState, { forceBankerReveal: shouldForceReveal });
   const statusInfo = statusDisplay(turn);
-  const bankerReveal = shouldForceReveal || turn.state !== "pending";
+  // The banker must always see their own hole card, same as totalDisplay
+  // already reveals their own true total above -- only OTHER players' view
+  // of the banker should stay concealed until bankerReveal.
+  const isOwnerView = viewerId === turn.player.id;
+  const bankerReveal = shouldForceReveal || turn.state !== "pending" || isOwnerView;
   const name = bankerPlayer ? fullName(bankerPlayer) || bankerPlayer.firstName : "Bank";
   const isOffline = bankerPlayer ? bankerPlayer.presence !== "online" : false;
   const isActive = turn.state === "pending" && roundState === "final";

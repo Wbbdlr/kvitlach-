@@ -113,6 +113,17 @@ body {
   background: #060d09;
 }
 
+/* requestFullscreen() targets <html> (see fullscreen.ts). Some engines
+   (Samsung Internet among them) don't stretch the fullscreen element to the
+   actual screen size on their own -- without this it can render at its
+   pre-fullscreen box size, letterboxed inside the real (now-larger) screen
+   even though .k-fit itself measures 100dvh correctly. */
+:fullscreen,
+:-webkit-full-screen {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* Body sets min-height:100vh; on mobile the large-viewport 100vh exceeds
    100dvh, which left a strip of the light page background below the stage
    that the user could scroll to. Lock the document to the viewport while
@@ -468,6 +479,89 @@ body:has(.k-fit) {
   z-index: 40;
 }
 
+/* One-time nudge toward the fullscreen button -- it can only ever be
+   entered from a real tap, so this is the closest thing to "auto-starting"
+   fullscreen that's actually possible. */
+.k-fs-hint {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: max-content;
+  max-width: 200px;
+  background: rgba(10, 20, 14, 0.95);
+  border: 1px solid rgba(230, 164, 75, 0.45);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #eef2ea;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.k-fs-hint button {
+  background: none;
+  border: none;
+  color: #e6a44b;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Toast stack -- round outcomes (won/lost/futched/push), deck reshuffles,
+   etc. Top-left, opposite .k-chrome-top's controls, so the two never
+   collide or force each other to wrap. */
+.k-toast-stack {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(280px, calc(100vw - 16px));
+}
+.k-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(10, 20, 14, 0.92);
+  border: 1px solid rgba(230, 164, 75, 0.35);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #eef2ea;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+.k-toast.success {
+  border-color: rgba(60, 140, 90, 0.5);
+}
+.k-toast.error {
+  border-color: rgba(160, 60, 60, 0.5);
+}
+.k-toast span {
+  flex: 1;
+}
+.k-toast button {
+  flex: none;
+  background: none;
+  border: none;
+  color: rgba(238, 242, 234, 0.6);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+}
+.k-toast button:hover {
+  color: #eef2ea;
+}
+
 /* Control dock -- dark gradient bar with a gold top hairline. */
 .k-dock {
   position: absolute;
@@ -576,6 +670,41 @@ body:has(.k-fit) {
 }
 .k-toggle input {
   accent-color: #e6a44b;
+}
+
+/* The dock lives outside the scaled stage (see .k-fit's comment) so its
+   buttons stay tappable at any screen size -- but at true phone widths its
+   ~6 controls don't fit in one row, so flex-wrap pushes it to 2-3 rows and
+   min-height:84px no longer caps how tall it actually gets, eating into the
+   player's own cards/total above it. Shrink the controls themselves (not
+   just padding) so more fit per row and the wrapped height stays small. */
+@media (max-width: 520px), (max-height: 440px) {
+  .k-dock {
+    min-height: 60px;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .k-betbox {
+    padding: 4px 6px;
+    gap: 4px;
+  }
+  .k-betbox .k-amt {
+    min-width: 24px;
+    font-size: 13px;
+  }
+  .k-btn {
+    padding: 7px 12px;
+    font-size: 12px;
+    border-radius: 7px;
+  }
+  .k-btn.sm {
+    padding: 5px 9px;
+    font-size: 10px;
+  }
+  .k-toggle {
+    font-size: 10px;
+    gap: 4px;
+  }
 }
 
 /* Floating chrome buttons (felt switcher, fullscreen, reactions). */

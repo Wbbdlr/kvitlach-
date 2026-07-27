@@ -23,6 +23,8 @@ export interface ManageDrawerProps {
   onKick: (playerId: string) => void;
   onExportHistory: () => void;
   onCloseRoom: () => void;
+  canReshuffle: boolean;
+  onReshuffleDeck: () => void;
 }
 
 // Full banker "Manage table" surface for the new table UI. Deliberately
@@ -52,12 +54,15 @@ export function ManageDrawer({
   onKick,
   onExportHistory,
   onCloseRoom,
+  canReshuffle,
+  onReshuffleDeck,
 }: ManageDrawerProps) {
   const [adjustTarget, setAdjustTarget] = useState<string | null>(null);
   const [adjustAmount, setAdjustAmount] = useState("");
   const [adjustNote, setAdjustNote] = useState("");
   const [kickTarget, setKickTarget] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmReshuffle, setConfirmReshuffle] = useState(false);
   const [topUpSign, setTopUpSign] = useState<1 | -1>(1);
   const [topUpAmount, setTopUpAmount] = useState("500");
   const [topUpNote, setTopUpNote] = useState("");
@@ -218,6 +223,41 @@ export function ManageDrawer({
               Save
             </button>
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Deck</label>
+          {!confirmReshuffle ? (
+            <button
+              type="button"
+              disabled={!canReshuffle}
+              className="self-start text-xs font-semibold text-blue-600 underline disabled:text-slate-300 disabled:no-underline"
+              onClick={() => setConfirmReshuffle(true)}
+              title={canReshuffle ? undefined : "Only available between rounds."}
+            >
+              Reshuffle deck
+            </button>
+          ) : (
+            <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
+              <span className="text-amber-800">Shuffle a fresh shoe in before the next round?</span>
+              <div className="flex justify-end gap-2">
+                <button type="button" className="text-slate-500" onClick={() => setConfirmReshuffle(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-amber-600 px-2.5 py-1 font-semibold text-white"
+                  onClick={() => {
+                    onReshuffleDeck();
+                    setConfirmReshuffle(false);
+                  }}
+                >
+                  Reshuffle
+                </button>
+              </div>
+            </div>
+          )}
+          {!canReshuffle && <div className="text-[11px] text-slate-400">Only available between rounds.</div>}
         </div>
 
         <div className="flex flex-col gap-2">
