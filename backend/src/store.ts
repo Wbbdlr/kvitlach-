@@ -6,7 +6,7 @@ import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInReque
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 
-const INACTIVITY_TIMEOUT_MS = 21 * 24 * 60 * 60 * 1000; // 21 days
+const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const MAX_PLAYERS_PER_ROOM = 100;
 // How many non-banker players get an active seat in a single round. The felt
 // table's oval seating (frontend/src/table/layout.ts) can only fit players
@@ -55,6 +55,19 @@ interface RoomRecord {
   // the deck only reshuffles when it actually runs out, not every round.
   deck?: Card[];
   lastDeckCount?: number;
+  // Set on every bumpRoomTimer call (i.e. any room activity) -- lets the
+  // admin room list show how long a room has actually been idle, since the
+  // pending setTimeout itself isn't inspectable.
+  lastActivityAt?: number;
+}
+
+export interface AdminRoomSummary {
+  roomId: string;
+  name?: string;
+  playerCount: number;
+  completedRounds: number;
+  hasActiveRound: boolean;
+  lastActivityAt: number;
 }
 
 interface SessionRecord {
@@ -1007,6 +1020,7 @@ export class GameStore {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return;
     if (roomRec.timer) clearTimeout(roomRec.timer);
+    roomRec.lastActivityAt = Date.now();
     if (this.db) {
       void this.db.saveRoom(roomId, roomRec.room)
         .catch((e) => console.error("db save room", roomId, e));
@@ -1015,6 +1029,32 @@ export class GameStore {
       this.rooms.delete(roomId);
       void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room", roomId, e));
     }, INACTIVITY_TIMEOUT_MS);
+  }
+
+  // Admin tooling (backend/src/http-server.ts's token-gated /admin routes) --
+  // deliberately bypasses the per-room isAdmin/banker check that closeRoom
+  // enforces, since the HTTP layer's admin token is the actual gate here,
+  // and the whole point is to free up a Game ID even when you're not (or no
+  // longer) that room's own banker.
+  listRoomsForAdmin(): AdminRoomSummary[] {
+    return Array.from(this.rooms.entries()).map(([roomId, rec]) => ({
+      roomId,
+      name: rec.room.name,
+      playerCount: rec.room.players.length,
+      completedRounds: rec.room.completedRounds ?? 0,
+      hasActiveRound: Boolean(rec.room.roundId),
+      lastActivityAt: rec.lastActivityAt ?? Date.now(),
+    }));
+  }
+
+  forceDeleteRoom(roomId: string): boolean {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) return false;
+    if (roomRec.timer) clearTimeout(roomRec.timer);
+    this.rooms.delete(roomId);
+    this.audit("admin-force-delete", roomId, "admin", {});
+    void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room (admin force)", roomId, e));
+    return true;
   }
 
   async loadFromDB() {

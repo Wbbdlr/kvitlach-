@@ -15,7 +15,7 @@ async function main() {
   await store.loadFromDB();
   new WSServer(store, PORT_WS);
 
-  const app = createHttpServer();
+  const app = createHttpServer(store);
   await app.listen({ port: PORT_HTTP, host: "0.0.0.0" });
   console.log(`HTTP listening on http://0.0.0.0:${PORT_HTTP}`);
 }
