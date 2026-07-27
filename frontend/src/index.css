@@ -293,6 +293,9 @@ body:has(.k-fit) {
 }
 
 /* Parchment nameplate -- the mockup's signature element. */
+/* A <button> now (tapping opens that player's stats -- see StatsModal.tsx)
+   rather than a plain div, so it needs its own text-align/font/cursor reset
+   on top of Tailwind's preflight button reset. */
 .k-plate {
   position: relative;
   display: inline-flex;
@@ -305,6 +308,15 @@ body:has(.k-fit) {
   padding: 4px 8px 4px 4px;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28);
   max-width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.k-plate:hover {
+  box-shadow: 0 0 0 1px rgba(230, 164, 75, 0.4), 0 3px 8px rgba(0, 0, 0, 0.28);
+}
+.k-plate:disabled {
+  cursor: default;
 }
 .k-seat.is-active .k-plate,
 .k-plate.is-active {

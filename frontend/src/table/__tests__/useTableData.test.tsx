@@ -162,4 +162,74 @@ describe("useTableData", () => {
       expect(result.current.waitingInfo).toEqual({ count: 2, isViewerWaiting: true, namesLabel: "You and P2" });
     });
   });
+
+  describe("statsData", () => {
+    const roundHistory = [
+      {
+        roundId: "R1",
+        roundNumber: 1,
+        turns: [makeTurn(p1, { state: "won", bet: 20, settled: true, settledNet: 20 })],
+        balances: [],
+        completedAt: 1000,
+      },
+      {
+        roundId: "R2",
+        roundNumber: 2,
+        turns: [makeTurn(p1, { state: "lost", bet: 15, settled: true, settledNet: -15 })],
+        balances: [],
+        completedAt: 2000,
+      },
+      {
+        roundId: "R3",
+        roundNumber: 3,
+        // p1 sat out this round entirely -- no turn for them, must be skipped
+        // rather than crashing or producing a bogus entry.
+        turns: [makeTurn(p2, { state: "won", bet: 10 })],
+        balances: [],
+        completedAt: 3000,
+      },
+    ];
+
+    it("is undefined when no player is selected", () => {
+      const room = makeRoom();
+      const { result } = renderHook(() =>
+        useTableData({ room, round: undefined, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory })
+      );
+      expect(result.current.statsData).toBeUndefined();
+    });
+
+    it("tallies wins/losses and skips rounds the player didn't sit in", () => {
+      const room = makeRoom();
+      const { result } = renderHook(() =>
+        useTableData({
+          room,
+          round: undefined,
+          playerId: p1.id,
+          reactions: [],
+          nowTs: Date.now(),
+          roundHistory,
+          statsPlayerId: p1.id,
+        })
+      );
+      expect(result.current.statsData).toMatchObject({ name: "P1", wins: 1, losses: 1, pushes: 0, isBanker: false });
+      expect(result.current.statsData?.entries).toHaveLength(2);
+      expect(result.current.statsData?.entries.map((e) => e.roundNumber)).toEqual([1, 2]);
+    });
+
+    it("falls back to the turn's own player name when they've since left the room", () => {
+      const room = makeRoom({ players: [banker, p2] }); // p1 no longer in the roster
+      const { result } = renderHook(() =>
+        useTableData({
+          room,
+          round: undefined,
+          playerId: p2.id,
+          reactions: [],
+          nowTs: Date.now(),
+          roundHistory,
+          statsPlayerId: p1.id,
+        })
+      );
+      expect(result.current.statsData?.name).toBe("P1");
+    });
+  });
 });

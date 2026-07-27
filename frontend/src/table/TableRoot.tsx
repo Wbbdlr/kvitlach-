@@ -11,6 +11,8 @@ import { BankPanel } from "./BankPanel";
 import { ReactionLayer } from "./ReactionLayer";
 import { FeltSwitcher } from "./FeltSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
+import { StatsModal } from "./StatsModal";
+import { StatsData } from "./useTableData";
 import { Icon } from "./icons";
 import { useFullscreen } from "./fullscreen";
 import { useWakeLock } from "./wakeLock";
@@ -68,6 +70,9 @@ export interface TableRootProps {
   onReshuffleDeck: () => void;
   notifications: UINotification[];
   onDismissNotification: (id: string) => void;
+  statsData?: StatsData;
+  onOpenStats: (playerId: string) => void;
+  onCloseStats: () => void;
 }
 
 export function TableRoot({
@@ -110,6 +115,9 @@ export function TableRoot({
   onReshuffleDeck,
   notifications,
   onDismissNotification,
+  statsData,
+  onOpenStats,
+  onCloseStats,
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
@@ -246,6 +254,7 @@ export function TableRoot({
             onHit={() => onHit({ eleveroon: true })}
             onStand={onStand}
             deckCount={round?.deck?.length ?? 0}
+            onOpenStats={onOpenStats}
           />
         )}
 
@@ -266,6 +275,7 @@ export function TableRoot({
             position={positions[idx]}
             scale={seatShrink}
             onSkipOther={isAdmin ? onSkip : undefined}
+            onOpenStats={onOpenStats}
           />
         ))}
 
@@ -402,6 +412,8 @@ export function TableRoot({
           onReshuffleDeck={onReshuffleDeck}
         />
       )}
+
+      {statsData && <StatsModal data={statsData} onClose={onCloseStats} />}
     </div>
   );
 }

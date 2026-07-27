@@ -1083,6 +1083,9 @@ export default function App() {
         }}
         notifications={notifications}
         onDismissNotification={dismissNotification}
+        statsData={statsData}
+        onOpenStats={(id) => setStatsPlayerId(id)}
+        onCloseStats={() => setStatsPlayerId(undefined)}
       />
     </>
   ) : (

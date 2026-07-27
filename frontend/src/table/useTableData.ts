@@ -3,6 +3,23 @@ import { Player, ReactionEvent, RoomState, RoundState } from "../types";
 import { CompletedRoundSummary } from "../state";
 import { statusDisplay, betDisplay, fullName, formatNames } from "./selectors";
 
+export interface StatsEntry {
+  roundNumber: number;
+  status: string;
+  statusClass: string;
+  bet: string;
+  betClass: string;
+}
+
+export interface StatsData {
+  name: string;
+  entries: StatsEntry[];
+  wins: number;
+  losses: number;
+  pushes: number;
+  isBanker: boolean;
+}
+
 export interface TableDataInput {
   room?: RoomState;
   round?: RoundState;

@@ -16,6 +16,7 @@ export interface DealerProps {
   onHit?: () => void;
   onStand?: () => void;
   deckCount?: number;
+  onOpenStats?: (playerId: string) => void;
 }
 
 // The Bank's own seat, fixed at the top of the oval, with the shoe sitting
@@ -31,6 +32,7 @@ export function Dealer({
   onHit,
   onStand,
   deckCount,
+  onOpenStats,
 }: DealerProps) {
   // NOTE: round.state === "final" means the banker's turn has just BEGUN
   // (all other players are resolved), not that the banker is done -- see
@@ -52,7 +54,13 @@ export function Dealer({
   return (
     <>
       <div className="k-seat" style={{ left: "640px", top: "160px", transform: "translate(-50%, -50%)" }}>
-        <div className={clsx("k-plate", isActive && "is-active", isOffline && "is-offline")}>
+        <button
+          type="button"
+          className={clsx("k-plate", isActive && "is-active", isOffline && "is-offline")}
+          onClick={() => bankerPlayer && onOpenStats?.(bankerPlayer.id)}
+          disabled={!bankerPlayer}
+          title={`View ${name}'s stats`}
+        >
           <span className="k-av">
             {bankerPlayer ? initialsOf(bankerPlayer) : "BK"}
             <span className="k-bankmark">
@@ -73,7 +81,7 @@ export function Dealer({
               title={isOffline ? "Offline" : "Online"}
             />
           )}
-        </div>
+        </button>
 
         <div className="k-hand is-dealer">
           {turn.cards.map((c, idx) => (

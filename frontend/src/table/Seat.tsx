@@ -21,6 +21,7 @@ export interface SeatProps {
   position: SeatPosition;
   scale?: number;
   onSkipOther?: (playerId: string) => void;
+  onOpenStats?: (playerId: string) => void;
 }
 
 export function initialsOf(player: { firstName?: string; lastName?: string }): string {
@@ -58,6 +59,7 @@ export function Seat({
   position,
   scale = 1,
   onSkipOther,
+  onOpenStats,
 }: SeatProps) {
   const isMe = viewerId === turn.player.id;
   const isBanker = turn.player.type === "admin";
@@ -114,7 +116,12 @@ export function Seat({
         </div>
       )}
 
-      <div className={clsx("k-plate", isCurrentTurn && "is-active", isOffline && "is-offline")}>
+      <button
+        type="button"
+        className={clsx("k-plate", isCurrentTurn && "is-active", isOffline && "is-offline")}
+        onClick={() => onOpenStats?.(turn.player.id)}
+        title={`View ${displayName}'s stats`}
+      >
         <span className="k-av">
           {initialsOf(turn.player)}
           {isBanker && (
@@ -146,7 +153,7 @@ export function Seat({
           aria-label={isOffline ? "Offline" : "Online"}
           title={isOffline ? "Offline" : "Online"}
         />
-      </div>
+      </button>
 
       {showTurnTimer && (
         <div className="turn-bar-track w-[110px] h-[3px]">
