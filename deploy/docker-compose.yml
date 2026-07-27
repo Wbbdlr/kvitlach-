@@ -1,3 +1,5 @@
+name: kvitlach
+
 services:
   db:
     container_name: kvitlach-db
