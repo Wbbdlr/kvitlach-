@@ -34,7 +34,10 @@ export function PlayerDock({
   onHit,
   onStand,
 }: PlayerDockProps) {
-  const [betAmount, setBetAmount] = useState(DEFAULT_BET);
+  // Tracked as a string (not a number) so the field can sit empty mid-edit
+  // while the player retypes it -- a number-backed value would fight any
+  // attempt to clear the field before entering a new amount.
+  const [betAmount, setBetAmount] = useState(String(DEFAULT_BET));
   const [bankSelected, setBankSelected] = useState(false);
   const [eleveroonSelected, setEleveroonSelected] = useState(false);
   const [betError, setBetError] = useState<string | undefined>(undefined);
@@ -43,9 +46,21 @@ export function PlayerDock({
   const drawLabel = hasBet ? "Hit" : "Blatt";
 
   const adjustBet = (delta: number) => {
-    setBetAmount((prev) => Math.max(1, prev + delta));
+    setBetAmount((prev) => String(Math.max(1, Math.floor(Number(prev) || 0) + delta)));
     if (bankSelected) setBankSelected(false);
     setBetError(undefined);
+  };
+
+  const handleAmountChange = (raw: string) => {
+    // Digits only, and allow empty while the player is mid-retype.
+    if (raw !== "" && !/^\d*$/.test(raw)) return;
+    setBetAmount(raw);
+    if (bankSelected) setBankSelected(false);
+    setBetError(undefined);
+  };
+
+  const handleAmountBlur = () => {
+    setBetAmount(String(Math.max(1, Math.floor(Number(betAmount) || 0))));
   };
 
   const toggleBank = (selected: boolean) => {
@@ -56,27 +71,42 @@ export function PlayerDock({
     }
     if (!canBank) return;
     setBankSelected(true);
-    setBetAmount(bankIncrement > 0 ? bankIncrement : 0);
+    setBetAmount(String(bankIncrement > 0 ? bankIncrement : 0));
     setBetError(undefined);
   };
 
   const handleBet = () => {
+    const amount = Math.floor(Number(betAmount) || 0);
+    if (amount < 1) {
+      setBetError("Enter a bet amount of at least $1.");
+      return;
+    }
     const existingBet = turn.bet ?? 0;
-    if (existingBet + betAmount > wallet) {
+    if (existingBet + amount > wallet) {
       setBetError("Insufficient chips for this wager.");
       return;
     }
-    onBet(betAmount, { bank: bankSelected });
+    onBet(amount, { bank: bankSelected });
     setBankSelected(false);
     setBetError(undefined);
-    setBetAmount(DEFAULT_BET);
+    setBetAmount(String(DEFAULT_BET));
   };
 
   return (
     <div className="k-dock">
       <div className="k-betbox">
         <span className="k-cur">$</span>
-        <span className="k-amt">{betAmount}</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          className="k-amt"
+          value={betAmount}
+          onChange={(e) => handleAmountChange(e.target.value)}
+          onBlur={handleAmountBlur}
+          onFocus={(e) => e.target.select()}
+          aria-label="Bet amount"
+        />
         <span className="k-stepper">
           <button type="button" className="k-stepbtn" onClick={() => adjustBet(BET_STEP)} aria-label="Increase bet">
             <Icon name="chevron-up" size={10} />

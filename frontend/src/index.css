@@ -655,11 +655,22 @@ body:has(.k-fit) {
   font-size: 14px;
 }
 .k-betbox .k-amt {
-  min-width: 34px;
+  width: 44px;
   text-align: right;
   color: #fff;
   font-size: 16px;
   font-weight: 600;
+  /* Was a <span>; now a real, tappable <input> -- reset it back to looking
+     like plain text in the pill instead of a bordered form control. */
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  font-family: inherit;
+}
+.k-betbox .k-amt:focus {
+  outline: 1px solid rgba(230, 164, 75, 0.6);
+  border-radius: 3px;
 }
 .k-stepper {
   display: flex;
@@ -753,8 +764,10 @@ body:has(.k-fit) {
     gap: 4px;
   }
   .k-betbox .k-amt {
-    min-width: 24px;
-    font-size: 13px;
+    /* The iOS anti-zoom rule above forces 16px !important on every input on
+       mobile, this one included -- size the box for that, not a smaller
+       font this rule can never actually apply. */
+    width: 40px;
   }
   .k-btn {
     padding: 7px 12px;
