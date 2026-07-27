@@ -652,6 +652,17 @@ export default function App() {
       return;
     }
     const prev = prevRoundRef.current;
+
+    // Mirrors state.ts's deckReshuffleNotification diff exactly (same field,
+    // same "only on an actual change" semantics) -- duplicated rather than
+    // shared because AudioManager is owned here, not by the store. This has
+    // to run even when the round just changed: a reshuffle-between-rounds
+    // sets deckReshuffledAt on the very first state of the NEW round, which
+    // is exactly the case the "same round" guard below skips.
+    if (round.deckReshuffledAt && round.deckReshuffledAt !== prev?.deckReshuffledAt) {
+      audioManager.playSfx("shuffle");
+    }
+
     if (!prev || prev.roundId !== round.roundId) {
       prevRoundRef.current = round;
       return;
@@ -666,6 +677,7 @@ export default function App() {
         audioManager.playSfx("deal");
         const lastCard = turn.cards[turn.cards.length - 1];
         if (lastCard?.attributes?.eleveroonIgnored) {
+          audioManager.playSfx("eleveroon");
           newTiles.push({ id: `${turn.player.id}-elev-${Date.now()}`, label: "ELEVEROON!", color: "#0ea5e9", playerId: turn.player.id });
         }
       }

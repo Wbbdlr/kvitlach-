@@ -900,3 +900,20 @@ body:has(.k-fit) {
     animation: none;
   }
 }
+
+/* Cards pop in on mount rather than just appearing -- relies on React's own
+   array-key reconciliation (a card at a brand-new index is a genuinely new
+   DOM node) instead of tracking "is this new" by hand, so it's automatic
+   the moment a card is actually dealt, with zero extra state. */
+@keyframes cardDealIn {
+  from { opacity: 0; transform: scale(0.7) translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.k-card-in {
+  animation: cardDealIn 220ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-card-in {
+    animation: none;
+  }
+}

@@ -302,6 +302,7 @@ export function TableRoot({
           aria-pressed={musicEnabled}
           style={!musicEnabled ? { opacity: 0.45 } : undefined}
           title={musicEnabled ? "Mute background music" : "Play background music"}
+          aria-label={musicEnabled ? "Mute background music" : "Play background music"}
         >
           <Icon name="music" size={13} />
         </button>
@@ -312,6 +313,7 @@ export function TableRoot({
           aria-pressed={sfxEnabled}
           style={!sfxEnabled ? { opacity: 0.45 } : undefined}
           title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+          aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
         >
           <Icon name="speaker" size={13} />
         </button>

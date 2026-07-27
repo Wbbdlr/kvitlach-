@@ -18,7 +18,7 @@ export function CardView({ card, hidden, size }: { card: Card; hidden?: boolean;
   const sizeClass = size === "lg" ? "w-12 h-[4.5rem] sm:w-16 sm:h-24" : size === "md" ? "w-10 h-14 sm:w-12 sm:h-16" : "";
 
   return (
-    <span className={clsx("relative inline-flex", sizeClass, ignored && "opacity-60 grayscale")}>
+    <span className={clsx("relative inline-flex k-card-in", sizeClass, ignored && "opacity-60 grayscale")}>
       <img src={src} alt={alt} className={size ? "w-full h-full object-contain" : undefined} />
       {showFallback && (
         <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-slate-700">
