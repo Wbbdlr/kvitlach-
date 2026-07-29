@@ -6,6 +6,7 @@ import {
   getGameState,
   handleBet,
   handleHit,
+  handleSkip,
   handleStand,
   playerWon,
 } from "../round";
@@ -217,5 +218,51 @@ describe("round state", () => {
 
     expect(updated.state).toBe("pending");
     expect(updated.bet).toBe(5);
+  });
+});
+
+describe("turn-state guard", () => {
+  // Enforcement used to be UI-only: nothing server-side stopped a player from
+  // re-acting on a turn that had already resolved (e.g. a double-tap race,
+  // or a stale/replayed action arriving after the turn moved on). Each
+  // handler now requires turn.state === "pending" before doing anything.
+  it("rejects a hit on a turn that has already busted", () => {
+    const round = makeRound();
+    const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
+    playerTurn.state = "lost";
+
+    expect(() => handleHit(round, playerTurn.player.id)).toThrow("turn_not_pending");
+  });
+
+  it("rejects a bet on a turn that already won", () => {
+    const round = makeRound();
+    const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
+    playerTurn.state = "won";
+
+    expect(() => handleBet(round, playerTurn.player.id, 5)).toThrow("turn_not_pending");
+  });
+
+  it("rejects standing again on a turn already in standby", () => {
+    const round = makeRound();
+    const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
+    playerTurn.state = "standby";
+
+    expect(() => handleStand(round, playerTurn.player.id)).toThrow("turn_not_pending");
+  });
+
+  it("rejects skipping a turn that's already skipped", () => {
+    const round = makeRound();
+    const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
+    playerTurn.state = "skipped";
+
+    expect(() => handleSkip(round, playerTurn.player.id)).toThrow("turn_not_pending");
+  });
+
+  it("still allows the legitimate first action on a pending turn", () => {
+    const round = makeRound();
+    const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
+    expect(playerTurn.state).toBe("pending");
+
+    expect(() => handleSkip(round, playerTurn.player.id)).not.toThrow();
   });
 });

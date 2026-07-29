@@ -673,6 +673,9 @@ export default function App() {
     round.turns.forEach((turn) => {
       const prevTurn = prev.turns.find((t) => t.player.id === turn.player.id);
       if (!prevTurn) return;
+      if ((turn.bet ?? 0) > (prevTurn.bet ?? 0)) {
+        audioManager.playSfx("chip");
+      }
       if ((turn.cards?.length ?? 0) > (prevTurn.cards?.length ?? 0)) {
         audioManager.playSfx("deal");
         const lastCard = turn.cards[turn.cards.length - 1];

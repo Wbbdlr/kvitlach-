@@ -14,9 +14,12 @@ describe("deck persistence across rounds", () => {
     const round1 = store.startRound(room.roomId);
     const deckAfterRound1Deal = round1.deck.length;
 
-    // Finish round 1 without drawing any more cards (both stand immediately).
+    // Alice's stand is a $0 push (no wager), which resolves her instantly and,
+    // since she's the only non-banker seated, auto-terminates the round right
+    // there -- the banker's own turn gets force-resolved by calculateEndState
+    // and never reaches "pending" for a separate stand action.
     const afterAliceStand = store.applyStand(round1.roundId, round1.turns.find((t) => t.player.type === "player")!.player.id);
-    store.applyStand(afterAliceStand.roundId, admin.id === afterAliceStand.turns[0].player.id ? admin.id : afterAliceStand.turns.find((t) => t.player.type === "admin")!.player.id);
+    expect(afterAliceStand.state).toBe("terminate");
     store.finalizeRound(afterAliceStand.roundId);
 
     const round2 = store.startRound(room.roomId);
@@ -38,8 +41,7 @@ describe("deck persistence across rounds", () => {
     roundCtx.deck = [];
     const alicePlayerId = round1.turns.find((t) => t.player.type === "player")!.player.id;
     const afterAliceStand = store.applyStand(roundId, alicePlayerId);
-    const bankerId = afterAliceStand.turns.find((t) => t.player.type === "admin")!.player.id;
-    store.applyStand(afterAliceStand.roundId, bankerId);
+    expect(afterAliceStand.state).toBe("terminate");
     store.finalizeRound(afterAliceStand.roundId);
 
     const round2 = store.startRound(room.roomId);

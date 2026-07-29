@@ -1,4 +1,4 @@
-type SfxKey = "deal" | "win" | "bust" | "shuffle" | "chip" | "chipCollide" | "chipStack" | "futch" | "eleveroon";
+type SfxKey = "deal" | "win" | "bust" | "shuffle" | "chip" | "eleveroon";
 
 const SFX_PATHS: Record<SfxKey, string[]> = {
   deal:        ["/sounds/card-place-1.ogg", "/sounds/card-place-2.ogg"],
@@ -6,9 +6,6 @@ const SFX_PATHS: Record<SfxKey, string[]> = {
   bust:        ["/sounds/futch.mp3"],
   shuffle:     ["/sounds/card-shuffle.ogg"],
   chip:        ["/sounds/chip-lay-1.ogg"],
-  chipCollide: ["/sounds/chips-collide-1.ogg"],
-  chipStack:   ["/sounds/chips-stack-1.ogg"],
-  futch:       ["/sounds/futch.mp3"],
   eleveroon:   ["/sounds/eleveroon.mp3"],
 };
 

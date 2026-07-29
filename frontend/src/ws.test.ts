@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { WSClient } from "./ws";
+import { WSClient, computeReconnectDelay } from "./ws";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -124,6 +124,57 @@ describe("WSClient", () => {
       client.close();
       client.connect();
       expect(MockWebSocket.instances).toHaveLength(2);
+    });
+  });
+
+  describe("reconnect backoff", () => {
+    it("computeReconnectDelay grows with each attempt, capped, with jitter bounded to +/-20%", () => {
+      const noJitter = () => 0.5; // random()=0.5 -> jitter term is exactly 0
+      expect(computeReconnectDelay(0, noJitter)).toBe(1500);
+      expect(computeReconnectDelay(1, noJitter)).toBe(3000);
+      expect(computeReconnectDelay(2, noJitter)).toBe(6000);
+      expect(computeReconnectDelay(3, noJitter)).toBe(12000);
+      expect(computeReconnectDelay(4, noJitter)).toBe(15000); // capped, would otherwise be 24000
+      expect(computeReconnectDelay(10, noJitter)).toBe(15000); // stays capped
+
+      // random()=1 -> maximum positive jitter (+20% of the capped value)
+      expect(computeReconnectDelay(0, () => 1)).toBe(1800);
+      // random()=0 -> maximum negative jitter (-20% of the capped value)
+      expect(computeReconnectDelay(0, () => 0)).toBe(1200);
+    });
+
+    it("schedules each successive failed reconnect with a growing delay", () => {
+      vi.useFakeTimers();
+      const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+      const client = new WSClient("ws://test");
+      client.connect();
+      MockWebSocket.instances[0].triggerClose(); // 1st failure -> attempt 0
+      vi.advanceTimersByTime(computeReconnectDelay(0, () => 0.5) * 2); // generously clear jitter range
+      MockWebSocket.instances[1].triggerClose(); // 2nd failure -> attempt 1
+
+      const delays = setTimeoutSpy.mock.calls.map((call) => call[1] as number);
+      // First scheduled reconnect (~1500ms band) came before the second (~3000ms band).
+      expect(delays[0]).toBeGreaterThanOrEqual(1200);
+      expect(delays[0]).toBeLessThanOrEqual(1800);
+      expect(delays[1]).toBeGreaterThanOrEqual(2400);
+      expect(delays[1]).toBeLessThanOrEqual(3600);
+      vi.useRealTimers();
+    });
+
+    it("resets the backoff once a connection successfully opens", () => {
+      vi.useFakeTimers();
+      const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+      const client = new WSClient("ws://test");
+      client.connect();
+      MockWebSocket.instances[0].triggerClose(); // attempt 0 used up
+      vi.advanceTimersByTime(2000);
+      MockWebSocket.instances[1].triggerOpen(); // success resets the counter
+      MockWebSocket.instances[1].triggerClose(); // should be back to attempt 0's delay band
+
+      const lastDelay = setTimeoutSpy.mock.calls.at(-1)?.[1] as number;
+      expect(lastDelay).toBeGreaterThanOrEqual(1200);
+      expect(lastDelay).toBeLessThanOrEqual(1800);
+      vi.useRealTimers();
     });
   });
 });

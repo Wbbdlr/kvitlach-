@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import Fastify from "fastify";
+import Fastify, { FastifyRequest } from "fastify";
 import type { GameStore } from "./store.js";
 
 function escapeHtml(value: string): string {
@@ -15,6 +15,41 @@ function isValidToken(provided: unknown): boolean {
   // false -- a real match requires equal length anyway, so bail out first.
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+// Throttles brute-force ADMIN_TOKEN guessing. Keyed by IP, counts only wrong
+// guesses (a legitimate admin clicking Delete repeatedly never trips it).
+// Bounded to a small tracked-IP set since this is a single-tenant home
+// deploy, not internet-scale -- a cheap sweep on overflow is enough.
+const MAX_ADMIN_ATTEMPTS = 20;
+const ADMIN_ATTEMPT_WINDOW_MS = 5 * 60_000;
+const MAX_TRACKED_IPS = 500;
+const adminAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIp(request: FastifyRequest): string {
+  const forwarded = request.headers["x-forwarded-for"];
+  const fromHeader = Array.isArray(forwarded) ? forwarded[0] : typeof forwarded === "string" ? forwarded.split(",")[0]?.trim() : undefined;
+  return fromHeader || request.ip || "unknown";
+}
+
+function isRateLimited(ip: string): boolean {
+  const entry = adminAttempts.get(ip);
+  return Boolean(entry && Date.now() < entry.resetAt && entry.count >= MAX_ADMIN_ATTEMPTS);
+}
+
+function recordFailedAttempt(ip: string): void {
+  const now = Date.now();
+  if (adminAttempts.size >= MAX_TRACKED_IPS) {
+    for (const [key, entry] of adminAttempts) {
+      if (now > entry.resetAt) adminAttempts.delete(key);
+    }
+  }
+  const entry = adminAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    adminAttempts.set(ip, { count: 1, resetAt: now + ADMIN_ATTEMPT_WINDOW_MS });
+  } else {
+    entry.count += 1;
+  }
 }
 
 function formatIdle(ms: number): string {
@@ -80,22 +115,49 @@ function renderAdminPage(store: GameStore, token: string): string {
 }
 
 export function createHttpServer(store: GameStore) {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      // The admin routes carry ADMIN_TOKEN as a query param (the plain-HTML
+      // admin page has no JS to send it as a header instead) -- redact it
+      // here so it doesn't sit in cleartext in the server's own access logs.
+      serializers: {
+        req(request) {
+          return {
+            method: request.method,
+            url: request.url.replace(/([?&]token=)[^&]+/, "$1[redacted]"),
+            hostname: request.hostname,
+            remoteAddress: request.ip,
+          };
+        },
+      },
+    },
+  });
   app.get("/health", async () => ({ status: "ok" }));
 
   // Token-gated admin tooling for freeing up stuck/stale Game IDs -- routes
   // only do anything useful when ADMIN_TOKEN is set. Requests without a
   // valid token get a plain 404 rather than 401/403, so an unauthenticated
-  // probe can't even confirm the route exists.
+  // probe can't even confirm the route exists. A per-IP attempt throttle
+  // guards against brute-forcing the token itself.
   app.get("/admin", async (request, reply) => {
+    const ip = getClientIp(request);
+    if (isRateLimited(ip)) return reply.code(404).send("Not found");
     const token = (request.query as Record<string, unknown>)?.token;
-    if (!isValidToken(token)) return reply.code(404).send("Not found");
+    if (!isValidToken(token)) {
+      recordFailedAttempt(ip);
+      return reply.code(404).send("Not found");
+    }
     reply.type("text/html").send(renderAdminPage(store, token as string));
   });
 
   app.post<{ Params: { roomId: string } }>("/admin/rooms/:roomId/delete", async (request, reply) => {
+    const ip = getClientIp(request);
+    if (isRateLimited(ip)) return reply.code(404).send("Not found");
     const token = (request.query as Record<string, unknown>)?.token;
-    if (!isValidToken(token)) return reply.code(404).send("Not found");
+    if (!isValidToken(token)) {
+      recordFailedAttempt(ip);
+      return reply.code(404).send("Not found");
+    }
     store.forceDeleteRoom(request.params.roomId);
     reply.redirect(`/admin?token=${encodeURIComponent(token as string)}`);
   });

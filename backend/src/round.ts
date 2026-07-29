@@ -3,8 +3,6 @@ import { newDeck } from "./deck.js";
 import { calcState, getSums, initializeTurns } from "./turn.js";
 import { Balance, Card, Player, RoundPhase, RoundState, Turn } from "./types.js";
 
-const TERMINATE_DELAY_FINAL_MS = 20000;
-const TERMINATE_DELAY_SKIP_MS = 5000;
 const MAX_DECKS = 16;
 
 export interface RoundContext extends RoundState {
@@ -79,6 +77,7 @@ export function handleBet(state: RoundContext, playerId: string, amount: number)
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
   if (state.state === "terminate") throw new Error("round_terminated");
+  if (turn.state !== "pending") throw new Error("turn_not_pending");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("invalid_bet");
   const { card: pickedCard, deck: remainingDeck, reshuffledAt } = drawCard(state);
 
@@ -106,6 +105,7 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
   if (state.state === "terminate") throw new Error("round_terminated");
+  if (turn.state !== "pending") throw new Error("turn_not_pending");
   const { card: pickedCard, deck: remainingDeck, reshuffledAt } = drawCard(state);
 
   const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
@@ -151,6 +151,7 @@ export function handleStand(state: RoundContext, playerId: string) {
   const turnIndex = state.turns.findIndex((t) => t.player.id === playerId);
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
+  if (turn.state !== "pending") throw new Error("turn_not_pending");
   const isPush = turn.player.type !== "admin" && (turn.bet ?? 0) === 0;
   const updatedTurn: Turn = {
     ...turn,
@@ -158,19 +159,20 @@ export function handleStand(state: RoundContext, playerId: string) {
     settledBet: isPush ? 0 : turn.settledBet,
   };
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
-  return advanceState({ ...state, turns }, TERMINATE_DELAY_FINAL_MS);
+  return advanceState({ ...state, turns });
 }
 
 export function handleSkip(state: RoundContext, playerId: string) {
   const turnIndex = state.turns.findIndex((t) => t.player.id === playerId);
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
+  if (turn.state !== "pending") throw new Error("turn_not_pending");
   const updatedTurn: Turn = { ...turn, state: "skipped" };
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
-  return advanceState({ ...state, turns }, TERMINATE_DELAY_SKIP_MS);
+  return advanceState({ ...state, turns });
 }
 
-function advanceState(state: RoundContext, terminateDelay?: number): RoundContext {
+function advanceState(state: RoundContext): RoundContext {
   const gameState = getGameState(state.turns);
 
   if (gameState === "terminate") {
@@ -202,14 +204,6 @@ function recommendedDeckCount(playerCount: number): number {
   const assumedCards = Math.max(1, playerCount) * 6 + 6;
   const decksNeeded = Math.ceil(assumedCards / 48);
   return sanitizeDeckCount(decksNeeded);
-}
-
-function scheduleTerminate(state: RoundContext, delayMs: number): RoundContext {
-  if (state.timer) clearTimeout(state.timer);
-  const timer = setTimeout(() => {
-    // noop here; caller should manage cleanup; timer kept for reference
-  }, delayMs);
-  return { ...state, timer };
 }
 
 export function getGameState(turns: Turn[]): RoundPhase {

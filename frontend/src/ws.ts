@@ -8,9 +8,23 @@ export type CloseListener = () => void;
 export type ReconnectListener = () => void;
 export type ErrorListener = (err: Event) => void;
 
+const BASE_RECONNECT_DELAY_MS = 1500;
+const MAX_RECONNECT_DELAY_MS = 15000;
+
+// Doubles per consecutive failed attempt, capped, with +/-20% jitter so a
+// pile of clients that dropped together (e.g. a server restart) don't all
+// hammer it back open in lockstep. Exported so its bounds/growth can be unit
+// tested without depending on real timers or Math.random.
+export function computeReconnectDelay(attempt: number, random: () => number = Math.random): number {
+  const capped = Math.min(BASE_RECONNECT_DELAY_MS * 2 ** attempt, MAX_RECONNECT_DELAY_MS);
+  const jitter = capped * 0.2 * (random() * 2 - 1);
+  return Math.max(0, Math.round(capped + jitter));
+}
+
 export class WSClient {
   private socket?: WebSocket;
   private connecting = false;
+  private reconnectAttempts = 0;
   private listeners = new Set<Listener>();
   private openListeners = new Set<OpenListener>();
   private closeListeners = new Set<CloseListener>();
@@ -36,11 +50,12 @@ export class WSClient {
       setTimeout(() => {
         this.reconnectListeners.forEach((fn) => fn());
         this.connect();
-      }, 1500);
+      }, computeReconnectDelay(this.reconnectAttempts++));
       return;
     }
     this.socket.onopen = () => {
       this.connecting = false;
+      this.reconnectAttempts = 0;
       this.flushQueue();
       this.openListeners.forEach((fn) => fn());
     };
@@ -57,7 +72,7 @@ export class WSClient {
       setTimeout(() => {
         this.reconnectListeners.forEach((fn) => fn());
         this.connect();
-      }, 1500);
+      }, computeReconnectDelay(this.reconnectAttempts++));
     };
   }
 
@@ -122,5 +137,6 @@ export class WSClient {
       this.socket = undefined;
     }
     this.connecting = false;
+    this.reconnectAttempts = 0;
   }
 }
