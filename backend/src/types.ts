@@ -18,6 +18,7 @@ export interface Player {
   lastName: string;
   type: PlayerType;
   presence: Presence;
+  isBot?: boolean;
 }
 
 export interface RenameRequest {
@@ -59,6 +60,28 @@ export interface Balance {
   payee: string;
 }
 
+// Compact, durable per-round summary -- deliberately lighter than a full
+// RoundState (no cards/deck), so it's cheap to keep capped and JSONB-stored
+// on the room indefinitely. Practice rooms never produce these.
+export interface RoundHistoryEntry {
+  roundId: string;
+  roundNumber: number;
+  completedAt: number;
+  entries: Array<{
+    playerId: string;
+    name: string;
+    role: "admin" | "player";
+    bet: number;
+    net: number;
+    outcome: TurnState;
+    // Only meaningful when outcome === "lost": distinguishes an actual bust
+    // from losing by comparison without busting (e.g. a standby hand beaten
+    // by the banker's total) -- carried explicitly since this compact
+    // summary drops the cards a client would otherwise derive it from.
+    busted?: boolean;
+  }>;
+}
+
 export interface RoundState {
   roundId: string;
   roomId: string;
@@ -88,6 +111,11 @@ export interface RoomState {
   players: Player[];
   roundId?: string;
   balances: Balance[];
+  // Optional (not always present, unlike `balances`): rooms already persisted
+  // in Postgres before this field existed come back from `loadFromDB()`
+  // without it -- every read/write site defaults to `[]` rather than
+  // assuming it's there.
+  roundHistory?: RoundHistoryEntry[];
   completedRounds: number;
   renameRequests: RenameRequest[];
   buyInRequests: BuyInRequest[];
@@ -95,6 +123,7 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  practice?: boolean;
 }
 
 export interface ConnectionSummary {

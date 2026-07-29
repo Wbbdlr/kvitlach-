@@ -907,9 +907,17 @@ export default function App() {
           roundLines.push(`  - ${name} (${role}) | State: ${stateLabel} | Bet: ${bet}${net}`);
         });
         if (r.balances?.length) {
+          const nameById = new Map(
+            (r.turns ?? []).map((turn) => [
+              turn.player.id,
+              [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName || "Player",
+            ])
+          );
           roundLines.push("  Balances:");
           r.balances.forEach((b) => {
-            roundLines.push(`    â€¢ ${b.payer} -> ${b.payee}: $${b.amount}`);
+            const payerName = nameById.get(b.payer) ?? b.payer;
+            const payeeName = nameById.get(b.payee) ?? b.payee;
+            roundLines.push(`    - ${payerName} -> ${payeeName}: $${b.amount}`);
           });
         }
         roundLines.push("");
@@ -1552,6 +1560,14 @@ export default function App() {
                   Watch
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => store.createPracticeRoom(joinFirstName.trim() || "Guest")}
+                className="text-xs font-semibold text-accent2 underline self-start"
+                title="Start a solo table against computer players -- no code needed"
+              >
+                Practice against the computer (no code needed)
+              </button>
           </form>
           <form
             className={clsx("card-surface p-4 flex flex-col", bankerFormExpanded ? "gap-3" : "gap-2")}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createRound,
+  buildRoundHistoryEntry,
   calculateBalances,
   calculateEndState,
   getGameState,
@@ -218,6 +219,65 @@ describe("round state", () => {
 
     expect(updated.state).toBe("pending");
     expect(updated.bet).toBe(5);
+  });
+});
+
+describe("buildRoundHistoryEntry", () => {
+  it("summarizes a resolved round with names, bets, net, and outcome per player", () => {
+    const round = makeRound();
+    const adminTurn = round.turns.find((t) => t.player.type === "admin")!;
+    const winner = round.turns.find((t) => t.player.id === p1.id)!;
+    const loser = round.turns.find((t) => t.player.id === p2.id)!;
+
+    adminTurn.cards = [{ name: "10", attributes: { values: [10] } }, { name: "Queen", attributes: { values: [10] } }];
+    winner.cards = [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 10, 9] } }];
+    winner.bet = 10;
+    loser.cards = [{ name: "5", attributes: { values: [5] } }, { name: "9", attributes: { values: [9] } }, { name: "9", attributes: { values: [9] } }];
+    loser.bet = 8;
+
+    const resolved = { ...round, turns: calculateEndState([adminTurn, winner, loser]) };
+    const historyEntry = buildRoundHistoryEntry(resolved);
+
+    expect(historyEntry.roundId).toBe(round.roundId);
+    expect(historyEntry.roundNumber).toBe(round.roundNumber);
+    const winnerEntry = historyEntry.entries.find((e) => e.playerId === p1.id)!;
+    const loserEntry = historyEntry.entries.find((e) => e.playerId === p2.id)!;
+    const bankerEntry = historyEntry.entries.find((e) => e.playerId === admin.id)!;
+
+    expect(winnerEntry).toMatchObject({ name: "P 1", role: "player", bet: 10, net: 10, outcome: "won" });
+    // loser's [5,9,9] sums to 23 -- a genuine bust, not just a lower total than the banker.
+    expect(loserEntry).toMatchObject({ name: "P 2", role: "player", bet: 8, net: -8, outcome: "lost", busted: true });
+    // Banker's `bet` is already the signed net balance post-calculateEndState (won 8, paid out 10).
+    expect(bankerEntry).toMatchObject({ role: "admin", net: bankerEntry.bet });
+  });
+
+  it("nets a live-settled turn using settledBet, not a later-grown bet", () => {
+    const round = makeRound();
+    const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
+    playerTurn.state = "lost";
+    playerTurn.bet = 5;
+    playerTurn.settled = true;
+    playerTurn.settledBet = 5;
+
+    const entry = buildRoundHistoryEntry(round);
+    const found = entry.entries.find((e) => e.playerId === p1.id)!;
+    expect(found.net).toBe(-5);
+  });
+
+  it("distinguishes losing by comparison (not busted) from an actual bust", () => {
+    const round = createRound([admin, p1], "room1");
+    const adminTurn = round.turns.find((t) => t.player.type === "admin")!;
+    const playerTurn = round.turns.find((t) => t.player.type !== "admin")!;
+
+    adminTurn.cards = [{ name: "9", attributes: { values: [9] } }, { name: "9", attributes: { values: [9] } }]; // 18
+    playerTurn.cards = [{ name: "8", attributes: { values: [8] } }, { name: "7", attributes: { values: [7] } }]; // 15, valid but lower
+    playerTurn.bet = 5;
+    playerTurn.state = "standby"; // stood -- only a "standby" turn gets compared against the banker at all
+
+    const resolved = { ...round, turns: calculateEndState([adminTurn, playerTurn]) };
+    const entry = buildRoundHistoryEntry(resolved);
+    const found = entry.entries.find((e) => e.playerId === p1.id)!;
+    expect(found).toMatchObject({ outcome: "lost", busted: false });
   });
 });
 

@@ -20,6 +20,10 @@ interface ConnectionMeta {
 const MAX_CONNS_PER_IP = 40;
 const MAX_MSGS_PER_WINDOW = 30;
 const MSG_WINDOW_MS = 10_000;
+// A practice room's banker is a bot -- nothing ever clicks "Start round" for
+// it, so the next round has to begin on its own. The delay gives the human
+// a moment to read the just-finished round's outcome first.
+const PRACTICE_NEXT_ROUND_DELAY_MS = 4000;
 
 export class WSServer {
   private wss: WebSocketServer;
@@ -124,6 +128,28 @@ export class WSServer {
           this.sendAck(socket, requestId, {
             room,
             player,
+            session: { roomId: room.roomId, playerId: player.id, token: sessionToken },
+          });
+          this.broadcastRoom(room.roomId);
+          await this.broadcastConnections(room.roomId);
+          break;
+        }
+        case "room:create-practice": {
+          if (process.env.MAINTENANCE_MODE === "true") throw new Error("maintenance_mode");
+          const { firstName } = (payload as any) || {};
+          if (!firstName) throw new Error("invalid_payload");
+          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName });
+          await this.attach(socket, room.roomId, player.id);
+          // Unlike room:create, a round is already underway here (no human
+          // banker exists to click Start) -- the client only ever populates
+          // state from broadcasts, not the ack, so this needs its own
+          // explicit round:state push (mirrors round:start's own pattern).
+          const round = room.roundId ? this.store.getRound(room.roundId) : undefined;
+          if (round) this.broadcastRound(round);
+          this.sendAck(socket, requestId, {
+            room,
+            player,
+            round: round ? this.sanitizeRound(round) : undefined,
             session: { roomId: room.roomId, playerId: player.id, token: sessionToken },
           });
           this.broadcastRoom(room.roomId);
@@ -508,11 +534,34 @@ export class WSServer {
         payload: { balances, round: sanitizedRound },
       });
       this.broadcastRoom(round.roomId);
+      this.maybeAutoStartPracticeRound(round.roomId);
     }
   }
 
+  // No human banker exists in a practice room to click "Start round" --
+  // schedule the bot banker to do it. Deliberately a plain setTimeout rather
+  // than a tracked/cancelable timer: if the room is gone or already mid-round
+  // by the time this fires (TTL cleanup, or the human left), the guard below
+  // just no-ops, so nothing needs explicit cleanup.
+  private maybeAutoStartPracticeRound(roomId: string) {
+    const room = this.store.getRoom(roomId);
+    const banker = room?.players.find((p) => p.type === "admin");
+    if (!room?.practice || !banker?.isBot) return;
+    setTimeout(() => {
+      try {
+        const freshRoom = this.store.getRoom(roomId);
+        if (!freshRoom || freshRoom.roundId) return; // room gone, or a round is already underway
+        const nextRound = this.store.startRound(roomId);
+        this.broadcastRound(nextRound);
+        this.broadcastRoom(roomId);
+      } catch (err) {
+        console.error("practice auto-restart failure", roomId, err);
+      }
+    }, PRACTICE_NEXT_ROUND_DELAY_MS);
+  }
+
   private sanitizeRound(round: RoundState | RoundContext): RoundState {
-    const { timer, turnTimer, ...rest } = round as RoundContext;
+    const { timer, turnTimer, botTimer, ...rest } = round as RoundContext;
     return rest;
   }
 

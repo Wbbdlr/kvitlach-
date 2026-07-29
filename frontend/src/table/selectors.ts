@@ -167,8 +167,14 @@ export function statusDisplay(turn: Turn): { label: string; className: string } 
   if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
   if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };
   if (turn.state === "lost") {
-    const { total, bustedTotal } = bestTotal(turn.cards);
-    const busted = total === undefined && bustedTotal !== undefined;
+    // `turn.busted` wins when present -- a server-backfilled history turn
+    // carries no cards to derive this from (see the `busted` field on Turn).
+    const busted =
+      turn.busted ??
+      (() => {
+        const { total, bustedTotal } = bestTotal(turn.cards);
+        return total === undefined && bustedTotal !== undefined;
+      })();
     if (busted) return { label: "FUTCHED!", className: "text-rose-700 font-bold" };
     return { label: "LOST", className: "text-rose-600 font-semibold" };
   }

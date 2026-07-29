@@ -18,6 +18,7 @@ export interface Player {
   lastName: string;
   type: PlayerType;
   presence: Presence;
+  isBot?: boolean;
 }
 
 export interface RenameRequest {
@@ -43,6 +44,11 @@ export interface Turn {
   settledBet?: number;
   settledNet?: number;
   settled?: boolean;
+  // Frontend-only display hint: never sent by the live round:state/round:ended
+  // WS flow (real turns always carry `cards` and derive bust-ness from them).
+  // Only set when a Turn is synthesized from the server's compact, card-free
+  // RoundHistoryEntry to backfill history for a fresh device/cleared cache.
+  busted?: boolean;
 }
 
 export interface BankLockState {
@@ -57,6 +63,21 @@ export interface Balance {
   amount: number;
   payer: string;
   payee: string;
+}
+
+export interface RoundHistoryEntry {
+  roundId: string;
+  roundNumber: number;
+  completedAt: number;
+  entries: Array<{
+    playerId: string;
+    name: string;
+    role: "admin" | "player";
+    bet: number;
+    net: number;
+    outcome: TurnState;
+    busted?: boolean;
+  }>;
 }
 
 export interface RoundState {
@@ -86,6 +107,7 @@ export interface RoomState {
   players: Player[];
   roundId?: string;
   balances: Balance[];
+  roundHistory?: RoundHistoryEntry[];
   completedRounds: number;
   renameRequests: RenameRequest[];
   buyInRequests: BuyInRequest[];
@@ -93,6 +115,7 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  practice?: boolean;
 }
 
 export interface ConnectionSummary {

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { Player, ReactionEvent, RoomState, RoundState } from "../types";
+import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { CompletedRoundSummary } from "../state";
-import { statusDisplay, betDisplay, fullName, formatNames } from "./selectors";
+import { statusDisplay, betDisplay, fullName, formatNames, isPushTurn } from "./selectors";
 
 export interface StatsEntry {
   roundNumber: number;
@@ -18,6 +18,19 @@ export interface StatsData {
   losses: number;
   pushes: number;
   isBanker: boolean;
+  netTotal: number;
+}
+
+// Mirrors betDisplay's own amount selection (selectors.ts) so the summed
+// total always agrees with what each individual round row already shows.
+function netAmount(turn: Turn): number {
+  if (turn.player.type === "admin") return turn.bet ?? 0; // already the signed net balance post-resolution
+  if (isPushTurn(turn)) return 0;
+  const baseBet = turn.bet ?? 0;
+  const amount = baseBet > 0 ? baseBet : turn.settledBet ?? baseBet;
+  if (turn.state === "won") return amount;
+  if (turn.state === "lost") return -amount;
+  return 0;
 }
 
 export interface TableDataInput {
@@ -136,12 +149,14 @@ export function useTableData({
   const statsData = useMemo(() => {
     if (!statsPlayerId) return undefined;
     const rounds = roundHistory ?? [];
+    let netTotal = 0;
     const entries = rounds
       .map((r) => {
         const turn = r.turns.find((t) => t.player.id === statsPlayerId);
         if (!turn) return undefined;
         const status = statusDisplay(turn);
         const betInfo = betDisplay(turn, true);
+        netTotal += netAmount(turn);
         return {
           roundNumber: r.roundNumber,
           status: status.label || "",
@@ -157,7 +172,7 @@ export function useTableData({
       bet: string;
       betClass: string;
     }[];
-    if (!entries.length) return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false };
+    if (!entries.length) return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false, netTotal: 0 };
     const wins = entries.filter((e) => e.status === "WON").length;
     const losses = entries.filter((e) => e.status === "LOST" || e.status === "FUTCHED!").length;
     const pushes = entries.filter((e) => e.status === "PUSH").length;
@@ -167,7 +182,9 @@ export function useTableData({
       rounds.find((r) => r.turns.some((t) => t.player.id === statsPlayerId))?.turns.find((t) => t.player.id === statsPlayerId)?.player
         ?.firstName ?? "Player";
     const isBanker = playerRecord?.type === "admin";
-    return { name: playerName, entries: entries.slice(0, 10), wins, losses, pushes, isBanker };
+    // Every entry is shown now, not just the last 10 -- already bounded
+    // upstream (roundHistory is capped at 50 client-side / 200 server-side).
+    return { name: playerName, entries, wins, losses, pushes, isBanker, netTotal };
   }, [statsPlayerId, roundHistory, room?.players]);
 
   return {

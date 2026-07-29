@@ -1,12 +1,21 @@
 import { v4 as uuid } from "uuid";
 import { customAlphabet } from "nanoid";
-import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe } from "./round.js";
+import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe, buildRoundHistoryEntry } from "./round.js";
 import { handleHit } from "./round.js";
+import { decideBotAction, decideBotBet } from "./bot.js";
 import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 
 const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
+const BOT_THINK_DELAY_MIN_MS = 500;
+const BOT_THINK_DELAY_MAX_MS = 1200;
+// Small, warm, in-community pool -- 2 are drawn per practice room. "The
+// Gabbai" (a shul's lay administrator, traditionally trusted with its funds)
+// is the fixed banker persona, a deliberately apt pick for a card game's bank.
+const PRACTICE_BANKER_NAME = "The Gabbai";
+const PRACTICE_BOT_NAME_POOL = ["Yanky", "Shmuli", "Mendy", "Berel", "Zalmy", "Duvid"];
 const MAX_PLAYERS_PER_ROOM = 100;
 // How many non-banker players get an active seat in a single round. The felt
 // table's oval seating (frontend/src/table/layout.ts) can only fit players
@@ -18,6 +27,7 @@ const MAX_PLAYERS_PER_ROOM = 100;
 const MAX_SEATED_PLAYERS_PER_ROUND = 11;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const TURN_TIMEOUT_MS = 90 * 1000;
+const MAX_ROUND_HISTORY_ENTRIES = 200;
 const MAX_NAME_LEN = 40;
 const MAX_ROOM_NAME_LEN = 80;
 const MAX_NOTE_LEN = 160;
@@ -174,6 +184,85 @@ export class GameStore {
     };
   }
 
+  // Mirrors syncTurnTimer's shape exactly (same setTimeout-after-persistRound
+  // pattern), but drives a computer-controlled seat's own turn instead of
+  // forcing a stale human's stand. Only ever does anything in a practice
+  // room, since only there does any player carry isBot -- a plain `.find()`
+  // that never matches in a normal room, no different in cost from the
+  // pendingTurns/bankerTurn lookups syncTurnTimer already does on every call.
+  private syncBotTurn(roundId: string, next: RoundContext, prev?: RoundContext): RoundContext {
+    const clearPrev = () => {
+      if (prev?.botTimer) clearTimeout(prev.botTimer);
+    };
+
+    // Bank-lock "decision" stage has no active turn (getActiveTurnId returns
+    // undefined for it) but still needs the banker to act if that's a bot.
+    if (next.bankLock?.stage === "decision") {
+      const bankerId = this.getBankerId(next);
+      const banker = bankerId ? next.turns.find((t) => t.player.id === bankerId) : undefined;
+      clearPrev();
+      if (!banker?.player.isBot || !bankerId) return { ...next, botTimer: undefined };
+      const timer = setTimeout(() => this.playBotBankDecision(roundId, bankerId), this.botThinkDelay());
+      return { ...next, botTimer: timer };
+    }
+
+    const activeTurnId = this.getActiveTurnId(next);
+    const activeTurn = activeTurnId ? next.turns.find((t) => t.player.id === activeTurnId) : undefined;
+    clearPrev();
+    if (!activeTurn?.player.isBot || activeTurn.state !== "pending" || !activeTurnId) {
+      return { ...next, botTimer: undefined };
+    }
+    const timer = setTimeout(() => this.playBotTurn(roundId, activeTurnId), this.botThinkDelay());
+    return { ...next, botTimer: timer };
+  }
+
+  private botThinkDelay(): number {
+    return BOT_THINK_DELAY_MIN_MS + Math.random() * (BOT_THINK_DELAY_MAX_MS - BOT_THINK_DELAY_MIN_MS);
+  }
+
+  private playBotBankDecision(roundId: string, bankerId: string) {
+    const round = this.rounds.get(roundId);
+    if (!round || round.bankLock?.stage !== "decision") return; // stale -- already resolved
+    try {
+      const updated = this.endRoundAfterBankDecision(round.roomId, bankerId);
+      if (this.roundUpdateListener) this.roundUpdateListener(updated);
+    } catch (err) {
+      console.error("bot bank-decision failure", err);
+    }
+  }
+
+  // Deliberately routes through the exact same applyBet/applyHit/applyStand
+  // a real player's WS message would call -- full reuse of bank-lock
+  // handling, the turn-state guard, and settlement, zero duplicated rules.
+  // Those methods return the updated round but (unlike a WS-driven call)
+  // there's no caller waiting to broadcast it, so this fires
+  // roundUpdateListener itself -- exactly what forceTimeoutStand does for
+  // the same reason.
+  private playBotTurn(roundId: string, playerId: string) {
+    const round = this.rounds.get(roundId);
+    if (!round) return;
+    if (this.getActiveTurnId(round) !== playerId) return; // stale -- turn moved on already
+    const roomRec = this.rooms.get(round.roomId);
+    if (!roomRec) return;
+    const turn = round.turns.find((t) => t.player.id === playerId);
+    if (!turn || !turn.player.isBot || turn.state !== "pending") return;
+    try {
+      let updated: RoundContext;
+      if ((turn.bet ?? 0) === 0) {
+        const { available } = this.computeBankWindow(round, roomRec.room, playerId);
+        const wallet = roomRec.room.wallets[playerId] ?? 0;
+        const amount = decideBotBet(wallet, available);
+        updated = amount > 0 ? this.applyBet(roundId, playerId, amount) : this.applyHit(roundId, playerId);
+      } else {
+        const action = decideBotAction(turn.cards);
+        updated = action === "stand" ? this.applyStand(roundId, playerId) : this.applyHit(roundId, playerId);
+      }
+      if (this.roundUpdateListener) this.roundUpdateListener(updated);
+    } catch (err) {
+      console.error("bot turn failure", err);
+    }
+  }
+
   private forceTimeoutStand(roundId: string, round: RoundContext, playerId: string): RoundContext {
     const roomRec = this.rooms.get(round.roomId);
     if (!roomRec) return round;
@@ -204,13 +293,16 @@ export class GameStore {
   private persistRound(roundId: string, next: RoundContext, prev?: RoundContext): RoundContext {
     const previous = prev ?? this.rounds.get(roundId);
     const withTimer = this.syncTurnTimer(roundId, next, previous);
-    this.rounds.set(roundId, withTimer);
-    if (this.db) {
-      const { timer, turnTimer, ...serializable } = withTimer;
-      void this.db.saveRound(roundId, withTimer.roomId, serializable as Record<string, unknown>)
+    const withBotTimer = this.syncBotTurn(roundId, withTimer, previous);
+    this.rounds.set(roundId, withBotTimer);
+    // Practice rounds never touch Postgres, same as their parent room.
+    const isPractice = this.rooms.get(withBotTimer.roomId)?.room.practice === true;
+    if (this.db && !isPractice) {
+      const { timer, turnTimer, botTimer, ...serializable } = withBotTimer;
+      void this.db.saveRound(roundId, withBotTimer.roomId, serializable as Record<string, unknown>)
         .catch((e) => console.error("db save round", roundId, e));
     }
-    return withTimer;
+    return withBotTimer;
   }
 
     createRoom(admin: { firstName: string; lastName?: string; roomName?: string; password?: string; buyIn?: number; roomId?: string; bankerBankroll?: number }) {
@@ -252,6 +344,7 @@ export class GameStore {
       wallets: { [player.id]: bankerBuyIn },
       players: [player],
       balances: [],
+      roundHistory: [],
       completedRounds: 0,
       renameRequests: [],
       buyInRequests: [],
@@ -263,6 +356,63 @@ export class GameStore {
     this.bumpRoomTimer(roomId);
     const sessionToken = this.issueSession(roomId, player.id);
     return { room, player, sessionToken };
+  }
+
+  // Solo practice table: a computer banker plus two computer players fill
+  // out the seats so a new player can learn the flow without needing other
+  // humans online. A real room in every other respect -- same GameStore,
+  // same round engine, same turn-state guard -- just with `practice: true`
+  // (never persisted, short TTL, see bumpRoomTimer) and some seats driven by
+  // syncBotTurn instead of a human's WS messages.
+  createPracticeRoom(host: { firstName: string }) {
+    const humanName = this.sanitizeName(host.firstName) || "You";
+    const bankerBot: Player = { id: uuid(), firstName: PRACTICE_BANKER_NAME, lastName: "", type: "admin", presence: "online", isBot: true };
+    const human: Player = { id: uuid(), firstName: humanName, lastName: "", type: "player", presence: "online" };
+
+    const pool = [...PRACTICE_BOT_NAME_POOL];
+    const botNames: string[] = [];
+    for (let i = 0; i < 2 && pool.length; i += 1) {
+      botNames.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+    const bots: Player[] = botNames.map((name) => ({
+      id: uuid(),
+      firstName: name,
+      lastName: "",
+      type: "player",
+      presence: "online",
+      isBot: true,
+    }));
+
+    const buyIn = 100;
+    let roomId = shortId();
+    while (this.rooms.has(roomId)) roomId = shortId();
+
+    const room: RoomState = {
+      roomId,
+      name: "Practice Table",
+      buyIn,
+      bankerBuyIn: buyIn * 4, // give the bot bank room to absorb a losing streak without running dry
+      wallets: {
+        [bankerBot.id]: buyIn * 4,
+        [human.id]: buyIn,
+        ...Object.fromEntries(bots.map((b) => [b.id, buyIn])),
+      },
+      players: [bankerBot, human, ...bots],
+      balances: [],
+      roundHistory: [],
+      completedRounds: 0,
+      renameRequests: [],
+      buyInRequests: [],
+      waitingPlayerIds: [],
+      renameBlockedIds: [],
+      buyInBlockedIds: [],
+      practice: true,
+    };
+    this.rooms.set(roomId, { room, nextStart: 0 });
+    this.bumpRoomTimer(roomId);
+    const sessionToken = this.issueSession(roomId, human.id);
+    this.startRound(roomId); // no human banker exists to click Start -- begin immediately
+    return { room: this.rooms.get(roomId)!.room, player: human, sessionToken };
   }
 
     joinRoom(roomId: string, info: { firstName: string; lastName?: string; password?: string; spectator?: boolean }) {
@@ -596,10 +746,13 @@ export class GameStore {
     if (!round) return { balances: [] as Balance[] };
     if (round.turnTimer) clearTimeout(round.turnTimer);
     if (round.timer) clearTimeout(round.timer);
+    if (round.botTimer) clearTimeout(round.botTimer);
     const balances = calculateBalances(round.turns);
     this.rounds.delete(roundId);
-    void this.db?.deleteRound(roundId).catch((e) => console.error("db delete round", roundId, e));
     const roomRec = this.rooms.get(round.roomId);
+    if (!roomRec?.room.practice) {
+      void this.db?.deleteRound(roundId).catch((e) => console.error("db delete round", roundId, e));
+    }
     if (roomRec) {
       // Carry the leftover shoe forward to the next round instead of
       // discarding it -- this is the only point where the round's deck is
@@ -609,6 +762,12 @@ export class GameStore {
       roomRec.room.roundId = undefined;
       roomRec.room.balances = [...balances, ...roomRec.room.balances];
       roomRec.room.completedRounds = (roomRec.room.completedRounds ?? 0) + 1;
+      // Practice rooms never touch Postgres and are throwaway sessions --
+      // durable history has no value there, so skip building the entry at all.
+      if (!roomRec.room.practice) {
+        const entry = buildRoundHistoryEntry(round);
+        roomRec.room.roundHistory = [entry, ...(roomRec.room.roundHistory ?? [])].slice(0, MAX_ROUND_HISTORY_ENTRIES);
+      }
       balances.forEach((b) => {
         roomRec.room.wallets[b.payer] = (roomRec.room.wallets[b.payer] ?? 0) - b.amount;
         roomRec.room.wallets[b.payee] = (roomRec.room.wallets[b.payee] ?? 0) + b.amount;
@@ -1021,14 +1180,17 @@ export class GameStore {
     if (!roomRec) return;
     if (roomRec.timer) clearTimeout(roomRec.timer);
     roomRec.lastActivityAt = Date.now();
-    if (this.db) {
+    // Practice rooms are throwaway, single-human sandboxes -- never worth a
+    // Postgres write, and expire far sooner than a real game's 3 days.
+    const isPractice = roomRec.room.practice === true;
+    if (this.db && !isPractice) {
       void this.db.saveRoom(roomId, roomRec.room)
         .catch((e) => console.error("db save room", roomId, e));
     }
     roomRec.timer = setTimeout(() => {
       this.rooms.delete(roomId);
       void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room", roomId, e));
-    }, INACTIVITY_TIMEOUT_MS);
+    }, isPractice ? PRACTICE_INACTIVITY_TIMEOUT_MS : INACTIVITY_TIMEOUT_MS);
   }
 
   // Admin tooling (backend/src/http-server.ts's token-gated /admin routes) --

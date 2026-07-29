@@ -21,7 +21,7 @@ import { isIOS, isStandaloneDisplay } from "./platform";
 // Shown on the felt until a banker sets their own watermark via Manage ->
 // table settings -- a fixed default rather than the room's own (randomly
 // assigned) name, per the family this app was originally built for.
-const DEFAULT_WATERMARK = "משפחת שלזינגר קוויטלאך";
+const DEFAULT_WATERMARK = "משפחת שלעזינגער קוויטלעך";
 
 export interface BankInfo {
   available: number;

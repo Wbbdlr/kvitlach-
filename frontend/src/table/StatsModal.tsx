@@ -51,6 +51,13 @@ export function StatsModal({ data, onClose }: StatsModalProps) {
             </div>
           </div>
 
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+            <span>{data.isBanker ? "Bank net" : "Net won/lost"}</span>
+            <span className={clsx("font-semibold", data.netTotal >= 0 ? "text-emerald-700" : "text-rose-700")}>
+              {data.netTotal >= 0 ? "+" : "-"}${Math.abs(data.netTotal)}
+            </span>
+          </div>
+
           <div className="border border-slate-200 rounded-lg divide-y divide-slate-200 overflow-hidden">
             {data.entries.length === 0 && <div className="p-3 text-xs text-slate-500">No completed rounds yet.</div>}
             {data.entries.map((entry) => (

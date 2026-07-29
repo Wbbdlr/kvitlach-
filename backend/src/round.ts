@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { newDeck } from "./deck.js";
 import { calcState, getSums, initializeTurns } from "./turn.js";
-import { Balance, Card, Player, RoundPhase, RoundState, Turn } from "./types.js";
+import { Balance, Card, Player, RoundHistoryEntry, RoundPhase, RoundState, Turn } from "./types.js";
 
 const MAX_DECKS = 16;
 
@@ -11,6 +11,9 @@ export interface RoundContext extends RoundState {
   turnTimerPlayerId?: string;
   turnTimerExpiresAt?: number;
   turnTimerDurationMs?: number;
+  // Scheduled bot "thinking" delay -- only ever armed in a practice room,
+  // where some seats are computer-driven (see GameStore.syncBotTurn).
+  botTimer?: NodeJS.Timeout;
 }
 
 // Builds a fresh shuffled shoe of `deckCount` decks -- used both for a brand
@@ -265,6 +268,31 @@ export function calculateBalances(turns: Turn[]): Balance[] {
     if (turn.state === "lost") return { amount: turn.bet, payer: turn.player.id, payee: adminTurn.player.id };
     return { amount: turn.bet, payer: adminTurn.player.id, payee: turn.player.id };
   });
+}
+
+// Built from turns AFTER calculateEndState has resolved them (round.ts's
+// finalizeRound calls this last) -- an admin turn's `bet` already holds its
+// signed net balance at that point, so its `net` is just that value, not a
+// won/lost branch like a player turn needs. Uses `settledBet` over `bet` for
+// a player where available since that's the amount actually paid out live
+// (mid-round bust/natural-21), not whatever `bet` grew to afterward.
+export function buildRoundHistoryEntry(round: RoundContext): RoundHistoryEntry {
+  const entries = round.turns.map((turn) => {
+    const role: "admin" | "player" = turn.player.type === "admin" ? "admin" : "player";
+    const amount = turn.settledBet ?? turn.bet;
+    const net = role === "admin" ? amount : turn.state === "won" ? amount : turn.state === "lost" ? -amount : 0;
+    const busted = turn.state === "lost" ? winningNumber(turn.cards) === undefined : undefined;
+    return {
+      playerId: turn.player.id,
+      name: `${turn.player.firstName} ${turn.player.lastName}`.trim(),
+      role,
+      bet: turn.bet,
+      net,
+      outcome: turn.state,
+      busted,
+    };
+  });
+  return { roundId: round.roundId, roundNumber: round.roundNumber, completedAt: Date.now(), entries };
 }
 
 export function playerWon(adminTurn: Turn, playerTurn: Turn): boolean {

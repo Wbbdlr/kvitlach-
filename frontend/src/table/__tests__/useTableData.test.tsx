@@ -211,9 +211,24 @@ describe("useTableData", () => {
           statsPlayerId: p1.id,
         })
       );
-      expect(result.current.statsData).toMatchObject({ name: "P1", wins: 1, losses: 1, pushes: 0, isBanker: false });
+      expect(result.current.statsData).toMatchObject({ name: "P1", wins: 1, losses: 1, pushes: 0, isBanker: false, netTotal: 5 });
       expect(result.current.statsData?.entries).toHaveLength(2);
       expect(result.current.statsData?.entries.map((e) => e.roundNumber)).toEqual([1, 2]);
+    });
+
+    it("shows every entry, not just the last 10", () => {
+      const room = makeRoom();
+      const longHistory = Array.from({ length: 15 }, (_, i) => ({
+        roundId: `R${i}`,
+        roundNumber: i + 1,
+        turns: [makeTurn(p1, { state: "won", bet: 1 })],
+        balances: [],
+        completedAt: i,
+      }));
+      const { result } = renderHook(() =>
+        useTableData({ room, round: undefined, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: longHistory, statsPlayerId: p1.id })
+      );
+      expect(result.current.statsData?.entries).toHaveLength(15);
     });
 
     it("falls back to the turn's own player name when they've since left the room", () => {

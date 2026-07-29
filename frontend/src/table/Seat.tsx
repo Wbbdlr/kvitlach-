@@ -133,6 +133,11 @@ export function Seat({
         <span className="flex flex-col items-start leading-tight min-w-0">
           <span className="k-plate-name">
             {displayName}
+            {turn.player.isBot && (
+              <span className="inline-block ml-1 align-middle opacity-70" title="Computer player">
+                <Icon name="cpu" size={9} />
+              </span>
+            )}
             {isMe && <span className="k-plate-sub"> (you)</span>}
           </span>
           <span className="k-plate-sub">

@@ -1,6 +1,6 @@
 import { create, StateCreator } from "zustand";
 import { WSClient } from "./ws";
-import { Balance, RoomState, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
+import { Balance, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 import { ReactionEvent } from "./types";
 import { bestTotal, isPushTurn } from "./table/selectors";
 
@@ -48,6 +48,7 @@ interface UIState {
   bankerSummaryAt?: number;
   init: () => void;
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
+  createPracticeRoom: (firstName: string) => void;
   joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => void;
   notifications: UINotification[];
   dismissNotification: (id: string) => void;
@@ -273,6 +274,40 @@ const loadRoundHistory = (roomId: string | undefined): CompletedRoundSummary[] =
   return [];
 };
 
+// The server's RoundHistoryEntry is deliberately compact (no cards/deck) --
+// turned into a CompletedRoundSummary shape so it can slot into the same
+// list/export/stats code as a live-tracked round. `busted` rides along on
+// each synthesized Turn since statusDisplay can't derive it without cards.
+const serverEntryToSummary = (entry: RoundHistoryEntry): CompletedRoundSummary => ({
+  roundId: entry.roundId,
+  roundNumber: entry.roundNumber,
+  completedAt: entry.completedAt,
+  balances: [],
+  turns: entry.entries.map((e) => ({
+    player: { id: e.playerId, firstName: e.name, lastName: "", type: e.role, presence: "offline" },
+    state: e.outcome,
+    cards: [],
+    bet: e.bet,
+    busted: e.busted,
+  })),
+});
+
+// Merges the server's durable (but compact) roundHistory into whatever the
+// client already has, adding only rounds the client doesn't already know
+// about -- this is what lets history survive a cleared cache or a fresh
+// device, without discarding the richer, card-complete entries the client
+// tracked live this session.
+const mergeServerHistory = (
+  clientHistory: CompletedRoundSummary[],
+  serverEntries: RoundHistoryEntry[] | undefined
+): CompletedRoundSummary[] => {
+  if (!serverEntries?.length) return clientHistory;
+  const existingIds = new Set(clientHistory.map((h) => h.roundId));
+  const backfill = serverEntries.filter((e) => !existingIds.has(e.roundId)).map(serverEntryToSummary);
+  if (!backfill.length) return clientHistory;
+  return [...clientHistory, ...backfill].sort((a, b) => b.roundNumber - a.roundNumber).slice(0, 50);
+};
+
 const DEFAULT_WS_PORT = 3001;
 
 function computeDefaultWsUrl(): string {
@@ -363,9 +398,17 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
 
   const analyzeRoomTransition = (state: UIState, nextRoom: RoomState): Partial<UIState> => {
     const updates: Partial<UIState> = { room: nextRoom };
-    if (!state.roundHistory.length || state.room?.roomId !== nextRoom.roomId) {
+    let history = state.roundHistory;
+    if (!history.length || state.room?.roomId !== nextRoom.roomId) {
       const hydratedHistory = loadRoundHistory(nextRoom.roomId);
-      if (hydratedHistory.length) updates.roundHistory = hydratedHistory;
+      if (hydratedHistory.length) history = hydratedHistory;
+    }
+    // Backfill from the server's durable copy every time -- covers rounds
+    // that finished on a device/session this client never saw live.
+    const merged = mergeServerHistory(history, nextRoom.roundHistory);
+    if (merged !== state.roundHistory) {
+      updates.roundHistory = merged;
+      if (merged !== history) persistRoundHistory(nextRoom.roomId, merged);
     }
     const playerId = state.playerId;
     const prevRoom = state.room;
@@ -792,6 +835,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
         const trimmedRoomId = roomId?.trim() || undefined;
         client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll });
+    },
+    createPracticeRoom: (firstName: string) => {
+      if (!firstName) {
+        set((s) => ({ formErrors: { ...s.formErrors, create: "Enter a first name to start a practice game." } }));
+        return;
+      }
+      client.send("room:create-practice", { firstName });
     },
     joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => {
       if (!roomId) {

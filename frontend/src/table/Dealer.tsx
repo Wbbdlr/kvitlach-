@@ -70,6 +70,11 @@ export function Dealer({
           <span className="flex flex-col items-start leading-tight min-w-0">
             <span className="k-plate-name">
               {name}
+              {bankerPlayer?.isBot && (
+                <span className="inline-block ml-1 align-middle opacity-70" title="Computer player">
+                  <Icon name="cpu" size={9} />
+                </span>
+              )}
               {isViewerBanker && <span className="k-plate-sub"> (you)</span>}
             </span>
             <span className="k-plate-sub">Bank</span>
