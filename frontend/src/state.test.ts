@@ -304,4 +304,27 @@ describe("deck reshuffle notification", () => {
     const notifications = useGameStore.getState().notifications;
     expect(notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
   });
+
+  it("auto-dismisses a notification after 15-20 seconds without a manual Dismiss", async () => {
+    vi.useFakeTimers();
+    try {
+      const useGameStore = await freshState();
+      useGameStore.getState().init();
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+
+      socket.onmessage?.({
+        data: JSON.stringify({ type: "round:state", payload: { ...baseRound, deckReshuffledAt: 1000 } }),
+      });
+      expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
+
+      vi.advanceTimersByTime(14999);
+      expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
+
+      vi.advanceTimersByTime(5001); // past 20s total
+      expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

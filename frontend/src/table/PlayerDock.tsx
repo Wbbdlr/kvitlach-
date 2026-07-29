@@ -140,12 +140,19 @@ export function PlayerDock({
         title="BANK! wagers the remaining available bank for your seat; the banker must resolve it immediately."
       >
         {bankSelected ? "BANK! armed" : "BANK!"}
-        {typeof bankAvailable === "number" && ` $${bankAvailable.toLocaleString()}`}
+        {/* Hidden at the compact mobile breakpoint alongside the Eleveroon
+            label -- same reasoning, buys back row width so the dock is less
+            likely to wrap to a second row on a short phone screen. */}
+        {typeof bankAvailable === "number" && <span className="k-bankall-amt"> ${bankAvailable.toLocaleString()}</span>}
       </button>
 
       <label className="k-toggle" title="Eleveroon ignores a busting eleven when your total was 11 (only after you turn it on).">
         <input type="checkbox" checked={eleveroonSelected} onChange={(e) => setEleveroonSelected(e.target.checked)} />
-        Eleveroon
+        {/* Hidden at the compact mobile breakpoint (index.css) -- the
+            checkbox and title tooltip stay, only the label text goes, to
+            free up row width so the dock is less likely to wrap to a second
+            row on a short phone screen. */}
+        <span className="k-toggle-label">Eleveroon</span>
       </label>
 
       {betError && <span className="k-tag bust">{betError}</span>}

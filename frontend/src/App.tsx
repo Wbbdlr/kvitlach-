@@ -470,7 +470,7 @@ function TurnCard({
 
 export default function App() {
   const store = useGameStore();
-  const [tableUIEnabled, setTableUIEnabled] = useTableUIFlag();
+  const [tableUIEnabled] = useTableUIFlag();
   const {
     room,
     round,
@@ -1050,19 +1050,8 @@ export default function App() {
     setBetError(undefined);
   };
 
-  const tableUIToggle = (
-    <label
-      className="fixed top-2 left-2 z-50 inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm"
-      title="Table view is the default. Uncheck to switch back to the classic list layout."
-    >
-      <input type="checkbox" checked={tableUIEnabled} onChange={(e) => setTableUIEnabled(e.target.checked)} />
-      Table view
-    </label>
-  );
-
   return tableUIEnabled && room && round ? (
     <>
-      {tableUIToggle}
       <TableRoot
         room={room}
         round={round}
@@ -1092,8 +1081,10 @@ export default function App() {
         roundHistoryCount={roundHistory?.length ?? 0}
         onApproveRename={(id) => store.approveRename(id)}
         onRejectRename={(id) => store.rejectRename(id)}
+        onRequestRename={(firstName, lastName) => store.requestRename(firstName, lastName)}
         onApproveBuyIn={(id) => store.approveBuyIn(id)}
         onRejectBuyIn={(id) => store.rejectBuyIn(id)}
+        onRequestBuyIn={(amount, note) => store.requestBuyIn(amount, note)}
         onAdjustChips={(id, amount, note) => store.adjustPlayerBankroll(id, amount, note)}
         onKick={(id) => store.kickPlayer(id)}
         onExportHistory={() => exportRoundHistoryTxt()}
@@ -1126,7 +1117,6 @@ export default function App() {
     </>
   ) : (
     <>
-      {tableUIToggle}
       {floatTiles.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-40 overflow-hidden">
           {floatTiles.map((tile, idx) => (

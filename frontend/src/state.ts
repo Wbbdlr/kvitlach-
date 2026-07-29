@@ -354,11 +354,24 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   let pendingWatermarkRequestId: string | undefined;
   let pendingReshuffleRequestId: string | undefined;
 
-  const makeNotification = (message: string, tone: NotificationTone): UINotification => ({
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    message,
-    tone,
-  });
+  // Every notification (round outcomes, deck reshuffles, rename/buy-in
+  // approvals, bank top-ups, ...) is built through this one factory, so
+  // scheduling the auto-dismiss here covers all of them without having to
+  // remember it at each call site. Auto-dismissing an ID already gone
+  // (manually dismissed, or aged out of the 5-notification cap elsewhere)
+  // is a harmless no-op -- the filter just doesn't match anything.
+  const NOTIFICATION_AUTO_DISMISS_MS = 18000;
+  const makeNotification = (message: string, tone: NotificationTone): UINotification => {
+    const notification: UINotification = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      message,
+      tone,
+    };
+    setTimeout(() => {
+      set((state: UIState) => ({ notifications: state.notifications.filter((n) => n.id !== notification.id) }));
+    }, NOTIFICATION_AUTO_DISMISS_MS);
+    return notification;
+  };
 
   // The server flips deckReshuffledAt to a new timestamp every time (and
   // only when) a fresh shoe comes into play -- diff against the round
@@ -393,7 +406,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     if (nextTurn.state === "won") return makeNotification("You won this hand!", "success");
     const { total, bustedTotal } = bestTotal(nextTurn.cards);
     const busted = total === undefined && bustedTotal !== undefined;
-    return makeNotification(busted ? "Futched! You busted this hand." : "You lost this hand.", "error");
+    return makeNotification(busted ? "You Futched!" : "You lost this hand.", "error");
   };
 
   const analyzeRoomTransition = (state: UIState, nextRoom: RoomState): Partial<UIState> => {

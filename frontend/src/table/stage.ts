@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 
+// Matches index.css's compact PlayerDock breakpoint exactly -- below this,
+// the dock is a fixed-height overlay pinned to the viewport's bottom edge
+// (see .k-dock's "lives outside the scaled stage" comment), not real layout
+// space .k-fit's height accounts for. On a long hand the viewer's own seat
+// (always bottom-center, see layout.ts's viewerSlotIndex) can grow tall
+// enough to reach into that space if the felt is allowed to scale as if the
+// dock weren't there. Reserving it here, and top-aligning to make the
+// reservation land specifically at the bottom (see .k-fit's matching
+// align-items rule), guarantees real clearance instead of hoping a centered
+// layout's margins happen to be enough.
+const COMPACT_MEDIA_QUERY = "(max-width: 520px), (max-height: 440px)";
+const DOCK_RESERVED_HEIGHT_PX = 76;
+
 // Scale-to-fit for the fixed 1280x760 stage, ported from the mockup's
 // fitStage(). The stage keeps its design pixel size and is uniformly
 // transform-scaled to fit the wrapper, so the whole composition letterboxes
@@ -15,7 +28,9 @@ export function useStageScale() {
     if (!wrap) return;
 
     const fit = () => {
-      const next = Math.min(wrap.clientWidth / STAGE_WIDTH, wrap.clientHeight / STAGE_HEIGHT, 1);
+      const isCompact = typeof window.matchMedia === "function" && window.matchMedia(COMPACT_MEDIA_QUERY).matches;
+      const availableHeight = isCompact ? wrap.clientHeight - DOCK_RESERVED_HEIGHT_PX : wrap.clientHeight;
+      const next = Math.min(wrap.clientWidth / STAGE_WIDTH, availableHeight / STAGE_HEIGHT, 1);
       setScale(next > 0 ? next : 1);
     };
 

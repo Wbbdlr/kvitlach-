@@ -751,6 +751,26 @@ body:has(.k-fit) {
    player's own cards/total above it. Shrink the controls themselves (not
    just padding) so more fit per row and the wrapped height stays small. */
 @media (max-width: 520px), (max-height: 440px) {
+  /* Top-align instead of centering the felt -- matched by stage.ts's own
+     use of this same breakpoint to reserve real bottom clearance for the
+     dock in its scale computation. A centered layout would only put half of
+     any reserved space at the bottom (the other half becomes unused margin
+     above), which isn't enough to guarantee the dock never reaches a tall
+     hand's cards; top-aligning makes the full reservation land exactly
+     where the dock actually is. */
+  .k-fit {
+    align-items: flex-start;
+  }
+  /* .felt-table's default transform-origin is center center (see its own
+     rule) -- with align-items:flex-start alone, the *layout* box moves to
+     the top, but the scale transform still shrinks it around its own
+     unscaled center (380px down, half of the fixed 760px design height),
+     which visually re-centers it anyway and undoes the reservation above.
+     Scaling from the top instead makes the rendered box actually flush
+     against .k-fit's top edge, so the reserved space lands at the bottom. */
+  .felt-table {
+    transform-origin: top center;
+  }
   .k-dock {
     min-height: 60px;
     gap: 6px;
@@ -781,6 +801,32 @@ body:has(.k-fit) {
   .k-toggle {
     font-size: 10px;
     gap: 4px;
+  }
+  /* Trim secondary/decorative text (not the primary Bet/Hit/Stand buttons,
+     which stay full-size for tap accuracy) so the dock's ~6 controls have a
+     better chance of fitting in one row instead of wrapping to a second --
+     each wrapped row directly adds to the dock's height, crowding the
+     player's own cards/total just above it. The checkbox and the button's
+     title tooltip still carry the same information. */
+  .k-toggle-label,
+  .k-bankall-amt {
+    display: none;
+  }
+  /* Top-left (the desktop position) sits close to the compact felt's own
+     top edge and, per user feedback, read as crowding the dock/cards on a
+     real phone. Anchored to the left-center instead -- clear of both the
+     top chrome and the dock at every viewer seat/hand length, and still
+     immediately next to the player's own cards (bottom-center seat, see
+     layout.ts's viewerSlotIndex) rather than a corner unrelated to them. */
+  .k-toast-stack {
+    top: 50%;
+    left: max(6px, env(safe-area-inset-left));
+    transform: translateY(-50%);
+    max-width: min(150px, 38vw);
+  }
+  .k-toast {
+    font-size: 11px;
+    padding: 6px 8px;
   }
 }
 

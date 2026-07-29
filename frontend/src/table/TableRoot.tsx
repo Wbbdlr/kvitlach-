@@ -11,6 +11,7 @@ import { BankPanel } from "./BankPanel";
 import { ReactionLayer } from "./ReactionLayer";
 import { FeltSwitcher } from "./FeltSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
+import { RoomInfoDrawer } from "./RoomInfoDrawer";
 import { StatsModal } from "./StatsModal";
 import { StatsData } from "./useTableData";
 import { Icon } from "./icons";
@@ -59,8 +60,10 @@ export interface TableRootProps {
   roundHistoryCount: number;
   onApproveRename: (playerId: string) => void;
   onRejectRename: (playerId: string) => void;
+  onRequestRename: (firstName: string, lastName?: string) => void;
   onApproveBuyIn: (playerId: string) => void;
   onRejectBuyIn: (playerId: string) => void;
+  onRequestBuyIn: (amount: number, note?: string) => void;
   onAdjustChips: (playerId: string, amount: number, note?: string) => void;
   onKick: (playerId: string) => void;
   onExportHistory: () => void;
@@ -108,8 +111,10 @@ export function TableRoot({
   roundHistoryCount,
   onApproveRename,
   onRejectRename,
+  onRequestRename,
   onApproveBuyIn,
   onRejectBuyIn,
+  onRequestBuyIn,
   onAdjustChips,
   onKick,
   onExportHistory,
@@ -129,6 +134,7 @@ export function TableRoot({
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
+  const [roomInfoOpen, setRoomInfoOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
   const { wrapRef, scale } = useStageScale();
   useWakeLock(true); // the felt table only ever mounts while a room+round is active
@@ -366,7 +372,14 @@ export function TableRoot({
               : `${waitingInfo.count} queued for next round`}
           </span>
         )}
-        <span className="k-room">{room.roomId}</span>
+        <button
+          type="button"
+          className="k-room"
+          onClick={() => setRoomInfoOpen(true)}
+          title="Table info and sharing"
+        >
+          {room.name || room.roomId}
+        </button>
         <button type="button" className="k-chip-btn" onClick={onLeave} title="Leave this game and return to the join screen">
           <Icon name="door" size={13} />
           Leave
@@ -444,6 +457,19 @@ export function TableRoot({
       )}
 
       {statsData && <StatsModal data={statsData} onClose={onCloseStats} />}
+
+      <RoomInfoDrawer
+        open={roomInfoOpen}
+        onClose={() => setRoomInfoOpen(false)}
+        roomName={room.name}
+        roomId={room.roomId}
+        isAdmin={isAdmin}
+        playerId={playerId}
+        renameRequests={room.renameRequests ?? []}
+        buyInRequests={room.buyInRequests ?? []}
+        onRequestRename={onRequestRename}
+        onRequestBuyIn={onRequestBuyIn}
+      />
     </div>
   );
 }
