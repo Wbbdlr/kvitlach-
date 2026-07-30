@@ -79,6 +79,14 @@ describe("player:react allow-list over a live WebSocket connection", () => {
     await send(ws, "player:react", { emoji: "גוואלד" });
     expect((await gotHebrew).emoji).toBe("גוואלד");
 
+    const gotSleep = nextReaction(ws);
+    await send(ws, "player:react", { emoji: "💤" }); // re-added after briefly being dropped
+    expect((await gotSleep).emoji).toBe("💤");
+
+    const gotGaiShoyn = nextReaction(ws);
+    await send(ws, "player:react", { emoji: "גיי שוין" });
+    expect((await gotGaiShoyn).emoji).toBe("גיי שוין");
+
     const gotFallback = nextReaction(ws);
     await send(ws, "player:react", { emoji: "<script>alert(1)</script>" });
     expect((await gotFallback).emoji).toBe("👏");
@@ -91,7 +99,7 @@ describe("player:react allow-list over a live WebSocket connection", () => {
     await send(ws, "room:create", { firstName: "Host2" });
 
     const gotFallback = nextReaction(ws);
-    await send(ws, "player:react", { emoji: "💤" }); // removed for reading as flat/monochrome
+    await send(ws, "player:react", { emoji: "✅" }); // removed for reading as flat/monochrome
     expect((await gotFallback).emoji).toBe("👏");
 
     ws.close();

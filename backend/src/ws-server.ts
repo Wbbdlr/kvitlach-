@@ -499,9 +499,9 @@ export class WSServer {
           // REACTION_PHRASES / REACTION_GAME_CALLS exactly -- keep in sync,
           // or a new reaction added there silently falls back to 👏 here.
           const allowed = new Set([
-            "👏","😂","😮","❤️","🔥","👍","😢","🤯","😎","🙌","😡","🤔","🎉","🤞","🙏","🍀","🍻","🍕","💯","🤑","😭","🥳","🃏","💰","😏",
+            "👏","😂","😮","❤️","🔥","👍","😢","🤯","😎","🙌","😡","🤔","🎉","🤞","🙏","🍀","🍻","🍕","💯","🤑","😭","🥳","🃏","💰","😏","💤",
             // Yiddish/Hebrew text reactions (REACTION_PHRASES).
-            "בהצלחה","מזל טוב","אוי וויי","קיין עין הרע","גוואלד","נו?",
+            "בהצלחה","מזל טוב","אוי וויי","קיין עין הרע","גוואלד","נו?","גיי שוין",
             // In-game banter (REACTION_GAME_CALLS).
             "BANK!","Futched!","Stay","Nice hand!","So close!","Deal me in!",
           ]);
