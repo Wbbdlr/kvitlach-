@@ -136,9 +136,9 @@ export class WSServer {
         }
         case "room:create-practice": {
           if (process.env.MAINTENANCE_MODE === "true") throw new Error("maintenance_mode");
-          const { firstName } = (payload as any) || {};
+          const { firstName, botCount } = (payload as any) || {};
           if (!firstName) throw new Error("invalid_payload");
-          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName });
+          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount });
           await this.attach(socket, room.roomId, player.id);
           // Unlike room:create, a round is already underway here (no human
           // banker exists to click Start) -- the client only ever populates

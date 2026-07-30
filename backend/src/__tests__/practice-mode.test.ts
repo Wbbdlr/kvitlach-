@@ -173,3 +173,39 @@ describe("selfTopUpWallet", () => {
     expect(() => store.selfTopUpWallet(room.roomId, "nonexistent")).toThrow("player_not_found");
   });
 });
+
+describe("createPracticeRoom bot count selection", () => {
+  it("defaults to 2 bots when no count is given (pre-existing behavior)", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice" });
+    expect(room.players.filter((p) => p.isBot)).toHaveLength(3); // banker + 2
+  });
+
+  it("seats the requested number of bot players within range, plus the fixed bot banker", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", botCount: 4 });
+    const bankerBots = room.players.filter((p) => p.type === "admin" && p.isBot);
+    const playerBots = room.players.filter((p) => p.type === "player" && p.isBot);
+    expect(bankerBots).toHaveLength(1);
+    expect(playerBots).toHaveLength(4);
+    expect(new Set(playerBots.map((b) => b.id)).size).toBe(4); // distinct personas
+  });
+
+  it("clamps a request below 2 up to the 2-bot floor", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", botCount: 0 });
+    expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(2);
+  });
+
+  it("clamps a request above 5 down to the 5-bot ceiling (the name pool's own limit)", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", botCount: 99 });
+    expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(5);
+  });
+
+  it("ignores a non-finite count and falls back to the default of 2", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", botCount: NaN });
+    expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(2);
+  });
+});

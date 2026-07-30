@@ -48,7 +48,7 @@ interface UIState {
   bankerSummaryAt?: number;
   init: () => void;
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
-  createPracticeRoom: (firstName: string) => void;
+  createPracticeRoom: (firstName: string, botCount?: number) => void;
   joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => void;
   notifications: UINotification[];
   dismissNotification: (id: string) => void;
@@ -850,12 +850,12 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const trimmedRoomId = roomId?.trim() || undefined;
         client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll });
     },
-    createPracticeRoom: (firstName: string) => {
+    createPracticeRoom: (firstName: string, botCount?: number) => {
       if (!firstName) {
         set((s) => ({ formErrors: { ...s.formErrors, create: "Enter a first name to start a practice game." } }));
         return;
       }
-      client.send("room:create-practice", { firstName });
+      client.send("room:create-practice", { firstName, botCount });
     },
     joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => {
       if (!roomId) {

@@ -490,6 +490,7 @@ export default function App() {
   const [bankerLastName, setBankerLast] = useState("");
   const [joinFirstName, setJoinFirst] = useState("");
   const [joinLastName, setJoinLast] = useState("");
+  const [practiceBotCount, setPracticeBotCount] = useState(2);
   const [roomIdInput, setRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [customRoomId, setCustomRoomId] = useState("");
@@ -1551,9 +1552,30 @@ export default function App() {
                   Watch
                 </button>
               </div>
+              <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+                <span>Computer players</span>
+                <div className="flex gap-1" role="group" aria-label="Number of computer players">
+                  {[2, 3, 4, 5].map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setPracticeBotCount(count)}
+                      aria-pressed={practiceBotCount === count}
+                      className={clsx(
+                        "h-6 w-6 rounded-full border text-xs font-semibold transition-colors",
+                        practiceBotCount === count
+                          ? "border-accent bg-accent text-white"
+                          : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                      )}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={() => store.createPracticeRoom(joinFirstName.trim() || "Guest")}
+                onClick={() => store.createPracticeRoom(joinFirstName.trim() || "Guest", practiceBotCount)}
                 className="w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-accent/85"
                 title="Start a solo table against computer players -- no code needed"
               >

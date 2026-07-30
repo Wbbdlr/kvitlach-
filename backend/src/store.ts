@@ -368,14 +368,19 @@ export class GameStore {
   // same round engine, same turn-state guard -- just with `practice: true`
   // (never persisted, short TTL, see bumpRoomTimer) and some seats driven by
   // syncBotTurn instead of a human's WS messages.
-  createPracticeRoom(host: { firstName: string }) {
+  createPracticeRoom(host: { firstName: string; botCount?: number }) {
     const humanName = this.sanitizeName(host.firstName) || "You";
+    // Clamped to the name pool's own range (PRACTICE_BOT_NAME_POOL has 6
+    // entries, plenty of headroom above the 5-bot ceiling) -- defaults to 2
+    // to match every pre-existing caller/test that never passed a count.
+    const rawBotCount = Number(host.botCount);
+    const botCount = Number.isFinite(rawBotCount) ? Math.min(5, Math.max(2, Math.floor(rawBotCount))) : 2;
     const bankerBot: Player = { id: uuid(), firstName: PRACTICE_BANKER_NAME, lastName: "", type: "admin", presence: "online", isBot: true };
     const human: Player = { id: uuid(), firstName: humanName, lastName: "", type: "player", presence: "online" };
 
     const pool = [...PRACTICE_BOT_NAME_POOL];
     const botNames: string[] = [];
-    for (let i = 0; i < 2 && pool.length; i += 1) {
+    for (let i = 0; i < botCount && pool.length; i += 1) {
       botNames.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
     }
     const bots: Player[] = botNames.map((name) => ({
