@@ -113,9 +113,13 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
 
   const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
   const isElevenCard = pickedCard.attributes.values?.includes(11);
-  const currentBestTotal = winningNumber(turn.cards);
+  // Check every achievable total, not just the single best one -- a flexible
+  // card (e.g. "12" has values [12,9,10]) can put 11 within reach even when
+  // it isn't the highest-scoring reading of the hand (12+2 can be read as
+  // 9+2=11, even though winningNumber(...) alone would report 12 or 14).
+  const currentTotals = getSums(turn.cards);
   const cardWouldBust = calcState([...turn.cards, pickedCard]) === "lost";
-  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && cardWouldBust && currentBestTotal === 11);
+  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && cardWouldBust && currentTotals.includes(11));
 
   const effectiveCard = shouldIgnoreEleven
     ? { ...pickedCard, attributes: { ...pickedCard.attributes, eleveroonIgnored: true } }

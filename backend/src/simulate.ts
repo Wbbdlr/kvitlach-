@@ -285,6 +285,25 @@ console.log("\n── Eleveroon via handleHit (real game path) ──");
     assert(winningNumber(turn.cards) === 21,             "Eleveroon ON + draws 11 holding card 12: winning total = 21");
   }
 
+  // ── Scenario 4c: Eleveroon ON, player holds special card 12 PLUS a 2
+  //    (12+2 → reads as 14, 12, or 11 depending on the 12's value), draws an
+  //    11 → every reading busts (25/22/23), but 11 WAS an achievable reading
+  //    of the pre-draw hand, so eleveroon must still save it. This is the
+  //    exact case a naive "check only the single best total" implementation
+  //    gets wrong: winningNumber([C12,C2]) reports 14 (the highest reading),
+  //    masking that 9+2=11 was also on the table. ──
+  {
+    const round = makeRound([C12, C2], [C11, C5]); // 12+2 -> {14,11,12}, deck top = 11
+    const after = handleHit(round, "p", { eleveroon: true });
+    const turn = after.turns.find((t) => t.player.id === "p")!;
+    assert(winningNumber([C12, C2]) === 14,              "12+2 pre-draw: best reading is 14 (not 11) -- the trap a naive check falls into");
+    assert(getSums([C12, C2]).includes(11),              "12+2 pre-draw: 11 is still an achievable reading (12 read as 9)");
+    assert(turn.cards.length === 3,                      "Eleveroon ON + draws 11 holding 12+2: card is added");
+    assert(turn.cards[2].attributes.eleveroonIgnored === true, "Eleveroon ON + draws 11 holding 12+2: card marked ignored");
+    assert(turn.state === "pending",                     "Eleveroon ON + draws 11 holding 12+2: hand stays pending (saved)");
+    assert(winningNumber(turn.cards) === 14,             "Eleveroon ON + draws 11 holding 12+2: winning total back to 14");
+  }
+
   // ── Scenario 5: Eleveroon ON, player at 11, draws again after being saved → can continue ──
   {
     let round = makeRound([C3, C8], [C11, C7]); // 3+8=11, deck: [11, 7]
