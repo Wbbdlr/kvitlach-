@@ -1,6 +1,6 @@
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
-import { totalDisplay, statusDisplay, betDisplay } from "./selectors";
+import { totalDisplay, statusDisplay, betDisplay, tagVariant } from "./selectors";
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
 import { Icon } from "./icons";
@@ -31,17 +31,6 @@ export function initialsOf(player: { firstName?: string; lastName?: string }): s
   const a = first.charAt(0);
   const b = last.charAt(0) || first.charAt(1) || "";
   return (a + b).toUpperCase() || "?";
-}
-
-// Maps the shared statusDisplay() label onto the mockup's pill variants.
-// statusDisplay stays the single source of truth for WHAT the label says;
-// this only decides how the pill is tinted.
-function tagVariant(label: string, isCurrentTurn: boolean): string {
-  if (isCurrentTurn) return "turn";
-  if (label === "WON") return "won";
-  if (label === "LOST" || label === "FUTCHED!") return "bust";
-  if (label === "STANDING") return "stand";
-  return "muted";
 }
 
 export function Seat({

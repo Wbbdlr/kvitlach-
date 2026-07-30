@@ -165,6 +165,17 @@ export function totalDisplay(
   return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
 }
 
+// Maps a statusDisplay() label onto the felt-table pill variants (Seat.tsx,
+// Dealer.tsx) -- one shared mapping so the banker's own bust/win tag can
+// never silently drift out of sync with a regular player's again.
+export function tagVariant(label: string, isCurrentTurn: boolean): string {
+  if (isCurrentTurn) return "turn";
+  if (label === "WON") return "won";
+  if (label === "LOST" || label === "FUTCHED!") return "bust";
+  if (label === "STANDING") return "stand";
+  return "muted";
+}
+
 export function statusDisplay(turn: Turn): { label: string; className: string } {
   if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
   if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { totalDisplay } from "../selectors";
+import { totalDisplay, tagVariant } from "../selectors";
 import { Player, Turn } from "../../types";
 
 const banker: Player = { id: "bank", firstName: "Bank", lastName: "", type: "admin", presence: "online" };
@@ -51,5 +51,28 @@ describe("totalDisplay -- a standing player's total must not leak before resolut
     expect(hiddenInfo.value).toBe("hidden");
     const revealedInfo = totalDisplay(turn, p1.id, "terminate", { forceBankerReveal: true });
     expect(revealedInfo.value).toBe("16");
+  });
+});
+
+describe("tagVariant -- the banker's own status pill must match a player's", () => {
+  // Dealer.tsx used to compute this inline with only "turn"/"stand"/"muted",
+  // silently dropping WON/FUTCHED! to a dull grey "muted" pill for the
+  // banker's own bust or win. Both seats now share this one mapping.
+  it("shows the same red 'bust' variant for FUTCHED! as for a plain LOST", () => {
+    expect(tagVariant("FUTCHED!", false)).toBe("bust");
+    expect(tagVariant("LOST", false)).toBe("bust");
+  });
+
+  it("shows the green 'won' variant for WON", () => {
+    expect(tagVariant("WON", false)).toBe("won");
+  });
+
+  it("prioritizes the active-turn variant over the label", () => {
+    expect(tagVariant("FUTCHED!", true)).toBe("turn");
+  });
+
+  it("falls back to muted for anything else", () => {
+    expect(tagVariant("PUSH", false)).toBe("muted");
+    expect(tagVariant("Waiting...", false)).toBe("muted");
   });
 });

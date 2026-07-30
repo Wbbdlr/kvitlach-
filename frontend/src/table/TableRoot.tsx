@@ -3,7 +3,7 @@ import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useFelt } from "../theme";
 import { orderSeatsForViewer, seatPositions, seatScale, STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
-import { fullName } from "./selectors";
+import { fullName, statusDisplay } from "./selectors";
 import { useStageScale } from "./stage";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
@@ -207,6 +207,13 @@ export function TableRoot({
       ? `The bank is playing out ${bankActorName}'s BANK! wager…`
       : `${bankActorName} bets BANK! — $${(bankLock?.exposure ?? 0).toLocaleString()}`;
 
+  // The bank busting is the biggest possible moment for the table -- every
+  // player still in the hand wins at once. bankLock always clears well
+  // before the round reaches "terminate" (see store.ts's processBankLock),
+  // so this and the BANK! banner above never need to compete for the same
+  // moment, but the bankLock guard is kept anyway as a defensive belt.
+  const bankBusted = Boolean(bankerTurn && !bankLock && statusDisplay(bankerTurn).label === "FUTCHED!");
+
   // Seat the viewer at the bottom edge (standard card-game convention) while
   // preserving cyclic turn order around the table.
   const seatedTurns = useMemo(
@@ -312,6 +319,12 @@ export function TableRoot({
         <div className="k-bank-banner" role="status" aria-live="polite">
           <Icon name="bank" size={14} />
           <span>{bankBannerText}</span>
+        </div>
+      )}
+      {bankBusted && (
+        <div className="k-bank-futch-banner" role="status" aria-live="polite">
+          <div className="headline">THE BANK FUTCHED!</div>
+          <div className="subline">Everyone still in the hand wins!</div>
         </div>
       )}
       <div className="k-chrome-top">

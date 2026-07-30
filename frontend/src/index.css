@@ -843,6 +843,55 @@ body:has(.k-fit) {
   }
 }
 
+/* The bank busting is THE big moment -- every player still in reads it as a
+   win at once, so this is deliberately much louder than the BANK! banner
+   above rather than another small pill. Lives in the chrome layer (outside
+   the scaled stage) so it reads at true size on any viewport. */
+.k-bank-futch-banner {
+  position: absolute;
+  top: 16%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 47;
+  pointer-events: none;
+  text-align: center;
+  max-width: min(90vw, 480px);
+}
+.k-bank-futch-banner .headline {
+  font-size: clamp(26px, 6vw, 44px);
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: #ff5252;
+  text-shadow: 0 0 20px rgba(239, 68, 68, 0.7), 0 4px 14px rgba(0, 0, 0, 0.65);
+  animation: bankFutchPop 0.5s cubic-bezier(0.2, 0.8, 0.3, 1), bankFutchGlow 1.5s ease-in-out 0.5s infinite;
+}
+.k-bank-futch-banner .subline {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffe9c7;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+@keyframes bankFutchPop {
+  0% { opacity: 0; transform: scale(0.7); }
+  60% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes bankFutchGlow {
+  0%, 100% { text-shadow: 0 0 20px rgba(239, 68, 68, 0.7), 0 4px 14px rgba(0, 0, 0, 0.65); }
+  50% { text-shadow: 0 0 32px rgba(239, 68, 68, 0.95), 0 4px 14px rgba(0, 0, 0, 0.65); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-bank-futch-banner .headline {
+    animation: none;
+  }
+}
+@media (max-width: 520px), (max-height: 440px) {
+  .k-bank-futch-banner {
+    top: 12%;
+  }
+}
+
 /* The dock lives outside the scaled stage (see .k-fit's comment) so its
    buttons stay tappable at any screen size -- but at true phone widths its
    ~6 controls don't fit in one row, so flex-wrap pushes it to 2-3 rows and

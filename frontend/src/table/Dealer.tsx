@@ -1,6 +1,6 @@
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
-import { totalDisplay, statusDisplay, fullName } from "./selectors";
+import { totalDisplay, statusDisplay, fullName, tagVariant } from "./selectors";
 import { CardView } from "./CardView";
 import { Icon } from "./icons";
 import { initialsOf } from "./Seat";
@@ -98,7 +98,7 @@ export function Dealer({
           {totalInfo.prefix} <b>{totalInfo.value}</b>
         </div>
         {statusInfo.label && (
-          <div className={clsx("k-tag", isActive ? "turn" : statusInfo.label === "STANDING" ? "stand" : "muted")}>
+          <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
             {isActive ? "Bank playing" : statusInfo.label}
           </div>
         )}
