@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Turn } from "../types";
 import { Icon } from "./icons";
 
@@ -38,16 +38,29 @@ export function PlayerDock({
   // while the player retypes it -- a number-backed value would fight any
   // attempt to clear the field before entering a new amount.
   const [betAmount, setBetAmount] = useState(String(DEFAULT_BET));
-  const [bankSelected, setBankSelected] = useState(false);
   const [eleveroonSelected, setEleveroonSelected] = useState(false);
   const [betError, setBetError] = useState<string | undefined>(undefined);
+  const [bankConfirmOpen, setBankConfirmOpen] = useState(false);
 
   const hasBet = (turn.bet ?? 0) > 0;
   const drawLabel = hasBet ? "Hit" : "Blatt";
 
+  // Set right before a confirmed BANK! bet is sent, cleared the instant it
+  // lands (turn.bet reflects it) so the player's card comes automatically --
+  // betting the whole bank is a full commitment, not a "wait and see" bet.
+  // Also cleared defensively by the plain Bet path below so a stale flag can
+  // never fire an unwanted auto-hit after an unrelated bet.
+  const pendingBankAutoHitRef = useRef(false);
+  useEffect(() => {
+    if (pendingBankAutoHitRef.current && hasBet) {
+      pendingBankAutoHitRef.current = false;
+      onHit({ eleveroon: eleveroonSelected });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBet]);
+
   const adjustBet = (delta: number) => {
     setBetAmount((prev) => String(Math.max(1, Math.floor(Number(prev) || 0) + delta)));
-    if (bankSelected) setBankSelected(false);
     setBetError(undefined);
   };
 
@@ -55,7 +68,6 @@ export function PlayerDock({
     // Digits only, and allow empty while the player is mid-retype.
     if (raw !== "" && !/^\d*$/.test(raw)) return;
     setBetAmount(raw);
-    if (bankSelected) setBankSelected(false);
     setBetError(undefined);
   };
 
@@ -63,19 +75,8 @@ export function PlayerDock({
     setBetAmount(String(Math.max(1, Math.floor(Number(betAmount) || 0))));
   };
 
-  const toggleBank = (selected: boolean) => {
-    if (!selected) {
-      setBankSelected(false);
-      setBetError(undefined);
-      return;
-    }
-    if (!canBank) return;
-    setBankSelected(true);
-    setBetAmount(String(bankIncrement > 0 ? bankIncrement : 0));
-    setBetError(undefined);
-  };
-
   const handleBet = () => {
+    pendingBankAutoHitRef.current = false;
     const amount = Math.floor(Number(betAmount) || 0);
     if (amount < 1) {
       setBetError("Enter a bet amount of at least $1.");
@@ -86,10 +87,22 @@ export function PlayerDock({
       setBetError("Insufficient chips for this wager.");
       return;
     }
-    onBet(amount, { bank: bankSelected });
-    setBankSelected(false);
+    onBet(amount, { bank: false });
     setBetError(undefined);
     setBetAmount(String(DEFAULT_BET));
+  };
+
+  // BANK! wagers the bank's entire available window in one shot -- a real
+  // moment at an in-person table, so it gets its own confirm-first flow
+  // rather than just arming the regular bet field.
+  const bankBetAmount = bankIncrement > 0 ? bankIncrement : 0;
+  const bankShortfall = (turn.bet ?? 0) + bankBetAmount > wallet;
+
+  const confirmBank = () => {
+    onBet(bankBetAmount, { bank: true });
+    pendingBankAutoHitRef.current = true;
+    setBankConfirmOpen(false);
+    setBetError(undefined);
   };
 
   return (
@@ -131,15 +144,11 @@ export function PlayerDock({
         type="button"
         className="k-btn bankall sm"
         disabled={!canBank}
-        // This wagers the entire remaining bank, so its armed state has to be
-        // exposed programmatically, not just via the label text (it was a
-        // real checkbox before this became a button).
-        aria-pressed={bankSelected}
         style={!canBank ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-        onClick={() => toggleBank(!bankSelected)}
+        onClick={() => setBankConfirmOpen(true)}
         title="BANK! wagers the remaining available bank for your seat; the banker must resolve it immediately."
       >
-        {bankSelected ? "BANK! armed" : "BANK!"}
+        BANK!
         {/* Hidden at the compact mobile breakpoint alongside the Eleveroon
             label -- same reasoning, buys back row width so the dock is less
             likely to wrap to a second row on a short phone screen. */}
@@ -157,6 +166,43 @@ export function PlayerDock({
 
       {betError && <span className="k-tag bust">{betError}</span>}
       {!canBank && bankDisabledReason && <span className="k-tag muted">{bankDisabledReason}</span>}
+
+      {bankConfirmOpen && (
+        <div className="k-modal-overlay" role="dialog" aria-modal="true" onClick={() => setBankConfirmOpen(false)}>
+          <div className="k-bank-confirm" onClick={(e) => e.stopPropagation()}>
+            {bankShortfall ? (
+              <>
+                <div className="k-bank-confirm-title">Not enough chips</div>
+                <p className="k-bank-confirm-body">
+                  BANK! wagers ${bankBetAmount.toLocaleString()} -- the bank's full available window -- but you only
+                  have ${wallet.toLocaleString()} to cover it.
+                </p>
+                <div className="k-bank-confirm-actions">
+                  <button type="button" className="k-btn stand" onClick={() => setBankConfirmOpen(false)}>
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="k-bank-confirm-title">Bet BANK!?</div>
+                <p className="k-bank-confirm-body">
+                  You're about to wager <b>${bankBetAmount.toLocaleString()}</b> -- the bank's entire available
+                  window for your seat. Everyone at the table will see it. Ready?
+                </p>
+                <div className="k-bank-confirm-actions">
+                  <button type="button" className="k-btn stand" onClick={() => setBankConfirmOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" className="k-btn bankall" onClick={confirmBank}>
+                    Yes, bet BANK!
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

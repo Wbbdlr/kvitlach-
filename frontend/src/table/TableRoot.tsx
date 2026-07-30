@@ -3,6 +3,7 @@ import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useFelt } from "../theme";
 import { orderSeatsForViewer, seatPositions, seatScale, STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
+import { fullName } from "./selectors";
 import { useStageScale } from "./stage";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
@@ -197,7 +198,14 @@ export function TableRoot({
     document.documentElement.style.setProperty("--wm", JSON.stringify(watermark));
   }, [room.feltWatermark]);
 
-  const bankLockStage = round?.bankLock?.stage;
+  const bankLock = round?.bankLock;
+  const bankLockStage = bankLock?.stage;
+  const bankActor = bankLock ? room.players.find((p) => p.id === bankLock.playerId) : undefined;
+  const bankActorName = bankActor ? fullName(bankActor) || bankActor.firstName : "A player";
+  const bankBannerText =
+    bankLockStage === "banker"
+      ? `The bank is playing out ${bankActorName}'s BANK! wager…`
+      : `${bankActorName} bets BANK! — $${(bankLock?.exposure ?? 0).toLocaleString()}`;
 
   // Seat the viewer at the bottom edge (standard card-game convention) while
   // preserving cyclic turn order around the table.
@@ -288,6 +296,7 @@ export function TableRoot({
             presence={presenceByPlayerId[turn.player.id]}
             position={positions[idx]}
             scale={seatShrink}
+            isBankActor={bankLock?.playerId === turn.player.id}
             onSkipOther={isAdmin ? onSkip : undefined}
             onOpenStats={onOpenStats}
           />
@@ -299,6 +308,12 @@ export function TableRoot({
 
       {/* ---- Chrome: outside the stage, so NOT scaled. Controls stay at
            true viewport size and remain readable/tappable on a phone. ---- */}
+      {bankLock && (
+        <div className="k-bank-banner" role="status" aria-live="polite">
+          <Icon name="bank" size={14} />
+          <span>{bankBannerText}</span>
+        </div>
+      )}
       <div className="k-chrome-top">
         <FeltSwitcher felt={felt} onChange={setFelt} />
         <button

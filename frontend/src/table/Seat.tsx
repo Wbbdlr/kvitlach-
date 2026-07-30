@@ -20,6 +20,7 @@ export interface SeatProps {
   presence?: Player["presence"];
   position: SeatPosition;
   scale?: number;
+  isBankActor?: boolean;
   onSkipOther?: (playerId: string) => void;
   onOpenStats?: (playerId: string) => void;
 }
@@ -58,6 +59,7 @@ export function Seat({
   presence,
   position,
   scale = 1,
+  isBankActor,
   onSkipOther,
   onOpenStats,
 }: SeatProps) {
@@ -118,7 +120,7 @@ export function Seat({
 
       <button
         type="button"
-        className={clsx("k-plate", isCurrentTurn && "is-active", isOffline && "is-offline")}
+        className={clsx("k-plate", isCurrentTurn && "is-active", isOffline && "is-offline", isBankActor && "is-bank-actor")}
         onClick={() => onOpenStats?.(turn.player.id)}
         title={`View ${displayName}'s stats`}
       >

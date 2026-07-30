@@ -87,12 +87,84 @@ describe("PlayerDock bet amount field", () => {
     expect(input.value).toBe("4");
   });
 
-  it("typing a new amount un-arms a selected BANK! wager", () => {
+});
+
+describe("PlayerDock BANK! confirmation", () => {
+  it("opens a confirmation dialog instead of arming the bet field directly", () => {
     renderDock({ bankIncrement: 80 });
     fireEvent.click(screen.getByText("BANK!"));
-    expect(screen.getByText(/BANK! armed/)).toBeInTheDocument();
-    const input = screen.getByLabelText("Bet amount");
-    fireEvent.change(input, { target: { value: "9" } });
-    expect(screen.queryByText(/BANK! armed/)).not.toBeInTheDocument();
+    expect(screen.getByText("Bet BANK!?")).toBeInTheDocument();
+    const input = screen.getByLabelText("Bet amount") as HTMLInputElement;
+    expect(input.value).toBe("5"); // untouched until the player actually confirms
+  });
+
+  it("cancels without calling onBet", () => {
+    const { onBet } = renderDock({ bankIncrement: 80 });
+    fireEvent.click(screen.getByText("BANK!"));
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(onBet).not.toHaveBeenCalled();
+    expect(screen.queryByText("Bet BANK!?")).not.toBeInTheDocument();
+  });
+
+  it("confirms and sends the bank bet", () => {
+    const { onBet } = renderDock({ bankIncrement: 80, wallet: 200 });
+    fireEvent.click(screen.getByText("BANK!"));
+    fireEvent.click(screen.getByText("Yes, bet BANK!"));
+    expect(onBet).toHaveBeenCalledWith(80, { bank: true });
+    expect(screen.queryByText("Bet BANK!?")).not.toBeInTheDocument();
+  });
+
+  it("blocks confirmation and explains when the wallet can't cover the full bank", () => {
+    const { onBet } = renderDock({ bankIncrement: 80, wallet: 50 });
+    fireEvent.click(screen.getByText("BANK!"));
+    expect(screen.getByText("Not enough chips")).toBeInTheDocument();
+    expect(screen.queryByText("Yes, bet BANK!")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Close"));
+    expect(onBet).not.toHaveBeenCalled();
+  });
+
+  it("automatically draws a card once the confirmed bank bet lands", () => {
+    const onHit = vi.fn();
+    const onBet = vi.fn();
+    const { rerender } = render(
+      <PlayerDock turn={baseTurn} wallet={200} bankIncrement={80} canBank onBet={onBet} onHit={onHit} onStand={vi.fn()} />
+    );
+    fireEvent.click(screen.getByText("BANK!"));
+    fireEvent.click(screen.getByText("Yes, bet BANK!"));
+    expect(onHit).not.toHaveBeenCalled(); // not until the bet actually lands
+
+    rerender(
+      <PlayerDock
+        turn={{ ...baseTurn, bet: 80 }}
+        wallet={200}
+        bankIncrement={0}
+        canBank={false}
+        onBet={onBet}
+        onHit={onHit}
+        onStand={vi.fn()}
+      />
+    );
+    expect(onHit).toHaveBeenCalledWith({ eleveroon: false });
+  });
+
+  it("does not auto-hit after a plain (non-bank) bet lands", () => {
+    const onHit = vi.fn();
+    const onBet = vi.fn();
+    const { rerender } = render(
+      <PlayerDock turn={baseTurn} wallet={200} bankIncrement={80} canBank onBet={onBet} onHit={onHit} onStand={vi.fn()} />
+    );
+    fireEvent.click(screen.getByText("Bet"));
+    rerender(
+      <PlayerDock
+        turn={{ ...baseTurn, bet: 5 }}
+        wallet={200}
+        bankIncrement={75}
+        canBank
+        onBet={onBet}
+        onHit={onHit}
+        onStand={vi.fn()}
+      />
+    );
+    expect(onHit).not.toHaveBeenCalled();
   });
 });
