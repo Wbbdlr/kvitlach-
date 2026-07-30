@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { REACTION_EMOJIS, REACTION_PHRASES } from "./selectors";
+import { REACTION_EMOJIS, REACTION_PHRASES, REACTION_GAME_CALLS } from "./selectors";
 import { useClickOutside } from "./clickOutside";
 
 export interface ReactionLayerProps {
@@ -51,6 +51,21 @@ export function ReactionLayer({ onReact, disabled }: ReactionLayerProps) {
                 }}
               >
                 {phrase}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1 border-t border-amber-500/20 pt-2">
+            {REACTION_GAME_CALLS.map((call) => (
+              <button
+                key={call}
+                type="button"
+                className="rounded-full border border-amber-500/30 bg-black/20 px-2 py-1 text-xs text-amber-100 transition-transform hover:scale-105"
+                onClick={() => {
+                  onReact(call);
+                  setOpen(false);
+                }}
+              >
+                {call}
               </button>
             ))}
           </div>

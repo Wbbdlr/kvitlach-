@@ -1554,10 +1554,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => store.createPracticeRoom(joinFirstName.trim() || "Guest")}
-                className="text-xs font-semibold text-accent2 underline self-start"
+                className="w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-accent/85"
                 title="Start a solo table against computer players -- no code needed"
               >
-                Practice against the computer (no code needed)
+                Practice Against the Computer
               </button>
           </form>
           <form

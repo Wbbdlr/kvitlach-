@@ -282,6 +282,22 @@ export function TableRoot({
             chrome lives outside the stage (see .k-chrome-top below). */}
         <div className="k-topbar">
           <div className="flex items-end gap-3">
+            <span className="relative inline-flex h-9 w-10 items-center justify-center pointer-events-none">
+              <img
+                src="/11.png"
+                alt=""
+                aria-hidden="true"
+                className="absolute h-9 w-auto -rotate-[24deg] -translate-x-[2px] drop-shadow-sm z-10"
+                loading="lazy"
+              />
+              <img
+                src="/12.png"
+                alt=""
+                aria-hidden="true"
+                className="absolute h-9 w-auto rotate-[23deg] translate-x-[16px] drop-shadow-sm"
+                loading="lazy"
+              />
+            </span>
             <span className="k-logo-word">Kvitlach</span>
             <span className="k-logo-tag">Ah Heimishe Chanukah Shpil</span>
             <span className="k-beta">Beta</span>

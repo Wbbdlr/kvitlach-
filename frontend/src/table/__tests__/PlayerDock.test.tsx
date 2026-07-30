@@ -168,3 +168,33 @@ describe("PlayerDock BANK! confirmation", () => {
     expect(onHit).not.toHaveBeenCalled();
   });
 });
+
+describe("PlayerDock MAX button", () => {
+  it("fills in the bank's cap when the wallet can comfortably cover more than that", () => {
+    renderDock({ wallet: 200, bankIncrement: 50 });
+    fireEvent.click(screen.getByText("MAX"));
+    const input = screen.getByLabelText("Bet amount") as HTMLInputElement;
+    // Nudged $1 under the bank's exact cap so a MAX tap can't silently land
+    // on the same amount BANK! uses to trigger a bank-lock (see PlayerDock's
+    // rawMax/maxBettable comment) -- 50 -> 49.
+    expect(input.value).toBe("49");
+  });
+
+  it("fills in the wallet balance when that's the tighter limit, without any nudge", () => {
+    renderDock({ wallet: 30, bankIncrement: 400 });
+    fireEvent.click(screen.getByText("MAX"));
+    const input = screen.getByLabelText("Bet amount") as HTMLInputElement;
+    expect(input.value).toBe("30");
+  });
+
+  it("is disabled once neither the wallet nor the bank has any room left", () => {
+    renderDock({ wallet: 0, bankIncrement: 50 });
+    expect(screen.getByText("MAX")).toBeDisabled();
+  });
+
+  it("does not call onBet by itself -- it only fills the field", () => {
+    const { onBet } = renderDock({ wallet: 200, bankIncrement: 50 });
+    fireEvent.click(screen.getByText("MAX"));
+    expect(onBet).not.toHaveBeenCalled();
+  });
+});

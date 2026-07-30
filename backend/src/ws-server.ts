@@ -495,10 +495,15 @@ export class WSServer {
           const room = this.store.getRoom(roomId);
           const isMember = room?.players.some((p) => p.id === actorId);
           if (!isMember) throw new Error("forbidden");
+          // Mirrors frontend/src/table/selectors.ts's REACTION_EMOJIS /
+          // REACTION_PHRASES / REACTION_GAME_CALLS exactly -- keep in sync,
+          // or a new reaction added there silently falls back to 👏 here.
           const allowed = new Set([
-            "👏","😂","😮","❤️","🔥","👍","😢","🤯","😎","🙌","😡","🤔","🎉","🤞","🙏","🍀","🍻","🍕","💤","💯","✅","❌","🤑","😭","🤡",
-            // Yiddish/Hebrew text reactions (frontend/src/table/selectors.ts's REACTION_PHRASES).
+            "👏","😂","😮","❤️","🔥","👍","😢","🤯","😎","🙌","😡","🤔","🎉","🤞","🙏","🍀","🍻","🍕","💯","🤑","😭","🥳","🃏","💰","😏",
+            // Yiddish/Hebrew text reactions (REACTION_PHRASES).
             "בהצלחה","מזל טוב","אוי וויי","קיין עין הרע","גוואלד","נו?",
+            // In-game banter (REACTION_GAME_CALLS).
+            "BANK!","Futched!","Stay","Nice hand!","So close!","Deal me in!",
           ]);
           const trimmed = emoji.trim();
           const normalized = allowed.has(trimmed) ? trimmed : "👏";

@@ -715,6 +715,27 @@ body:has(.k-fit) {
   background: rgba(255, 255, 255, 0.16);
   color: #eef2ea;
 }
+/* Fills the bet field with the most the player can bet right now (their
+   chips vs. what the bank can still cover) -- doesn't submit anything, just
+   like the +/- steppers, so it stays inside .k-betbox alongside them. */
+.k-maxbtn {
+  border: none;
+  background: rgba(230, 164, 75, 0.18);
+  color: #f0c579;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.k-maxbtn:hover {
+  background: rgba(230, 164, 75, 0.3);
+}
+.k-maxbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 .k-btn {
   border: none;
   border-radius: 9px;
@@ -1062,6 +1083,16 @@ body:has(.k-fit) {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
+/* Shakes the whole track (not just the shrinking fill) so the widget reads
+   as "panicking" as a unit in the final seconds before an auto-skip. */
+.turn-bar-track.is-urgent {
+  animation: turnBarShake 0.35s ease-in-out infinite;
+}
+@keyframes turnBarShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-1.5px); }
+  75% { transform: translateX(1.5px); }
+}
 
 /* "Your move" — fired once when it becomes the local player's turn. */
 @keyframes yourMovePulse {
@@ -1075,6 +1106,7 @@ body:has(.k-fit) {
 
 @media (prefers-reduced-motion: reduce) {
   .turn-bar-fill.is-urgent,
+  .turn-bar-track.is-urgent,
   .your-move-alert {
     animation: none;
   }

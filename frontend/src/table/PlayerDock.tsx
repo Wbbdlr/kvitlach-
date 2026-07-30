@@ -75,6 +75,22 @@ export function PlayerDock({
     setBetAmount(String(Math.max(1, Math.floor(Number(betAmount) || 0))));
   };
 
+  // Fills in the most the player can bet right now -- their own chips, or
+  // the bank's remaining window, whichever is smaller. Nudged $1 under the
+  // bank's exact cap when that's the binding constraint: applyBet on the
+  // server auto-treats a bet landing exactly on the bank's available amount
+  // as a bank-lock (same rule BANK! itself relies on), and that all-in
+  // moment deserves the confirm dialog below, not a same-as-any-other-bet
+  // MAX tap.
+  const rawMax = Math.max(0, Math.min(wallet - (turn.bet ?? 0), bankIncrement));
+  const maxBettable = rawMax > 1 && rawMax === bankIncrement ? rawMax - 1 : rawMax;
+
+  const handleMax = () => {
+    if (maxBettable < 1) return;
+    setBetAmount(String(maxBettable));
+    setBetError(undefined);
+  };
+
   const handleBet = () => {
     pendingBankAutoHitRef.current = false;
     const amount = Math.floor(Number(betAmount) || 0);
@@ -128,6 +144,15 @@ export function PlayerDock({
             <Icon name="chevron-down" size={10} />
           </button>
         </span>
+        <button
+          type="button"
+          className="k-maxbtn"
+          disabled={maxBettable < 1}
+          onClick={handleMax}
+          title="Fill in the most you can bet right now (your chips vs. what the bank can cover)."
+        >
+          MAX
+        </button>
       </div>
 
       <button type="button" className="k-btn bet" onClick={handleBet}>

@@ -152,7 +152,7 @@ export function Seat({
       </button>
 
       {showTurnTimer && (
-        <div className="turn-bar-track w-[110px] h-[3px]">
+        <div className={clsx("turn-bar-track w-[110px] h-[3px]", timerTone === "urgent" && "is-urgent")}>
           <div
             className={clsx(
               "turn-bar-fill",

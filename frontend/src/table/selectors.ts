@@ -15,6 +15,11 @@ export const cardImages: Record<string, string> = {
   blank: "/blank.png",
 };
 
+// Dropped the flatter/monochrome-reading glyphs a couple of rendering
+// engines show with little to no color (the sleeping "Zzz", the plain
+// checkmark/cross, a couple of others) in favor of ones that read as
+// colorful and expressive everywhere, and added a couple that fit an
+// in-person card game specifically (a joker, a money bag for the chip talk).
 export const REACTION_EMOJIS = [
   "👏",
   "😂",
@@ -34,13 +39,13 @@ export const REACTION_EMOJIS = [
   "🍀",
   "🍻",
   "🍕",
-  "💤",
   "💯",
-  "✅",
-  "❌",
   "🤑",
   "😭",
-  "🤡",
+  "🥳",
+  "🃏",
+  "💰",
+  "😏",
 ];
 
 // Short Yiddish/Hebrew exclamations, alongside the emoji above -- rendered
@@ -53,6 +58,20 @@ export const REACTION_PHRASES = [
   "קיין עין הרע", // Kein ayin hara -- no evil eye / knock wood
   "גוואלד", // Gevalt! -- shock/alarm
   "נו?", // Nu? -- well?/c'mon
+];
+
+// In-game banter, kept separate from REACTION_PHRASES since those render
+// right-to-left (see ReactionLayer.tsx's dir="rtl" wrapper) and these don't.
+// Echoes the table's own vocabulary (PlayerDock's BANK! button, the
+// "You Futched!" outcome toast) so a reaction always reads as the same
+// moment the game itself just called out.
+export const REACTION_GAME_CALLS = [
+  "BANK!",
+  "Futched!",
+  "Stay",
+  "Nice hand!",
+  "So close!",
+  "Deal me in!",
 ];
 
 export function usableCards(cards: Card[]): Card[] {
