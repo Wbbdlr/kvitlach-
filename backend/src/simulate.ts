@@ -316,6 +316,66 @@ console.log("\n── Eleveroon via handleHit (real game path) ──");
   }
 }
 
+// Card 12 stays flexible for the WHOLE round, not just when it's drawn
+console.log("\n── Card 12 re-reads itself every time ──");
+{
+  function handOf(...cards: Card[]): RoundContext {
+    const player = makePl("p");
+    const banker = makePl("b", "admin");
+    return {
+      roundId: "test", roomId: "test", deckCount: 1, roundNumber: 1, state: "playing",
+      deck: [],
+      turns: [
+        { player, cards, bet: 10, state: "pending" },
+        { player: banker, cards: [C1], bet: 0, state: "pending" },
+      ],
+    };
+  }
+
+  // The SAME 12 is worth a different value at each step, always whichever one
+  // serves the player best -- nothing is locked in when the card is dealt.
+  // Here one 12 reads as a 12, then a 10, then a 9, as each new card arrives.
+  assert(winningNumber([C12]) === 12,           "12 alone: reads as a 12 (highest under 21)");
+  assert(winningNumber([C12, C10]) === 20,      "12 + 10: the same 12 drops to a 10 -> 20 (a fixed 12 would bust at 22)");
+  assert(winningNumber([C12, C10, C2]) === 21,  "12, 10, then 2: that 12 drops again to a 9 -> 21");
+
+  // A hand only busts when EVERY reading is over 21 -- the player keeps the
+  // benefit of the doubt until then.
+  assert(calcState([C12, C10]) === "pending",   "12 + 10: not a bust, the 10-reading keeps it alive at 20");
+  assert(calcState([C12, C10, C2]) === "won",   "12, 10, 2: the 9-reading lands exactly 21");
+  assert(calcState([C12, C12, C12]) === "lost", "three 12s: 27 at best -> every reading busts");
+
+  // ...and the flexibility survives the real hit path, not just the pure helpers.
+  {
+    let round = handOf(C12);
+    round = { ...round, deck: [C10, C2] };
+    round = handleHit(round, "p");                       // 12 + 10: would bust if the 12 were fixed
+    const turn = round.turns.find((t) => t.player.id === "p")!;
+    assert(turn.state === "pending",             "handleHit: drawing a 10 onto a 12 doesn't bust -- it re-reads");
+    assert(winningNumber(turn.cards) === 20,     "handleHit: the 12 became a 10, hand sits at 20");
+  }
+  {
+    let round = handOf(C12, C10);
+    round = { ...round, deck: [C2] };
+    round = handleHit(round, "p");                       // only the 9-reading reaches 21
+    const turn = round.turns.find((t) => t.player.id === "p")!;
+    assert(turn.state === "won",                 "handleHit: 12, 10, 2 wins -- the 12 re-reads a second time");
+    assert(winningNumber(turn.cards) === 21,     "handleHit: the 12 became a 9 for exactly 21");
+  }
+
+  // Each side of the banker comparison uses its own best reading.
+  {
+    const bank12 = makeTurn(makePl("b", "admin"), [C12, C8], 0);   // best 20 (via the 12)
+    const player  = makeTurn(makePl("p"),         [C10, C9], 10);  // 19
+    assert(!playerWon(bank12, player), "Banker's 12 reads as 12 for 20, beating the player's 19");
+  }
+  {
+    const bankLow  = makeTurn(makePl("b", "admin"), [C10, C7], 0); // 17
+    const player12 = makeTurn(makePl("p"),          [C12, C6], 10); // best 18 (via the 12)
+    assert(playerWon(bankLow, player12), "Player's 12 reads as 12 for 18, beating the banker's 17");
+  }
+}
+
 // Tie-breaking
 console.log("\n── Tie-breaking ──");
 {

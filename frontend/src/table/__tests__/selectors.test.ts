@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { totalDisplay, tagVariant } from "../selectors";
-import { Player, Turn } from "../../types";
+import { totalDisplay, tagVariant, allTotals, bestTotal } from "../selectors";
+import { Card, Player, Turn } from "../../types";
 
 const banker: Player = { id: "bank", firstName: "Bank", lastName: "", type: "admin", presence: "online" };
 const p1: Player = { id: "p1", firstName: "P1", lastName: "", type: "player", presence: "online" };
@@ -51,6 +51,49 @@ describe("totalDisplay -- a standing player's total must not leak before resolut
     expect(hiddenInfo.value).toBe("hidden");
     const revealedInfo = totalDisplay(turn, p1.id, "terminate", { forceBankerReveal: true });
     expect(revealedInfo.value).toBe("16");
+  });
+});
+
+// This is the client-side mirror of backend/src/turn.ts's calcSums. The rule
+// lives in two places, so these expectations are deliberately the same ones
+// the backend's own simulate.ts asserts -- if the two ever drift, the total a
+// player SEES stops matching the total they're settled on.
+describe("allTotals/bestTotal -- the 12 re-reads itself at every point in the round", () => {
+  const c = (name: string, values: number[]): Card => ({ name, attributes: { values } });
+  const C12 = c("12", [12, 9, 10]);
+  const C10 = c("10", [10]);
+  const C2 = c("2", [2]);
+  const C9 = c("9", [9]);
+
+  it("reads a lone 12 as its highest value", () => {
+    expect(bestTotal([C12]).total).toBe(12);
+  });
+
+  it("drops the same 12 to a 10 rather than busting the hand at 22", () => {
+    expect(allTotals([C12, C10]).sort((a, b) => a - b)).toContain(20);
+    expect(bestTotal([C12, C10]).total).toBe(20);
+  });
+
+  it("drops that 12 again to a 9 when a third card makes 21 reachable", () => {
+    expect(bestTotal([C12, C10, C2]).total).toBe(21);
+  });
+
+  it("only reports a bust when every reading is over 21, and shows the smallest", () => {
+    const busted = bestTotal([C12, C12, C12]);
+    expect(busted.total).toBeUndefined();
+    expect(busted.bustedTotal).toBe(27); // 9+9+9, the kindest reading available
+  });
+
+  it("stays bounded rather than tripling per 12, so a long hand can't hang the tab", () => {
+    const totals = allTotals(Array.from({ length: 20 }, () => C12));
+    expect(totals.length).toBeLessThanOrEqual(22);
+    expect(new Set(totals).size).toBe(totals.length);
+  });
+
+  it("shows the owner the re-read total, not a fixed-value one", () => {
+    const owner: Player = { id: "me", firstName: "Me", lastName: "", type: "player", presence: "online" };
+    const turn: Turn = { player: owner, state: "pending", cards: [C12, C9], bet: 5 };
+    expect(totalDisplay(turn, owner.id).value).toBe("21");
   });
 });
 

@@ -89,17 +89,33 @@ export function isRosierPair(cards: Card[]): boolean {
   return first.attributes.type === "rosier" && second.attributes.type === "rosier";
 }
 
+// Mirrors backend/src/turn.ts's calcSums, including its two prunings -- see
+// that function's comment for why collapsing duplicate and busted readings is
+// free, and why the un-pruned product can't be left to grow.
 export function allTotals(cards: Card[]): number[] {
   const visible = usableCards(cards);
   if (visible.length === 0) return [0];
-  return visible.reduce<number[]>((sums, card, index) => {
+  let sums = [0];
+  for (const card of visible) {
     const values = (card.attributes?.values?.length ? card.attributes.values : [Number(card.name)])
       .filter((v) => Number.isFinite(v));
-    if (index === 0) return [...values];
-    const combos: number[] = [];
-    sums.forEach((sum) => values.forEach((value) => combos.push(sum + value)));
-    return combos;
-  }, []);
+    if (values.length === 0) continue;
+    const next = new Set<number>();
+    let smallestBust: number | undefined;
+    for (const sum of sums) {
+      for (const value of values) {
+        const total = sum + value;
+        if (total > 21) {
+          if (smallestBust === undefined || total < smallestBust) smallestBust = total;
+        } else {
+          next.add(total);
+        }
+      }
+    }
+    if (smallestBust !== undefined) next.add(smallestBust);
+    sums = [...next];
+  }
+  return sums;
 }
 
 export function bestTotal(cards: Card[]): { total?: number; bustedTotal?: number } {

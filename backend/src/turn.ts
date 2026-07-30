@@ -38,14 +38,39 @@ function rosier(cards: Card[]): boolean {
   );
 }
 
+// Every total a hand can be read as. A card carries every value it may count
+// as (the "12" is [12, 9, 10]) and re-reads itself freely at every point in
+// the round, so this is the full cartesian product across the hand -- callers
+// then pick whichever reading serves them (winningNumber takes the highest
+// that isn't over 21).
+//
+// Two prunings keep that product from growing without bound, both free given
+// every card value is positive -- a partial sum past 21 can never come back
+// under it:
+//   * duplicate sums collapse (only membership and the max/min matter), and
+//   * busted partial sums collapse to the single smallest of them, which is
+//     all `calcState`'s all-over-21 check and a busted hand's displayed total
+//     need.
+// Without these, each 12 in a hand triples the array -- and a blatt hand,
+// which by design never busts out and so can keep drawing, could push that
+// past anything the process can hold.
 export function calcSums(values: number[][]): number[] {
-  return values.reduce((acc, valueSet) => getCombinations(valueSet, acc).flat()) as number[];
-}
-
-export function getCombinations(sumsA: number[], sumsB: number[]): number[] {
-  const combos: number[] = [];
-  sumsA.forEach((a) => {
-    sumsB.forEach((b) => combos.push(a + b));
-  });
-  return combos;
+  let sums = [0];
+  for (const valueSet of values) {
+    const next = new Set<number>();
+    let smallestBust: number | undefined;
+    for (const sum of sums) {
+      for (const value of valueSet) {
+        const total = sum + value;
+        if (total > 21) {
+          if (smallestBust === undefined || total < smallestBust) smallestBust = total;
+        } else {
+          next.add(total);
+        }
+      }
+    }
+    if (smallestBust !== undefined) next.add(smallestBust);
+    sums = [...next];
+  }
+  return sums;
 }
