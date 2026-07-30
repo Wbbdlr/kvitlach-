@@ -16,6 +16,10 @@ const BOT_THINK_DELAY_MAX_MS = 1200;
 // is the fixed banker persona, a deliberately apt pick for a card game's bank.
 const PRACTICE_BANKER_NAME = "The Gabbai";
 const PRACTICE_BOT_NAME_POOL = ["Yanky", "Shmuli", "Mendy", "Berel", "Zalmy", "Duvid"];
+// A practice room's "banker" is a bot with no session to approve a real
+// buy-in request through -- self-serve top-ups are how a solo learner
+// recovers from going broke instead. Fixed amount, no form: a button.
+const PRACTICE_TOPUP_AMOUNT = 100;
 const MAX_PLAYERS_PER_ROOM = 100;
 // How many non-banker players get an active seat in a single round. The felt
 // table's oval seating (frontend/src/table/layout.ts) can only fit players
@@ -588,6 +592,21 @@ export class GameStore {
     this.audit("wallet-adjust", roomId, adminId, { target: targetPlayerId, amount, note: trimmedNote });
     this.bumpRoomTimer(roomId);
     return { amount, total: updatedTotal, note: trimmedNote };
+  }
+
+  // Practice-only self-serve top-up -- see PRACTICE_TOPUP_AMOUNT. Deliberately
+  // NOT reachable for a real room: a human can only ever adjust their own
+  // wallet here, and only when the room itself is flagged practice.
+  selfTopUpWallet(roomId: string, playerId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!roomRec.room.practice) throw new Error("forbidden");
+    const current = roomRec.room.wallets[playerId];
+    if (current === undefined) throw new Error("player_not_found");
+    const updatedTotal = current + PRACTICE_TOPUP_AMOUNT;
+    roomRec.room.wallets[playerId] = updatedTotal;
+    this.bumpRoomTimer(roomId);
+    return { amount: PRACTICE_TOPUP_AMOUNT, total: updatedTotal };
   }
 
   setFeltWatermark(roomId: string, adminId: string, text: string) {

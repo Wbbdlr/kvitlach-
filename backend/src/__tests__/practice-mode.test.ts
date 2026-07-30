@@ -142,3 +142,34 @@ describe("createPracticeRoom", () => {
     }
   });
 });
+
+describe("selfTopUpWallet", () => {
+  it("adds the fixed practice top-up to the caller's own wallet", () => {
+    const store = new GameStore();
+    const { room, player } = store.createPracticeRoom({ firstName: "Alice" });
+    const before = room.wallets[player.id];
+
+    const result = store.selfTopUpWallet(room.roomId, player.id);
+
+    expect(result.amount).toBe(100);
+    expect(result.total).toBe(before + 100);
+    expect(store.getRoom(room.roomId)!.wallets[player.id]).toBe(before + 100);
+  });
+
+  it("refuses to top up in a real (non-practice) room", () => {
+    const store = new GameStore();
+    const { room, player } = store.createRoom({ firstName: "Banker" });
+    store.joinRoom(room.roomId, { firstName: "Alice" });
+    const joined = store.getRoom(room.roomId)!;
+    const guestId = joined.players.find((p) => p.id !== player.id)!.id;
+
+    expect(() => store.selfTopUpWallet(room.roomId, guestId)).toThrow("forbidden");
+  });
+
+  it("throws for an unknown player in a practice room", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice" });
+
+    expect(() => store.selfTopUpWallet(room.roomId, "nonexistent")).toThrow("player_not_found");
+  });
+});

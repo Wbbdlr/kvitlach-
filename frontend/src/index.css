@@ -436,6 +436,27 @@ body:has(.k-fit) {
   color: #b9c2b9;
   border-color: rgba(255, 255, 255, 0.12);
 }
+/* Actionable notice (out-of-chips CTA) -- rendered as a real <button>, so it
+   gets a gentle attention pulse a passive status pill never needs. */
+.k-tag.warn {
+  background: rgba(230, 164, 75, 0.18);
+  color: #f0c579;
+  border-color: rgba(230, 164, 75, 0.55);
+  cursor: pointer;
+  animation: warnTagPulse 1.8s ease-in-out infinite;
+}
+.k-tag.warn:hover {
+  background: rgba(230, 164, 75, 0.28);
+}
+@keyframes warnTagPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-tag.warn {
+    animation: none;
+  }
+}
 
 /* On-felt readouts (totals, bet lines) -- dark pills, not white boxes. */
 .k-readout {

@@ -25,6 +25,10 @@ import { isIOS, isStandaloneDisplay } from "./platform";
 // assigned) name, per the family this app was originally built for.
 const DEFAULT_WATERMARK = "משפחת שלעזינגער קוויטלעך";
 
+// Mirrors backend/src/store.ts's PRACTICE_TOPUP_AMOUNT -- display-only value,
+// the actual amount credited is always server-authoritative.
+const PRACTICE_TOPUP_DISPLAY = 100;
+
 export interface BankInfo {
   available: number;
   outstanding: number;
@@ -65,6 +69,7 @@ export interface TableRootProps {
   onApproveBuyIn: (playerId: string) => void;
   onRejectBuyIn: (playerId: string) => void;
   onRequestBuyIn: (amount: number, note?: string) => void;
+  onPracticeTopUp: () => void;
   onAdjustChips: (playerId: string, amount: number, note?: string) => void;
   onKick: (playerId: string) => void;
   onExportHistory: () => void;
@@ -116,6 +121,7 @@ export function TableRoot({
   onApproveBuyIn,
   onRejectBuyIn,
   onRequestBuyIn,
+  onPracticeTopUp,
   onAdjustChips,
   onKick,
   onExportHistory,
@@ -213,6 +219,16 @@ export function TableRoot({
   // so this and the BANK! banner above never need to compete for the same
   // moment, but the bankLock guard is kept anyway as a defensive belt.
   const bankBusted = Boolean(bankerTurn && !bankLock && statusDisplay(bankerTurn).label === "FUTCHED!");
+
+  // A seated (non-banker, non-spectator) player at exactly $0 can't cover
+  // even a $1 bet -- surface a clear, actionable prompt rather than leaving
+  // them to discover Table Info's request-chips form on their own. Practice
+  // rooms have no human banker to approve a request, so they get an instant
+  // self-serve top-up instead (see GameStore.selfTopUpWallet).
+  const myWallet = playerId ? room.wallets?.[playerId] : undefined;
+  const isSeatedPlayer = Boolean(playerId && room.players.some((p) => p.id === playerId && p.type === "player"));
+  const showOutOfChips = Boolean(!isAdmin && isSeatedPlayer && myWallet === 0);
+  const myBuyInRequest = playerId ? (room.buyInRequests ?? []).find((r) => r.playerId === playerId) : undefined;
 
   // Seat the viewer at the bottom edge (standard card-game convention) while
   // preserving cyclic turn order around the table.
@@ -391,6 +407,26 @@ export function TableRoot({
             Manage
           </button>
         )}
+        {showOutOfChips &&
+          (room.practice ? (
+            <button
+              type="button"
+              className="k-tag warn"
+              onClick={onPracticeTopUp}
+              title="Practice mode -- add play chips instantly, no approval needed."
+            >
+              Out of chips — tap to add ${PRACTICE_TOPUP_DISPLAY}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="k-tag warn"
+              onClick={() => setRoomInfoOpen(true)}
+              title="Ask the banker for more chips."
+            >
+              {myBuyInRequest ? "Chip request pending…" : "Out of chips — tap to request more"}
+            </button>
+          ))}
         {waitingInfo && (
           <span className="k-tag muted" title={`${waitingInfo.namesLabel} will join after this round ends.`}>
             {waitingInfo.isViewerWaiting

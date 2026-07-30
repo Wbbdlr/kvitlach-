@@ -76,7 +76,16 @@ describe("practice mode over a live WebSocket connection", () => {
 
     // Give the bot cascade (banker + 2 players, ~0.5-1.2s think delay each,
     // possibly several hit/stand cycles) real wall-clock time to play out.
-    await new Promise((resolve) => setTimeout(resolve, 6000));
+    // Polls instead of a single fixed sleep: a flat 6s wait was intermittently
+    // too tight for the full cascade under real machine load/scheduling
+    // jitter (observed failing standalone, unrelated to system contention --
+    // confirmed by bisecting against a clean git stash), so this resolves the
+    // moment a terminal state actually shows up instead of gambling on one
+    // fixed budget, with a generous ceiling for a genuine stall.
+    const deadline = Date.now() + 14000;
+    while (Date.now() < deadline && !roundStateMessages.some((r) => r.state === "terminate")) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
 
     expect(errorMessages).toEqual([]);
     // More than just the ack's own round + one broadcast after the human's
@@ -91,5 +100,5 @@ describe("practice mode over a live WebSocket connection", () => {
     expect(sawTerminate).toBe(true);
 
     human.close();
-  }, 15000);
+  }, 20000);
 });

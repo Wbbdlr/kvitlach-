@@ -432,6 +432,17 @@ export class WSServer {
           this.sendAck(socket, requestId, { room, adjust: result });
           break;
         }
+        case "player:practice-topup": {
+          const meta = this.meta.get(socket);
+          const roomId = meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          const result = this.store.selfTopUpWallet(roomId, actorId);
+          const room = this.store.getRoom(roomId);
+          this.broadcastRoom(roomId);
+          this.sendAck(socket, requestId, { room, topUp: result });
+          break;
+        }
         case "room:banker-topup": {
           const { amount, note, roomId: roomFromPayload } = (payload as any) || {};
           const meta = this.meta.get(socket);

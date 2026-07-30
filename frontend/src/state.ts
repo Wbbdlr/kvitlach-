@@ -64,6 +64,7 @@ interface UIState {
   approveRename: (playerId: string) => void;
   rejectRename: (playerId: string) => void;
   requestBuyIn: (amount: number, note?: string) => void;
+  practiceTopUp: () => void;
   approveBuyIn: (playerId: string) => void;
   rejectBuyIn: (playerId: string) => void;
   topUpBanker: (amount: number, note?: string) => void;
@@ -966,6 +967,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("player:buyin-request", { roomId, amount: normalizedAmount, note });
+    },
+    practiceTopUp: () => {
+      const roomId = get().room?.roomId;
+      if (!roomId) return;
+      client.send("player:practice-topup", { roomId });
     },
     approveBuyIn: (playerId: string) => {
       const roomId = get().room?.roomId;

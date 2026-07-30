@@ -1085,6 +1085,7 @@ export default function App() {
         onApproveBuyIn={(id) => store.approveBuyIn(id)}
         onRejectBuyIn={(id) => store.rejectBuyIn(id)}
         onRequestBuyIn={(amount, note) => store.requestBuyIn(amount, note)}
+        onPracticeTopUp={() => store.practiceTopUp()}
         onAdjustChips={(id, amount, note) => store.adjustPlayerBankroll(id, amount, note)}
         onKick={(id) => store.kickPlayer(id)}
         onExportHistory={() => exportRoundHistoryTxt()}
