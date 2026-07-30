@@ -124,7 +124,6 @@ export function totalDisplay(
   const isBlattPhase = (turn.bet ?? 0) === 0;
   const bankerResolved = turn.state === "lost" || turn.state === "standby" || turn.state === "won";
   const forceBankerReveal = opts?.forceBankerReveal;
-  const isPublicStandby = turn.state === "standby";
 
   if (!isOwnerView && isBanker && !bankerResolved && !forceBankerReveal) {
     const visible = turn.cards.slice(1);
@@ -135,11 +134,16 @@ export function totalDisplay(
     if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
     return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
   }
-  if (isPublicStandby) {
-    if (total !== undefined) return { prefix, value: `${total}` };
-    if (bustedTotal !== undefined) return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-  }
+  // A player's total is NOT revealed just because they stood (turn.state
+  // "standby") -- their wager cards stay face-down to everyone else at that
+  // point too (see Seat.tsx's own isPublicStandby, which only ever shows
+  // pre-bet "blatt" cards while standing, never the bet/hit cards). Revealing
+  // the aggregate total here while the cards behind it stay hidden would be
+  // a real information leak to players still deciding their own hand.
+  // calculateEndState always resolves a standing player to won/lost once the
+  // round actually terminates (round.ts), so the reveal below still lands at
+  // exactly the right moment -- this only holds the total back while the
+  // outcome is genuinely still undecided.
   if (!isOwnerView && isBlattPhase) {
     const visible = turn.cards.slice(1);
     const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
@@ -148,8 +152,7 @@ export function totalDisplay(
     return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
   }
 
-  const canRevealTotal =
-    isOwnerView || turn.state === "won" || turn.state === "lost" || isPublicStandby || forceBankerReveal;
+  const canRevealTotal = isOwnerView || turn.state === "won" || turn.state === "lost" || forceBankerReveal;
   const revealForOwnerStandby = isOwnerView && turn.state === "standby";
   if (!canRevealTotal && !revealForOwnerStandby) {
     return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
