@@ -65,6 +65,7 @@ vi.mock("./state", () => {
       dismissBankerSummary: noop,
       init: noop,
       createRoom: noop,
+      createPracticeRoom: noop,
       joinRoom: noop,
       startRound: noop,
       bet: noop,
@@ -77,6 +78,7 @@ vi.mock("./state", () => {
       requestBuyIn: noop,
       approveBuyIn: noop,
       rejectBuyIn: noop,
+      practiceTopUp: noop,
       topUpBanker: noop,
       endRoundDueToBank: noop,
       kickPlayer: noop,
@@ -94,51 +96,53 @@ vi.mock("./state", () => {
 vi.mock("./audio", () => ({ AudioManager: class { noteInteraction() {} setMusicEnabled() {} setSfxEnabled() {} playSfx() {} } }));
 vi.mock("./ws", () => ({ WSClient: class {} }));
 
-describe("table UI feature flag", () => {
+// The felt table is the only in-room view -- there is no second (classic
+// seat-list) rendering to fall back to, and no flag or URL parameter that can
+// opt out of it any more.
+describe("the felt table is the only in-room view", () => {
   beforeEach(() => {
     window.localStorage.clear();
     mockState.room = room;
     mockState.round = round;
   });
 
-  it("renders the new felt-table UI by default (no stored preference)", () => {
+  it("renders the felt table during a live round", () => {
     const { container } = render(<App />);
     expect(container.querySelector(".felt-table")).not.toBeNull();
   });
 
-  it("renders the new felt-table UI when the flag is explicitly on", () => {
-    window.localStorage.setItem("kvitlach.tableUI", "1");
-    const { container } = render(<App />);
-    expect(container.querySelector(".felt-table")).not.toBeNull();
-  });
-
-  it("falls back to the classic seat-list UI when explicitly opted out", () => {
+  it("ignores the retired kvitlach.tableUI opt-out that used to force the classic view", () => {
     window.localStorage.setItem("kvitlach.tableUI", "0");
     const { container } = render(<App />);
-    expect(container.querySelector(".felt-table")).toBeNull();
+    expect(container.querySelector(".felt-table")).not.toBeNull();
   });
 
-  it("still shows the old room-management screen (Start round, roster, etc.) pre-round even with the flag on", () => {
-    window.localStorage.setItem("kvitlach.tableUI", "1");
-    mockState.round = undefined; // in a room, waiting for the banker to start
+  it("stays on the felt table pre-round, showing the roster and a deal prompt instead of a classic lobby screen", () => {
+    mockState.round = undefined; // in a room, nothing dealt yet
+    const { container, getAllByText, getByText } = render(<App />);
+    expect(container.querySelector(".felt-table")).not.toBeNull();
+    // "Table ready" appears both on the felt panel and in the dock.
+    expect(getAllByText(/Table ready/i).length).toBeGreaterThan(0);
+    // Seats come from round.turns, so pre-round the roster stands in for them.
+    expect(getByText(/Alice/)).toBeInTheDocument();
+    // The viewer is a non-admin here, so they get the waiting message rather
+    // than the banker's own deal button.
+    expect(getByText(/Waiting for the banker to deal/i)).toBeInTheDocument();
+  });
+
+  it("shows the pre-join lobby only when there is no room at all", () => {
+    mockState.room = undefined;
+    mockState.round = undefined;
     const { container, getByText } = render(<App />);
     expect(container.querySelector(".felt-table")).toBeNull();
-    expect(getByText(/Waiting for Banker to start the round/i)).toBeInTheDocument();
+    expect(getByText(/Welcome to Kvitlach/i)).toBeInTheDocument();
   });
 
-  it("stays on the felt table with a results banner once a round terminates, rather than falling back to the old UI", () => {
+  it("stays on the felt table with a results banner once a round terminates", () => {
     // The backend never clears room.roundId's corresponding `round` object to
     // undefined after a round ends -- it just flips round.state to "terminate"
     // (a new round object only replaces it once the banker starts the next one).
-    // An earlier version fell back to the old UI here (a stopgap to avoid
-    // getting stuck showing a frozen round with no way to start the next one)
-    // -- the new UI now has its own in-theme results screen instead, so it
-    // should stay on .felt-table and surface a "Start next round" trigger.
-    window.localStorage.setItem("kvitlach.tableUI", "1");
     mockState.round = { ...round, state: "terminate" };
-    // Viewer here (playerAId) is a non-admin, so they see the "waiting on the
-    // banker" message rather than the "Start next round" button itself --
-    // the button's admin-gating is covered by the live browser verification.
     const { container, getByText } = render(<App />);
     expect(container.querySelector(".felt-table")).not.toBeNull();
     expect(getByText(/Round complete/i)).toBeInTheDocument();

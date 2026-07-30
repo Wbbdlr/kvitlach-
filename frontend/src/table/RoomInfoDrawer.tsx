@@ -8,6 +8,8 @@ export interface RoomInfoDrawerProps {
   onClose: () => void;
   roomName?: string;
   roomId: string;
+  roomPassword?: string;
+  buyIn?: number;
   isAdmin: boolean;
   playerId?: string;
   renameRequests: RenameRequest[];
@@ -26,6 +28,8 @@ export function RoomInfoDrawer({
   onClose,
   roomName,
   roomId,
+  roomPassword,
+  buyIn,
   isAdmin,
   playerId,
   renameRequests,
@@ -39,7 +43,7 @@ export function RoomInfoDrawer({
   const [showBuyInForm, setShowBuyInForm] = useState(false);
   const [buyInAmount, setBuyInAmount] = useState("");
   const [buyInNote, setBuyInNote] = useState("");
-  const [copied, setCopied] = useState<"id" | "link" | null>(null);
+  const [copied, setCopied] = useState<"id" | "link" | "password" | null>(null);
 
   if (!open) return null;
 
@@ -48,7 +52,7 @@ export function RoomInfoDrawer({
   const myRenameRequest = playerId ? renameRequests.find((r) => r.playerId === playerId) : undefined;
   const myBuyInRequest = playerId ? buyInRequests.find((r) => r.playerId === playerId) : undefined;
 
-  const copy = (text: string, which: "id" | "link") => {
+  const copy = (text: string, which: "id" | "link" | "password") => {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(text);
       setCopied(which);
@@ -113,6 +117,32 @@ export function RoomInfoDrawer({
             </a>
           </div>
           {copied === "id" && <div className="text-xs text-emerald-700 -mt-2">Game ID copied.</div>}
+
+          {typeof buyIn === "number" && (
+            <div className="text-xs text-slate-500 -mt-1">
+              Buy-in per player: <span className="font-semibold text-slate-700">${buyIn.toLocaleString()}</span>
+            </div>
+          )}
+
+          {/* Banker-only: the password is what they read out to late joiners,
+              so it has to live somewhere reachable from the table itself. */}
+          {isAdmin && roomPassword && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              <div>
+                Password: <code className="font-semibold">{roomPassword}</code>
+              </div>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-full border border-rose-300 bg-white p-1.5 text-rose-700 shadow-sm transition-colors hover:bg-rose-100"
+                onClick={() => copy(roomPassword, "password")}
+                title="Copy room password"
+                aria-label="Copy room password"
+              >
+                <Icon name="clipboard" size={14} />
+              </button>
+            </div>
+          )}
+          {copied === "password" && <div className="text-xs text-emerald-700 -mt-2">Password copied.</div>}
 
           {!isAdmin && (
             <>

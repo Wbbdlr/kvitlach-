@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useFelt } from "../theme";
@@ -70,6 +71,8 @@ export interface TableRootProps {
   onRejectBuyIn: (playerId: string) => void;
   onRequestBuyIn: (amount: number, note?: string) => void;
   onPracticeTopUp: () => void;
+  onShowHowTo: () => void;
+  onEndRoundDueToBank: () => void;
   onAdjustChips: (playerId: string, amount: number, note?: string) => void;
   onKick: (playerId: string) => void;
   onExportHistory: () => void;
@@ -122,6 +125,8 @@ export function TableRoot({
   onRejectBuyIn,
   onRequestBuyIn,
   onPracticeTopUp,
+  onShowHowTo,
+  onEndRoundDueToBank,
   onAdjustChips,
   onKick,
   onExportHistory,
@@ -144,7 +149,7 @@ export function TableRoot({
   const [roomInfoOpen, setRoomInfoOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
   const { wrapRef, scale } = useStageScale();
-  useWakeLock(true); // the felt table only ever mounts while a room+round is active
+  useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
   // The Fullscreen API can only be entered from a real tap (see
   // fullscreen.ts), so it can never auto-start -- nudge new visitors to tap
@@ -220,6 +225,12 @@ export function TableRoot({
   // moment, but the bankLock guard is kept anyway as a defensive belt.
   const bankBusted = Boolean(bankerTurn && !bankLock && statusDisplay(bankerTurn).label === "FUTCHED!");
 
+  // A BANK! wager can empty the bank outright, which parks the round in a
+  // "decision" stage until the banker either adds chips or calls it. Nobody
+  // can act until they do, so the choice has to be on the felt itself.
+  const bankerDecisionRequired = Boolean(isAdmin && bankLockStage === "decision");
+  const waitingOnBankDecision = Boolean(!isAdmin && bankLockStage === "decision");
+
   // A seated (non-banker, non-spectator) player at exactly $0 can't cover
   // even a $1 bet -- surface a clear, actionable prompt rather than leaving
   // them to discover Table Info's request-chips form on their own. Practice
@@ -268,6 +279,14 @@ export function TableRoot({
 
   const bankerWallet = bankerPlayer ? room.wallets?.[bankerPlayer.id] ?? 0 : 0;
   const roundOver = round?.state === "terminate";
+  // No round object at all means nothing has been dealt yet -- seats are
+  // built from round.turns, so the felt would otherwise be an empty oval
+  // while everyone waits on the banker.
+  const preRound = !round;
+  const rosterPlayers = useMemo(
+    () => room.players.filter((p) => p.type !== "spectator"),
+    [room.players]
+  );
 
   return (
     <div className="k-fit" ref={wrapRef}>
@@ -347,6 +366,31 @@ export function TableRoot({
 
       {/* ---- Chrome: outside the stage, so NOT scaled. Controls stay at
            true viewport size and remain readable/tappable on a phone. ---- */}
+      {/* Pre-round this is the only thing on the felt, and it's the first
+          screen a new player sees -- so it lives in the chrome layer rather
+          than on the ~0.3x-scaled stage a portrait phone renders. */}
+      {preRound && (
+        <div className="k-preround">
+          <div className="k-preround-title">Table ready</div>
+          <div className="k-preround-sub">
+            {rosterPlayers.length <= 1
+              ? "Waiting for players to take a seat…"
+              : `${rosterPlayers.length} at the table`}
+          </div>
+          <div className="k-preround-roster">
+            {rosterPlayers.map((p) => (
+              <span key={p.id} className={clsx("k-preround-chip", p.presence !== "online" && "is-offline")}>
+                {p.type === "admin" && <Icon name="bank" size={9} />}
+                <span className="k-preround-name">
+                  {fullName(p) || p.firstName}
+                  {p.id === playerId && " (you)"}
+                </span>
+                <span className="k-preround-amt">${(room.wallets?.[p.id] ?? 0).toLocaleString()}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {bankLock && (
         <div className="k-bank-banner" role="status" aria-live="polite">
           <Icon name="bank" size={14} />
@@ -359,8 +403,41 @@ export function TableRoot({
           <div className="subline">Everyone still in the hand wins!</div>
         </div>
       )}
+      {(bankerDecisionRequired || waitingOnBankDecision) && (
+        <div className="k-bank-decision" role="status" aria-live="polite">
+          <div className="headline">Bank depleted</div>
+          {bankerDecisionRequired ? (
+            <>
+              <div className="subline">
+                {bankActorName}&apos;s BANK! wager emptied the bank. Add chips to play it out, or end the round here.
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className="k-btn bet sm" onClick={() => setManageOpen(true)}>
+                  Replenish bank
+                </button>
+                <button type="button" className="k-btn stand sm" onClick={onEndRoundDueToBank}>
+                  End round now
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="subline">
+              Waiting for the banker to replenish the bank or end the round after {bankActorName}&apos;s BANK! wager.
+            </div>
+          )}
+        </div>
+      )}
       <div className="k-chrome-top">
         <FeltSwitcher felt={felt} onChange={setFelt} />
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={onShowHowTo}
+          title="How to play Kvitlach"
+          aria-label="How to play Kvitlach"
+        >
+          ?
+        </button>
         <button
           type="button"
           className="k-chip-btn"
@@ -497,15 +574,17 @@ export function TableRoot({
         />
       )}
 
-      {roundOver && (
+      {(roundOver || preRound) && (
         <div className="k-dock">
-          <span className="k-banktotal">Round complete</span>
+          <span className="k-banktotal">{preRound ? "Table ready" : "Round complete"}</span>
           {isAdmin ? (
-            <button type="button" className="k-btn bet" onClick={onStartNextRound}>
-              Start next round
+            <button type="button" className="k-btn bet k-pulse-attn" onClick={onStartNextRound}>
+              {preRound ? "Deal the first round" : "Start next round"}
             </button>
           ) : (
-            <span className="k-tag muted">Waiting for the banker to start the next round…</span>
+            <span className="k-tag muted k-pulse-attn">
+              Waiting for the banker to {preRound ? "deal" : "start the next round"}…
+            </span>
           )}
         </div>
       )}
@@ -531,7 +610,7 @@ export function TableRoot({
           onKick={onKick}
           onExportHistory={onExportHistory}
           onCloseRoom={onCloseRoom}
-          canReshuffle={roundOver}
+          canReshuffle={roundOver || preRound}
           onReshuffleDeck={onReshuffleDeck}
         />
       )}
@@ -543,6 +622,8 @@ export function TableRoot({
         onClose={() => setRoomInfoOpen(false)}
         roomName={room.name}
         roomId={room.roomId}
+        roomPassword={room.password}
+        buyIn={room.buyIn}
         isAdmin={isAdmin}
         playerId={playerId}
         renameRequests={room.renameRequests ?? []}
