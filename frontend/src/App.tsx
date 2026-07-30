@@ -22,7 +22,6 @@ export default function App() {
     roundHistory,
     notifications,
     bankerSummaryAt,
-    connections,
     reactions,
   } = store;
   const [statsPlayerId, setStatsPlayerId] = useState<string | undefined>(undefined);
@@ -61,8 +60,6 @@ export default function App() {
   const turns = round?.turns?.filter(Boolean) ?? [];
   const {
     latestReactionByPlayer,
-    pendingTurns,
-    overviewTurns,
     activeTurnId,
     nextTurnId,
     activeTurnTimer,
@@ -70,7 +67,6 @@ export default function App() {
     bankInfo,
     bankIncrement,
     bankDisabledReason,
-    totalStakes,
     statsData,
     waitingInfo,
   } = useTableData({ room, round, playerId, reactions, nowTs, statsPlayerId, roundHistory });
@@ -404,6 +400,9 @@ export default function App() {
         statsData={statsData}
         onOpenStats={(id) => setStatsPlayerId(id)}
         onCloseStats={() => setStatsPlayerId(undefined)}
+        bankSummaryOpen={Boolean(bankerSummaryAt)}
+        bankSummary={roundHistory?.[0]}
+        onDismissBankSummary={dismissBankerSummary}
         musicEnabled={musicEnabled}
         sfxEnabled={sfxEnabled}
         onToggleMusic={() => {

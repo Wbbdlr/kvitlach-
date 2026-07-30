@@ -36,9 +36,14 @@ const round: RoundState = {
   roundNumber: 1,
 };
 
-// Mutable so individual tests can toggle whether a round is active without
-// re-declaring the whole vi.mock factory (which Vitest hoists per-file).
-const mockState: { room?: RoomState; round?: RoundState } = { room, round };
+// Mutable so individual tests can toggle whether a round is active, or who is
+// viewing, without re-declaring the whole vi.mock factory (which Vitest hoists
+// per-file).
+const mockState: { room?: RoomState; round?: RoundState; playerId: string } = {
+  room,
+  round,
+  playerId: playerAId,
+};
 
 vi.mock("./state", () => {
   const noop = () => {};
@@ -51,7 +56,9 @@ vi.mock("./state", () => {
         return mockState.round;
       },
       balances: [],
-      playerId: playerAId,
+      get playerId() {
+        return mockState.playerId;
+      },
       message: undefined,
       status: "connected",
       wsUrl: "ws://localhost:3001",
@@ -104,6 +111,7 @@ describe("the felt table is the only in-room view", () => {
     window.localStorage.clear();
     mockState.room = room;
     mockState.round = round;
+    mockState.playerId = playerAId;
   });
 
   it("renders the felt table during a live round", () => {
@@ -128,6 +136,22 @@ describe("the felt table is the only in-room view", () => {
     // The viewer is a non-admin here, so they get the waiting message rather
     // than the banker's own deal button.
     expect(getByText(/Waiting for the banker to deal/i)).toBeInTheDocument();
+  });
+
+  it("offers the banker a first deal pre-round, and doesn't call a later round the first", () => {
+    // A reload BETWEEN rounds comes back with no round object, so pre-round
+    // isn't the same as nothing-played-yet.
+    mockState.round = undefined;
+    mockState.playerId = bankerId;
+
+    const first = render(<App />);
+    expect(first.getByText(/Deal the first round/i)).toBeInTheDocument();
+    first.unmount();
+
+    mockState.room = { ...room, completedRounds: 4 };
+    const later = render(<App />);
+    expect(later.queryByText(/Deal the first round/i)).toBeNull();
+    expect(later.getByText(/Deal the next round/i)).toBeInTheDocument();
   });
 
   it("shows the pre-join lobby only when there is no room at all", () => {

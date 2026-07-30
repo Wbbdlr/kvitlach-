@@ -15,6 +15,8 @@ import { FeltSwitcher } from "./FeltSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
 import { StatsModal } from "./StatsModal";
+import { BankSummaryModal } from "./BankSummaryModal";
+import { CompletedRoundSummary } from "../state";
 import { StatsData } from "./useTableData";
 import { Icon } from "./icons";
 import { useFullscreen } from "./fullscreen";
@@ -85,6 +87,9 @@ export interface TableRootProps {
   statsData?: StatsData;
   onOpenStats: (playerId: string) => void;
   onCloseStats: () => void;
+  bankSummaryOpen: boolean;
+  bankSummary?: CompletedRoundSummary;
+  onDismissBankSummary: () => void;
   musicEnabled: boolean;
   sfxEnabled: boolean;
   onToggleMusic: () => void;
@@ -139,6 +144,9 @@ export function TableRoot({
   statsData,
   onOpenStats,
   onCloseStats,
+  bankSummaryOpen,
+  bankSummary,
+  onDismissBankSummary,
   musicEnabled,
   sfxEnabled,
   onToggleMusic,
@@ -228,8 +236,21 @@ export function TableRoot({
   // A BANK! wager can empty the bank outright, which parks the round in a
   // "decision" stage until the banker either adds chips or calls it. Nobody
   // can act until they do, so the choice has to be on the felt itself.
-  const bankerDecisionRequired = Boolean(isAdmin && bankLockStage === "decision");
-  const waitingOnBankDecision = Boolean(!isAdmin && bankLockStage === "decision");
+  //
+  // The server leaves the lock in place even when the same wager also ended
+  // the round (a futched bank resolves every remaining hand), so gate on the
+  // round still being live -- there's nothing left to decide once the results
+  // are already on the table.
+  const bankDecisionPending = bankLockStage === "decision" && round?.state !== "terminate";
+  const bankerDecisionRequired = Boolean(isAdmin && bankDecisionPending);
+  const waitingOnBankDecision = Boolean(!isAdmin && bankDecisionPending);
+
+  // An empty bank stops the whole table -- players see "Bank is empty" on
+  // their own bet controls, but the banker is the only one who can fix it and
+  // had nothing telling them so. Mirrors the players' own out-of-chips CTA.
+  const bankIsEmpty = Boolean(
+    isAdmin && bankerPlayer && (room.wallets?.[bankerPlayer.id] ?? 0) === 0 && !bankerDecisionRequired
+  );
 
   // A seated (non-banker, non-spectator) player at exactly $0 can't cover
   // even a $1 bet -- surface a clear, actionable prompt rather than leaving
@@ -283,6 +304,10 @@ export function TableRoot({
   // built from round.turns, so the felt would otherwise be an empty oval
   // while everyone waits on the banker.
   const preRound = !round;
+  // A reload between rounds comes back with no round object, so "pre-round"
+  // isn't the same as "nothing has been played yet" -- don't call round 5 the
+  // first one.
+  const firstDeal = (room.completedRounds ?? 0) === 0;
   const rosterPlayers = useMemo(
     () => room.players.filter((p) => p.type !== "spectator"),
     [room.players]
@@ -500,6 +525,16 @@ export function TableRoot({
             Manage
           </button>
         )}
+        {bankIsEmpty && (
+          <button
+            type="button"
+            className="k-tag warn"
+            onClick={() => setManageOpen(true)}
+            title="Nobody can wager against an empty bank -- add chips to keep the table going."
+          >
+            Bank is empty — tap to add chips
+          </button>
+        )}
         {showOutOfChips &&
           (room.practice ? (
             <button
@@ -579,7 +614,7 @@ export function TableRoot({
           <span className="k-banktotal">{preRound ? "Table ready" : "Round complete"}</span>
           {isAdmin ? (
             <button type="button" className="k-btn bet k-pulse-attn" onClick={onStartNextRound}>
-              {preRound ? "Deal the first round" : "Start next round"}
+              {!preRound ? "Start next round" : firstDeal ? "Deal the first round" : "Deal the next round"}
             </button>
           ) : (
             <span className="k-tag muted k-pulse-attn">
@@ -616,6 +651,8 @@ export function TableRoot({
       )}
 
       {statsData && <StatsModal data={statsData} onClose={onCloseStats} />}
+
+      {bankSummaryOpen && <BankSummaryModal summary={bankSummary} onClose={onDismissBankSummary} />}
 
       <RoomInfoDrawer
         open={roomInfoOpen}
