@@ -362,3 +362,45 @@ describe("turn-state guard", () => {
     expect(() => handleSkip(round, playerTurn.player.id)).not.toThrow();
   });
 });
+
+// The banker plays one hand against everyone at once, so their single
+// turn.state genuinely cannot answer "did the bank win?" -- it already carries
+// the MONEY result (a banker who beats three players but pays out one big
+// wager settles to "lost"). These counts are what let the table show the real
+// answer, and what tells a futch apart from merely finishing down.
+describe("calculateEndState records the banker's head-to-head split", () => {
+  const C = (n: number) => ({ name: String(n), attributes: { values: [n] } });
+  // Banker on 18. p1 stands on 17 (loses to it), p2 stands on 20 (beats it).
+  const bankerOn = (cards: number[]) => ({ player: admin, state: "pending" as const, cards: cards.map(C), bet: 0 });
+  const playerOn = (p: Player, cards: number[], bet: number) => ({
+    player: p, state: "standby" as const, cards: cards.map(C), bet,
+  });
+
+  it("counts who the bank beat and who beat it, not just the money", () => {
+    const resolved = calculateEndState([bankerOn([10, 8]), playerOn(p1, [10, 7], 5), playerOn(p2, [10, 10], 40)]);
+    const bankerTurn = resolved.find((t) => t.player.type === "admin")!;
+
+    expect(bankerTurn.beat).toBe(1); // p1's 17
+    expect(bankerTurn.lostTo).toBe(1); // p2's 20
+    expect(bankerTurn.busted).toBe(false);
+    // ...and it IS down on money overall, which is exactly why the state alone
+    // misled the player holding 17.
+    expect(bankerTurn.state).toBe("lost");
+  });
+
+  it("flags a real futch separately from finishing down on money", () => {
+    const futched = calculateEndState([bankerOn([10, 10, 5]), playerOn(p1, [10, 7], 5)]);
+    const bankerTurn = futched.find((t) => t.player.type === "admin")!;
+    expect(bankerTurn.busted).toBe(true);
+    expect(bankerTurn.lostTo).toBe(1); // a busted bank loses to everyone still in
+    expect(bankerTurn.beat).toBe(0);
+  });
+
+  it("does not count a blatt as anyone the bank beat", () => {
+    // p2 wagered nothing, so there was no head-to-head to win or lose.
+    const resolved = calculateEndState([bankerOn([10, 8]), playerOn(p1, [10, 7], 5), playerOn(p2, [10, 10], 0)]);
+    const bankerTurn = resolved.find((t) => t.player.type === "admin")!;
+    expect(bankerTurn.beat).toBe(1);
+    expect(bankerTurn.lostTo).toBe(0);
+  });
+});

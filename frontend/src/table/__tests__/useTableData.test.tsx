@@ -37,7 +37,7 @@ describe("useTableData", () => {
     const round: RoundState = {
       roundId: "R1",
       roomId: "ROOM1",
-      deck: [],
+      deckRemaining: 0,
       turns: [p1Turn, p2Turn, bankerTurn],
       state: "playing",
       roundNumber: 1,
@@ -60,7 +60,7 @@ describe("useTableData", () => {
     const round: RoundState = {
       roundId: "R2",
       roomId: "ROOM1",
-      deck: [],
+      deckRemaining: 0,
       turns: [p1Turn, p2Turn, bankerTurn],
       state: "playing",
       roundNumber: 1,
@@ -103,7 +103,7 @@ describe("useTableData", () => {
     const round: RoundState = {
       roundId: "R3",
       roomId: "ROOM1",
-      deck: [],
+      deckRemaining: 0,
       turns: [p1Turn, p2Turn, bankerTurn],
       state: "playing",
       roundNumber: 1,
@@ -122,7 +122,7 @@ describe("useTableData", () => {
     const round: RoundState = {
       roundId: "R4",
       roomId: "ROOM1",
-      deck: [],
+      deckRemaining: 0,
       turns: [makeTurn(banker)],
       state: "playing",
       roundNumber: 1,

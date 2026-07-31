@@ -371,19 +371,36 @@ body:has(.k-fit) {
   white-space: nowrap;
 }
 
-/* Hand + cards. */
-/* Hands must wrap: a seat column is a hard 168px, and a player who blatts
-   then hits several times can hold 5+ cards. Without wrapping the row
-   overflows into the neighbouring seats and it stops being clear whose
-   cards are whose. */
+/* Hand + cards.
+   Long hands FAN rather than wrap. Wrapping kept the hand inside its 168px
+   seat column, but paid for it vertically -- and .k-seat is centred with
+   translate(-50%,-50%), so every extra row grew the seat in BOTH directions:
+   six cards dragged the viewer's seat from y487-693 to y392-788 (into the
+   dock) and lifted the banker's plate up under the header. Overlapping caps
+   a hand at one row forever, which is the only thing that actually bounds it.
+   ~60% of each covered card stays visible, which is all these cards need --
+   the number is printed top-left. */
 .k-hand {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
   gap: 3px;
   min-height: 66px;
   align-items: flex-start;
+  /* Card WIDTH, which the fan offsets are a fraction of. The images are
+     height-constrained with width:auto, so this tracks the heights below at
+     the deck art's own ~0.66 aspect. --k-fan is how much of a card the next
+     one covers, so 0.4 leaves 60% showing. */
+  --k-card-w: 41px;
+  --k-fan: 0.4;
+}
+/* Cards must never be squeezed to make a hand fit: they're the game. Without
+   this, nowrap let flex shrink them to fit the 168px column -- the banker's
+   eight-card hand measured 17px wide a card and the viewer's collapsed to 0. */
+.k-hand > * {
+  flex: none;
+  position: relative;
 }
 .k-hand img,
 .k-hand .k-cardback {
@@ -391,14 +408,49 @@ body:has(.k-fit) {
   width: auto;
   filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4));
 }
+.k-hand.is-dealer {
+  --k-card-w: 47px;
+}
 .k-hand.is-dealer img,
 .k-hand.is-dealer .k-cardback {
   height: 72px;
+}
+/* The viewer's own cards are half again as wide, so the same fan would push
+   their hand into the seats either side of them -- measured, a six-card hand
+   at 0.4 reached exactly their neighbours' edges. Theirs overlaps a little
+   harder to stay clear. */
+.k-hand.is-me {
+  --k-card-w: 61px;
+  --k-fan: 0.45;
 }
 .k-hand.is-me img,
 .k-hand.is-me .k-cardback {
   height: 92px;
 }
+/* Quantity queries, deliberately not :has() -- `:nth-last-child(n+4) ~ *`
+   matches every card except the first exactly when the hand holds 4 or more,
+   and works on every browser the table already supports.
+   The offset cancels the 3px gap first, so --k-fan is a true fraction of a
+   card rather than a raw nudge. */
+.k-hand > :nth-last-child(n + 4) ~ * {
+  margin-left: calc(-3px - var(--k-card-w) * var(--k-fan));
+}
+/* Past six, the standard fan would outgrow the seat column and start reaching
+   into the neighbours, so it tightens rather than spills. Hands this long are
+   rare (~1 in 700 measured), and the number is printed in the card's top-left
+   corner, so a narrower sliver still reads. */
+.k-hand > :nth-last-child(n + 7) ~ * {
+  margin-left: calc(-3px - var(--k-card-w) * (var(--k-fan) + 0.15));
+}
+/* Keep the fan readable: later cards must sit ON TOP of earlier ones, which
+   is also the natural reading order for the numbers down the left edge. */
+.k-hand > :nth-child(2) { z-index: 2; }
+.k-hand > :nth-child(3) { z-index: 3; }
+.k-hand > :nth-child(4) { z-index: 4; }
+.k-hand > :nth-child(5) { z-index: 5; }
+.k-hand > :nth-child(6) { z-index: 6; }
+.k-hand > :nth-child(7) { z-index: 7; }
+.k-hand > :nth-child(n + 8) { z-index: 8; }
 
 /* Status pills -- translucent tint + matching border, per state. */
 .k-tag {
@@ -795,20 +847,23 @@ body:has(.k-fit) {
 }
 
 /* Control dock -- dark gradient bar with a gold top hairline. */
+/* Kept deliberately compact on desktop: this bar is a set of controls, not a
+   feature of the table, and every pixel it takes is felt the players can't
+   see. The phone breakpoint further down tightens it again. */
 .k-dock {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  min-height: 84px;
+  min-height: 66px;
   background: linear-gradient(0deg, rgba(8, 16, 12, 0.94), rgba(8, 16, 12, 0.5));
   border-top: 1px solid rgba(230, 164, 75, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 10px;
+  padding: 8px 14px;
   /* The dock sits flush against the bottom/side edges -- on notched iPhones
      in landscape that's exactly where the home-indicator bar and the notch
      sit, so pad by the real inset (0 on non-notch devices) on top of the
@@ -825,18 +880,18 @@ body:has(.k-fit) {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 9px;
-  padding: 6px 10px;
+  padding: 5px 9px;
 }
 .k-betbox .k-cur {
   color: #e6a44b;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
 }
 .k-betbox .k-amt {
-  width: 44px;
+  width: 42px;
   text-align: right;
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   /* Was a <span>; now a real, tappable <input> -- reset it back to looking
      like plain text in the pill instead of a bordered form control. */
@@ -896,8 +951,8 @@ body:has(.k-fit) {
 .k-btn {
   border: none;
   border-radius: 9px;
-  padding: 10px 20px;
-  font-size: 14px;
+  padding: 8px 16px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   color: #fff;
@@ -927,8 +982,8 @@ body:has(.k-fit) {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3) inset;
 }
 .k-btn.sm {
-  padding: 7px 14px;
-  font-size: 12px;
+  padding: 6px 12px;
+  font-size: 11.5px;
 }
 .k-toggle {
   display: flex;
@@ -1259,19 +1314,94 @@ body:has(.k-fit) {
   color: #f3e6c8;
 }
 
-/* Reaction badge floating above a seat. */
+/* Reaction floating above a seat -- shaped as a speech bubble so it reads as
+   somebody SAYING something rather than as another status pill, of which the
+   seat already has several. Same footprint as the old badge: the extra
+   presence is all shape, glow and motion, not size.
+   The whole 10s life is one animation (see state.ts, which drops the reaction
+   at exactly 10s): pop in, hold, then drift up and fade so it leaves on its
+   own instead of vanishing between frames. */
 .k-reaction {
   position: absolute;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(10, 18, 13, 0.95);
-  border: 1px solid rgba(230, 164, 75, 0.4);
-  border-radius: 999px;
-  padding: 2px 8px;
+  background: linear-gradient(180deg, rgba(24, 40, 29, 0.97), rgba(10, 18, 13, 0.97));
+  border: 1px solid rgba(230, 164, 75, 0.55);
+  border-radius: 12px;
+  padding: 3px 10px;
   font-size: 14px;
-  line-height: 1.2;
+  line-height: 1.25;
+  white-space: nowrap;
   z-index: 45;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 14px rgba(230, 164, 75, 0.28);
+  animation: reactionLife 10s ease-out forwards;
+}
+/* The tail, pointing down at whoever said it. Two stacked triangles so it
+   keeps the same gold edge as the bubble -- a single one would be borderless. */
+.k-reaction::before,
+.k-reaction::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+}
+.k-reaction::before {
+  transform: translateX(-50%);
+  border-top: 7px solid rgba(230, 164, 75, 0.55);
+}
+.k-reaction::after {
+  transform: translateX(-50%) translateY(-1.5px);
+  border-top: 7px solid rgba(12, 20, 15, 0.97);
+}
+@keyframes reactionLife {
+  0% { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.7); }
+  5% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.08); }
+  9% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  85% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still leaves on its own, just without the travel -- a reaction that never
+     faded would sit on the felt for its whole 10s and then blink out. */
+  .k-reaction {
+    animation: reactionFadeOnly 10s linear forwards;
+  }
+  @keyframes reactionFadeOnly {
+    0%, 88% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
+/* Small round close control for the rules dialogs -- these are light amber
+   panels, so it's dark-on-light rather than the felt's gold-on-green. */
+.k-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 90, 40, 0.28);
+  background: rgba(255, 255, 255, 0.6);
+  color: #6b5836;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.k-modal-close:hover {
+  background: #fff;
+  color: #2f2716;
+}
+.k-modal-close:focus-visible {
+  outline: 2px solid rgba(230, 164, 75, 0.85);
+  outline-offset: 2px;
 }
 
 /* NOTE: the watermark used to be painted here on .felt-table::after. It now

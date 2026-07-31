@@ -44,6 +44,17 @@ export interface Turn {
   settledBet?: number;
   settledNet?: number;
   settled?: boolean;
+  // The banker's `state` has to carry their MONEY result (they can finish
+  // behind on the round holding a perfectly good hand), so it can't also say
+  // whether they futched -- these three keep the two apart.
+  //   busted: the hand itself went over 21.
+  //   beat / lostTo: how many wagering players the banker beat and lost to.
+  // A banker plays one hand against the whole table at once, so a single
+  // WON/LOST tag is a category error: 18 beats a 17 and loses to a 20 in the
+  // same breath, which read to players as "the bank lost to my 17".
+  busted?: boolean;
+  beat?: number;
+  lostTo?: number;
 }
 
 export interface BankLockState {
@@ -100,6 +111,13 @@ export interface RoundState {
   turnTimerExpiresAt?: number;
   turnTimerDurationMs?: number;
 }
+
+// What a client is actually allowed to see of a round. `deck` is the live
+// shoe IN DEALING ORDER, so shipping it would hand every player the next
+// cards -- they only ever needed the count behind the shoe badge, so that's
+// all that crosses the wire. See WsServer.sanitizeRound, the single choke
+// point every round payload passes through.
+export type PublicRoundState = Omit<RoundState, "deck"> & { deckRemaining: number };
 
 export interface RoomState {
   roomId: string;

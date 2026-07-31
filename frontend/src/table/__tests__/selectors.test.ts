@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { totalDisplay, tagVariant, allTotals, bestTotal } from "../selectors";
+import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay } from "../selectors";
 import { Card, Player, Turn } from "../../types";
 
 const banker: Player = { id: "bank", firstName: "Bank", lastName: "", type: "admin", presence: "online" };
@@ -117,5 +117,58 @@ describe("tagVariant -- the banker's own status pill must match a player's", () 
   it("falls back to muted for anything else", () => {
     expect(tagVariant("PUSH", false)).toBe("muted");
     expect(tagVariant("Waiting...", false)).toBe("muted");
+  });
+});
+
+// A banker plays ONE hand against the whole table, so "did the bank win?" has
+// no single answer -- an 18 beats a 17 and loses to a 20 in the same round.
+// The server's turn.state can't say, because it doubles as the banker's MONEY
+// result: a banker who beat three players but paid out one big wager settles
+// to "lost", which a player holding 17 read as "the bank lost to my 17".
+describe("statusDisplay -- the banker's outcome against a whole table", () => {
+  const settled = (over: Partial<Turn>): Turn =>
+    makeTurn(banker, { state: "standby", beat: 0, lostTo: 0, ...over });
+
+  it("does not call it a loss when the bank beat some players and lost to others", () => {
+    // The exact shape of the reported bug: state "lost" (down on money),
+    // hand of 18, but it still beat two of the three players.
+    const turn = settled({ state: "lost", beat: 2, lostTo: 1 });
+    expect(statusDisplay(turn).label).toBe("BEAT 2 · LOST 1");
+    expect(tagVariant(statusDisplay(turn).label, false)).toBe("stand"); // neither green nor red
+  });
+
+  it("reads as a clean win when the bank beat everyone", () => {
+    expect(statusDisplay(settled({ beat: 3, lostTo: 0 })).label).toBe("BEAT 3");
+    expect(tagVariant("BEAT 3", false)).toBe("won");
+  });
+
+  it("reads as a clean loss when every wagering player beat it", () => {
+    expect(statusDisplay(settled({ state: "lost", beat: 0, lostTo: 2 })).label).toBe("LOST TO 2");
+    expect(tagVariant("LOST TO 2", false)).toBe("bust");
+  });
+
+  it("says FUTCHED only when the bank's own hand actually went over", () => {
+    // Busted beats every other reading, however the money landed.
+    const busted = settled({ state: "lost", busted: true, beat: 0, lostTo: 3 });
+    expect(statusDisplay(busted).label).toBe("FUTCHED!");
+    // ...and a bank that merely finished DOWN on money is not a futch.
+    const brokeEven = settled({ state: "lost", busted: false, beat: 1, lostTo: 2 });
+    expect(statusDisplay(brokeEven).label).not.toBe("FUTCHED!");
+  });
+
+  it("says nothing about wagers nobody made", () => {
+    expect(statusDisplay(settled({ beat: 0, lostTo: 0 })).label).toBe("NO WAGERS");
+  });
+
+  it("leaves a live round alone -- beat/lostTo only exist after settlement", () => {
+    // Mid-round the banker is still just waiting their turn.
+    expect(statusDisplay(makeTurn(banker, { state: "pending" })).label).toBe("Waiting...");
+    expect(statusDisplay(makeTurn(banker, { state: "standby" })).label).toBe("STANDING");
+  });
+
+  it("never applies any of this to a regular player", () => {
+    // A player carrying these fields somehow must still read as a plain loss.
+    const turn = makeTurn(p1, { state: "lost", beat: 5, lostTo: 0 });
+    expect(statusDisplay(turn).label).toBe("LOST");
   });
 });

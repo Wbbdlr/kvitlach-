@@ -177,9 +177,16 @@ export default function App() {
       if (turn.state !== prevTurn.state) {
         // A push returns the wager, not a win -- it shouldn't sound like one.
         if (turn.state === "won" && !isPushTurn(turn)) audioManager.playSfx("win");
-        // Every loss gets a sound now, not just a bust -- "bust"/"futch"
-        // are the same audio file, so there's nothing to distinguish here.
-        if (turn.state === "lost") audioManager.playSfx("bust");
+        // The futch horn is for going over 21, not for losing. Keying it off
+        // state === "lost" got this backwards at both ends: the BANKER's state
+        // also reads "lost" when they merely finish the round down on money
+        // (see calculateEndState), so a bank with a fine hand blew the horn,
+        // while a genuine bank futch that ended up ahead on money didn't.
+        // statusDisplay is the one place that already knows the difference.
+        if (turn.state === "lost") {
+          const busted = statusDisplay(turn).label === "FUTCHED!";
+          audioManager.playSfx(busted ? "bust" : "lose");
+        }
       }
     });
 

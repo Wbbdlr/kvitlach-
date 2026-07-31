@@ -1,3 +1,5 @@
+import { Icon } from "./table/icons";
+
 export interface RulesModalsProps {
   showHowTo: boolean;
   showWhatIs: boolean;
@@ -23,10 +25,12 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
           >
             <button
               type="button"
-              className="absolute top-3 right-3 text-xs font-semibold text-slate-500 underline"
+              className="k-modal-close"
               onClick={onCloseHowTo}
+              aria-label="Close"
+              title="Close"
             >
-              Close
+              <Icon name="close" size={15} />
             </button>
             <div className="space-y-3 text-sm text-slate-700">
               <h2 className="text-lg font-semibold">How To Play Kvitlach</h2>
@@ -107,10 +111,12 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
           >
             <button
               type="button"
-              className="absolute top-3 right-3 text-xs font-semibold text-slate-500 underline"
+              className="k-modal-close"
               onClick={onCloseWhatIs}
+              aria-label="Close"
+              title="Close"
             >
-              Close
+              <Icon name="close" size={15} />
             </button>
             <div className="space-y-3 text-sm text-slate-700">
               <h2 className="text-lg font-semibold">What Is Kvitlach?</h2>

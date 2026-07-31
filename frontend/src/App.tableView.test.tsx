@@ -30,7 +30,7 @@ const room: RoomState = {
 const round: RoundState = {
   roundId: "R1",
   roomId: "ROOM1",
-  deck: [],
+  deckRemaining: 0,
   turns: [playerTurn, adminTurn],
   state: "playing",
   roundNumber: 1,

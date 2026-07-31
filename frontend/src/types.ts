@@ -44,11 +44,16 @@ export interface Turn {
   settledBet?: number;
   settledNet?: number;
   settled?: boolean;
-  // Frontend-only display hint: never sent by the live round:state/round:ended
-  // WS flow (real turns always carry `cards` and derive bust-ness from them).
-  // Only set when a Turn is synthesized from the server's compact, card-free
-  // RoundHistoryEntry to backfill history for a fresh device/cleared cache.
+  // Set by the server on the BANKER's turn at settlement, and also used as a
+  // display hint when a Turn is synthesized from the server's compact,
+  // card-free RoundHistoryEntry (backfilling history on a fresh device).
+  // A player's own bust is still derived from their cards.
   busted?: boolean;
+  // Banker only: how many wagering players they beat and lost to. The banker
+  // plays one hand against everyone, so their `state` alone can't say -- an 18
+  // beats a 17 and loses to a 20 at the same time.
+  beat?: number;
+  lostTo?: number;
 }
 
 export interface BankLockState {
@@ -83,7 +88,11 @@ export interface RoundHistoryEntry {
 export interface RoundState {
   roundId: string;
   roomId: string;
-  deck: Card[];
+  // How many cards are left in the shoe -- NOT the cards themselves. The
+  // server deliberately never sends the deck (see its sanitizeRound): it's
+  // held in dealing order, so shipping it would let any player read the next
+  // cards out of devtools.
+  deckRemaining?: number;
   turns: Turn[];
   state: RoundPhase;
   deckCount?: number;

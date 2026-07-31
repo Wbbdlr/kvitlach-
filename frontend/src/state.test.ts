@@ -231,7 +231,7 @@ describe("deck reshuffle notification", () => {
   const baseRound = {
     roundId: "R1",
     roomId: "ROOM1",
-    deck: [],
+    deckRemaining: 0,
     turns: [],
     state: "playing",
     roundNumber: 1,

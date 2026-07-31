@@ -214,11 +214,22 @@ function sanitizeDeckCount(count: number): number {
   return Math.min(Math.max(1, Math.floor(count)), MAX_DECKS);
 }
 
+// How many rounds one shoe should comfortably cover before it needs a fresh
+// shuffle. The shoe used to be sized for a SINGLE round, which was right when
+// every round dealt itself a brand new deck -- but the deck now carries over
+// between rounds, so that sizing meant a 7-player table burned through its
+// 48 cards in about two rounds and reshuffled constantly.
+const TARGET_ROUNDS_PER_SHOE = 8;
+// Measured, not guessed: simulating hands against the real deck puts the
+// average at ~3.3 cards each, so 4 leaves headroom for a table full of long
+// hands without making the shoe absurd.
+const ASSUMED_CARDS_PER_HAND = 4;
+const CARDS_PER_DECK = 48;
+
 function recommendedDeckCount(playerCount: number): number {
-  // Assume up to six cards per player (including banker) plus a small buffer to keep large tables playable.
-  const assumedCards = Math.max(1, playerCount) * 6 + 6;
-  const decksNeeded = Math.ceil(assumedCards / 48);
-  return sanitizeDeckCount(decksNeeded);
+  const seats = Math.max(1, playerCount); // includes the banker
+  const assumedCards = seats * ASSUMED_CARDS_PER_HAND * TARGET_ROUNDS_PER_SHOE;
+  return sanitizeDeckCount(Math.ceil(assumedCards / CARDS_PER_DECK));
 }
 
 export function getGameState(turns: Turn[]): RoundPhase {
@@ -241,6 +252,11 @@ export function calculateEndState(turns: Turn[]): Turn[] {
   if (!adminTurn) return turns;
 
   let adminBalance = 0;
+  // Counted separately from adminBalance: money and head-to-head results are
+  // different questions. One big wager lost can leave the banker behind on
+  // the round while they still beat most of the table.
+  let beat = 0;
+  let lostTo = 0;
   const resolvedPlayers = new Map<string, Turn>();
 
   playerTurns.forEach((turn) => {
@@ -267,6 +283,13 @@ export function calculateEndState(turns: Turn[]): Turn[] {
     if (resolvedState === "won") adminBalance -= turn.bet;
     if (resolvedState === "lost") adminBalance += turn.bet;
 
+    // Only hands with something at stake are a head-to-head result -- a blatt
+    // pushes, it doesn't beat anyone.
+    if (!noWager) {
+      if (resolvedState === "won") lostTo += 1;
+      else if (resolvedState === "lost") beat += 1;
+    }
+
     resolvedPlayers.set(turn.player.id, { ...turn, state: resolvedState });
   });
 
@@ -277,7 +300,17 @@ export function calculateEndState(turns: Turn[]): Turn[] {
   else if (adminBalance < 0) adminState = "lost";
   else adminState = "standby";
 
-  const adminResolved: Turn = { ...adminTurn, state: adminState, bet: adminBalance };
+  const adminResolved: Turn = {
+    ...adminTurn,
+    state: adminState,
+    bet: adminBalance,
+    // Note this is NOT the same question as `state === "lost"`: that branch
+    // above also fires when the banker merely finishes the round down on
+    // money. Clients need the real answer for the futch tag and its sound.
+    busted: adminActualState === "lost",
+    beat,
+    lostTo,
+  };
 
   return turns.map((turn) => {
     if (turn.player.type === "admin") return adminResolved;

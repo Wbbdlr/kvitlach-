@@ -374,7 +374,7 @@ export function TableRoot({
             canAct={canBankerAct}
             onHit={() => onHit({ eleveroon: true })}
             onStand={onStand}
-            deckCount={round?.deck?.length ?? 0}
+            deckCount={round?.deckRemaining ?? 0}
             onOpenStats={onOpenStats}
           />
         )}

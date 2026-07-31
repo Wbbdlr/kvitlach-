@@ -227,10 +227,39 @@ export function tagVariant(label: string, isCurrentTurn: boolean): string {
   if (label === "WON") return "won";
   if (label === "LOST" || label === "FUTCHED!") return "bust";
   if (label === "STANDING") return "stand";
+  // Banker split results (see bankerOutcome). A mixed round is genuinely
+  // neither a win nor a loss for the bank, so it takes the neutral amber
+  // rather than being forced into one or the other.
+  if (label.startsWith("BEAT") && label.includes("LOST")) return "stand";
+  if (label.startsWith("BEAT")) return "won";
+  if (label.startsWith("LOST TO")) return "bust";
   return "muted";
 }
 
+// The banker plays ONE hand against the whole table, so "did the bank win?"
+// has no single answer: an 18 beats a 17 and loses to a 20 in the same round.
+// The server's turn.state can't express that -- it doubles as the banker's
+// money result, so a banker who beat three players but paid out one big wager
+// comes back "lost", which a player holding 17 quite reasonably read as "the
+// bank lost to me".
+//
+// Returns undefined while the round is still live: `beat`/`lostTo` are only
+// ever set by the server at settlement (calculateEndState), so their presence
+// is also the signal that there's a final outcome to show at all.
+export function bankerOutcome(turn: Turn): { label: string; className: string } | undefined {
+  if (turn.player.type !== "admin") return undefined;
+  if (turn.beat === undefined || turn.lostTo === undefined) return undefined;
+  if (turn.busted) return { label: "FUTCHED!", className: "text-rose-700 font-bold" };
+  const { beat, lostTo } = turn;
+  if (beat === 0 && lostTo === 0) return { label: "NO WAGERS", className: "text-slate-500" };
+  if (lostTo === 0) return { label: `BEAT ${beat}`, className: "text-emerald-700 font-bold" };
+  if (beat === 0) return { label: `LOST TO ${lostTo}`, className: "text-rose-600 font-semibold" };
+  return { label: `BEAT ${beat} · LOST ${lostTo}`, className: "text-orange-600 font-bold" };
+}
+
 export function statusDisplay(turn: Turn): { label: string; className: string } {
+  const banker = bankerOutcome(turn);
+  if (banker) return banker;
   if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
   if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
   if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };

@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import type { IncomingMessage } from "http";
 import { GameStore } from "./store.js";
-import { ClientEnvelope, RoomState, RoundState, ServerEnvelope, ReactionEvent } from "./types.js";
+import { ClientEnvelope, PublicRoundState, RoomState, RoundState, ServerEnvelope, ReactionEvent } from "./types.js";
 import type { RoundContext } from "./round.js";
 
 interface ConnectionMeta {
@@ -576,9 +576,14 @@ export class WSServer {
     }, PRACTICE_NEXT_ROUND_DELAY_MS);
   }
 
-  private sanitizeRound(round: RoundState | RoundContext): RoundState {
-    const { timer, turnTimer, botTimer, ...rest } = round as RoundContext;
-    return rest;
+  // The ONLY place a round crosses the wire (every ack, resume and broadcast
+  // routes through here), so it's the one place that has to get this right.
+  // `deck` is the live shoe in dealing order -- sending it let any player read
+  // the next cards straight out of devtools. Clients only ever used its
+  // length, for the shoe badge, so only the count goes out.
+  private sanitizeRound(round: RoundState | RoundContext): PublicRoundState {
+    const { timer, turnTimer, botTimer, deck, ...rest } = round as RoundContext;
+    return { ...rest, deckRemaining: deck?.length ?? 0 };
   }
 
   private async attach(socket: WebSocket, roomId: string, playerId: string) {

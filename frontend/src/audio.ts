@@ -1,9 +1,14 @@
-type SfxKey = "deal" | "win" | "bust" | "shuffle" | "chip" | "eleveroon";
+type SfxKey = "deal" | "win" | "bust" | "lose" | "shuffle" | "chip" | "eleveroon";
 
 const SFX_PATHS: Record<SfxKey, string[]> = {
   deal:        ["/sounds/card-place-1.ogg", "/sounds/card-place-2.ogg"],
   win:         ["/sounds/chips-stack-1.ogg"],
+  // "bust" is the futch horn -- it means the hand went over 21, and nothing
+  // else. Losing the showdown with a good hand is a different event and gets
+  // its own chips-swept-away sound, so a futch stays the thing that turns
+  // heads at the table.
   bust:        ["/sounds/futch.mp3"],
+  lose:        ["/sounds/chips-collide-1.ogg"],
   shuffle:     ["/sounds/card-shuffle.ogg"],
   chip:        ["/sounds/chip-lay-1.ogg"],
   eleveroon:   ["/sounds/eleveroon.mp3"],
@@ -49,7 +54,10 @@ export class AudioManager {
     const pool = this.sfxPool[name];
     const idle = pool?.find((a) => a.paused || a.ended);
     const el = idle ?? new Audio(path);
-    if (!idle) el.src = path;
+    // Always point at the freshly picked file. preloadSfx() bakes ONE random
+    // variant into the pooled element, so reusing it as-is meant multi-file
+    // keys (the two card-place samples) replayed the same sample forever.
+    if (!el.src.endsWith(path)) el.src = path;
     el.currentTime = 0;
     el.volume = 0.5;
     void el.play().catch(() => { /* blocked before interaction */ });
