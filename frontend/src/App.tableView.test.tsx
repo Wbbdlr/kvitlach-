@@ -172,4 +172,49 @@ describe("the felt table is the only in-room view", () => {
     expect(getByText(/Round complete/i)).toBeInTheDocument();
     expect(getByText(/Waiting for the banker to start the next round/i)).toBeInTheDocument();
   });
+
+  // The futch celebration used to float over the felt, where it covered the
+  // banker's own plate and cards -- the one hand everybody wants to see when
+  // the bank busts. It lives in the dock now precisely because no seat can
+  // reach into a flex child of the dock, however many cards a hand wraps to.
+  describe("when the bank futches", () => {
+    const bustedBankerTurn: Turn = {
+      ...adminTurn,
+      state: "lost",
+      cards: [
+        { name: "10", attributes: { values: [10] } },
+        { name: "9", attributes: { values: [9] } },
+        { name: "5", attributes: { values: [5] } },
+      ],
+    };
+
+    beforeEach(() => {
+      mockState.round = { ...round, state: "terminate", turns: [playerTurn, bustedBankerTurn] };
+    });
+
+    it("announces it in the dock instead of over the felt", () => {
+      const { container, getByText } = render(<App />);
+      expect(getByText(/THE BANK FUTCHED!/i)).toBeInTheDocument();
+      // Inside the dock, not floating on the stage.
+      expect(container.querySelector(".k-dock .k-futch-flash")).not.toBeNull();
+      expect(container.querySelector(".felt-table .k-futch-flash")).toBeNull();
+    });
+
+    it("replaces the Round complete label rather than adding a row to the dock", () => {
+      const { container, queryByText } = render(<App />);
+      expect(queryByText(/Round complete/i)).toBeNull();
+      // Still exactly one status element plus the banker's own prompt.
+      expect(container.querySelectorAll(".k-dock .k-futch-flash")).toHaveLength(1);
+      expect(container.querySelectorAll(".k-dock .k-banktotal")).toHaveLength(0);
+    });
+
+    it("leaves the banker's busted hand on the felt for everyone to read", () => {
+      const { container } = render(<App />);
+      // 3 cards, all rendered -- nothing is hidden to make room for the banner.
+      const seats = container.querySelectorAll(".k-seat");
+      const bankerHand = seats[0].querySelector(".k-hand");
+      expect(bankerHand?.querySelectorAll("img, .k-cardback")).toHaveLength(3);
+      expect(seats[0].querySelector(".k-tag")?.textContent).toMatch(/FUTCHED/i);
+    });
+  });
 });

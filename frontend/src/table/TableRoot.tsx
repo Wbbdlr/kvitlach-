@@ -440,12 +440,6 @@ export function TableRoot({
           <span>{bankBannerText}</span>
         </div>
       )}
-      {bankBusted && (
-        <div className="k-bank-futch-banner" role="status" aria-live="polite">
-          <div className="headline">THE BANK FUTCHED!</div>
-          <div className="subline">Everyone still in the hand wins!</div>
-        </div>
-      )}
       {(bankerDecisionRequired || waitingOnBankDecision) && (
         <div className="k-bank-decision" role="status" aria-live="polite">
           <div className="headline">Bank depleted</div>
@@ -629,7 +623,22 @@ export function TableRoot({
 
       {(roundOver || preRound) && (
         <div className="k-dock">
-          <span className="k-banktotal">{preRound ? "Table ready" : "Round complete"}</span>
+          {/* A busted banker always terminates the round (getGameState: the
+              banker acts last, so their turn resolving leaves nothing
+              pending), so this dock is guaranteed to be on screen whenever
+              bankBusted is true -- which is what lets the celebration live
+              here instead of floating over the felt. It replaces the
+              "Round complete" label rather than joining it, so the dock
+              gains no extra row on a phone. */}
+          {bankBusted ? (
+            <span className="k-futch-flash" role="status" aria-live="polite">
+              <Icon name="bank" size={15} />
+              <b>THE BANK FUTCHED!</b>
+              <span>everyone still in the hand wins</span>
+            </span>
+          ) : (
+            <span className="k-banktotal">{preRound ? "Table ready" : "Round complete"}</span>
+          )}
           {isAdmin ? (
             <button type="button" className="k-btn bet k-pulse-attn" onClick={onStartNextRound}>
               {!preRound ? "Start next round" : firstDeal ? "Deal the first round" : "Deal the next round"}
