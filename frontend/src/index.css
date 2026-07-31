@@ -560,6 +560,87 @@ body:has(.k-fit) {
   color: #7a6a4a;
 }
 
+/* ---- Bank reservations: chips the bank has committed to live wagers ----
+   Drawn on the line between the bank and the player each one covers, so a
+   shrinking bet limit has a visible cause. Sits above the felt's rings
+   (z-index 1) but below the seats (10), so a crowded table keeps nameplates
+   readable rather than badges. */
+.k-resv-lines {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.k-resv-line {
+  stroke: rgba(240, 197, 121, 0.32);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 3 7;
+  animation: resvFlow 1.6s linear infinite;
+}
+/* Dashes travel bank -> player, the direction the chips were committed. */
+@keyframes resvFlow {
+  to { stroke-dashoffset: -10; }
+}
+
+.k-resv {
+  position: absolute;
+  z-index: 9;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  background: rgba(10, 20, 14, 0.82);
+  border: 1px solid rgba(240, 197, 121, 0.45);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  color: #f0c579;
+  white-space: nowrap;
+  pointer-events: none;
+  transform-origin: center;
+  animation: resvIn 0.32s cubic-bezier(0.2, 1.3, 0.5, 1) both;
+}
+.k-resv-amt {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+/* Chips slide out from the bank and settle, rather than blinking into place. */
+@keyframes resvIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  to { opacity: 1; }
+}
+
+/* Reserved/free split under the bank total. */
+.k-bank-split {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.k-bank-split-sep {
+  width: 1px;
+  height: 9px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .k-resv-line,
+  .k-resv {
+    animation: none;
+  }
+}
+/* A portrait phone scales the stage to ~0.3x, which would render these as
+   unreadable specks on top of the cards. Dropped there rather than shrunk:
+   the bet controls still refuse an over-limit wager and say why, so nothing
+   is actually unenforceable -- and landscape/fullscreen (the intended way to
+   play on a phone) clears this breakpoint and gets the chips back. */
+@media (max-width: 520px), (max-height: 440px) {
+  .k-resv-lines,
+  .k-resv {
+    display: none;
+  }
+}
+
 /* Centered bank total. */
 .k-banktotal {
   font-size: 15px;

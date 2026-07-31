@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { CompletedRoundSummary } from "../state";
-import { statusDisplay, betDisplay, fullName, formatNames, isPushTurn } from "./selectors";
+import { statusDisplay, betDisplay, fullName, formatNames, isPushTurn, reservedAgainst } from "./selectors";
 
 export interface StatsEntry {
   roundNumber: number;
@@ -118,10 +118,11 @@ export function useTableData({
     const bankerWallet = room?.wallets?.[bankerPlayer.id] ?? 0;
     const playerIndex = round.turns.findIndex((turn) => turn.player.id === myPlayerTurn.player.id);
     if (playerIndex < 0) return undefined;
+    // Only wagers made BEFORE this seat tie up the bank for it -- the players
+    // after you haven't committed anything yet.
     const outstanding = round.turns
       .slice(0, playerIndex)
-      .filter((turn) => turn.player.type !== "admin" && turn.state !== "lost" && turn.state !== "skipped" && !turn.settled)
-      .reduce((sum, turn) => sum + (turn.bet ?? 0), 0);
+      .reduce((sum, turn) => sum + reservedAgainst(turn), 0);
     const available = Math.max(bankerWallet - outstanding, 0);
     return { available, outstanding, bankerWallet, playerIndex };
   }, [round, bankerPlayer, myPlayerTurn, room?.wallets]);

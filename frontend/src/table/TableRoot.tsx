@@ -4,12 +4,13 @@ import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useFelt } from "../theme";
 import { orderSeatsForViewer, seatPositions, seatScale, STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
-import { fullName, statusDisplay } from "./selectors";
+import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
 import { PlayerDock } from "./PlayerDock";
 import { BankPanel } from "./BankPanel";
+import { BankReservations } from "./BankReservations";
 import { ReactionLayer } from "./ReactionLayer";
 import { FeltSwitcher } from "./FeltSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
@@ -271,6 +272,21 @@ export function TableRoot({
   const positions = seatPositions(seatedTurns.length);
   const seatShrink = seatScale(positions);
 
+  // Chips the bank currently has committed, per seat -- drawn on the felt so
+  // a shrinking bet limit has a visible cause (see BankReservations).
+  const reservations = useMemo(
+    () =>
+      seatedTurns
+        .map((turn, idx) => ({
+          playerId: turn.player.id,
+          amount: reservedAgainst(turn),
+          position: positions[idx],
+        }))
+        .filter((r) => r.amount > 0 && r.position),
+    [seatedTurns, positions]
+  );
+  const totalReserved = reservations.reduce((sum, r) => sum + r.amount, 0);
+
   // turn.player is a snapshot taken at round-init time and never updated in
   // place (see store.ts's setPresence, which only mutates room.players) --
   // so presence must be read live from room.players, not off the turn, or a
@@ -385,7 +401,9 @@ export function TableRoot({
           />
         ))}
 
-        {bankerPlayer && <BankPanel bankerWallet={bankerWallet} bankAvailable={bankInfo?.available} />}
+        {!roundOver && <BankReservations reservations={reservations} scale={seatShrink} />}
+
+        {bankerPlayer && <BankPanel bankerWallet={bankerWallet} reserved={roundOver ? 0 : totalReserved} />}
 
       </div>
 

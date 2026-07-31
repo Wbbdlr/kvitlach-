@@ -128,11 +128,18 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   const cards = [...turn.cards, effectiveCard];
   let nextState = calcState(cards);
 
+  // A blatt draw (no wager) risks nothing, so it can never cost the player
+  // money -- but it also can't be played on past 21. Once the hand is that
+  // high there's no move left: betting deals another card, which would futch
+  // it. So the turn ends here rather than leaving a hand nobody can do
+  // anything with still live, drawing wasted cards.
+  let blattPush = false;
   if (turn.player.type !== "admin" && (turn.bet ?? 0) === 0) {
     const bestTotal = winningNumber(cards);
     if (bestTotal === undefined) {
-      // Blatt draws (no wager) should not bust the player; let them keep drawing or bet later.
-      nextState = "pending";
+      // Overshot 21 on a free card -- no harm done, but nothing left to play.
+      blattPush = true;
+      nextState = "won"; // resolved at $0, which reads as PUSH (see isPushTurn)
     } else if (nextState === "pending" && bestTotal >= 20) {
       nextState = "standby";
     }
@@ -143,6 +150,7 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
     // Preserve chronological order: earlier cards stay on the left
     cards,
     state: nextState,
+    settledBet: blattPush ? 0 : turn.settledBet,
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
@@ -237,10 +245,24 @@ export function calculateEndState(turns: Turn[]): Turn[] {
 
   playerTurns.forEach((turn) => {
     const actualState = calcState(turn.cards);
-    let resolvedState = turn.state === "standby" ? (playerWon(adminTurn, turn) ? "won" : "lost") : turn.state;
+    // Nothing at stake means nothing to win or lose: a hand played entirely
+    // as blatt draws settles as a push whatever the cards ended up saying,
+    // so neither a busted total nor the banker comparison may relabel it.
+    // (Both money branches below move $0 for these either way -- this is
+    // about not telling a player they LOST a hand they never wagered on.)
+    const noWager = (turn.bet ?? 0) === 0 && (turn.settledBet ?? 0) === 0;
+    let resolvedState = noWager
+      ? turn.state === "skipped"
+        ? "skipped"
+        : "won" // $0 win == push
+      : turn.state === "standby"
+        ? playerWon(adminTurn, turn)
+          ? "won"
+          : "lost"
+        : turn.state;
 
-    if (actualState === "lost") resolvedState = "lost";
-    if (actualState === "won") resolvedState = "won";
+    if (!noWager && actualState === "lost") resolvedState = "lost";
+    if (!noWager && actualState === "won") resolvedState = "won";
 
     if (resolvedState === "won") adminBalance -= turn.bet;
     if (resolvedState === "lost") adminBalance += turn.bet;

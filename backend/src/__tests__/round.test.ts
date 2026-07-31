@@ -170,7 +170,11 @@ describe("round state", () => {
     expect(updated.bet).toBe(0);
   });
 
-  it("does not bust Blatt hands with no wager", () => {
+  it("never costs a Blatt hand money, but ends the turn once it overshoots 21", () => {
+    // A blatt draw risks nothing, so overshooting can't bust the player into a
+    // loss -- but it can't be played on either: betting deals another card,
+    // which would futch it. So the turn resolves as a push instead of staying
+    // live for more wasted draws.
     const round = makeRound();
     const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
 
@@ -183,8 +187,40 @@ describe("round state", () => {
     const resolved = handleHit(round, playerTurn.player.id);
     const updated = resolved.turns.find((t) => t.player.id === playerTurn.player.id)!;
 
-    expect(updated.state).toBe("pending");
+    expect(updated.state).not.toBe("pending"); // no more wasted draws
+    expect(updated.state).not.toBe("lost"); // and not a loss -- nothing was staked
     expect(updated.bet).toBe(0);
+    expect(updated.settledBet).toBe(0); // bet 0 + settled 0 == a push, see isPushTurn
+  });
+
+  it("keeps a busted Blatt hand a push through settlement instead of relabelling it a loss", () => {
+    // calculateEndState re-derives outcomes from the cards, which used to
+    // stamp LOST on a hand the player never wagered on.
+    const round = makeRound();
+    const adminTurn = round.turns.find((t) => t.player.type === "admin")!;
+    const playerTurn = round.turns.find((t) => t.player.id === p1.id)!;
+    const otherTurn = round.turns.find((t) => t.player.id === p2.id)!;
+
+    adminTurn.cards = [{ name: "10", attributes: { values: [10] } }, { name: "9", attributes: { values: [9] } }];
+    adminTurn.state = "standby";
+    // A blatt hand that overshot: no wager, cards over 21.
+    playerTurn.cards = [
+      { name: "10", attributes: { values: [10] } },
+      { name: "10", attributes: { values: [10] } },
+      { name: "5", attributes: { values: [5] } },
+    ];
+    playerTurn.state = "won";
+    playerTurn.bet = 0;
+    playerTurn.settledBet = 0;
+    otherTurn.state = "skipped";
+
+    const resolved = calculateEndState(round.turns);
+    const settled = resolved.find((t) => t.player.id === p1.id)!;
+
+    expect(settled.state).toBe("won"); // $0 "win" is how a push is represented
+    expect(settled.bet).toBe(0);
+    // The banker takes nothing from a hand that staked nothing.
+    expect(resolved.find((t) => t.player.type === "admin")!.bet).toBe(0);
   });
 
   it("pushes immediately when standing with no wager", () => {

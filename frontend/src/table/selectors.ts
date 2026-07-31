@@ -145,6 +145,21 @@ export function isPushTurn(turn: Turn): boolean {
   const settled = turn.settledBet ?? wager;
   return turn.state === "won" && wager === 0 && settled === 0;
 }
+
+// Chips the bank has tied up covering this player's wager: money it has
+// promised but not yet paid out or collected. A hand the bank already won
+// (lost/skipped) or has settled live frees its reservation again.
+//
+// This is the single definition behind both what a player is allowed to bet
+// (useTableData's bankInfo) and what the felt draws (BankReservations) -- if
+// the two ever disagreed, the table would show one number and enforce
+// another.
+export function reservedAgainst(turn: Turn): number {
+  if (turn.player.type === "admin") return 0;
+  if (turn.state === "lost" || turn.state === "skipped") return 0;
+  if (turn.settled) return 0;
+  return Math.max(0, turn.bet ?? 0);
+}
 export function totalDisplay(
   turn: Turn,
   viewerId?: string,
