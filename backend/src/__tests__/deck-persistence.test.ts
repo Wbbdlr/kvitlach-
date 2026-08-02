@@ -29,9 +29,13 @@ describe("deck persistence across rounds", () => {
     expect(round2.deckReshuffledAt).toBeUndefined();
   });
 
-  it("reshuffles a fresh shoe when the carried-over deck can't cover the next round's players", () => {
+  // The dealer chooses when a new shoe comes in -- the server used to decide
+  // this FOR them, silently substituting a fresh shoe the moment the carried-
+  // over one ran low. That's the opposite of a real table, where running low
+  // is something the banker notices and acts on. See GameStore.reshuffleDeck.
+  it("refuses to start the round when the carried-over deck can't cover the players, until the banker reshuffles", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
     store.joinRoom(room.roomId, { firstName: "Alice" });
 
     const round1 = store.startRound(room.roomId);
@@ -44,33 +48,54 @@ describe("deck persistence across rounds", () => {
     expect(afterAliceStand.state).toBe("terminate");
     store.finalizeRound(afterAliceStand.roundId);
 
+    // The banker tries to deal the next round -- refused, not silently fixed.
+    expect(() => store.startRound(room.roomId)).toThrow("deck_low");
+    // Nothing about the room changed as a result of the failed attempt --
+    // no round got created, and (see the rotation test below) the turn
+    // order didn't advance either.
+    expect(store.getRoom(room.roomId)!.roundId).toBeUndefined();
+
+    // The banker chooses to reshuffle -- NOW starting the round works, and
+    // everyone gets told a fresh shoe just came in.
+    store.reshuffleDeck(room.roomId, bankerPlayer.id);
     const round2 = store.startRound(room.roomId);
     expect(round2.deckReshuffledAt).toBeDefined();
     expect(round2.deck.length).toBeGreaterThan(0);
   });
 
-  it("reshuffles mid-round (via handleHit) instead of throwing deck_empty when the shoe runs out", () => {
+  it("refuses the draw when the shoe runs out mid-round, instead of silently reshuffling underneath the hand", () => {
     const players = [admin, p1];
-    const round = createRound(players, "room-1", 1, 1, []);
+    // A full shoe for the opening deal -- this test is about drawCard's own
+    // mid-round behavior, not createRound's (see the deck_low tests for that).
+    const round = createRound(players, "room-1", 1, 1, buildShoe(1));
     // Force the deck empty right after the initial deal.
     round.deck = [];
+    const cardsBefore = round.turns.find((t) => t.player.id === p1.id)!.cards;
 
-    const updated = handleHit(round, p1.id);
-    expect(updated.deckReshuffledAt).toBeDefined();
-    expect(updated.deck.length).toBeGreaterThan(0);
-    expect(updated.turns.find((t) => t.player.id === p1.id)?.cards).toHaveLength(2);
+    expect(() => handleHit(round, p1.id)).toThrow("deck_empty");
+    // The failed draw must be a clean no-op -- nothing about the hand it
+    // couldn't complete should change.
+    expect(round.turns.find((t) => t.player.id === p1.id)!.cards).toBe(cardsBefore);
+    expect(round.deck).toEqual([]);
   });
 
-  it("createRound only reshuffles when the existing deck can't cover every seated player", () => {
+  it("createRound throws deck_low when a carried-over deck can't cover every seated player, but still deals a brand new room's very first shoe", () => {
     const players = [admin, p1];
     const plentyOfCards = buildShoe(1);
     const round = createRound(players, "room-1", 1, 1, plentyOfCards);
     expect(round.deckReshuffledAt).toBeUndefined();
     expect(round.deck.length).toBe(plentyOfCards.length - players.length);
 
-    const tooFewCards = [plentyOfCards[0]]; // fewer cards than players
-    const reshuffled = createRound(players, "room-1", 1, 1, tooFewCards);
-    expect(reshuffled.deckReshuffledAt).toBeDefined();
+    // A carried-over deck that's run too low refuses rather than reshuffles.
+    const tooFewCards = [plentyOfCards[0]];
+    expect(() => createRound(players, "room-1", 1, 1, tooFewCards)).toThrow("deck_low");
+
+    // But a room with NO prior deck at all (existingDeck undefined -- there's
+    // nothing to have run low FROM, so no dealer choice is being bypassed)
+    // still deals its first shoe automatically, same as always.
+    const firstEver = createRound(players, "room-1", 1, 1, undefined);
+    expect(firstEver.deckReshuffledAt).toBeUndefined();
+    expect(firstEver.deck.length).toBeGreaterThan(0);
   });
 
   it("does not flag deckReshuffledAt on a brand new room's very first round", () => {
@@ -88,5 +113,86 @@ describe("deck persistence across rounds", () => {
 
     const round1 = store.startRound(room.roomId);
     expect(round1.deckReshuffledAt).toBeUndefined();
+  });
+
+  it("does not advance the turn rotation or set roundId when startRound fails", () => {
+    // Before this fix, nextStart advanced (and, separately, "not_enough_players"
+    // could throw AFTER it advanced too) regardless of whether the round it
+    // was rotating FOR actually got created -- a retry after fixing the
+    // problem would then skip a player who never got a turn. Asserted
+    // directly on the room record rather than by re-deriving it from two
+    // full rounds of play, which is what the underlying bug actually breaks.
+    const store = new GameStore();
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
+    store.joinRoom(room.roomId, { firstName: "Alice" });
+    store.joinRoom(room.roomId, { firstName: "Bruch" });
+
+    const roomRec = (store as any).rooms.get(room.roomId);
+    const nextStartBefore = roomRec.nextStart;
+    // A defined-but-empty carried-over deck (not undefined) simulates a room
+    // that's played before and is now down to nothing.
+    roomRec.deck = [];
+
+    expect(() => store.startRound(room.roomId)).toThrow("deck_low");
+    expect(roomRec.nextStart).toBe(nextStartBefore);
+    expect(roomRec.room.roundId).toBeUndefined();
+
+    // Retrying without fixing anything fails identically -- nothing was left
+    // half-mutated for a second attempt to trip over.
+    expect(() => store.startRound(room.roomId)).toThrow("deck_low");
+    expect(roomRec.nextStart).toBe(nextStartBefore);
+
+    store.reshuffleDeck(room.roomId, bankerPlayer.id);
+    const round = store.startRound(room.roomId);
+    expect(round.state).toBe("playing");
+    expect(roomRec.nextStart).not.toBe(nextStartBefore); // only advances on an actual success
+  });
+});
+
+describe("GameStore.reshuffleDeck -- the dealer's own choice, live or between rounds", () => {
+  it("is banker-only, both between rounds and mid-round", () => {
+    const store = new GameStore();
+    const { room } = store.createRoom({ firstName: "Banker" });
+    const { player: alice } = store.joinRoom(room.roomId, { firstName: "Alice" });
+
+    expect(() => store.reshuffleDeck(room.roomId, alice.id)).toThrow("forbidden");
+
+    store.startRound(room.roomId);
+    expect(() => store.reshuffleDeck(room.roomId, alice.id)).toThrow("forbidden");
+  });
+
+  it("between rounds, builds the fresh shoe immediately -- the very next round doesn't need a second attempt", () => {
+    const store = new GameStore();
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
+    store.joinRoom(room.roomId, { firstName: "Alice" });
+
+    const returned = store.reshuffleDeck(room.roomId, bankerPlayer.id);
+    // No active round -- nothing to broadcast yet.
+    expect(returned).toBeUndefined();
+
+    const round = store.startRound(room.roomId);
+    expect(round.deckReshuffledAt).toBeDefined();
+    expect(round.deck.length).toBeGreaterThan(0);
+  });
+
+  it("mid-round, replaces only the live round's remaining shoe -- cards already dealt into hands are untouched", () => {
+    const store = new GameStore();
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
+    const { player: alice } = store.joinRoom(room.roomId, { firstName: "Alice" });
+
+    const round = store.startRound(room.roomId);
+    const aliceHandBefore = round.turns.find((t) => t.player.id === alice.id)!.cards;
+
+    const updated = store.reshuffleDeck(room.roomId, bankerPlayer.id);
+    expect(updated).toBeDefined();
+    expect(updated!.deckReshuffledAt).toBeDefined();
+    expect(updated!.deck.length).toBeGreaterThan(0);
+
+    const roundAfter = store.getRound(round.roundId)!;
+    expect(roundAfter.turns.find((t) => t.player.id === alice.id)!.cards).toEqual(aliceHandBefore);
+
+    // And play continues normally on the fresh shoe -- proves this isn't just
+    // a cosmetic swap, the round is actually still live and playable.
+    expect(() => store.applyStand(round.roundId, alice.id)).not.toThrow();
   });
 });

@@ -482,7 +482,13 @@ export class WSServer {
           const roomId = roomFromPayload ?? meta?.roomId;
           const actorId = meta?.playerId;
           if (!roomId || !actorId) throw new Error("invalid_payload");
-          this.store.reshuffleDeck(roomId, actorId);
+          // A mid-round reshuffle returns the updated round -- everyone at
+          // the table needs to see the fresh deckReshuffledAt, not just the
+          // banker who requested it. Between rounds there's no live round to
+          // broadcast; the ack alone is enough (mirrors round:start's own
+          // pattern of ack + conditional round broadcast).
+          const updatedRound = this.store.reshuffleDeck(roomId, actorId);
+          if (updatedRound) this.broadcastRound(updatedRound);
           this.sendAck(socket, requestId, {});
           break;
         }

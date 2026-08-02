@@ -25,28 +25,33 @@ export function buildShoe(deckCount: number): Card[] {
 }
 
 // `existingDeck` carries the leftover shoe forward from the room's previous
-// round (see GameStore.finalizeRound/startRound) -- the deck should only be
-// reshuffled when it's actually run out, not on every round. If there isn't
-// even enough left for one card per seated player, deal a fresh shoe now
-// (rather than let initializeTurns throw) and flag deckReshuffledAt so
-// clients can be told a fresh deck came into play.
+// round (see GameStore.finalizeRound/startRound). At a real table, running
+// low is something the DEALER notices and chooses to act on -- it never
+// just happens to them mid-deal. So if there was a prior deck and it can't
+// cover this round's seated players, this refuses to start rather than
+// silently substitute a fresh shoe: the banker has to reshuffle first (see
+// GameStore.reshuffleDeck), same action either way.
+// A brand new room's very first round (existingDeck undefined -- nothing to
+// have run low FROM) is exempt: there's no prior shoe for a dealer to have
+// chosen to keep or replace, so this is just ordinary setup.
 export function createRound(
   players: Player[],
   roomId: string,
   deckCountInput?: number,
   roundNumber = 1,
-  existingDeck?: Card[]
+  existingDeck?: Card[],
+  // One-shot signal from GameStore.reshuffleDeck's between-round path: the
+  // deck it just built into existingDeck is one the banker deliberately
+  // brought in, so THIS round gets the "fresh shoe!" notice -- not because
+  // it happened to reshuffle, but because that's what the dealer just did.
+  justReshuffled = false
 ): RoundContext {
   const deckCount = sanitizeDeckCount(deckCountInput ?? recommendedDeckCount(players.length));
+  const hadPriorDeck = existingDeck !== undefined;
   let deck = existingDeck ?? [];
-  let deckReshuffledAt: number | undefined;
   if (deck.length < players.length) {
-    // Only a genuine carried-over shoe running short counts as a reshuffle
-    // worth telling players about -- a brand new room's very first round
-    // (existingDeck undefined) is just ordinary setup, not "running low".
-    const hadPriorDeck = existingDeck !== undefined;
+    if (hadPriorDeck) throw new Error("deck_low");
     deck = buildShoe(deckCount);
-    if (hadPriorDeck) deckReshuffledAt = Date.now();
   }
 
   const { turns, deck: remaining } = initializeTurns(players, deck);
@@ -59,20 +64,22 @@ export function createRound(
     state: "playing",
     deckCount,
     roundNumber,
-    deckReshuffledAt,
+    deckReshuffledAt: justReshuffled ? Date.now() : undefined,
   };
 }
 
-// Draws one card, reshuffling a fresh shoe in when the current one has run
-// out mid-round instead of failing the action outright.
-function drawCard(state: RoundContext): { card: Card; deck: Card[]; reshuffledAt?: number } {
-  if (state.deck.length > 0) {
-    const [card, ...rest] = state.deck;
-    return { card, deck: rest };
-  }
-  const fresh = buildShoe(state.deckCount ?? 1);
-  const [card, ...rest] = fresh;
-  return { card, deck: rest, reshuffledAt: Date.now() };
+// Draws one card. Does NOT reshuffle when the shoe has run out mid-round --
+// that used to happen silently, swapping in a fresh shoe underneath a hand
+// nobody agreed to reshuffle. The banker has to choose to do that (see
+// GameStore.reshuffleDeck, which can now target a live round), so this just
+// refuses the draw instead. Vanishingly rare in practice: the shoe is sized
+// for a full session (see recommendedDeckCount), so reaching zero mid-hand
+// means a table configured with an unusually small deck count, or an
+// extraordinarily long hand.
+function drawCard(state: RoundContext): { card: Card; deck: Card[] } {
+  if (state.deck.length === 0) throw new Error("deck_empty");
+  const [card, ...rest] = state.deck;
+  return { card, deck: rest };
 }
 
 export function handleBet(state: RoundContext, playerId: string, amount: number) {
@@ -82,7 +89,7 @@ export function handleBet(state: RoundContext, playerId: string, amount: number)
   if (state.state === "terminate") throw new Error("round_terminated");
   if (turn.state !== "pending") throw new Error("turn_not_pending");
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("invalid_bet");
-  const { card: pickedCard, deck: remainingDeck, reshuffledAt } = drawCard(state);
+  const { card: pickedCard, deck: remainingDeck } = drawCard(state);
 
   const newBet = turn.bet + amount;
 
@@ -95,12 +102,7 @@ export function handleBet(state: RoundContext, playerId: string, amount: number)
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
-  return advanceState({
-    ...state,
-    turns,
-    deck: remainingDeck,
-    deckReshuffledAt: reshuffledAt ?? state.deckReshuffledAt,
-  });
+  return advanceState({ ...state, turns, deck: remainingDeck });
 }
 
 export function handleHit(state: RoundContext, playerId: string, options?: { eleveroon?: boolean }) {
@@ -109,7 +111,7 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   const turn = state.turns[turnIndex];
   if (state.state === "terminate") throw new Error("round_terminated");
   if (turn.state !== "pending") throw new Error("turn_not_pending");
-  const { card: pickedCard, deck: remainingDeck, reshuffledAt } = drawCard(state);
+  const { card: pickedCard, deck: remainingDeck } = drawCard(state);
 
   const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
   const isElevenCard = pickedCard.attributes.values?.includes(11);
@@ -154,12 +156,7 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
-  return advanceState({
-    ...state,
-    turns,
-    deck: remainingDeck,
-    deckReshuffledAt: reshuffledAt ?? state.deckReshuffledAt,
-  });
+  return advanceState({ ...state, turns, deck: remainingDeck });
 }
 
 export function handleStand(state: RoundContext, playerId: string) {
@@ -226,7 +223,7 @@ const TARGET_ROUNDS_PER_SHOE = 8;
 const ASSUMED_CARDS_PER_HAND = 4;
 const CARDS_PER_DECK = 48;
 
-function recommendedDeckCount(playerCount: number): number {
+export function recommendedDeckCount(playerCount: number): number {
   const seats = Math.max(1, playerCount); // includes the banker
   const assumedCards = seats * ASSUMED_CARDS_PER_HAND * TARGET_ROUNDS_PER_SHOE;
   return sanitizeDeckCount(Math.ceil(assumedCards / CARDS_PER_DECK));

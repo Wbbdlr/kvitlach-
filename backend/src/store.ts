@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { customAlphabet } from "nanoid";
-import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe, buildRoundHistoryEntry } from "./round.js";
+import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe, buildRoundHistoryEntry, recommendedDeckCount } from "./round.js";
 import { handleHit } from "./round.js";
 import { decideBotAction, decideBotBet } from "./bot.js";
 import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
@@ -69,6 +69,12 @@ interface RoomRecord {
   // the deck only reshuffles when it actually runs out, not every round.
   deck?: Card[];
   lastDeckCount?: number;
+  // Set by a between-round reshuffleDeck() call, consumed (and cleared) by
+  // the very next startRound() -- one-shot signal that the shoe it's about
+  // to deal from is a fresh one the banker just chose to bring in, so THIS
+  // round (and no other) gets deckReshuffledAt stamped for the "fresh deck"
+  // notice, instead of the reshuffle happening invisibly to everyone else.
+  deckJustReshuffledAt?: number;
   // Set on every bumpRoomTimer call (i.e. any room activity) -- lets the
   // admin room list show how long a room has actually been idle, since the
   // pending setTimeout itself isn't inspectable.
@@ -506,18 +512,32 @@ export class GameStore {
     const overflow = rotated.slice(MAX_SEATED_PLAYERS_PER_ROUND);
     const playersForRound = admin ? seated.concat(admin) : seated;
 
-    if (others.length > 0) {
-      roomRec.nextStart = (normalizedStart + 1) % others.length;
-    }
     if (playersForRound.length < 1) throw new Error("not_enough_players");
     const roundNumber = (roomRec.room.completedRounds ?? 0) + 1;
     // Carry the previous round's leftover shoe forward instead of dealing a
-    // brand new one every round -- createRound only reshuffles if it's
-    // actually run low.
-    const round = createRound(playersForRound, roomId, deckCount ?? roomRec.lastDeckCount, roundNumber, roomRec.deck);
+    // brand new one every round -- createRound throws deck_low rather than
+    // reshuffling on its own now (the dealer chooses when a new shoe comes
+    // in, not the server). Deliberately nothing below mutates roomRec until
+    // createRound has actually succeeded: if it throws, a retry after the
+    // banker reshuffles must land on the exact rotation and round number it
+    // would have gotten the first time, not skip a player or a round count
+    // the way mutating nextStart up front (the old order) would have.
+    const round = createRound(
+      playersForRound,
+      roomId,
+      deckCount ?? roomRec.lastDeckCount,
+      roundNumber,
+      roomRec.deck,
+      roomRec.deckJustReshuffledAt !== undefined
+    );
     const stored = this.persistRound(round.roundId, round);
+
+    if (others.length > 0) {
+      roomRec.nextStart = (normalizedStart + 1) % others.length;
+    }
     roomRec.room.roundId = stored.roundId;
     roomRec.room.waitingPlayerIds = overflow.map((p) => p.id);
+    roomRec.deckJustReshuffledAt = undefined;
     this.bumpRoomTimer(roomId);
     return stored;
   }
@@ -625,19 +645,40 @@ export class GameStore {
     return { feltWatermark: sanitized };
   }
 
-  // Discards the carried-over shoe between rounds only -- a round in
-  // progress already has its own live deck (RoundContext.deck), which this
-  // deliberately never touches, so "reshuffle" can't disrupt an active hand.
-  // The next startRound() call rebuilds a fresh shoe automatically, since
-  // createRound() always reshuffles when the carried-over deck is empty.
-  reshuffleDeck(roomId: string, adminId: string): void {
+  // The dealer's own call, live or between rounds -- a real shoe never
+  // reshuffles itself, so neither does this. Two branches:
+  //   * a round is live: swap the ACTIVE round's own deck (RoundContext.deck)
+  //     for a fresh shoe. Cards already dealt into hands are untouched --
+  //     only what's still in the shoe changes -- and the round is returned
+  //     so the caller can broadcast it (deckReshuffledAt tells every client
+  //     the same "fresh shoe" notice a between-round one gets).
+  //   * no round is live: build the fresh shoe into the room's carried-over
+  //     deck NOW, rather than just clearing it -- so the very next
+  //     startRound() has cards to deal from immediately instead of finding
+  //     an empty deck and throwing deck_low right back at the banker who
+  //     just fixed it. deckJustReshuffledAt is the one-shot signal that
+  //     tells THAT next round to stamp its own deckReshuffledAt.
+  reshuffleDeck(roomId: string, adminId: string): RoundContext | undefined {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");
     if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
-    if (roomRec.room.roundId) throw new Error("round_in_progress");
-    roomRec.deck = [];
+
+    if (roomRec.room.roundId) {
+      const round = this.rounds.get(roomRec.room.roundId);
+      if (!round) throw new Error("round_not_found");
+      round.deck = buildShoe(round.deckCount ?? recommendedDeckCount(roomRec.room.players.length));
+      round.deckReshuffledAt = Date.now();
+      this.rounds.set(round.roundId, round);
+      this.audit("reshuffle-deck-live", roomId, adminId, {});
+      this.bumpRoomTimer(roomId);
+      return round;
+    }
+
+    roomRec.deck = buildShoe(roomRec.lastDeckCount ?? recommendedDeckCount(roomRec.room.players.length));
+    roomRec.deckJustReshuffledAt = Date.now();
     this.audit("reshuffle-deck", roomId, adminId, {});
     this.bumpRoomTimer(roomId);
+    return undefined;
   }
 
   private settleImmediateTurn(round: RoundContext, roomRec: RoomRecord, turnIndex: number): void {
@@ -994,29 +1035,34 @@ export class GameStore {
     const wallet = roomRec.room.wallets[adminId] ?? 0;
     const nextWallet = wallet + normalized;
     if (nextWallet < 0) throw new Error("insufficient_bank");
+
+    // If this top-up needs to draw a card to resume a stuck BANK! decision,
+    // draw it BEFORE committing the wallet change -- deck_empty must fail
+    // the whole top-up atomically (see round.ts's drawCard) rather than
+    // applying the chips while leaving the decision stuck with no card
+    // drawn, which the banker would have no clean way to retry into.
+    const roundId = roomRec.room.roundId;
+    const roundCtx = roundId ? this.rounds.get(roundId) : undefined;
+    const bankerIndex = roundCtx?.turns.findIndex((turn) => turn.player.id === adminId) ?? -1;
+    const needsResumeDraw = Boolean(roundCtx && roundCtx.bankLock?.stage === "decision" && bankerIndex >= 0 && nextWallet > 0);
+    const nextCard = needsResumeDraw ? this.drawCard(roundCtx!) : undefined;
+
     roomRec.room.wallets[adminId] = nextWallet;
     roomRec.room.bankerBuyIn = nextWallet;
     this.bumpRoomTimer(roomId);
     const trimmedNote = this.sanitizeNote(note);
-    const roundId = roomRec.room.roundId;
-    if (roundId) {
-      const roundCtx = this.rounds.get(roundId);
-      if (roundCtx && roundCtx.bankLock?.stage === "decision") {
-        const bankerIndex = roundCtx.turns.findIndex((turn) => turn.player.id === adminId);
-        if (bankerIndex >= 0 && nextWallet > 0) {
-          const nextCard = this.drawCard(roundCtx);
-          roundCtx.turns[bankerIndex] = {
-            ...roundCtx.turns[bankerIndex],
-            cards: [nextCard],
-            state: "pending",
-            bet: 0,
-            bankRequest: false,
-            settledNet: undefined,
-          };
-          roundCtx.bankLock = undefined;
-          this.persistRound(roundId, roundCtx);
-        }
-      }
+
+    if (needsResumeDraw && roundCtx) {
+      roundCtx.turns[bankerIndex] = {
+        ...roundCtx.turns[bankerIndex],
+        cards: [nextCard!],
+        state: "pending",
+        bet: 0,
+        bankRequest: false,
+        settledNet: undefined,
+      };
+      roundCtx.bankLock = undefined;
+      this.persistRound(roundId!, roundCtx);
     }
     this.audit("bank-topup", roomId, adminId, { amount: normalized, total: nextWallet, note: trimmedNote });
     return { amount: normalized, total: nextWallet, note: trimmedNote };
@@ -1103,6 +1149,27 @@ export class GameStore {
     }
 
     const balances = calculateBalances(resolved);
+
+    // Work out whether this settlement leaves the banker able (and forced)
+    // to keep auto-playing, and draw THAT card before committing anything
+    // else. drawCard can now throw deck_empty (the banker chooses when to
+    // reshuffle, not the server -- see round.ts's own drawCard), and if it
+    // does, the whole settlement must stay a no-op: nobody paid, no turns
+    // settled, bankLock untouched. Committing the payouts first and only
+    // then discovering there's no card left would pay the wagering players
+    // correctly but leave the round's own bankLock wedged in "banker" stage
+    // with the banker's turn never advanced -- a real desync between the
+    // room's wallets and the round's state, not just a failed action.
+    const walletDelta = balances.reduce((sum, b) => {
+      if (b.payer === bankerId) return sum - b.amount;
+      if (b.payee === bankerId) return sum + b.amount;
+      return sum;
+    }, 0);
+    const projectedBankerWallet = (roomRec.room.wallets[bankerId] ?? 0) + walletDelta;
+    const bankerIndex = round.turns.findIndex((turn) => turn.player.id === bankerId);
+    const willAutoRedeal = projectedBankerWallet > 0 && bankerIndex >= 0;
+    const nextCard = willAutoRedeal ? this.drawCard(round) : undefined;
+
     balances.forEach(({ payer, payee, amount }) => {
       roomRec.room.wallets[payer] = (roomRec.room.wallets[payer] ?? 0) - amount;
       roomRec.room.wallets[payee] = (roomRec.room.wallets[payee] ?? 0) + amount;
@@ -1136,21 +1203,17 @@ export class GameStore {
       };
     });
 
-    const bankerWallet = roomRec.room.wallets[bankerId] ?? 0;
-    if (bankerWallet <= 0) {
-      round.bankLock = { ...lock, stage: "decision" };
+    if (!willAutoRedeal) {
+      // Same two original outcomes, just distinguished after the fact:
+      // wallet exhausted -> banker must decide; banker seat missing (should
+      // not happen) -> nothing left to lock.
+      round.bankLock = projectedBankerWallet <= 0 ? { ...lock, stage: "decision" } : undefined;
       return round;
     }
 
-    const bankerIndex = round.turns.findIndex((turn) => turn.player.id === bankerId);
-    if (bankerIndex < 0) {
-      round.bankLock = undefined;
-      return round;
-    }
-    const nextCard = this.drawCard(round);
     round.turns[bankerIndex] = {
       ...round.turns[bankerIndex],
-      cards: [nextCard],
+      cards: [nextCard!],
       state: "pending",
       bet: 0,
       bankRequest: false,
@@ -1160,16 +1223,15 @@ export class GameStore {
     return round;
   }
 
-  // Draws one card from a round's live deck, reshuffling a fresh shoe in
-  // (and flagging deckReshuffledAt) if it's run out -- mirrors round.ts's
-  // own drawCard for the two banker-redeal paths that live in this class.
+  // Draws one card from a round's live deck for the two banker-redeal paths
+  // that live in this class (a BANK! wager's forced auto-play, and a
+  // top-up mid-decision). Mirrors round.ts's own drawCard: does NOT
+  // reshuffle on its own when the shoe is out -- see reshuffleDeck for the
+  // banker's own mid-round path to bring in a fresh one.
   private drawCard(round: RoundContext): Card {
-    if (round.deck.length === 0) {
-      round.deck = buildShoe(round.deckCount ?? 1);
-      round.deckReshuffledAt = Date.now();
-    }
+    if (round.deck.length === 0) throw new Error("deck_empty");
     const card = round.deck.shift();
-    if (!card) throw new Error("deck_empty"); // unreachable: buildShoe always yields cards
+    if (!card) throw new Error("deck_empty"); // unreachable given the length check above
     return card;
   }
 

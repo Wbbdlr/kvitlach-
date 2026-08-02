@@ -23,7 +23,10 @@ export interface ManageDrawerProps {
   onKick: (playerId: string) => void;
   onExportHistory: () => void;
   onCloseRoom: () => void;
-  canReshuffle: boolean;
+  // Whether a hand is currently in progress -- doesn't gate the control
+  // (the banker can choose to reshuffle either way, see onReshuffleDeck),
+  // only which confirmation copy warns them what they're about to do.
+  roundActive: boolean;
   onReshuffleDeck: () => void;
 }
 
@@ -54,7 +57,7 @@ export function ManageDrawer({
   onKick,
   onExportHistory,
   onCloseRoom,
-  canReshuffle,
+  roundActive,
   onReshuffleDeck,
 }: ManageDrawerProps) {
   const [adjustTarget, setAdjustTarget] = useState<string | null>(null);
@@ -230,16 +233,18 @@ export function ManageDrawer({
           {!confirmReshuffle ? (
             <button
               type="button"
-              disabled={!canReshuffle}
-              className="self-start text-xs font-semibold text-blue-600 underline disabled:text-slate-300 disabled:no-underline"
+              className="self-start text-xs font-semibold text-blue-600 underline"
               onClick={() => setConfirmReshuffle(true)}
-              title={canReshuffle ? undefined : "Only available between rounds."}
             >
               Reshuffle deck
             </button>
           ) : (
             <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
-              <span className="text-amber-800">Shuffle a fresh shoe in before the next round?</span>
+              <span className="text-amber-800">
+                {roundActive
+                  ? "A hand is in progress. Reshuffling now brings in a completely fresh shoe for any cards still to be dealt this round — everyone's cards already dealt stay exactly as they are. Continue?"
+                  : "Shuffle a fresh shoe in before the next round?"}
+              </span>
               <div className="flex justify-end gap-2">
                 <button type="button" className="text-slate-500" onClick={() => setConfirmReshuffle(false)}>
                   Cancel
@@ -257,7 +262,6 @@ export function ManageDrawer({
               </div>
             </div>
           )}
-          {!canReshuffle && <div className="text-[11px] text-slate-400">Only available between rounds.</div>}
         </div>
 
         <div className="flex flex-col gap-2">

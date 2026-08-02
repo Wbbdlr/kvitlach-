@@ -354,6 +354,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // notification (seen from anywhere) rather than inline form state.
   let pendingWatermarkRequestId: string | undefined;
   let pendingReshuffleRequestId: string | undefined;
+  let pendingRoundStartRequestId: string | undefined;
 
   // Every notification (round outcomes, deck reshuffles, rename/buy-in
   // approvals, bank top-ups, ...) is built through this one factory, so
@@ -629,14 +630,55 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (isReshuffleError) pendingReshuffleRequestId = undefined;
       if (isWatermarkError || isReshuffleError) {
         const friendly =
-          errorMessage === "round_in_progress"
-            ? "Finish the current round before reshuffling."
-            : errorMessage === "forbidden"
+          errorMessage === "forbidden"
             ? "Only the banker can do that."
+            : errorMessage === "round_not_found"
+            ? "That round has already ended."
             : "Something went wrong. Please try again.";
         set((state: UIState) => ({
           notifications: [...state.notifications, makeNotification(friendly, "error")].slice(-5),
         }));
+        return;
+      }
+      const isRoundStartError = Boolean(msg.requestId && msg.requestId === pendingRoundStartRequestId);
+      if (isRoundStartError) pendingRoundStartRequestId = undefined;
+      if (isRoundStartError) {
+        // round:start never sets pendingAction (that's bet/hit/stand/skip
+        // only), so without this an error here fell through to the generic
+        // branch below and landed in formErrors.join -- a form that isn't
+        // even rendered once you're already in a room. See the felt-table
+        // "start round" flow, which is the only caller of this action.
+        const friendly =
+          errorMessage === "deck_low"
+            ? "Not enough cards left in the shoe for everyone this round. Open Manage table → Reshuffle deck, then deal again."
+            : errorMessage === "not_enough_players"
+            ? "Need at least one seated player before dealing."
+            : "Something went wrong. Please try again.";
+        set((state: UIState) => ({
+          notifications: [...state.notifications, makeNotification(friendly, "error")].slice(-5),
+        }));
+        return;
+      }
+      if (errorMessage === "deck_empty") {
+        // Can arrive on ANY bet/hit, not just a tracked admin action -- the
+        // shoe ran out mid-hand and the dealer has to choose to bring in a
+        // fresh one (see GameStore's drawCard). This has to actually reach
+        // whoever's on the felt, which the generic branch below can't do:
+        // nothing in the felt view renders `message` (see App.tsx, which
+        // only shows it in the pre-join lobby) -- so this pushes a toast
+        // instead, and tailors it to whether the viewer can act on it.
+        const viewerId = get().playerId;
+        const isBanker = get().room?.players.find((p) => p.id === viewerId)?.type === "admin";
+        const friendly = isBanker
+          ? "The shoe just ran out of cards. Open Manage table → Reshuffle deck to bring in a fresh one, then try again."
+          : "The shoe just ran out of cards. Waiting for the banker to reshuffle.";
+        set((state: UIState) => {
+          const update: Partial<UIState> = {
+            notifications: [...state.notifications, makeNotification(friendly, "error")].slice(-5),
+          };
+          if (msg.requestId && state.pendingAction?.requestId === msg.requestId) update.pendingAction = undefined;
+          return update;
+        });
         return;
       }
       if (errorMessage === "invalid_session") {
@@ -700,8 +742,6 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             ? "Bank wager must equal the remaining bank."
             : errorMessage === "bank_not_in_decision"
             ? "No bank decision is pending."
-            : errorMessage === "deck_empty"
-            ? "The deck needs to be replenished before play can continue."
             : errorMessage === "rate_limited"
             ? "Too many requests. Please slow down."
             : errorMessage === "invalid_payload"
@@ -747,8 +787,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
       if (msg.requestId && msg.requestId === pendingReshuffleRequestId) {
         pendingReshuffleRequestId = undefined;
+        // Generic on purpose -- this fires for both the between-round and
+        // the mid-round path now, and "ready for the next round" would read
+        // oddly for the latter (a hand is still actually in progress).
         set((state: UIState) => ({
-          notifications: [...state.notifications, makeNotification("Deck reshuffled -- ready for the next round.", "success")].slice(-5),
+          notifications: [...state.notifications, makeNotification("Fresh shoe shuffled in.", "success")].slice(-5),
         }));
       }
       set((state: UIState) => {
@@ -874,7 +917,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set({ message: "Create or join a game first." });
         return;
       }
-      client.send("round:start", { roomId, deckCount });
+      // Tracked the same way as the watermark/reshuffle actions: round:start
+      // never set pendingAction (that's reserved for bet/hit/stand/skip), so
+      // an error here used to fall through to the generic branch's "else"
+      // case and land in formErrors.join -- a form that isn't even rendered
+      // once you're already in a room. deck_low in particular needs to
+      // actually reach the banker.
+      pendingRoundStartRequestId = client.send("round:start", { roomId, deckCount });
     },
     bet: (amount: number, options?: { bank?: boolean }) => {
       const roundId = get().round?.roundId;
@@ -1084,10 +1133,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set({ message: "Only the banker can reshuffle the deck." });
         return;
       }
-      if (get().round && get().round?.state !== "terminate") {
-        set({ message: "Finish the current round before reshuffling." });
-        return;
-      }
+      // Deliberately no "finish the round first" guard here anymore -- the
+      // banker can choose to bring in a fresh shoe mid-round too (see
+      // ManageDrawer's stronger confirmation copy for that case). The server
+      // is the actual authority on whether this is allowed.
       pendingReshuffleRequestId = client.send("room:reshuffle-deck", { roomId });
     },
     closeRoom: () => {

@@ -672,7 +672,7 @@ export function TableRoot({
           onKick={onKick}
           onExportHistory={onExportHistory}
           onCloseRoom={onCloseRoom}
-          canReshuffle={roundOver || preRound}
+          roundActive={!roundOver && !preRound}
           onReshuffleDeck={onReshuffleDeck}
         />
       )}
