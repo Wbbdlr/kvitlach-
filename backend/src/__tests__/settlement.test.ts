@@ -12,7 +12,7 @@ describe("live per-turn wallet settlement", () => {
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
     const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
     store.joinRoom(room.roomId, { firstName: "P2" });
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, admin.id);
 
     const p1Turn = round.turns.find((t) => t.player.id === p1.id)!;
     p1Turn.cards = [TWELVE, TWELVE];
@@ -35,7 +35,7 @@ describe("live per-turn wallet settlement", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
     const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, admin.id);
 
     const p1Turn = round.turns.find((t) => t.player.id === p1.id)!;
     p1Turn.cards = [ROSIER_2];
@@ -57,7 +57,7 @@ describe("live per-turn wallet settlement", () => {
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 20 });
     const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
     const { player: p2 } = store.joinRoom(room.roomId, { firstName: "P2" });
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, admin.id);
 
     const p1Turn = round.turns.find((t) => t.player.id === p1.id)!;
     p1Turn.cards = [ROSIER_2];
@@ -78,7 +78,7 @@ describe("live per-turn wallet settlement", () => {
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
     const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
     const { player: p2 } = store.joinRoom(room.roomId, { firstName: "P2" });
-    const round1 = store.startRound(room.roomId);
+    const round1 = store.startRound(room.roomId, admin.id);
 
     const p1Turn = round1.turns.find((t) => t.player.id === p1.id)!;
     p1Turn.cards = [TWELVE, TWELVE];
@@ -117,7 +117,7 @@ describe("live per-turn wallet settlement", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", bankerBankroll: 500 });
     const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, admin.id);
 
     const p1Turn = round.turns.find((t) => t.player.id === p1.id)!;
     p1Turn.cards = [
@@ -141,7 +141,7 @@ describe("live per-turn wallet settlement", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", bankerBankroll: 500 });
     store.joinRoom(room.roomId, { firstName: "P1" });
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, admin.id);
 
     const adminTurn = round.turns.find((t) => t.player.type === "admin")!;
     adminTurn.cards = [TWELVE, TWELVE];

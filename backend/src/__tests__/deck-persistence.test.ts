@@ -8,10 +8,10 @@ const p1: Player = { id: "p1", firstName: "P1", lastName: "", type: "player", pr
 describe("deck persistence across rounds", () => {
   it("carries the leftover shoe into the next round instead of dealing a fresh one", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
     store.joinRoom(room.roomId, { firstName: "Alice" });
 
-    const round1 = store.startRound(room.roomId);
+    const round1 = store.startRound(room.roomId, bankerPlayer.id);
     const deckAfterRound1Deal = round1.deck.length;
 
     // Alice's stand is a $0 push (no wager), which resolves her instantly and,
@@ -22,7 +22,7 @@ describe("deck persistence across rounds", () => {
     expect(afterAliceStand.state).toBe("terminate");
     store.finalizeRound(afterAliceStand.roundId);
 
-    const round2 = store.startRound(room.roomId);
+    const round2 = store.startRound(room.roomId, bankerPlayer.id);
     // Round 2 dealt 2 more cards (1 per seated player) out of what round 1 left behind --
     // it should NOT be a full fresh shoe's worth of remaining cards.
     expect(round2.deck.length).toBe(deckAfterRound1Deal - 2);
@@ -38,7 +38,7 @@ describe("deck persistence across rounds", () => {
     const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
     store.joinRoom(room.roomId, { firstName: "Alice" });
 
-    const round1 = store.startRound(room.roomId);
+    const round1 = store.startRound(room.roomId, bankerPlayer.id);
     const roundId = round1.roundId;
     // Simulate the shoe having almost run out by the time the round ends.
     const roundCtx = (store as any).rounds.get(roundId);
@@ -49,7 +49,7 @@ describe("deck persistence across rounds", () => {
     store.finalizeRound(afterAliceStand.roundId);
 
     // The banker tries to deal the next round -- refused, not silently fixed.
-    expect(() => store.startRound(room.roomId)).toThrow("deck_low");
+    expect(() => store.startRound(room.roomId, bankerPlayer.id)).toThrow("deck_low");
     // Nothing about the room changed as a result of the failed attempt --
     // no round got created, and (see the rotation test below) the turn
     // order didn't advance either.
@@ -58,7 +58,7 @@ describe("deck persistence across rounds", () => {
     // The banker chooses to reshuffle -- NOW starting the round works, and
     // everyone gets told a fresh shoe just came in.
     store.reshuffleDeck(room.roomId, bankerPlayer.id);
-    const round2 = store.startRound(room.roomId);
+    const round2 = store.startRound(room.roomId, bankerPlayer.id);
     expect(round2.deckReshuffledAt).toBeDefined();
     expect(round2.deck.length).toBeGreaterThan(0);
   });
@@ -108,10 +108,10 @@ describe("deck persistence across rounds", () => {
 
   it("does not show a reshuffle notice on a live room's actual very first startRound()", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
     store.joinRoom(room.roomId, { firstName: "Alice" });
 
-    const round1 = store.startRound(room.roomId);
+    const round1 = store.startRound(room.roomId, bankerPlayer.id);
     expect(round1.deckReshuffledAt).toBeUndefined();
   });
 
@@ -133,17 +133,17 @@ describe("deck persistence across rounds", () => {
     // that's played before and is now down to nothing.
     roomRec.deck = [];
 
-    expect(() => store.startRound(room.roomId)).toThrow("deck_low");
+    expect(() => store.startRound(room.roomId, bankerPlayer.id)).toThrow("deck_low");
     expect(roomRec.nextStart).toBe(nextStartBefore);
     expect(roomRec.room.roundId).toBeUndefined();
 
     // Retrying without fixing anything fails identically -- nothing was left
     // half-mutated for a second attempt to trip over.
-    expect(() => store.startRound(room.roomId)).toThrow("deck_low");
+    expect(() => store.startRound(room.roomId, bankerPlayer.id)).toThrow("deck_low");
     expect(roomRec.nextStart).toBe(nextStartBefore);
 
     store.reshuffleDeck(room.roomId, bankerPlayer.id);
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, bankerPlayer.id);
     expect(round.state).toBe("playing");
     expect(roomRec.nextStart).not.toBe(nextStartBefore); // only advances on an actual success
   });
@@ -152,12 +152,12 @@ describe("deck persistence across rounds", () => {
 describe("GameStore.reshuffleDeck -- the dealer's own choice, live or between rounds", () => {
   it("is banker-only, both between rounds and mid-round", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
     const { player: alice } = store.joinRoom(room.roomId, { firstName: "Alice" });
 
     expect(() => store.reshuffleDeck(room.roomId, alice.id)).toThrow("forbidden");
 
-    store.startRound(room.roomId);
+    store.startRound(room.roomId, bankerPlayer.id);
     expect(() => store.reshuffleDeck(room.roomId, alice.id)).toThrow("forbidden");
   });
 
@@ -170,7 +170,7 @@ describe("GameStore.reshuffleDeck -- the dealer's own choice, live or between ro
     // No active round -- nothing to broadcast yet.
     expect(returned).toBeUndefined();
 
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, bankerPlayer.id);
     expect(round.deckReshuffledAt).toBeDefined();
     expect(round.deck.length).toBeGreaterThan(0);
   });
@@ -180,7 +180,7 @@ describe("GameStore.reshuffleDeck -- the dealer's own choice, live or between ro
     const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
     const { player: alice } = store.joinRoom(room.roomId, { firstName: "Alice" });
 
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, bankerPlayer.id);
     const aliceHandBefore = round.turns.find((t) => t.player.id === alice.id)!.cards;
 
     const updated = store.reshuffleDeck(room.roomId, bankerPlayer.id);
@@ -194,5 +194,68 @@ describe("GameStore.reshuffleDeck -- the dealer's own choice, live or between ro
     // And play continues normally on the fresh shoe -- proves this isn't just
     // a cosmetic swap, the round is actually still live and playable.
     expect(() => store.applyStand(round.roundId, alice.id)).not.toThrow();
+  });
+});
+
+// startRound used to take no actor at all -- ANY connected socket could deal
+// a round in a room it didn't administer, live or practice, simply by
+// sending round:start with someone else's roomId. The client only ever
+// showed the button to the right person, but the server took that entirely
+// on faith. Mirrors TableRoot's own isAdmin || room.practice gate exactly,
+// so client and server can never disagree about who's allowed to deal.
+describe("GameStore.startRound -- who's allowed to deal", () => {
+  it("refuses a seated, non-admin player in a live room -- the exact gap this closes", () => {
+    const store = new GameStore();
+    const { room } = store.createRoom({ firstName: "Banker" });
+    const { player: alice } = store.joinRoom(room.roomId, { firstName: "Alice" });
+
+    // Alice is a perfectly legitimate player -- just not the banker, and
+    // this isn't a practice room where that would be enough.
+    expect(() => store.startRound(room.roomId, alice.id)).toThrow("forbidden");
+    expect(store.getRoom(room.roomId)!.roundId).toBeUndefined();
+  });
+
+  it("refuses a spectator", () => {
+    const store = new GameStore();
+    const { room } = store.createRoom({ firstName: "Banker" });
+    const { player: watcher } = store.joinRoom(room.roomId, { firstName: "Watcher", spectator: true });
+
+    expect(() => store.startRound(room.roomId, watcher.id)).toThrow("forbidden");
+  });
+
+  it("refuses an actor id that isn't seated in the room at all", () => {
+    const store = new GameStore();
+    const { room } = store.createRoom({ firstName: "Banker" });
+
+    expect(() => store.startRound(room.roomId, "not-a-real-player-id")).toThrow("forbidden");
+  });
+
+  it("still lets the real banker deal in a live room", () => {
+    const store = new GameStore();
+    const { room, player: banker } = store.createRoom({ firstName: "Banker" });
+    store.joinRoom(room.roomId, { firstName: "Alice" });
+
+    expect(() => store.startRound(room.roomId, banker.id)).not.toThrow();
+  });
+
+  it("lets the human deal in a practice room, but refuses a bot seat even though it's practice", () => {
+    const store = new GameStore();
+    const { room, player: human } = store.createPracticeRoom({ firstName: "Alice" });
+    // createPracticeRoom already dealt the first round itself -- finish it
+    // so there's a terminated round to deal past, same as real play.
+    store.finalizeRound(room.roundId!);
+
+    const bankerBot = store.getRoom(room.roomId)!.players.find((p) => p.type === "admin")!;
+    const playerBot = store.getRoom(room.roomId)!.players.find((p) => p.type === "player" && p.isBot)!;
+
+    // Nothing in the real game ever sends a WS message as a bot -- they act
+    // through GameStore's own methods directly (see playBotTurn) -- but
+    // startRound is a public method, so its own guarantee has to hold on
+    // its own rather than leaning on "bots don't have sockets".
+    expect(() => store.startRound(room.roomId, bankerBot.id)).toThrow("forbidden");
+    expect(() => store.startRound(room.roomId, playerBot.id)).toThrow("forbidden");
+
+    // The one human actually seated there is exactly who this exists for.
+    expect(() => store.startRound(room.roomId, human.id)).not.toThrow();
   });
 });

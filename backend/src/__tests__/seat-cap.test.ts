@@ -6,7 +6,7 @@ describe("startRound seat cap and waiting rotation", () => {
     const { room, player: admin } = store.createRoom({ firstName: "Banker" });
     const players = Array.from({ length: 14 }, (_, i) => store.joinRoom(room.roomId, { firstName: `P${i}` }).player);
 
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, admin.id);
     const seatedIds = round.turns.map((t) => t.player.id);
 
     // 11 players + the banker = 12 seated turns; the remaining 3 wait.
@@ -28,14 +28,14 @@ describe("startRound seat cap and waiting rotation", () => {
 
   it("rotates previously-waiting players into a seat on the next round", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: admin } = store.createRoom({ firstName: "Banker" });
     const players = Array.from({ length: 14 }, (_, i) => store.joinRoom(room.roomId, { firstName: `P${i}` }).player);
 
-    store.startRound(room.roomId);
+    store.startRound(room.roomId, admin.id);
     const firstWait = new Set(store.getRoom(room.roomId)!.waitingPlayerIds);
     expect(firstWait.size).toBe(3);
 
-    store.startRound(room.roomId);
+    store.startRound(room.roomId, admin.id);
     const secondRoom = store.getRoom(room.roomId)!;
     const secondWait = new Set(secondRoom.waitingPlayerIds);
     expect(secondWait.size).toBe(3);
@@ -47,12 +47,12 @@ describe("startRound seat cap and waiting rotation", () => {
 
   it("seats every player at least once across a full rotation cycle", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: admin } = store.createRoom({ firstName: "Banker" });
     const players = Array.from({ length: 14 }, (_, i) => store.joinRoom(room.roomId, { firstName: `P${i}` }).player);
 
     const everSeated = new Set<string>();
     for (let i = 0; i < players.length; i += 1) {
-      const round = store.startRound(room.roomId);
+      const round = store.startRound(room.roomId, admin.id);
       round.turns.forEach((t) => everSeated.add(t.player.id));
     }
 
@@ -63,10 +63,10 @@ describe("startRound seat cap and waiting rotation", () => {
 
   it("does not queue anyone when the room has 11 or fewer players", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: admin } = store.createRoom({ firstName: "Banker" });
     Array.from({ length: 8 }, (_, i) => store.joinRoom(room.roomId, { firstName: `P${i}` }));
 
-    const round = store.startRound(room.roomId);
+    const round = store.startRound(room.roomId, admin.id);
     expect(round.turns).toHaveLength(9); // 8 players + banker
     expect(store.getRoom(room.roomId)!.waitingPlayerIds).toHaveLength(0);
   });

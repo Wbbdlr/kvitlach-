@@ -122,7 +122,7 @@ describe("createPracticeRoom", () => {
     expect(store.getRoom(room.roomId)!.roundId).toBeUndefined();
 
     // The human's own explicit choice still works exactly as before.
-    const nextRound = store.startRound(room.roomId);
+    const nextRound = store.startRound(room.roomId, player.id);
     expect(nextRound.state).toBe("playing");
     expect(nextRound.roundNumber).toBe(2);
   });
@@ -174,7 +174,7 @@ describe("createPracticeRoom", () => {
       expect(totalWallet).toBe(400 + 300); // banker's 400 + 3 non-bankers' 100 each, conserved every round
 
       try {
-        store.startRound(roomId);
+        store.startRound(roomId, player.id);
       } catch {
         break; // e.g. not_enough_players if someone's wallet hit 0 and they can't be dealt in -- fine, not what this test is checking
       }

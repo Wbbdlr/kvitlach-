@@ -196,8 +196,10 @@ export class WSServer {
         }
         case "round:start": {
           const { roomId, deckCount } = (payload as any) || {};
-          if (!roomId) throw new Error("invalid_payload");
-          const round = this.store.startRound(roomId, deckCount);
+          const meta = this.meta.get(socket);
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          const round = this.store.startRound(roomId, actorId, deckCount);
           this.broadcastRound(round);
           this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
           this.broadcastRoom(roomId);

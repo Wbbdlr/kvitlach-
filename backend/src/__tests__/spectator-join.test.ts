@@ -3,9 +3,9 @@ import { GameStore } from "../store.js";
 describe("spectators joining mid-round", () => {
   it("never queues a mid-round spectator in waitingPlayerIds", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: banker } = store.createRoom({ firstName: "Banker" });
     store.joinRoom(room.roomId, { firstName: "Player" });
-    store.startRound(room.roomId);
+    store.startRound(room.roomId, banker.id);
 
     const { player: spectator } = store.joinRoom(room.roomId, { firstName: "Watcher", spectator: true });
 
@@ -16,9 +16,9 @@ describe("spectators joining mid-round", () => {
 
   it("still queues a real player who joins mid-round", () => {
     const store = new GameStore();
-    const { room } = store.createRoom({ firstName: "Banker" });
+    const { room, player: banker } = store.createRoom({ firstName: "Banker" });
     store.joinRoom(room.roomId, { firstName: "Player" });
-    store.startRound(room.roomId);
+    store.startRound(room.roomId, banker.id);
 
     const { player: lateJoiner } = store.joinRoom(room.roomId, { firstName: "Latecomer" });
 

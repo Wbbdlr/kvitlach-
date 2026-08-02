@@ -426,7 +426,9 @@ export class GameStore {
     this.rooms.set(roomId, { room, nextStart: 0 });
     this.bumpRoomTimer(roomId);
     const sessionToken = this.issueSession(roomId, human.id);
-    this.startRound(roomId); // no human banker exists to click Start -- begin immediately
+    // No human banker exists to click Start -- begin immediately, as the
+    // human (the only actor startRound's own check would allow here anyway).
+    this.startRound(roomId, human.id);
     return { room: this.rooms.get(roomId)!.room, player: human, sessionToken };
   }
 
@@ -491,9 +493,30 @@ export class GameStore {
     return roomRec.room;
   }
 
-  startRound(roomId: string, deckCount?: number) {
+  // actorId is required, not optional-with-a-skip-the-check-if-omitted
+  // default: an omittable check is a check nobody has to remember to pass,
+  // which is exactly how this had no authorization at all before -- ANY
+  // connected socket could deal a round in a room it didn't administer.
+  // Every caller (ws-server.ts, GameStore.createPracticeRoom's own internal
+  // call, every test) has a real actor in scope, so there's nothing a
+  // required param costs here.
+  startRound(roomId: string, actorId: string, deckCount?: number) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");
+    const actor = roomRec.room.players.find((p) => p.id === actorId);
+    if (!actor) throw new Error("forbidden");
+    // Mirrors TableRoot's own isAdmin || room.practice gate: a live room's
+    // banker, or -- since a practice room's banker IS a bot nobody can
+    // authenticate as -- the one human player actually seated there. !isBot
+    // gates BOTH branches, not just the practice one: a live room's admin is
+    // always human by construction, but nothing stops a future caller from
+    // passing a bot's own id here directly (bots never hold a WS session, so
+    // the normal path can't do this -- but startRound is a public method,
+    // and this guarantee shouldn't depend on "well nobody would call it that
+    // way"). Without it, the practice banker BOT itself satisfied
+    // `type === "admin"` and could deal its own room's rounds.
+    const allowed = !actor.isBot && (actor.type === "admin" || (roomRec.room.practice === true && actor.type === "player"));
+    if (!allowed) throw new Error("forbidden");
     const activePlayers = roomRec.room.players.filter((p) => p.presence === "online");
     const basePlayers = activePlayers.length > 0 ? activePlayers : roomRec.room.players;
     const admin = basePlayers.find((p) => p.type === "admin");
