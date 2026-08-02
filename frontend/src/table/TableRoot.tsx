@@ -330,7 +330,7 @@ export function TableRoot({
   );
 
   return (
-    <div className="k-fit" ref={wrapRef}>
+    <div className="k-fit" ref={wrapRef} style={{ ["--stage-scale" as string]: scale } as React.CSSProperties}>
       <div
         className="felt-table"
         style={{ transform: `scale(${scale})`, width: STAGE_WIDTH, height: STAGE_HEIGHT }}

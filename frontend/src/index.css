@@ -800,10 +800,20 @@ body:has(.k-fit) {
    collide or force each other to wrap. */
 .k-toast-stack {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  top: max(8px, env(safe-area-inset-top));
-  left: max(8px, env(safe-area-inset-left));
+  /* Anchored to the felt's actual rendered corner, not .k-fit's raw edge.
+     .k-fit fills the whole window and centers the fixed 1280x760 stage
+     inside it (see .felt-table); on a wide desktop monitor the stage renders
+     narrower than .k-fit, leaving plain background on both sides. A flat
+     offset from .k-fit's own edge landed the toast out in that dead space,
+     nowhere near the table. --stage-scale (set on .k-fit, see TableRoot)
+     mirrors .felt-table's own scale transform, so this recovers where the
+     felt's corner actually is at any viewport size. Bottom rather than top:
+     it's next to the player's own cards/dock, where their eyes already are
+     mid-round, instead of a corner they have to look away to notice. */
+  --stage-w: calc(1280px * var(--stage-scale, 1));
+  --stage-h: calc(760px * var(--stage-scale, 1));
+  bottom: calc((100% - var(--stage-h)) / 2 + max(8px, env(safe-area-inset-bottom)));
+  left: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-left)));
   z-index: 45;
   display: flex;
   flex-direction: column;
@@ -1276,14 +1286,20 @@ body:has(.k-fit) {
   .k-bankall-amt {
     display: none;
   }
-  /* Top-left (the desktop position) sits close to the compact felt's own
-     top edge and, per user feedback, read as crowding the dock/cards on a
-     real phone. Anchored to the left-center instead -- clear of both the
-     top chrome and the dock at every viewer seat/hand length, and still
-     immediately next to the player's own cards (bottom-center seat, see
-     layout.ts's viewerSlotIndex) rather than a corner unrelated to them. */
+  /* A corner placement (top or, per the base rule above, bottom) sits close
+     to the compact felt's own edge and, per user feedback on the original
+     top-left placement, read as crowding the dock/cards on a real phone.
+     Anchored to the left-center instead -- clear of both the top chrome and
+     the dock at every viewer seat/hand length, and still immediately next
+     to the player's own cards (bottom-center seat, see layout.ts's
+     viewerSlotIndex) rather than a corner unrelated to them. bottom: auto
+     is deliberate -- without it, the base rule's bottom: calc(...) and this
+     block's top: 50% would both apply at once (nothing here un-sets the
+     base rule's bottom), which is exactly the over-constrained top+bottom
+     case this override exists to avoid. */
   .k-toast-stack {
     top: 50%;
+    bottom: auto;
     left: max(6px, env(safe-area-inset-left));
     transform: translateY(-50%);
     max-width: min(150px, 38vw);
