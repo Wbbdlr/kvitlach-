@@ -755,9 +755,9 @@ export default function App() {
 
       <footer className="mt-8 border-t border-slate-200 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-slate-600">Kvitlach</span>
+          <span className="font-semibold text-slate-600">Kvitlach.us</span>
           <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
-            v1.5
+            v2.5
             <span className="text-amber-700">Beta</span>
           </span>
           <span
