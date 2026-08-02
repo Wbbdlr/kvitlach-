@@ -14,6 +14,18 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 const COMPACT_MEDIA_QUERY = "(max-width: 520px), (max-height: 440px)";
 const DOCK_RESERVED_HEIGHT_PX = 76;
 
+// The non-compact dock is shorter (~66px) but .k-fit stays centered rather
+// than top-aligned outside the compact breakpoint, so only half of whatever
+// gets reserved here actually lands in the bottom margin -- the other half
+// is spent growing the (already-fine) top margin instead. Reserving double
+// the real dock height is what makes the bottom half of that split alone
+// enough to clear it. Without this, any viewport landing at native 1x scale
+// with height roughly 760-890px (1366x768 laptops chief among them -- the
+// single most common laptop resolution) rendered the felt at its full
+// unshrunk 760px design height, and the dock overlapped its bottom edge by
+// tens of pixels, covering part of the viewer's own seat.
+const DESKTOP_DOCK_RESERVED_HEIGHT_PX = 90;
+
 // Scale-to-fit for the fixed 1280x760 stage, ported from the mockup's
 // fitStage(). The stage keeps its design pixel size and is uniformly
 // transform-scaled to fit the wrapper, so the whole composition letterboxes
@@ -29,7 +41,9 @@ export function useStageScale() {
 
     const fit = () => {
       const isCompact = typeof window.matchMedia === "function" && window.matchMedia(COMPACT_MEDIA_QUERY).matches;
-      const availableHeight = isCompact ? wrap.clientHeight - DOCK_RESERVED_HEIGHT_PX : wrap.clientHeight;
+      const availableHeight = isCompact
+        ? wrap.clientHeight - DOCK_RESERVED_HEIGHT_PX
+        : wrap.clientHeight - DESKTOP_DOCK_RESERVED_HEIGHT_PX * 2;
       const next = Math.min(wrap.clientWidth / STAGE_WIDTH, availableHeight / STAGE_HEIGHT, 1);
       setScale(next > 0 ? next : 1);
     };
