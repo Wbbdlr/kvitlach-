@@ -101,4 +101,48 @@ describe("practice mode over a live WebSocket connection", () => {
 
     human.close();
   }, 20000);
+
+  // The next round used to start itself: WSServer.handleRoundUpdate scheduled
+  // a fixed 4s setTimeout the moment a practice round terminated, since
+  // there's no human banker to click "Start round". That rushed the one human
+  // at the table past reading what the round they just played did -- this
+  // asserts the wire-level guarantee that replaced it: nothing arrives on its
+  // own, and the human's own round:start still works exactly as before.
+  it("waits for the human to explicitly start the next round, rather than dealing it on a timer", async () => {
+    const human = await connect();
+    const created = await send(human, "room:create-practice", { firstName: "Yanky" });
+    const roomId = created.room.roomId;
+    const roundId = created.round.roundId;
+
+    const roundStateMessages: any[] = [];
+    human.on("message", (data) => {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === "round:state") roundStateMessages.push(msg.payload);
+    });
+
+    await send(human, "turn:stand", { roundId });
+
+    const deadline = Date.now() + 14000;
+    while (Date.now() < deadline && !roundStateMessages.some((r) => r.state === "terminate")) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    expect(roundStateMessages.some((r) => r.state === "terminate")).toBe(true);
+
+    // Longer than the old 4s auto-restart delay -- if that timer still fired,
+    // a fresh round:playing broadcast (a different roundId) would show up
+    // in this window on its own.
+    const countAtTerminate = roundStateMessages.length;
+    await new Promise((resolve) => setTimeout(resolve, 5500));
+    const newRoundArrived = roundStateMessages
+      .slice(countAtTerminate)
+      .some((r) => r.roundId !== roundId);
+    expect(newRoundArrived).toBe(false);
+
+    // The human's own explicit choice still deals it.
+    const started = await send(human, "round:start", { roomId });
+    expect(started.round.state).toBe("playing");
+    expect(started.round.roundId).not.toBe(roundId);
+
+    human.close();
+  }, 25000);
 });

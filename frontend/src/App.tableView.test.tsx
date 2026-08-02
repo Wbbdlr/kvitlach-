@@ -173,6 +173,30 @@ describe("the felt table is the only in-room view", () => {
     expect(getByText(/Waiting for the banker to start the next round/i)).toBeInTheDocument();
   });
 
+  // A practice room's banker is a bot -- isAdmin never fires for the human
+  // sitting there, and there is no second human for "waiting for the
+  // banker" to be true about. The next round used to deal itself on a fixed
+  // timer instead, which cut into the time the human had to read what the
+  // round they just played did. Now the felt hands them the SAME button a
+  // real banker gets, gated on room.practice rather than isAdmin.
+  it("lets the (non-admin) human in a practice room deal the next round themselves", () => {
+    mockState.room = { ...room, practice: true };
+    mockState.round = { ...round, state: "terminate" };
+    mockState.playerId = playerAId; // viewing as the non-admin seat
+    const { getByText, queryByText } = render(<App />);
+    expect(getByText(/Start next round/i)).toBeInTheDocument();
+    expect(queryByText(/Waiting for the banker/i)).toBeNull();
+  });
+
+  it("still makes a real (non-practice) non-admin wait for the banker -- the practice gate doesn't leak", () => {
+    mockState.room = room; // practice undefined
+    mockState.round = { ...round, state: "terminate" };
+    mockState.playerId = playerAId;
+    const { getByText, queryByText } = render(<App />);
+    expect(getByText(/Waiting for the banker to start the next round/i)).toBeInTheDocument();
+    expect(queryByText(/Start next round/i)).toBeNull();
+  });
+
   // The futch celebration used to float over the felt, where it covered the
   // banker's own plate and cards -- the one hand everybody wants to see when
   // the bank busts. It lives in the dock now precisely because no seat can

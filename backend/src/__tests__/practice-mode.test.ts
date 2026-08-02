@@ -88,6 +88,45 @@ describe("createPracticeRoom", () => {
     expect(totalWallet).toBe(totalBuyIn);
   });
 
+  // A practice room's banker is a bot, so the round.state === "terminate"
+  // WS handler used to schedule a fixed-delay setTimeout to deal the next
+  // round on the human's behalf -- which cut into the time they had to
+  // actually read what the round they just played did. That timer lived at
+  // the WS layer (WSServer.handleRoundUpdate, right alongside its call to
+  // finalizeRound), so this mirrors that exact call sequence rather than
+  // stopping at applyStand -- finalizeRound is what clears room.roundId,
+  // and calling it directly is how this test reaches the layer the removed
+  // timer actually lived at without spinning up a real WSServer (that's
+  // practice-ws.test.ts's job, over a real socket). The felt now shows the
+  // human a "Deal the next round" button instead (TableRoot, gated on
+  // isAdmin || room.practice), same control a real banker already had.
+  it("does not deal itself a next round when one terminates -- the human has to choose to deal again", () => {
+    const store = new GameStore();
+    const { room, player } = store.createPracticeRoom({ firstName: "Alice" });
+    const roundId = room.roundId!;
+
+    store.applyStand(roundId, player.id);
+    let round = store.getRound(roundId);
+    let guard = 0;
+    while (round && round.state !== "terminate" && guard < 50) {
+      vi.advanceTimersByTime(1500);
+      round = store.getRound(roundId);
+      guard += 1;
+    }
+    expect(guard).toBeLessThan(50);
+    store.finalizeRound(roundId);
+    expect(store.getRoom(room.roomId)!.roundId).toBeUndefined();
+
+    // Well past where the old fixed-delay auto-restart would have fired.
+    vi.advanceTimersByTime(60_000);
+    expect(store.getRoom(room.roomId)!.roundId).toBeUndefined();
+
+    // The human's own explicit choice still works exactly as before.
+    const nextRound = store.startRound(room.roomId);
+    expect(nextRound.state).toBe("playing");
+    expect(nextRound.roundNumber).toBe(2);
+  });
+
   it("produces no round history entry for a practice room", () => {
     const store = new GameStore();
     const { room, player } = store.createPracticeRoom({ firstName: "Alice" });

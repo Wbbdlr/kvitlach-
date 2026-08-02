@@ -20,10 +20,6 @@ interface ConnectionMeta {
 const MAX_CONNS_PER_IP = 40;
 const MAX_MSGS_PER_WINDOW = 30;
 const MSG_WINDOW_MS = 10_000;
-// A practice room's banker is a bot -- nothing ever clicks "Start round" for
-// it, so the next round has to begin on its own. The delay gives the human
-// a moment to read the just-finished round's outcome first.
-const PRACTICE_NEXT_ROUND_DELAY_MS = 4000;
 
 export class WSServer {
   private wss: WebSocketServer;
@@ -556,30 +552,13 @@ export class WSServer {
         payload: { balances, round: sanitizedRound },
       });
       this.broadcastRoom(round.roomId);
-      this.maybeAutoStartPracticeRound(round.roomId);
+      // Used to auto-start a practice room's next round on a fixed timer,
+      // since there's no human banker to click "Start round" -- but that
+      // rushed the one human at the table past reading what just happened.
+      // The felt now shows THEM the deal button instead (TableRoot gates it
+      // on isAdmin || room.practice, see round:start below), so they choose
+      // when, same as reviewing a real banker's own table.
     }
-  }
-
-  // No human banker exists in a practice room to click "Start round" --
-  // schedule the bot banker to do it. Deliberately a plain setTimeout rather
-  // than a tracked/cancelable timer: if the room is gone or already mid-round
-  // by the time this fires (TTL cleanup, or the human left), the guard below
-  // just no-ops, so nothing needs explicit cleanup.
-  private maybeAutoStartPracticeRound(roomId: string) {
-    const room = this.store.getRoom(roomId);
-    const banker = room?.players.find((p) => p.type === "admin");
-    if (!room?.practice || !banker?.isBot) return;
-    setTimeout(() => {
-      try {
-        const freshRoom = this.store.getRoom(roomId);
-        if (!freshRoom || freshRoom.roundId) return; // room gone, or a round is already underway
-        const nextRound = this.store.startRound(roomId);
-        this.broadcastRound(nextRound);
-        this.broadcastRoom(roomId);
-      } catch (err) {
-        console.error("practice auto-restart failure", roomId, err);
-      }
-    }, PRACTICE_NEXT_ROUND_DELAY_MS);
   }
 
   // The ONLY place a round crosses the wire (every ack, resume and broadcast

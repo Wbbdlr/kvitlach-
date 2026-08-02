@@ -639,7 +639,13 @@ export function TableRoot({
           ) : (
             <span className="k-banktotal">{preRound ? "Table ready" : "Round complete"}</span>
           )}
-          {isAdmin ? (
+          {/* A practice room's banker is a bot, so isAdmin never fires for its one
+              human -- they used to just get outrun by a fixed 4s auto-restart
+              timer instead, which cut into reading the round they just played.
+              room.practice hands them this exact button (there is only ever
+              one human at that table, so it can't reach anyone else's game),
+              same as a real banker choosing their own moment. */}
+          {isAdmin || room.practice ? (
             <button type="button" className="k-btn bet k-pulse-attn" onClick={onStartNextRound}>
               {!preRound ? "Start next round" : firstDeal ? "Deal the first round" : "Deal the next round"}
             </button>
