@@ -16,7 +16,10 @@ export function BankPanel({ bankerWallet, reserved = 0 }: BankPanelProps) {
   const free = Math.max(bankerWallet - reserved, 0);
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 z-[12] flex flex-col items-center gap-1.5" style={{ top: "300px" }}>
+    <div
+      className="absolute left-1/2 -translate-x-1/2 z-[12] flex flex-col items-center gap-1.5"
+      style={{ top: "calc(var(--play-top, 0px) + 300px * var(--vf, 1))" }}
+    >
       <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
       {reserved > 0 && (
         <div className="k-readout k-bank-split">

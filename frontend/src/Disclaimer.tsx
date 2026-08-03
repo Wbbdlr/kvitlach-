@@ -3,10 +3,10 @@ import PageShell from "./PageShell";
 export default function Disclaimer() {
   return (
     <PageShell active="/disclaimer">
-      <h1 className="font-display text-3xl text-amber-800">Disclaimer</h1>
+      <h1 className="text-3xl font-bold text-amber-800">Disclaimer</h1>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
-        <h2 className="font-display text-lg text-amber-700">No gambling, no real money</h2>
+        <h2 className="text-lg font-semibold text-amber-700">No gambling, no real money</h2>
         <ul className="list-disc list-inside space-y-1">
           <li>This app is for entertainment and education only. It is not a gambling platform.</li>
           <li>No real money, payouts, or prizes are offered, tracked, or settled through this app.</li>
@@ -15,7 +15,7 @@ export default function Disclaimer() {
       </section>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
-        <h2 className="font-display text-lg text-amber-700">Player responsibility</h2>
+        <h2 className="text-lg font-semibold text-amber-700">Player responsibility</h2>
         <ul className="list-disc list-inside space-y-1">
           <li>By playing, you agree you are of legal age to participate in social/entertainment card games in your jurisdiction.</li>
           <li>You assume all responsibility for how you use the app, including any house rules agreed upon with your group.</li>
@@ -24,7 +24,7 @@ export default function Disclaimer() {
       </section>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
-        <h2 className="font-display text-lg text-amber-700">No warranties or guarantees</h2>
+        <h2 className="text-lg font-semibold text-amber-700">No warranties or guarantees</h2>
         <ul className="list-disc list-inside space-y-1">
           <li>The app is provided "as is" with no warranties of any kind, express or implied.</li>
           <li>We do not guarantee uptime, correctness of outcomes, fairness of play, or data persistence.</li>
@@ -33,7 +33,7 @@ export default function Disclaimer() {
       </section>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
-        <h2 className="font-display text-lg text-amber-700">Liability</h2>
+        <h2 className="text-lg font-semibold text-amber-700">Liability</h2>
         <ul className="list-disc list-inside space-y-1">
           <li>We are not liable for any losses, disputes, or damages arising from use of the app.</li>
           <li>Use of the app is at your own risk; stop playing if you experience issues or disagreement on outcomes.</li>
@@ -41,7 +41,7 @@ export default function Disclaimer() {
       </section>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
-        <h2 className="font-display text-lg text-amber-700">Beta notice</h2>
+        <h2 className="text-lg font-semibold text-amber-700">Beta notice</h2>
         <ul className="list-disc list-inside space-y-1">
           <li>This is a beta release. Features may change, and outages or resets may occur.</li>
           <li>Report issues or feedback so we can improve stability and clarity.</li>

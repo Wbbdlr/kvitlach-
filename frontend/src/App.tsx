@@ -471,7 +471,7 @@ export default function App() {
           <section className="rounded-xl shadow-md bg-amber-50/70 border border-amber-200 p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
-                <h1 className="font-display text-2xl text-amber-800">Welcome to Kvitlach</h1>
+                <h1 className="text-xl font-bold text-amber-800">Welcome to Kvitlach</h1>
                 <div className="text-xs text-slate-600">
                   Join an existing table with the room code your Banker shared, or host one if you are running the game.
                 </div>
@@ -784,7 +784,7 @@ export default function App() {
 
 
       </div>
-
+      {rulesModals}
     </>
   );
 }

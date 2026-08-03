@@ -75,6 +75,87 @@ describe("seat layout", () => {
     }
   });
 
+  // The cases above all run at vf=1 (the unflattened design). A landscape
+  // phone renders at vf~0.54, which is where seats are closest together, so
+  // the same guarantees are re-checked across the whole flattening range.
+  describe("with the table flattened for a wide, short viewport", () => {
+    const FACTORS = [0.5, 0.54, 0.62, 0.8, 1];
+
+    it("keeps the viewer at bottom-centre at every vertical factor", () => {
+      for (const vf of FACTORS) {
+        for (let count = 1; count <= 8; count += 1) {
+          const viewer = seatPositions(count, vf)[viewerSlotIndex(count)];
+          expect(viewer.x, `count=${count} vf=${vf}`).toBeCloseTo(CENTER_X, 6);
+        }
+      }
+    });
+
+    // MAX_SEATED_PLAYERS_PER_ROUND in backend/src/store.ts. The server hands
+    // out at most this many seats, so the geometry has to hold for every one
+    // of them at every factor -- a client on a squat phone gets the same
+    // roster as one on a desktop and cannot negotiate it down.
+    const MAX_SEATS = 11;
+
+    it("still never overlaps two seats, at every factor, up to the server's seat cap", () => {
+      // Regression: flattening packs the same seats into a shorter arc, and
+      // seatScale's floor (then 0.55, above the ~0.49 a full table needs)
+      // clamped ABOVE the required scale -- so a 10-11 player table collided
+      // on every screen that flattened at all, desktop included.
+      for (let k = 50; k <= 100; k += 1) {
+        const vf = k / 100;
+        for (let count = 2; count <= MAX_SEATS; count += 1) {
+          const positions = seatPositions(count, vf);
+          const s = seatScale(positions);
+          for (let i = 0; i < positions.length; i += 1) {
+            for (let j = i + 1; j < positions.length; j += 1) {
+              const dx = Math.abs(positions[i].x - positions[j].x);
+              const dy = Math.abs(positions[i].y - positions[j].y);
+              const clear = dx >= SEAT_WIDTH * s - 1e-6 || dy >= SEAT_HEIGHT * s - 1e-6;
+              expect(clear, `seats ${i}/${j} overlap at count=${count} vf=${vf}`).toBe(true);
+            }
+          }
+        }
+      }
+    });
+
+    it("keeps every seat on the stage even at the widest spread", () => {
+      // The ellipse widens as it flattens (spreadFactor), so the flattest
+      // table is also the one closest to running off the stage edges.
+      for (let k = 50; k <= 100; k += 1) {
+        const vf = k / 100;
+        for (let count = 1; count <= MAX_SEATS; count += 1) {
+          for (const p of seatPositions(count, vf)) {
+            expect(p.x - SEAT_WIDTH / 2, `vf=${vf} count=${count}`).toBeGreaterThanOrEqual(0);
+            expect(p.x + SEAT_WIDTH / 2, `vf=${vf} count=${count}`).toBeLessThanOrEqual(STAGE_WIDTH);
+          }
+        }
+      }
+    });
+
+    it("offsets every seat by playTop so none rides up under the top chrome", () => {
+      const playTop = 60;
+      for (const vf of FACTORS) {
+        for (let count = 1; count <= 8; count += 1) {
+          const flat = seatPositions(count, vf);
+          const shifted = seatPositions(count, vf, playTop);
+          shifted.forEach((p, i) => {
+            expect(p.y).toBeCloseTo(flat[i].y + playTop, 6);
+            expect(p.x).toBeCloseTo(flat[i].x, 6);
+          });
+        }
+      }
+    });
+
+    it("shrinks the seat ellipse in step with the factor, never past it", () => {
+      // Seats must stay pinned to the oval as it flattens -- if the ellipse
+      // shrank faster or slower than --vf's oval, they'd drift off the rail.
+      for (const vf of FACTORS) {
+        const [bottom] = seatPositions(1, vf);
+        expect(bottom.y).toBeCloseTo((372 + 198) * vf, 6);
+      }
+    });
+  });
+
   it("rotates the turn list so the viewer lands in the bottom slot, preserving cyclic order", () => {
     const turns = ["a", "b", "c", "d"];
     const ordered = orderSeatsForViewer(turns, (t) => t === "d");

@@ -53,7 +53,10 @@ export function Dealer({
 
   return (
     <>
-      <div className="k-seat" style={{ left: "640px", top: "160px", transform: "translate(-50%, -50%)" }}>
+      <div
+        className="k-seat"
+        style={{ left: "640px", top: "calc(var(--play-top, 0px) + 160px * var(--vf, 1))", transform: "translate(-50%, -50%)" }}
+      >
         <button
           type="button"
           className={clsx("k-plate", isActive && "is-active", isOffline && "is-offline")}

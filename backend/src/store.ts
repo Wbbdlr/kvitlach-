@@ -23,9 +23,10 @@ const PRACTICE_TOPUP_AMOUNT = 100;
 const MAX_PLAYERS_PER_ROOM = 100;
 // How many non-banker players get an active seat in a single round. The felt
 // table's oval seating (frontend/src/table/layout.ts) can only fit players
-// without overlapping seat plates up to this count -- numerically confirmed
-// (seatScale's hard 0.55 floor first produces overlaps at 12 seated
-// players). Anyone beyond this per round rotates into waitingPlayerIds and
+// without overlapping seat plates up to this count -- numerically confirmed,
+// and pinned by layout.test.ts, across the full range the table flattens
+// through on wide-short screens; 12 seats is the first count that collides.
+// Anyone beyond this per round rotates into waitingPlayerIds and
 // is guaranteed a seat within the next `others.length` rounds, since
 // startRound()'s rotation advances by exactly one player per round.
 const MAX_SEATED_PLAYERS_PER_ROUND = 11;

@@ -112,6 +112,16 @@ body {
   overflow: hidden;
   background: #060d09;
   -webkit-tap-highlight-color: transparent;
+  /* The felt's ACTUAL rendered size, mirroring .felt-table's own scale
+     transform (TableRoot sets --stage-scale and --stage-h-px). Chrome that
+     has to line up with the felt's edges rather than the window's reads
+     these -- see .k-controls and .k-toast-stack. Usually the felt fills
+     .k-fit exactly (stage.ts sizes it to), but a viewport too tall for the
+     design's aspect ratio (a portrait phone) still letterboxes, and then
+     the difference is what keeps the controls under the table instead of
+     stranded in the surround. */
+  --stage-w: calc(1280px * var(--stage-scale, 1));
+  --stage-h: calc(var(--stage-h-px, 760px) * var(--stage-scale, 1));
 }
 
 /* Card art and avatars trigger iOS's long-press "Save Image" callout on
@@ -167,7 +177,9 @@ body:has(.k-fit) {
   overflow: hidden;
 }
 
-/* The felt surface itself (kept as .felt-table -- existing selector). */
+/* The felt surface itself (kept as .felt-table -- existing selector).
+   Both dimensions and --vf are set inline by TableRoot from useStageScale;
+   these are only the pre-measurement fallback. */
 .felt-table {
   position: relative;
   width: 1280px;
@@ -184,14 +196,20 @@ body:has(.k-fit) {
 /* The table proper: a real oval object with a wood rail, floating on the
    felt -- gold inset hairline, inner vignette, and a drop shadow so it
    reads as a physical table rather than a flat background. */
+/* Vertical geometry is expressed against --vf (see stage.ts) so the table
+   flattens to match the viewport's aspect ratio instead of pillarboxing.
+   Horizontal values stay absolute -- the stage is always 1280 design px
+   wide, so only the vertical axis ever has to give. */
 .k-oval {
   position: absolute;
-  top: 100px;
+  top: calc(var(--play-top, 0px) + 100px * var(--vf, 1));
   left: 50%;
   transform: translateX(-50%);
-  width: 1000px;
-  height: 540px;
-  border-radius: 270px / 250px;
+  /* --hf widens in step with layout.ts's spreadFactor so the seats stay on
+     the rail as the table flattens; without it they'd drift off the oval. */
+  width: calc(1000px * var(--hf, 1));
+  height: calc(540px * var(--vf, 1));
+  border-radius: calc(270px * var(--hf, 1)) / calc(250px * var(--vf, 1));
   border: 10px solid var(--felt-rail);
   box-shadow: inset 0 0 0 2px rgba(230, 164, 75, 0.25), inset 0 0 70px rgba(0, 0, 0, 0.4),
     0 24px 60px rgba(0, 0, 0, 0.45);
@@ -216,12 +234,12 @@ body:has(.k-fit) {
 /* Dashed inner betting ring. */
 .k-ring {
   position: absolute;
-  top: 150px;
+  top: calc(var(--play-top, 0px) + 150px * var(--vf, 1));
   left: 50%;
   transform: translateX(-50%);
-  width: 820px;
-  height: 380px;
-  border-radius: 210px / 190px;
+  width: calc(820px * var(--hf, 1));
+  height: calc(380px * var(--vf, 1));
+  border-radius: calc(210px * var(--hf, 1)) / calc(190px * var(--vf, 1));
   border: 1px dashed rgba(230, 164, 75, 0.14);
   z-index: 1;
   pointer-events: none;
@@ -233,7 +251,7 @@ body:has(.k-fit) {
   top: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: calc(60px * var(--vf, 1));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -242,8 +260,12 @@ body:has(.k-fit) {
   background: linear-gradient(180deg, rgba(8, 16, 12, 0.7), rgba(8, 16, 12, 0));
   pointer-events: none;
 }
+/* Shrinks with the table. On a flattened stage the top-flank seats rise to
+   meet the branding, and this is decoration -- it yields, the seats don't. */
 .k-topbar > * {
   pointer-events: auto;
+  transform: scale(var(--vf, 1));
+  transform-origin: left center;
 }
 .k-logo-word {
   font-family: "Playfair Display", "Didot", "Bodoni MT", "Hoefler Text", Georgia, serif;
@@ -708,7 +730,7 @@ body:has(.k-fit) {
 /* The shoe/deck beside the dealer. */
 .k-shoe {
   position: absolute;
-  top: 116px;
+  top: calc(var(--play-top, 0px) + 116px * var(--vf, 1));
   left: calc(50% + 110px);
   width: 30px;
   z-index: 11;
@@ -753,12 +775,13 @@ body:has(.k-fit) {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+/* The reaction button rides in .k-controls next to the dock (it used to sit
+   alone against the right edge, nowhere near the controls it belongs with).
+   The wrapper only needs to match the dock's height so the two bottom-align. */
 .k-chrome-react {
-  position: absolute;
-  right: 10px;
-  right: max(10px, env(safe-area-inset-right));
-  bottom: 96px;
-  z-index: 40;
+  display: flex;
+  align-items: center;
+  min-height: 66px;
 }
 
 /* One-time nudge toward the fullscreen button -- it can only ever be
@@ -796,23 +819,18 @@ body:has(.k-fit) {
 }
 
 /* Toast stack -- round outcomes (won/lost/futched/push), deck reshuffles,
-   etc. Top-left, opposite .k-chrome-top's controls, so the two never
-   collide or force each other to wrap. */
+   etc. Bottom-left of the FELT (not .k-fit's raw edge -- see --stage-w/h on
+   .k-fit): a flat offset from the window's corner landed it out in the
+   surround on a letterboxed viewport, nowhere near the table. Bottom rather
+   than top so it's next to the player's own cards, where their eyes already
+   are mid-round, instead of a corner they have to look away to notice.
+   Raised clear of the controls tray's band -- both are anchored to the same
+   felt edge now, and on a narrow desktop window the centered tray reaches
+   far enough left to touch a bottom-corner toast. */
 .k-toast-stack {
   position: absolute;
-  /* Anchored to the felt's actual rendered corner, not .k-fit's raw edge.
-     .k-fit fills the whole window and centers the fixed 1280x760 stage
-     inside it (see .felt-table); on a wide desktop monitor the stage renders
-     narrower than .k-fit, leaving plain background on both sides. A flat
-     offset from .k-fit's own edge landed the toast out in that dead space,
-     nowhere near the table. --stage-scale (set on .k-fit, see TableRoot)
-     mirrors .felt-table's own scale transform, so this recovers where the
-     felt's corner actually is at any viewport size. Bottom rather than top:
-     it's next to the player's own cards/dock, where their eyes already are
-     mid-round, instead of a corner they have to look away to notice. */
-  --stage-w: calc(1280px * var(--stage-scale, 1));
-  --stage-h: calc(760px * var(--stage-scale, 1));
-  bottom: calc((100% - var(--stage-h)) / 2 + max(8px, env(safe-area-inset-bottom)));
+  --controls-band: 84px;
+  bottom: calc((100% - var(--stage-h)) / 2 + var(--controls-band) + max(8px, env(safe-area-inset-bottom)));
   left: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-left)));
   z-index: 45;
   display: flex;
@@ -856,31 +874,46 @@ body:has(.k-fit) {
   color: #eef2ea;
 }
 
-/* Control dock -- dark gradient bar with a gold top hairline. */
-/* Kept deliberately compact on desktop: this bar is a set of controls, not a
-   feature of the table, and every pixel it takes is felt the players can't
-   see. The phone breakpoint further down tightens it again. */
-.k-dock {
+/* The controls row -- the dock plus the reaction button, as one unit.
+   It sits ON the felt rather than clamped to the window's bottom edge: the
+   stage now fills the viewport (see stage.ts), and stage.ts reserves a band
+   at the felt's bottom that no seat, card, or turn indicator is laid out
+   into, so this can float there covering nothing. Centered under the
+   viewer's own seat (layout.ts's viewerSlotIndex puts them bottom-center),
+   which is where their attention already is. */
+.k-controls {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  left: 50%;
+  /* Anchored to the felt's bottom edge (see .k-fit's --stage-h), not the
+     window's. They coincide whenever the felt fills the viewport; when it
+     letterboxes the tray follows the table down instead of floating alone
+     in the surround. */
+  bottom: calc((100% - var(--stage-h)) / 2 + max(10px, env(safe-area-inset-bottom)));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: calc(100% - 20px);
+  z-index: 25;
+}
+
+/* Control dock -- a floating tray on the felt with a gold edge.
+   Kept deliberately compact: this is a set of controls, not a feature of the
+   table, and every pixel it takes is felt the players can't see. The phone
+   breakpoint further down tightens it again. */
+.k-dock {
+  position: relative;
   min-height: 66px;
-  background: linear-gradient(0deg, rgba(8, 16, 12, 0.94), rgba(8, 16, 12, 0.5));
-  border-top: 1px solid rgba(230, 164, 75, 0.22);
+  background: linear-gradient(180deg, rgba(8, 16, 12, 0.86), rgba(8, 16, 12, 0.96));
+  border: 1px solid rgba(230, 164, 75, 0.28);
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
   gap: 10px;
   padding: 8px 14px;
-  /* The dock sits flush against the bottom/side edges -- on notched iPhones
-     in landscape that's exactly where the home-indicator bar and the notch
-     sit, so pad by the real inset (0 on non-notch devices) on top of the
-     existing padding rather than replacing it. */
-  padding-left: max(16px, env(safe-area-inset-left));
-  padding-right: max(16px, env(safe-area-inset-right));
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
   z-index: 25;
 }
 .k-betbox {
@@ -1223,35 +1256,17 @@ body:has(.k-fit) {
    ~6 controls don't fit in one row, so flex-wrap pushes it to 2-3 rows and
    min-height:84px no longer caps how tall it actually gets, eating into the
    player's own cards/total above it. Shrink the controls themselves (not
-   just padding) so more fit per row and the wrapped height stays small. */
+   just padding) so more fit per row and the wrapped height stays small.
+   The dock height here must stay in step with stage.ts's
+   COMPACT_DOCK_HEIGHT_PX, which reserves the felt band this sits in. */
 @media (max-width: 520px), (max-height: 440px) {
-  /* Top-align instead of centering the felt -- matched by stage.ts's own
-     use of this same breakpoint to reserve real bottom clearance for the
-     dock in its scale computation. A centered layout would only put half of
-     any reserved space at the bottom (the other half becomes unused margin
-     above), which isn't enough to guarantee the dock never reaches a tall
-     hand's cards; top-aligning makes the full reservation land exactly
-     where the dock actually is. */
-  .k-fit {
-    align-items: flex-start;
-  }
-  /* .felt-table's default transform-origin is center center (see its own
-     rule) -- with align-items:flex-start alone, the *layout* box moves to
-     the top, but the scale transform still shrinks it around its own
-     unscaled center (380px down, half of the fixed 760px design height),
-     which visually re-centers it anyway and undoes the reservation above.
-     Scaling from the top instead makes the rendered box actually flush
-     against .k-fit's top edge, so the reserved space lands at the bottom. */
-  .felt-table {
-    transform-origin: top center;
+  .k-chrome-react {
+    min-height: 60px;
   }
   .k-dock {
     min-height: 60px;
     gap: 6px;
     padding: 6px 8px;
-    padding-left: max(8px, env(safe-area-inset-left));
-    padding-right: max(8px, env(safe-area-inset-right));
-    padding-bottom: calc(6px + env(safe-area-inset-bottom));
   }
   .k-betbox {
     padding: 4px 6px;

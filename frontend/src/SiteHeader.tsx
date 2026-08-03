@@ -35,7 +35,7 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
             loading="lazy"
           />
         </span>
-        <span className="font-display tracking-wide text-amber-700">Kvitlach</span>
+        <span className="text-amber-600">Kvitlach</span>
       </a>
       <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-amber-700/80 leading-tight">
         Ah Heimishe Chanukah Shpil

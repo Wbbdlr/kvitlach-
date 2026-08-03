@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useFelt } from "../theme";
-import { orderSeatsForViewer, seatPositions, seatScale, STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
+import { orderSeatsForViewer, seatPositions, seatScale, spreadFactor, STAGE_WIDTH } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { Seat } from "./Seat";
@@ -157,7 +157,7 @@ export function TableRoot({
   const [manageOpen, setManageOpen] = useState(false);
   const [roomInfoOpen, setRoomInfoOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
-  const { wrapRef, scale } = useStageScale();
+  const { wrapRef, scale, stageHeight, vf, playTop } = useStageScale();
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
   // The Fullscreen API can only be entered from a real tap (see
@@ -269,7 +269,7 @@ export function TableRoot({
     () => orderSeatsForViewer(playerTurns, (t) => t.player.id === playerId),
     [playerTurns, playerId]
   );
-  const positions = seatPositions(seatedTurns.length);
+  const positions = seatPositions(seatedTurns.length, vf, playTop);
   const seatShrink = seatScale(positions);
 
   // Chips the bank currently has committed, per seat -- drawn on the felt so
@@ -330,10 +330,28 @@ export function TableRoot({
   );
 
   return (
-    <div className="k-fit" ref={wrapRef} style={{ ["--stage-scale" as string]: scale } as React.CSSProperties}>
+    <div
+      className="k-fit"
+      ref={wrapRef}
+      style={
+        {
+          "--stage-scale": scale,
+          "--stage-h-px": `${stageHeight}px`,
+        } as React.CSSProperties
+      }
+    >
       <div
         className="felt-table"
-        style={{ transform: `scale(${scale})`, width: STAGE_WIDTH, height: STAGE_HEIGHT }}
+        style={
+          {
+            transform: `scale(${scale})`,
+            width: STAGE_WIDTH,
+            height: stageHeight,
+            "--vf": vf,
+            "--hf": spreadFactor(vf),
+            "--play-top": `${playTop}px`,
+          } as React.CSSProperties
+        }
       >
         <div className="k-oval" />
         <div className="k-ring" />
@@ -590,10 +608,6 @@ export function TableRoot({
         </button>
       </div>
 
-      <div className="k-chrome-react">
-        <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
-      </div>
-
       {notifications.length > 0 && (
         <div className="k-toast-stack">
           {notifications.map((note) => (
@@ -607,6 +621,7 @@ export function TableRoot({
         </div>
       )}
 
+      <div className="k-controls">
       {canPlayerAct && myPlayerTurn && !roundOver && (
         <PlayerDock
           turn={myPlayerTurn}
@@ -656,6 +671,10 @@ export function TableRoot({
           )}
         </div>
       )}
+        <div className="k-chrome-react">
+          <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
+        </div>
+      </div>
 
       {isAdmin && (
         <ManageDrawer
