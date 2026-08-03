@@ -8,6 +8,8 @@ import { isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
 import { TableRoot } from "./table/TableRoot";
 import { RulesModals } from "./RulesModals";
+import SiteHeader from "./SiteHeader";
+import SiteFooter from "./SiteFooter";
 
 export default function App() {
   const store = useGameStore();
@@ -464,42 +466,16 @@ export default function App() {
           {message}
         </div>
       )}
-      <header className="flex items-center gap-3 flex-wrap">
-        <h1 className="flex items-center gap-2 text-2xl sm:text-3xl font-bold leading-none">
-          <span className="relative inline-flex h-9 w-10 items-center justify-center pointer-events-none">
-            <img
-              src="/11.png"
-              alt=""
-              aria-hidden="true"
-              className="absolute h-9 w-auto -rotate-[24deg] -translate-x-[2px] drop-shadow-sm z-10"
-              loading="lazy"
-            />
-            <img
-              src="/12.png"
-              alt=""
-              aria-hidden="true"
-              className="absolute h-9 w-auto rotate-[23deg] translate-x-[16px] drop-shadow-sm"
-              loading="lazy"
-            />
-          </span>
-          <span className="text-amber-600">Kvitlach</span>
-        </h1>
-        <span className="self-end -translate-y-[4px] transform text-[10px] font-serif uppercase tracking-[0.2em] text-amber-700 leading-tight">
-          Ah Heimishe Chanukah Shpil
-        </span>
-        <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 shadow-sm">
-          Beta
-        </span>
-      </header>
+      <SiteHeader />
         {!room && (
-          <section className="card-surface p-4 flex flex-col gap-2">
+          <section className="rounded-xl shadow-md bg-amber-50/70 border border-amber-200 p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
-                <div className="font-semibold text-base">Welcome to Kvitlach</div>
-                <div className="text-xs text-slate-500">
+                <h1 className="font-display text-2xl text-amber-800">Welcome to Kvitlach</h1>
+                <div className="text-xs text-slate-600">
                   Join an existing table with the room code your Banker shared, or host one if you are running the game.
                 </div>
-                <div className="space-y-1 text-xs text-slate-500">
+                <div className="space-y-1 text-xs text-slate-600">
                   <p>Banker manages the bankroll and payouts; everyone else plays against them.</p>
                   <p>Most visitors only need the Join form—create a table only if you are the Banker.</p>
                 </div>
@@ -520,13 +496,13 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  className="group inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-600 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-blue-500 hover:text-white"
+                  className="group inline-flex items-center gap-2 rounded-full border border-amber-300 text-amber-700 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-amber-600 hover:text-white"
                   onClick={() => {
                     setShowHowTo(false);
                     setShowWhatIs(true);
                   }}
                 >
-                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-blue-500 p-[1px]">
+                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-amber-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-amber-600 p-[1px]">
                     <img
                       src="/blank.png"
                       alt=""
@@ -550,7 +526,7 @@ export default function App() {
                 Join Game
                 <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
                   <svg
-                    className="h-3 w-3 text-blue-500"
+                    className="h-3 w-3 text-amber-500"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                     aria-hidden="true"
@@ -589,7 +565,7 @@ export default function App() {
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-accent2 text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 hover:bg-accent2/80"
+                  className="flex-1 bg-accent text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 hover:bg-accent/85"
                 >
                   Join
                 </button>
@@ -665,7 +641,7 @@ export default function App() {
             </button>
           </header>
           {formErrors.create && (
-            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded px-3 py-2">
+            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
               {formErrors.create}
             </div>
           )}
@@ -724,7 +700,7 @@ export default function App() {
                 {bankerBankrollManuallySet && (
                   <button
                     type="button"
-                    className="text-blue-600 font-semibold"
+                    className="text-amber-700 font-semibold"
                     onClick={() => {
                       setBankerBankroll(buyIn);
                       setBankerBankrollManuallySet(false);
@@ -753,13 +729,8 @@ export default function App() {
 
 
 
-      <footer className="mt-8 border-t border-slate-200 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <SiteFooter>
         <div className="flex items-center gap-3">
-          <span className="font-semibold text-slate-600">Kvitlach.us</span>
-          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
-            v2.5
-            <span className="text-amber-700">Beta</span>
-          </span>
           <span
             className={clsx(
               "inline-flex items-center gap-1 rounded-full px-2 py-1 border text-[11px]",
@@ -779,8 +750,6 @@ export default function App() {
             <span className="uppercase tracking-wide">WS</span>
             <span className="text-[10px]">{status === "connected" ? "ok" : status === "connecting" ? "wait" : "down"}</span>
           </span>
-        </div>
-        <div className="flex items-center gap-3">
           <span className="text-[11px] uppercase tracking-wide text-slate-500">Sound</span>
           <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
@@ -799,7 +768,7 @@ export default function App() {
           <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
               checked={sfxEnabled}
               onChange={(e) => {
                 const next = e.target.checked;
@@ -811,13 +780,7 @@ export default function App() {
             <span className="text-[11px] font-semibold text-ink">SFX</span>
           </label>
         </div>
-        <nav className="flex items-center gap-4">
-          <a href="/about" className="hover:text-ink underline-offset-4 hover:underline">About</a>
-          <a href="/disclaimer" className="hover:text-ink underline-offset-4 hover:underline">Disclaimer</a>
-          <a href="/contact" className="hover:text-ink underline-offset-4 hover:underline">Contact</a>
-        </nav>
-        <span>© SWS 2026</span>
-      </footer>
+      </SiteFooter>
 
 
       </div>
