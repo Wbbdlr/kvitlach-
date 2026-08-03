@@ -157,7 +157,7 @@ export function TableRoot({
   const [manageOpen, setManageOpen] = useState(false);
   const [roomInfoOpen, setRoomInfoOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
-  const { wrapRef, scale, stageHeight, vf, playTop } = useStageScale();
+  const { wrapRef, dockRef, scale, stageHeight, vf, playTop } = useStageScale();
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
   // The Fullscreen API can only be entered from a real tap (see
@@ -621,7 +621,7 @@ export function TableRoot({
         </div>
       )}
 
-      <div className="k-controls">
+      <div className="k-controls" ref={dockRef}>
       {canPlayerAct && myPlayerTurn && !roundOver && (
         <PlayerDock
           turn={myPlayerTurn}

@@ -45,7 +45,21 @@ export interface StageFit {
 
 // Exported for tests -- this is the whole no-wasted-space contract, and it's
 // pure, so it's far cheaper to pin here than through a rendered component.
-export function computeFit(availWidth: number, availHeight: number, isCompact: boolean): StageFit {
+//
+// dockHeight is the tray's MEASURED height, when it's known. The constants
+// above describe the dock mid-turn; it grows in other states, and the tallest
+// one found in play -- "Round complete / Waiting for the banker to start the
+// next round" -- wraps to two lines and reaches 79px, overlapping the bottom
+// seat by 11px on a landscape phone. Measuring beats enumerating every state
+// and hoping, and it can't feed back: the tray sits outside the scaled stage
+// (see .k-fit) and its width follows the viewport, not vf, so its height
+// doesn't move when the answer here changes.
+export function computeFit(
+  availWidth: number,
+  availHeight: number,
+  isCompact: boolean,
+  dockHeight = 0
+): StageFit {
   if (availWidth <= 0 || availHeight <= 0) {
     return { scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0 };
   }
@@ -58,7 +72,8 @@ export function computeFit(availWidth: number, availHeight: number, isCompact: b
   // .k-fit), so converting their real pixel heights back into stage px is
   // what lets the play area between them be sized in the same units as
   // everything else.
-  const dockBand = ((isCompact ? COMPACT_DOCK_HEIGHT_PX : DOCK_HEIGHT_PX) + DOCK_GUTTER_PX) / scale;
+  const nominalDock = isCompact ? COMPACT_DOCK_HEIGHT_PX : DOCK_HEIGHT_PX;
+  const dockBand = (Math.max(nominalDock, dockHeight) + DOCK_GUTTER_PX) / scale;
   const playTop = TOP_CHROME_PX / scale;
 
   // Whatever vertical room is left between the two bands decides how flat the
@@ -76,7 +91,9 @@ export function computeFit(availWidth: number, availHeight: number, isCompact: b
 
 export function useStageScale() {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState<StageFit>({ scale: 1, stageHeight: STAGE_HEIGHT, vf: 1 });
+  // Attach to the controls tray so its real height feeds the bottom band.
+  const dockRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<StageFit>({ scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0 });
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -84,9 +101,19 @@ export function useStageScale() {
 
     const apply = () => {
       const isCompact = typeof window.matchMedia === "function" && window.matchMedia(COMPACT_MEDIA_QUERY).matches;
-      const next = computeFit(wrap.clientWidth, wrap.clientHeight, isCompact);
+      const next = computeFit(
+        wrap.clientWidth,
+        wrap.clientHeight,
+        isCompact,
+        dockRef.current?.getBoundingClientRect().height ?? 0
+      );
       setFit((prev) =>
-        prev.scale === next.scale && prev.stageHeight === next.stageHeight && prev.vf === next.vf ? prev : next
+        prev.scale === next.scale &&
+        prev.stageHeight === next.stageHeight &&
+        prev.vf === next.vf &&
+        prev.playTop === next.playTop
+          ? prev
+          : next
       );
     };
 
@@ -101,6 +128,9 @@ export function useStageScale() {
     // jsdom under test has no implementation of it.
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(apply) : undefined;
     ro?.observe(wrap);
+    // The tray changes height when the dock swaps states mid-round, not just
+    // when the window resizes, so it needs watching in its own right.
+    if (dockRef.current) ro?.observe(dockRef.current);
     window.addEventListener("resize", apply);
     window.visualViewport?.addEventListener("resize", apply);
     window.visualViewport?.addEventListener("scroll", apply);
@@ -119,5 +149,5 @@ export function useStageScale() {
     };
   }, []);
 
-  return { wrapRef, ...fit };
+  return { wrapRef, dockRef, ...fit };
 }

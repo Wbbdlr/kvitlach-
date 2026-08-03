@@ -62,6 +62,31 @@ describe("stage fit", () => {
     expect(fit.stageHeight * fit.scale).toBeLessThanOrEqual(844);
   });
 
+  it("reserves the tray's real height when it grows past the nominal dock", () => {
+    // Regression, caught on production: the dock's tallest state ("Round
+    // complete / Waiting for the banker to start the next round") wraps to
+    // two lines and measures 79px against a 60px nominal reserve, so the
+    // viewer's own seat was overlapped by 11px on a landscape phone.
+    for (const p of PROFILES) {
+      const nominal = computeFit(p.w, p.h, p.compact);
+      const measured = computeFit(p.w, p.h, p.compact, 79);
+      const bandOf = (f: ReturnType<typeof computeFit>) =>
+        (f.stageHeight - f.playTop - 760 * f.vf) * f.scale;
+      expect(bandOf(measured), `${p.name}`).toBeGreaterThanOrEqual(79);
+      // Only ever gives the tray more room, never takes the felt's width.
+      expect(measured.scale).toBe(nominal.scale);
+      expect(measured.vf).toBeLessThanOrEqual(nominal.vf);
+    }
+  });
+
+  it("ignores a measured tray shorter than the nominal dock", () => {
+    // A tray mid-mount (height 0) must not collapse the band to nothing.
+    for (const p of PROFILES) {
+      expect(computeFit(p.w, p.h, p.compact, 0)).toEqual(computeFit(p.w, p.h, p.compact));
+      expect(computeFit(p.w, p.h, p.compact, 12)).toEqual(computeFit(p.w, p.h, p.compact));
+    }
+  });
+
   it("degrades to the design size rather than dividing by zero before layout", () => {
     expect(computeFit(0, 0, false)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0 });
   });
