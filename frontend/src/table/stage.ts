@@ -29,8 +29,22 @@ const DESKTOP_DOCK_RESERVED_HEIGHT_PX = 90;
 // Scale-to-fit for the fixed 1280x760 stage, ported from the mockup's
 // fitStage(). The stage keeps its design pixel size and is uniformly
 // transform-scaled to fit the wrapper, so the whole composition letterboxes
-// and centers at any viewport instead of reflowing. Capped at 1 so it never
-// upscales past the design size on a large desktop monitor.
+// and centers at any viewport instead of reflowing.
+//
+// MAX_SCALE used to be a flat 1 ("never upscale past design size"), but that
+// left a lot of a spacious desktop window unused -- on a plain 1920x1080
+// browser window the felt rendered at its native 1280x760 and sat in a
+// couple hundred px of black on every side, per direct user feedback ("we
+// are wasting so much space, the whole game can be scaled up"). Every
+// in-stage visual (cards, seat plates, icons) is either a font glyph, an SVG,
+// or a high-resolution source image, so growing past 1x doesn't cost
+// sharpness the way it would for a small raster asset. 1.6 is not
+// "unlimited": width/height still bind first on anything that isn't unusually
+// large (a 1280-wide window still renders at 1x, untouched), and stopping
+// short of a full uncap avoids relying on source-image resolution holding up
+// at, say, 3x on an 8K display nobody has actually tested this against.
+const MAX_SCALE = 1.6;
+
 export function useStageScale() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -44,7 +58,7 @@ export function useStageScale() {
       const availableHeight = isCompact
         ? wrap.clientHeight - DOCK_RESERVED_HEIGHT_PX
         : wrap.clientHeight - DESKTOP_DOCK_RESERVED_HEIGHT_PX * 2;
-      const next = Math.min(wrap.clientWidth / STAGE_WIDTH, availableHeight / STAGE_HEIGHT, 1);
+      const next = Math.min(wrap.clientWidth / STAGE_WIDTH, availableHeight / STAGE_HEIGHT, MAX_SCALE);
       setScale(next > 0 ? next : 1);
     };
 
