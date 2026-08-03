@@ -154,6 +154,21 @@ export class GameStore {
     return pendingTurns[0]?.player.id;
   }
 
+  // The turn-STATE guard (round.ts's own `turn.state !== "pending"` checks)
+  // only ever asked "have you already acted?" -- never "is it your go?". That
+  // is not a pedantic distinction here, because the bank limit is computed
+  // from the wagers sitting in the seats AHEAD of you (see computeBankWindow):
+  // seats that have not acted yet carry a bet of 0, so a seat playing out of
+  // order is measured against a bank nobody has claimed. Two players wagering
+  // 10 each into a 15-chip bank both pass their own check, and if both win the
+  // banker pays 20 out of 15 and lands at -5. The UI never offers an
+  // out-of-turn action, so this closes the gap under it rather than fixing
+  // something players could reach -- but "the client wouldn't do that" is not
+  // what should be keeping a real-money bank solvent.
+  private ensureActiveTurn(round: RoundContext, playerId: string) {
+    if (this.getActiveTurnId(round) !== playerId) throw new Error("not_your_turn");
+  }
+
   private syncTurnTimer(roundId: string, next: RoundContext, prev?: RoundContext): RoundContext {
     const activeTurnId = this.getActiveTurnId(next);
     const activeTurn = activeTurnId ? next.turns.find((turn) => turn.player.id === activeTurnId) : undefined;
@@ -737,6 +752,7 @@ export class GameStore {
       if (lock.stage === "banker") throw new Error("bank_locked");
       if (lock.stage === "decision") throw new Error("banker_deciding");
     }
+    this.ensureActiveTurn(round, playerId);
 
     const wallet = roomRec.room.wallets[playerId] ?? 0;
     const newBet = playerTurn.bet + amount;
@@ -787,6 +803,7 @@ export class GameStore {
       }
       if (lock.stage === "decision") throw new Error("banker_deciding");
     }
+    this.ensureActiveTurn(round, playerId);
     const updated = handleHit(round, playerId, { eleveroon: options?.eleveroon });
     const settledIndex = updated.turns.findIndex((t) => t.player.id === playerId);
     if (settledIndex >= 0) this.settleImmediateTurn(updated, roomRec, settledIndex);
@@ -808,6 +825,7 @@ export class GameStore {
       }
       if (lock.stage === "decision") throw new Error("banker_deciding");
     }
+    this.ensureActiveTurn(round, playerId);
     const updated = handleStand(round, playerId);
     const processed = this.processBankLock(updated, roomRec);
     return this.persistRound(roundId, processed, round);
@@ -1173,6 +1191,24 @@ export class GameStore {
     }
 
     const balances = calculateBalances(resolved);
+    const resolvedById = new Map(resolved.map((turn) => [turn.player.id, turn] as const));
+
+    // A BANK! forces the banker to keep playing so the seats still to come
+    // have a live bank to play against. When the wagering player was the LAST
+    // one, there is nothing left to keep alive -- and dealing the banker a
+    // fresh card anyway ended the round showing them mid-hand, holding a card
+    // that settles nothing, with their own net wiped (settledNet is cleared
+    // on the redeal). The round's state was already computed as "terminate"
+    // by the action that got us here, and nothing below reopens it, so the
+    // card was dealt straight into a finished round.
+    // Seats at or below throughIndex are the ones this settlement just
+    // resolved, so they're read from `resolved`, not from their pre-settlement
+    // state.
+    const seatsStillToPlay = round.turns.some((turn, index) => {
+      if (turn.player.type === "admin") return false;
+      const state = index <= lock.throughIndex ? resolvedById.get(turn.player.id)?.state ?? turn.state : turn.state;
+      return state === "pending" || state === "standby";
+    });
 
     // Work out whether this settlement leaves the banker able (and forced)
     // to keep auto-playing, and draw THAT card before committing anything
@@ -1191,7 +1227,7 @@ export class GameStore {
     }, 0);
     const projectedBankerWallet = (roomRec.room.wallets[bankerId] ?? 0) + walletDelta;
     const bankerIndex = round.turns.findIndex((turn) => turn.player.id === bankerId);
-    const willAutoRedeal = projectedBankerWallet > 0 && bankerIndex >= 0;
+    const willAutoRedeal = projectedBankerWallet > 0 && bankerIndex >= 0 && seatsStillToPlay;
     const nextCard = willAutoRedeal ? this.drawCard(round) : undefined;
 
     balances.forEach(({ payer, payee, amount }) => {
@@ -1203,7 +1239,6 @@ export class GameStore {
       roomRec.room.balances = [...balances, ...roomRec.room.balances];
     }
 
-    const resolvedById = new Map(resolved.map((turn) => [turn.player.id, turn] as const));
     round.turns = round.turns.map((turn, index) => {
       if (turn.player.type === "admin") {
         if (turn.player.id !== bankerId) return turn;

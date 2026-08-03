@@ -159,12 +159,19 @@ describe("createPracticeRoom", () => {
       const currentRoom = store.getRoom(roomId)!;
       const roundId = currentRoom.roundId;
       if (!roundId) break; // bank ran dry enough that a new round couldn't be dealt -- acceptable end state
-      store.applyStand(roundId, player.id);
 
       let round = store.getRound(roundId);
       let guard = 0;
       while (round && round.state !== "terminate" && guard < 50) {
-        vi.advanceTimersByTime(1500);
+        // The seat rotation moves the human around the table between rounds,
+        // so "stand first, then let the bots run" only worked while they
+        // happened to be dealt first. Take the turn when it comes instead --
+        // the same wait a real player's dock imposes on them.
+        try {
+          store.applyStand(roundId, player.id);
+        } catch {
+          vi.advanceTimersByTime(1500);
+        }
         round = store.getRound(roundId);
         guard += 1;
       }

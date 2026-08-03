@@ -140,12 +140,21 @@ describe("live per-turn wallet settlement", () => {
   it("never live-settles the admin's own immediate resolution", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", bankerBankroll: 500 });
-    store.joinRoom(room.roomId, { firstName: "P1" });
+    const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
     const round = store.startRound(room.roomId, admin.id);
 
-    const adminTurn = round.turns.find((t) => t.player.type === "admin")!;
+    // The banker plays last, and the server holds them to that -- so the seat
+    // ahead has to finish before the banker's own hand is reachable. A real
+    // wager, so the seat goes to standby and leaves the round waiting on the
+    // bank rather than ending outright.
+    const p1Turn = round.turns.find((t) => t.player.id === p1.id)!;
+    p1Turn.bet = 5;
+    const afterPlayer = store.applyStand(round.roundId, p1.id);
+    expect(afterPlayer.state).toBe("final");
+
+    const adminTurn = afterPlayer.turns.find((t) => t.player.type === "admin")!;
     adminTurn.cards = [TWELVE, TWELVE];
-    round.deck = [TEN, ...round.deck];
+    afterPlayer.deck = [TEN, ...afterPlayer.deck];
 
     const walletsBefore = { ...store.getRoom(room.roomId)!.wallets };
     const updated = store.applyHit(round.roundId, admin.id);

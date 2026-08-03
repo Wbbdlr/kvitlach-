@@ -92,7 +92,16 @@ const isLive = (turn: any) => turn && turn.state === "pending";
 async function playRound(banker: Client, players: Client[], roomId: string) {
   let round = (await send(banker.ws, "round:start", { roomId })).round;
 
-  for (const p of players) {
+  // Seat order rotates between rounds (GameStore.nextStart), and the server
+  // now holds every seat to its actual turn -- so play the round's own order,
+  // not the fixed order this array happens to be in.
+  const byId = new Map(players.map((p) => [p.playerId, p] as const));
+  const seated = round.turns
+    .filter((t: any) => t.player.type !== "admin")
+    .map((t: any) => byId.get(t.player.id))
+    .filter(Boolean) as Client[];
+
+  for (const p of seated) {
     // Betting draws a card, which can resolve the turn outright (bust, or an
     // exact 21) -- so re-check before standing rather than assuming.
     if (isLive(turnOf(round, p.playerId))) {

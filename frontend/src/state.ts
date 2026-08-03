@@ -736,6 +736,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             ? "Bank has no chips left."
             : errorMessage === "turn_not_pending"
             ? "That action already went through."
+            : errorMessage === "not_your_turn"
+            ? "It's not your turn yet."
             : errorMessage === "forbidden"
             ? "Only the banker can perform that action."
             : errorMessage === "invalid_bank_amount"
