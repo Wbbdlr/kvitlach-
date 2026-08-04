@@ -247,7 +247,12 @@ body:has(.k-fit) {
   transform: translate(-50%, -50%);
   font-size: 28px;
   letter-spacing: 2px;
-  color: rgba(230, 164, 75, 0.09);
+  /* Was 0.09 -- reported still unreadable even with the mask fixed above (a
+     real screen/monitor reads 28px at 0.09 alpha much fainter than a
+     screenshot does). 0.16 is still clearly a background flourish, not
+     foreground text competing with the game, but has enough contrast against
+     the felt to actually read on a real display. */
+  color: rgba(230, 164, 75, 0.16);
   font-weight: 700;
   white-space: nowrap;
   mask-image: radial-gradient(ellipse 125px 48px at 50% 50%, transparent 0%, transparent 60%, black 100%);
