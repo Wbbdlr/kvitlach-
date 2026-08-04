@@ -99,4 +99,31 @@ describe("BankReservations placement", () => {
     expect(getByText("$7")).toBeInTheDocument();
     expect(getByText("$42")).toBeInTheDocument();
   });
+
+  // Regression: found live, on a landscape phone. The viewer's own bottom-
+  // centre seat is closest to the pot by construction, and gets closer still
+  // as the table flattens -- at vf 0.54 (six players, a common phone size) it
+  // sits only ~140px from the pot, well under what a straight line needs to
+  // clear both the "BANK $x" pill and the seat's own plate. The badge for the
+  // viewer's OWN wager landed 20-30px inside their own plate, invisible
+  // behind it (seats paint over badges) -- exactly the one reservation a
+  // player is most likely to go looking for.
+  it("skips a seat too close to the pot to place a badge without a collision, rather than force one", () => {
+    const flattenedPositions = seatPositions(6, 0.54, 0);
+    const closeSeat = flattenedPositions[Math.floor(flattenedPositions.length / 2)];
+    const flattenedReservations = [{ playerId: "close", amount: 5, position: closeSeat }];
+
+    const { container } = render(<BankReservations reservations={flattenedReservations} />);
+    expect(container.querySelectorAll(".k-resv")).toHaveLength(0);
+    expect(container.querySelector(".k-resv-lines")).toBeNull();
+  });
+
+  it("still places a badge for a seat that has room, even on the same flattened table", () => {
+    const flattenedPositions = seatPositions(6, 0.54, 0);
+    const flankSeat = flattenedPositions[0]; // furthest from the pot on this ellipse
+    const flattenedReservations = [{ playerId: "flank", amount: 5, position: flankSeat }];
+
+    const { container } = render(<BankReservations reservations={flattenedReservations} />);
+    expect(container.querySelectorAll(".k-resv")).toHaveLength(1);
+  });
 });

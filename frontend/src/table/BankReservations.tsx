@@ -21,16 +21,33 @@ const POT_Y = 336;
 
 // Chips rest a fixed distance BACK from the seat rather than at a fixed
 // fraction of the way there: seats sit at very different distances from the
-// pot on an ellipse this eccentric (the bottom seat is ~230px away, the
-// flanks nearly 400), so a single fraction either crowded the near seat or
-// stranded the far ones by the pot. Measuring back from the seat gives every
-// badge the same clearance -- seats paint over these (z-index 10 vs 9), so
-// grazing one clips it.
+// pot on an ellipse this eccentric (the flanks are ~350px out, the viewer's
+// own bottom-centre seat as little as ~140px at a flattened vf), so a single
+// fraction either crowded the near seat or stranded the far ones by the pot.
+// Measuring back from the seat gives every badge the same clearance -- seats
+// paint over these (z-index 10 vs 9), so grazing one clips it.
 const SEAT_CLEARANCE = 130;
 // ...but never so far back that a badge lands on the pot itself, nor so far
 // out that it drifts into the seat's own hand.
 const T_MIN = 0.34;
 const T_MAX = 0.7;
+
+// Below this, there is no straight-line point that clears both ends at once:
+// the pot-side floor (T_MIN) and the seat-side clearance (SEAT_CLEARANCE)
+// overlap. Measured on a live table: the viewer's own bottom-centre seat is
+// the one this actually happens to (it is closest to the pot by construction,
+// and gets closer still as the table flattens) -- at a distance of 142px, the
+// T_MIN-clamped point landed 20-30px INSIDE the viewer's own plate, hidden
+// behind it (seats paint over badges), on exactly the seat a player looks at
+// first to check the bank is showing their bet at all. There is no constant
+// that fixes this without breaking something else: more SEAT_CLEARANCE just
+// pushes the badge further past T_MIN with no effect (T_MIN is already what's
+// binding), and loosening T_MIN would drop it onto the "BANK $x" pill
+// instead. So below this threshold the badge is skipped rather than forced
+// into a collision -- every seat's plate already prints "$wallet · $bet" (see
+// Seat.tsx), so the information survives, just without this particular
+// seat's dashed line to the pot.
+const MIN_VIABLE_DISTANCE = SEAT_CLEARANCE / (1 - T_MIN);
 
 function restPoint(position: SeatPosition): { x: number; y: number } {
   const dx = position.x - POT_X;
@@ -38,6 +55,10 @@ function restPoint(position: SeatPosition): { x: number; y: number } {
   const distance = Math.hypot(dx, dy);
   const t = distance > 0 ? Math.min(T_MAX, Math.max(T_MIN, (distance - SEAT_CLEARANCE) / distance)) : T_MIN;
   return { x: POT_X + dx * t, y: POT_Y + dy * t };
+}
+
+function isPlaceable(position: SeatPosition): boolean {
+  return Math.hypot(position.x - POT_X, position.y - POT_Y) >= MIN_VIABLE_DISTANCE;
 }
 
 // Chips the bank has committed to wagers it hasn't settled yet, drawn on the
@@ -48,7 +69,8 @@ function restPoint(position: SeatPosition): { x: number; y: number } {
 // round goes round and why a table can stall on an empty bank. None of that
 // was visible before -- players just found their limit had moved.
 export function BankReservations({ reservations, scale = 1 }: BankReservationsProps) {
-  if (reservations.length === 0) return null;
+  const placeable = reservations.filter((r) => isPlaceable(r.position));
+  if (placeable.length === 0) return null;
 
   return (
     <>
@@ -59,7 +81,7 @@ export function BankReservations({ reservations, scale = 1 }: BankReservationsPr
         height={STAGE_HEIGHT}
         aria-hidden="true"
       >
-        {reservations.map((r) => {
+        {placeable.map((r) => {
           const end = restPoint(r.position);
           return (
             <line
@@ -74,7 +96,7 @@ export function BankReservations({ reservations, scale = 1 }: BankReservationsPr
         })}
       </svg>
 
-      {reservations.map((r) => {
+      {placeable.map((r) => {
         const at = restPoint(r.position);
         return (
           <div
