@@ -216,7 +216,19 @@ body:has(.k-fit) {
   pointer-events: none;
 }
 
-/* Room-wide, admin-set felt label (TableRoot sets --wm). */
+/* Room-wide, admin-set felt label (TableRoot sets --wm). Sits at the same
+   vertical centre as the busiest strip of the table -- the dealer above it
+   and the bank pot/reservations on it -- because that strip is also the
+   widest unbroken span of felt on the whole oval; anywhere else the text
+   would either run into the rail or need to be much shorter.
+   The pot's own pill used to cut a hard rectangular bite out of the middle of
+   the phrase, which read as broken rather than layered. Real felt tables
+   don't hide their print when a card or chip sits on it -- they show through
+   at the edges and disappear under the middle, because that's where the
+   action always collects. A radial mask does the same thing on purpose: the
+   watermark fades out approaching the pot and is fully present toward the
+   rail, so the pot reads as sitting ON the felt's print instead of erasing a
+   chunk of it. */
 .k-oval::after {
   content: var(--wm, "");
   position: absolute;
@@ -229,6 +241,8 @@ body:has(.k-fit) {
   color: rgba(230, 164, 75, 0.09);
   font-weight: 700;
   white-space: nowrap;
+  mask-image: radial-gradient(ellipse 58% 220% at 50% 50%, transparent 0%, transparent 38%, black 78%);
+  -webkit-mask-image: radial-gradient(ellipse 58% 220% at 50% 50%, transparent 0%, transparent 38%, black 78%);
 }
 
 /* Dashed inner betting ring. */
@@ -266,17 +280,20 @@ body:has(.k-fit) {
    it was chosen to keep the branding clear of top-flank seats, but those sit
    at ~260 stage px, nowhere near this row, so it was paying a real cost for a
    collision that doesn't happen.
-   Counter-scaling against the STAGE scale instead holds it at a roughly
-   constant on-screen size, clamped at both ends so it neither disappears on a
-   phone nor dominates a large monitor. */
+   Counter-scaling against the STAGE scale instead holds it near a constant
+   on-screen size. The first pass targeted ~23px, which read as "tiny" once it
+   was actually legible next to everything else on the page (the chrome row's
+   own icons are ~28-30px) -- the target here is ~32px, comparable to a normal
+   page heading, and it now grows further on genuinely large screens instead
+   of being capped near where the phone-legible size landed. */
 .k-topbar > * {
   pointer-events: auto;
-  transform: scale(clamp(0.8, calc(0.75 / var(--stage-scale, 1)), 2.2));
+  transform: scale(clamp(1.05, calc(1 / var(--stage-scale, 1)), 2.6));
   transform-origin: left center;
 }
 .k-logo-word {
   font-family: "Playfair Display", "Didot", "Bodoni MT", "Hoefler Text", Georgia, serif;
-  font-size: 31px;
+  font-size: 32px;
   font-weight: 700;
   color: #e6a44b;
   letter-spacing: 0.4px;
@@ -284,7 +301,7 @@ body:has(.k-fit) {
 }
 .k-logo-tag {
   font-family: Georgia, serif;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 3px;
   text-transform: uppercase;
   color: #c8923f;
