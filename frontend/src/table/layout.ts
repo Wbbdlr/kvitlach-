@@ -16,7 +16,18 @@ export const STAGE_HEIGHT = 760;
 
 // Nominal seat footprint, used to work out when seats would collide.
 export const SEAT_WIDTH = 168;
-export const SEAT_HEIGHT = 165;
+// Was 165, measured against a seat with the default 62px hand -- but the
+// viewer's OWN seat is always in the mix (it's the one guaranteed slot,
+// bottom-centre) and renders taller 92px cards, not 62px ones. Live
+// getBoundingClientRect() on that seat (Seat.tsx's ".k-hand.is-me") measured
+// 197px unscaled, 32px over the old constant. seatScale() has no per-seat
+// notion of "this one's taller" -- it applies one nominal height to every
+// pair -- so undercounting the tallest seat meant a 6-7 player table's
+// tightest pair (always the viewer against a neighbour) computed scale=1
+// while the real, taller box actually overlapped its neighbour by several
+// px. 200 covers the measured 197px with a few px to spare for box-shadow/
+// border spillover getBoundingClientRect includes.
+export const SEAT_HEIGHT = 200;
 
 export interface SeatPosition {
   angleDeg: number; // degrees clockwise from 12 o'clock

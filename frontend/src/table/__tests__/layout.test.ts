@@ -49,9 +49,14 @@ describe("seat layout", () => {
   });
 
   it("keeps seats full size for realistic table sizes and only shrinks when crowded", () => {
-    for (let count = 1; count <= 7; count += 1) {
+    // SEAT_HEIGHT covers the viewer's own seat (92px cards, 197px measured
+    // unscaled) rather than a neighbour's smaller 62px-card seat, so the
+    // viewer's own pair is the one that first needs shrinking -- at 6
+    // players, not 8. Below that, every table renders full size.
+    for (let count = 1; count <= 5; count += 1) {
       expect(seatScale(seatPositions(count))).toBe(1);
     }
+    expect(seatScale(seatPositions(6))).toBeLessThan(1);
     expect(seatScale(seatPositions(9))).toBeLessThan(1);
   });
 
