@@ -216,47 +216,43 @@ body:has(.k-fit) {
   pointer-events: none;
 }
 
-/* Room-wide, admin-set felt label (TableRoot sets --wm). Sits at the same
-   vertical centre as the busiest strip of the table -- the dealer above it
-   and the bank pot/reservations on it -- because that strip is also the
-   widest unbroken span of felt on the whole oval; anywhere else the text
-   would either run into the rail or need to be much shorter.
-   The pot's own pill used to cut a hard rectangular bite out of the middle of
-   the phrase, which read as broken rather than layered. Real felt tables
-   don't hide their print when a card or chip sits on it -- they show through
-   at the edges and disappear under the middle, because that's where the
-   action always collects. A radial mask does the same thing on purpose: the
-   watermark fades out approaching the pot and is fully present toward the
-   rail, so the pot reads as sitting ON the felt's print instead of erasing a
-   chunk of it.
-   First attempt sized the ellipse in PERCENT, which resolves against this
-   element's own box -- and that box is exactly as wide as the (nowrap)
-   watermark text, not the pot pill sitting on top of it. A long family name
-   made the box wide, so the same percentages hid a much bigger share of the
-   phrase than the ~209x60px pill ever covered -- measured live, 44%+ of the
-   text was fully hidden with only the outermost ~10% at full opacity,
-   leaving stray letters at each end and nothing readable in between. Fixed
-   px sized off the pill's own measured footprint fixes this regardless of
-   how long the configured watermark string is. */
+/* Room-wide, admin-set felt label (TableRoot sets --wm).
+   Two earlier attempts tried to sit this AT the pot and mask around it --
+   first with a percent-sized ellipse (hid 44%+ of the phrase, since percent
+   resolves against this element's own nowrap-text-width box, not the pill),
+   then a px-sized one (the right shape, but a 3-word RTL phrase centred
+   exactly on the pot always loses its MIDDLE word -- the family name itself
+   -- no matter how tight the mask gets, and the "reserved $X | free $Y"
+   readout widens the real occluder well past any fixed mask anyway). Both
+   were solving the wrong problem: there is no size of mask that keeps a
+   centred phrase readable when something is centred right on top of it.
+   Measured live instead for genuinely empty felt: the dealer's plate sits at
+   play-top + 160px*vf, its hand a fixed 72px below that (dealer is NOT
+   seatShrink-scaled, so that offset doesn't move with player count); the
+   bank panel's OWN top is play-top + 300px*vf + 14px (see BankPanel.tsx).
+   The midpoint between them is empty at every measured vf, dealer above,
+   pot/reservations below, so the watermark now lives there instead -- no
+   masking needed at all because nothing else ever sits on it. */
 .k-oval::after {
   content: var(--wm, "");
   position: absolute;
-  top: 46%;
+  /* NOT play-top + 230*vf + 27 (the absolute target derived above) -- this
+     pseudo-element's `top` resolves against .k-oval's OWN padding box, which
+     is itself already offset by `play-top + 100px*vf` (see .k-oval above).
+     Subtracting that out leaves just the remaining (230-100)*vf + 27. */
+  top: calc(130px * var(--vf, 1) + 27px);
   left: 50%;
   direction: rtl;
   transform: translate(-50%, -50%);
   font-size: 28px;
   letter-spacing: 2px;
-  /* Was 0.09 -- reported still unreadable even with the mask fixed above (a
-     real screen/monitor reads 28px at 0.09 alpha much fainter than a
-     screenshot does). 0.16 is still clearly a background flourish, not
-     foreground text competing with the game, but has enough contrast against
-     the felt to actually read on a real display. */
+  /* Was 0.09 -- reported still unreadable on a real screen even where the
+     mask let it show at full strength (a monitor reads faint alpha at 28px
+     much fainter than a screenshot does). 0.16 is still a background
+     flourish, not text competing with the game, but has real contrast now. */
   color: rgba(230, 164, 75, 0.16);
   font-weight: 700;
   white-space: nowrap;
-  mask-image: radial-gradient(ellipse 125px 48px at 50% 50%, transparent 0%, transparent 60%, black 100%);
-  -webkit-mask-image: radial-gradient(ellipse 125px 48px at 50% 50%, transparent 0%, transparent 60%, black 100%);
 }
 
 /* Dashed inner betting ring. */
