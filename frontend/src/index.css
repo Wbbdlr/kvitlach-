@@ -217,42 +217,36 @@ body:has(.k-fit) {
 }
 
 /* Room-wide, admin-set felt label (TableRoot sets --wm).
-   Two earlier attempts tried to sit this AT the pot and mask around it --
-   first with a percent-sized ellipse (hid 44%+ of the phrase, since percent
-   resolves against this element's own nowrap-text-width box, not the pill),
-   then a px-sized one (the right shape, but a 3-word RTL phrase centred
-   exactly on the pot always loses its MIDDLE word -- the family name itself
-   -- no matter how tight the mask gets, and the "reserved $X | free $Y"
-   readout widens the real occluder well past any fixed mask anyway). Both
-   were solving the wrong problem: there is no size of mask that keeps a
-   centred phrase readable when something is centred right on top of it.
-   Measured live instead for genuinely empty felt: the dealer's plate sits at
-   play-top + 160px*vf, its hand a fixed 72px below that (dealer is NOT
-   seatShrink-scaled, so that offset doesn't move with player count); the
-   bank panel's OWN top is play-top + 300px*vf + 14px (see BankPanel.tsx).
-   The midpoint between them is empty at every measured vf, dealer above,
-   pot/reservations below, so the watermark now lives there instead -- no
-   masking needed at all because nothing else ever sits on it. */
+   Three earlier attempts all tried to find (or fake, via masking) a patch of
+   felt the watermark could have entirely to itself -- a losing game, because
+   the one gap that's reliably empty moves with vf/player count, and a
+   centred phrase always loses whatever word lands under whatever's centred
+   on top of it. A real felt table doesn't solve this either: the print is
+   just BIG, faint, and BEHIND everything, so cards and chips sit on top of
+   it wherever they land, and the rest keeps showing everywhere else. That's
+   the actual fix -- stop chasing gaps and let z-index do the work it's
+   already doing (every seat/dealer/pot/card here has an explicit z-index;
+   this pseudo-element and its .k-oval parent don't, so they already paint
+   behind all of them with no extra rule needed).
+   Wraps instead of nowrap-and-measure, so an admin-set name of any length
+   fits inside the oval without a repeat of the last three bugs. */
 .k-oval::after {
   content: var(--wm, "");
   position: absolute;
-  /* NOT play-top + 230*vf + 27 (the absolute target derived above) -- this
-     pseudo-element's `top` resolves against .k-oval's OWN padding box, which
-     is itself already offset by `play-top + 100px*vf` (see .k-oval above).
-     Subtracting that out leaves just the remaining (230-100)*vf + 27. */
-  top: calc(130px * var(--vf, 1) + 27px);
+  top: 50%;
   left: 50%;
+  width: 82%;
   direction: rtl;
+  text-align: center;
   transform: translate(-50%, -50%);
-  font-size: 28px;
-  letter-spacing: 2px;
-  /* Was 0.09 -- reported still unreadable on a real screen even where the
-     mask let it show at full strength (a monitor reads faint alpha at 28px
-     much fainter than a screenshot does). 0.16 is still a background
-     flourish, not text competing with the game, but has real contrast now. */
-  color: rgba(230, 164, 75, 0.16);
+  font-size: 64px;
+  line-height: 1.15;
+  letter-spacing: 1px;
+  /* Bigger and fainter than the old single-line version (was 28px/0.16) --
+     it's meant to read as felt print showing through, not as a caption. */
+  color: rgba(230, 164, 75, 0.07);
   font-weight: 700;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 /* Dashed inner betting ring. */
