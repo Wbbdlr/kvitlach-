@@ -97,14 +97,23 @@ export function Dealer({
           ))}
         </div>
 
-        <div className={clsx("k-readout", !/^\d/.test(totalInfo.value) && "is-muted")}>
-          {totalInfo.prefix} <b>{totalInfo.value}</b>
-        </div>
-        {statusInfo.label && (
-          <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
-            {isActive ? "Bank playing" : statusInfo.label}
+        {/* Total and status share ONE row rather than stacking. The dealer sits
+            at the top of the centre column and the bank panel just below it,
+            and when the table flattens that column runs out of room: the
+            status tag on its own line pushed the stack down onto the bank
+            panel, which painted over it ("BANK PLAYING" half-hidden behind the
+            bank total). Reclaiming the row fixes it where it starts, instead
+            of shoving the panel down onto the seat below. */}
+        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+          <div className={clsx("k-readout", !/^\d/.test(totalInfo.value) && "is-muted")}>
+            {totalInfo.prefix} <b>{totalInfo.value}</b>
           </div>
-        )}
+          {statusInfo.label && (
+            <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
+              {isActive ? "Bank playing" : statusInfo.label}
+            </div>
+          )}
+        </div>
 
         {canAct && (
           <div className="flex gap-2">

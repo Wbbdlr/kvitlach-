@@ -40,7 +40,14 @@ const RX = 400;
 // wants a wide, short table anyway, so this reads as intended rather than as
 // a workaround. Capped so the widened oval (1000 * hf) still clears the
 // stage edges.
-const MAX_SPREAD = 0.4;
+// 0.4 was too much: at vf=0.54 it stretched the oval to 1184px of a 1280px
+// stage, and combined with the flattening the table read as a ~4:1 letterbox
+// rather than a card table. The felt itself still bleeds to every edge -- that
+// is the .felt-table background, not this -- so narrowing the drawn rail costs
+// no screen, it just stops the oval chasing the corners. Kept non-zero because
+// the arc length it buys back is real; the seat-scale floor (see seatScale)
+// now carries the rest of that load.
+const MAX_SPREAD = 0.12;
 
 export function spreadFactor(vf: number): number {
   return 1 + (1 - vf) * MAX_SPREAD;
@@ -168,7 +175,7 @@ export function seatScale(positions: SeatPosition[]): number {
   // spreadFactor) packs the same seats into a shorter arc and a full table
   // genuinely needs ~0.49, so the old floor started forcing the exact
   // collisions it was meant to prevent.
-  return Math.min(1, Math.max(0.45, scale));
+  return Math.min(1, Math.max(0.36, scale));
 }
 
 // Index of the bottom-centre slot in seatPositions()'s output -- where the

@@ -25,7 +25,15 @@ export function BankPanel({ bankerWallet, reserved = 0 }: BankPanelProps) {
     // dealer's total is right above), so the fix is to stop growing at all.
     <div
       className="absolute left-1/2 -translate-x-1/2 z-[12] flex flex-row flex-wrap items-center justify-center gap-x-2.5 gap-y-1"
-      style={{ top: "calc(var(--play-top, 0px) + 300px * var(--vf, 1))" }}
+      // The +14 is deliberately NOT scaled by --vf. Everything above this in
+      // the centre column -- the dealer's plate, cards and total row -- is
+      // fixed-size content that does not shrink when the table flattens, so a
+      // purely vf-scaled offset closes on it: at vf 0.54 this pill landed on
+      // the dealer's status tag and painted over it. It stays small because
+      // Dealer.tsx also puts that tag on the total's row rather than its own;
+      // without that, the clearance needed to miss the dealer was big enough
+      // to land the panel on the viewer's seat below instead.
+      style={{ top: "calc(var(--play-top, 0px) + 300px * var(--vf, 1) + 14px)" }}
     >
       <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
       {reserved > 0 && (

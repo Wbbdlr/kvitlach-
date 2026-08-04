@@ -260,11 +260,18 @@ body:has(.k-fit) {
   background: linear-gradient(180deg, rgba(8, 16, 12, 0.7), rgba(8, 16, 12, 0));
   pointer-events: none;
 }
-/* Shrinks with the table. On a flattened stage the top-flank seats rise to
-   meet the branding, and this is decoration -- it yields, the seats don't. */
+/* This used to scale by --vf, which stacked on top of the stage's own scale
+   and shrank the wordmark twice: on a landscape phone 31px became 31 * 0.54 *
+   0.71 = under 12px, a wordmark nobody could read. vf was the wrong input --
+   it was chosen to keep the branding clear of top-flank seats, but those sit
+   at ~260 stage px, nowhere near this row, so it was paying a real cost for a
+   collision that doesn't happen.
+   Counter-scaling against the STAGE scale instead holds it at a roughly
+   constant on-screen size, clamped at both ends so it neither disappears on a
+   phone nor dominates a large monitor. */
 .k-topbar > * {
   pointer-events: auto;
-  transform: scale(var(--vf, 1));
+  transform: scale(clamp(0.8, calc(0.75 / var(--stage-scale, 1)), 2.2));
   transform-origin: left center;
 }
 .k-logo-word {
@@ -1150,7 +1157,21 @@ body:has(.k-fit) {
     animation: none;
   }
 }
+/* On a flattened table the bank total sits in a genuinely tight slot: the
+   dealer's block above and the viewer's own plate below leave about 22px of
+   centre column, and the desktop pill is 28px. Measured, not guessed -- at
+   vf 0.54 it overlapped one or the other whichever way it was nudged. So it
+   gets smaller there rather than being shoved onto a neighbour. */
 @media (max-width: 520px), (max-height: 440px) {
+  .k-banktotal {
+    font-size: 12px;
+    padding: 2px 12px;
+    letter-spacing: 0.5px;
+  }
+  .k-bank-split {
+    font-size: 10px;
+    gap: 5px;
+  }
   .k-bank-banner {
     font-size: 11px;
     padding: 5px 12px;
