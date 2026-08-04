@@ -42,6 +42,16 @@ function potY(playTop: number, vf: number): number {
 // fraction either crowded the near seat or stranded the far ones by the pot.
 // Measuring back from the seat gives every badge the same clearance -- seats
 // paint over these (z-index 10 vs 9), so grazing one clips it.
+//
+// This constant is in NOMINAL (unscaled) stage-px, matching seatPositions()'s
+// own output -- but the SEAT ITSELF shrinks at higher player counts
+// (TableRoot's seatShrink, passed in here as `scale`), while this number
+// didn't. Reported live: at 6-7 players the real seat measured ~60px half-
+// extent on screen, but the clearance stayed a flat 130, so every badge
+// floated a measured ~70px past the seat's own edge -- reading as "not near
+// their names" because, proportionally, it wasn't. restPoint/isPlaceable
+// now take `scale` and apply it to this constant, so the gap shrinks in step
+// with the seat instead of growing relatively bigger as the table fills up.
 const SEAT_CLEARANCE = 130;
 // ...but never so far back that a badge lands on the pot itself, nor so far
 // out that it drifts into the seat's own hand.
@@ -63,18 +73,21 @@ const T_MAX = 0.7;
 // into a collision -- every seat's plate already prints "$wallet · $bet" (see
 // Seat.tsx), so the information survives, just without this particular
 // seat's dashed line to the pot.
-const MIN_VIABLE_DISTANCE = SEAT_CLEARANCE / (1 - T_MIN);
+function minViableDistance(scale: number): number {
+  return (SEAT_CLEARANCE * scale) / (1 - T_MIN);
+}
 
-function restPoint(position: SeatPosition, potYVal: number): { x: number; y: number } {
+function restPoint(position: SeatPosition, potYVal: number, scale: number): { x: number; y: number } {
   const dx = position.x - POT_X;
   const dy = position.y - potYVal;
   const distance = Math.hypot(dx, dy);
-  const t = distance > 0 ? Math.min(T_MAX, Math.max(T_MIN, (distance - SEAT_CLEARANCE) / distance)) : T_MIN;
+  const clearance = SEAT_CLEARANCE * scale;
+  const t = distance > 0 ? Math.min(T_MAX, Math.max(T_MIN, (distance - clearance) / distance)) : T_MIN;
   return { x: POT_X + dx * t, y: potYVal + dy * t };
 }
 
-function isPlaceable(position: SeatPosition, potYVal: number): boolean {
-  return Math.hypot(position.x - POT_X, position.y - potYVal) >= MIN_VIABLE_DISTANCE;
+function isPlaceable(position: SeatPosition, potYVal: number, scale: number): boolean {
+  return Math.hypot(position.x - POT_X, position.y - potYVal) >= minViableDistance(scale);
 }
 
 // Chips the bank has committed to wagers it hasn't settled yet, drawn on the
@@ -86,7 +99,7 @@ function isPlaceable(position: SeatPosition, potYVal: number): boolean {
 // was visible before -- players just found their limit had moved.
 export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 }: BankReservationsProps) {
   const potYVal = potY(playTop, vf);
-  const placeable = reservations.filter((r) => isPlaceable(r.position, potYVal));
+  const placeable = reservations.filter((r) => isPlaceable(r.position, potYVal, scale));
   if (placeable.length === 0) return null;
 
   return (
@@ -99,7 +112,7 @@ export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 
         aria-hidden="true"
       >
         {placeable.map((r) => {
-          const end = restPoint(r.position, potYVal);
+          const end = restPoint(r.position, potYVal, scale);
           return (
             <line
               key={r.playerId}
@@ -114,7 +127,7 @@ export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 
       </svg>
 
       {placeable.map((r) => {
-        const at = restPoint(r.position, potYVal);
+        const at = restPoint(r.position, potYVal, scale);
         return (
           <div
             key={r.playerId}

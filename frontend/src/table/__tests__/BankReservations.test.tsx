@@ -126,4 +126,30 @@ describe("BankReservations placement", () => {
     const { container } = render(<BankReservations reservations={flattenedReservations} />);
     expect(container.querySelectorAll(".k-resv")).toHaveLength(1);
   });
+
+  // Regression: found live at a 7-player table (real seats measured ~60px
+  // half-extent on screen, seatShrink well under 1). SEAT_CLEARANCE is
+  // nominal (unscaled) stage-px, matching seatPositions()'s own output, but
+  // the seat's REAL on-screen footprint shrinks with `scale` while the
+  // clearance didn't -- so every badge floated a measured ~70px past its own
+  // seat's edge, reading as unrelated to any particular player rather than
+  // "this player's wager." The gap must shrink in step with `scale`.
+  it("pulls a badge closer to its seat as the table shrinks the seat itself", () => {
+    const flankSeat = positions[0];
+    const oneReservation = [{ playerId: "flank", amount: 5, position: flankSeat }];
+
+    const fullSize = render(<BankReservations reservations={oneReservation} scale={1} />);
+    const shrunk = render(<BankReservations reservations={oneReservation} scale={0.5} />);
+
+    const gapFromSeat = (container: HTMLElement) => {
+      const line = container.querySelector(".k-resv-line")!;
+      const x2 = Number(line.getAttribute("x2"));
+      const y2 = Number(line.getAttribute("y2"));
+      return Math.hypot(flankSeat.x - x2, flankSeat.y - y2);
+    };
+
+    const fullGap = gapFromSeat(fullSize.container);
+    const shrunkGap = gapFromSeat(shrunk.container);
+    expect(shrunkGap).toBeLessThan(fullGap);
+  });
 });
