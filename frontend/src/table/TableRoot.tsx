@@ -57,6 +57,7 @@ export interface TableRootProps {
   bankDisabledReason?: string;
   canBank: boolean;
   waitingInfo?: { count: number; isViewerWaiting: boolean; namesLabel: string };
+  abandonedBanker?: { name: string; since: number; eligibleAt: number; canVoid: boolean; secondsLeft: number };
   firstBetCardIndex?: Record<string, number>;
   latestReactionByPlayer: Record<string, ReactionEvent>;
   onBet: (amount: number, options: { bank: boolean }) => void;
@@ -76,6 +77,7 @@ export interface TableRootProps {
   onPracticeTopUp: () => void;
   onShowHowTo: () => void;
   onEndRoundDueToBank: () => void;
+  onVoidAbandonedRound: () => void;
   onAdjustChips: (playerId: string, amount: number, note?: string) => void;
   onKick: (playerId: string) => void;
   onExportHistory: () => void;
@@ -114,6 +116,7 @@ export function TableRoot({
   bankDisabledReason,
   canBank,
   waitingInfo,
+  abandonedBanker,
   firstBetCardIndex,
   latestReactionByPlayer,
   onBet,
@@ -133,6 +136,7 @@ export function TableRoot({
   onPracticeTopUp,
   onShowHowTo,
   onEndRoundDueToBank,
+  onVoidAbandonedRound,
   onAdjustChips,
   onKick,
   onExportHistory,
@@ -622,6 +626,32 @@ export function TableRoot({
       )}
 
       <div className="k-controls" ref={dockRef}>
+      {/* The banker has dropped and the table is waiting on them. Nothing else
+          can move this round: the banker is the dealer, not a seat, so no turn
+          timer covers them, and every other action is theirs to take. Rather
+          than settle on the half-played hand they left behind -- letting a
+          dead phone decide who won money -- any player can throw the round
+          away and get every wager back. */}
+      {abandonedBanker && !roundOver && (
+        <div className="k-dock">
+          <span className="k-tag muted">{abandonedBanker.name} has dropped out.</span>
+          {abandonedBanker.canVoid ? (
+            <button
+              type="button"
+              className="k-btn stand sm"
+              onClick={onVoidAbandonedRound}
+              title="End this round with no winners or losers -- every wager is returned"
+            >
+              Void the round, refund all bets
+            </button>
+          ) : (
+            <span className="k-tag muted k-pulse-attn">
+              Waiting {abandonedBanker.secondsLeft}s for them to reconnect…
+            </span>
+          )}
+        </div>
+      )}
+
       {canPlayerAct && myPlayerTurn && !roundOver && (
         <PlayerDock
           turn={myPlayerTurn}

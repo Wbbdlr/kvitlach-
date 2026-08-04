@@ -19,6 +19,9 @@ export interface Player {
   type: PlayerType;
   presence: Presence;
   isBot?: boolean;
+  // When this player went offline. Only the banker's is acted on: they have no
+  // turn timer, so this is what tells the table how long it has been stranded.
+  offlineSince?: number;
 }
 
 export interface RenameRequest {
@@ -83,6 +86,9 @@ export interface RoundHistoryEntry {
     outcome: TurnState;
     busted?: boolean;
   }>;
+  // The round never finished -- the banker dropped and the table threw it
+  // away. Every wager was returned, so every net is 0.
+  voided?: boolean;
 }
 
 export interface RoundState {
@@ -104,6 +110,8 @@ export interface RoundState {
   turnTimerPlayerId?: string;
   turnTimerExpiresAt?: number;
   turnTimerDurationMs?: number;
+  // The table gave up on an absent banker and voided this round.
+  voided?: boolean;
 }
 
 export interface RoomState {

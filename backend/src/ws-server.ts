@@ -262,6 +262,25 @@ export class WSServer {
           this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
           break;
         }
+        // Any seated player can pull the table out from under a banker who
+        // has dropped and stayed dropped -- see GameStore.voidAbandonedRound.
+        // Deliberately NOT admin-gated: the whole point is that the admin is
+        // the one who isn't there.
+        case "round:void-abandoned": {
+          const meta = this.meta.get(socket);
+          const roomId = meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          const round = this.store.voidAbandonedRound(roomId, actorId);
+          this.handleRoundUpdate(round);
+          this.broadcast(roomId, {
+            type: "round:voided",
+            roomId,
+            payload: { by: actorId, reason: "banker_absent" },
+          });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          break;
+        }
         case "player:rename-request": {
           const { firstName, lastName, roomId: roomFromPayload } = (payload as any) || {};
           const meta = this.meta.get(socket);

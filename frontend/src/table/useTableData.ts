@@ -3,6 +3,11 @@ import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { CompletedRoundSummary } from "../state";
 import { statusDisplay, betDisplay, fullName, formatNames, isPushTurn, reservedAgainst } from "./selectors";
 
+// Must match the server's own BANKER_ABANDON_MS (store.ts). Offering the
+// escape hatch earlier than the server honours it would just produce an error
+// toast; offering it later would strand the table for longer than necessary.
+const BANKER_ABANDON_MS = 2 * 60 * 1000;
+
 export interface StatsEntry {
   roundNumber: number;
   status: string;
@@ -188,6 +193,32 @@ export function useTableData({
     return { name: playerName, entries, wins, losses, pushes, isBanker, netTotal };
   }, [statsPlayerId, roundHistory, room?.players]);
 
+  // The banker has no turn timer -- they're the dealer, not a seat being
+  // waited on -- so when they drop while the table is waiting on them, nothing
+  // moves the round along and nobody else can act. This mirrors the server's
+  // GameStore.abandonedBankerInfo exactly (including the two-minute grace), so
+  // the escape hatch is only ever offered when the server would honour it.
+  const abandonedBanker = useMemo(() => {
+    if (!round || round.state === "terminate" || !primaryBankerTurn) return undefined;
+    const banker = room?.players.find((p) => p.id === primaryBankerTurn.player.id);
+    if (!banker || banker.presence === "online" || banker.isBot) return undefined;
+    const waitingOnBanker =
+      bankLock?.stage === "decision" ||
+      bankLock?.stage === "banker" ||
+      (round.state === "final" && primaryBankerTurn.state === "pending") ||
+      activeTurnId === primaryBankerTurn.player.id;
+    if (!waitingOnBanker) return undefined;
+    const since = banker.offlineSince ?? nowTs;
+    const eligibleAt = since + BANKER_ABANDON_MS;
+    return {
+      name: fullName(banker) || banker.firstName || "The banker",
+      since,
+      eligibleAt,
+      canVoid: nowTs >= eligibleAt,
+      secondsLeft: Math.max(0, Math.ceil((eligibleAt - nowTs) / 1000)),
+    };
+  }, [round, primaryBankerTurn, room?.players, bankLock?.stage, activeTurnId, nowTs]);
+
   return {
     latestReactionByPlayer,
     pendingTurns,
@@ -202,5 +233,6 @@ export function useTableData({
     totalStakes,
     statsData,
     waitingInfo,
+    abandonedBanker,
   };
 }

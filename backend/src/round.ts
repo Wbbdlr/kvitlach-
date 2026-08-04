@@ -348,7 +348,13 @@ export function buildRoundHistoryEntry(round: RoundContext): RoundHistoryEntry {
       busted,
     };
   });
-  return { roundId: round.roundId, roundNumber: round.roundNumber, completedAt: Date.now(), entries };
+  return {
+    roundId: round.roundId,
+    roundNumber: round.roundNumber,
+    completedAt: Date.now(),
+    entries,
+    ...(round.voided ? { voided: true } : {}),
+  };
 }
 
 export function playerWon(adminTurn: Turn, playerTurn: Turn): boolean {

@@ -19,6 +19,12 @@ export interface Player {
   type: PlayerType;
   presence: Presence;
   isBot?: boolean;
+  // When this player last went offline. Only the banker's actually matters:
+  // the table cannot proceed without them and they have no turn timer (they
+  // are the dealer, not a seat being waited on), so this is what tells the
+  // remaining players how long they have been stranded -- see
+  // GameStore.voidAbandonedRound.
+  offlineSince?: number;
 }
 
 export interface RenameRequest {
@@ -91,6 +97,10 @@ export interface RoundHistoryEntry {
     // summary drops the cards a client would otherwise derive it from.
     busted?: boolean;
   }>;
+  // The round never finished: the banker dropped out and the table voided it
+  // rather than wait. Every wager was returned, so every net here is 0 -- the
+  // flag is what stops the history reading like a round where nobody bet.
+  voided?: boolean;
 }
 
 export interface RoundState {
@@ -110,6 +120,17 @@ export interface RoundState {
   turnTimerPlayerId?: string;
   turnTimerExpiresAt?: number;
   turnTimerDurationMs?: number;
+  // Every chip this round has already moved, in the order it moved. Rounds
+  // settle as they go (a bust or a natural 21 pays out the moment it happens,
+  // and a BANK! wager settles the seats it covered), so by the time a round is
+  // abandoned some money has usually changed hands already. Voiding has to put
+  // ALL of it back, and reconstructing that from the turns afterwards is
+  // guesswork -- their states get rewritten by the very settlements being
+  // undone. Recording it as it happens is the only version that can't drift.
+  ledger?: Balance[];
+  // The table gave up on an absent banker and threw this round away. Every
+  // wager was returned; no hand won or lost.
+  voided?: boolean;
 }
 
 // What a client is actually allowed to see of a round. `deck` is the live

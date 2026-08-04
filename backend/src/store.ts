@@ -32,6 +32,11 @@ const MAX_PLAYERS_PER_ROOM = 100;
 const MAX_SEATED_PLAYERS_PER_ROUND = 11;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const TURN_TIMEOUT_MS = 90 * 1000;
+// How long a banker must be gone before the seats they left behind may throw
+// the round away. Long enough that a tunnel blip or a phone changing cells
+// doesn't cost anyone a hand -- the client reconnects on its own well inside
+// this -- and short enough that a table isn't held hostage by a dead battery.
+const BANKER_ABANDON_MS = 2 * 60 * 1000;
 const MAX_ROUND_HISTORY_ENTRIES = 200;
 const MAX_NAME_LEN = 40;
 const MAX_ROOM_NAME_LEN = 80;
@@ -477,9 +482,14 @@ export class GameStore {
   setPresence(roomId: string, playerId: string, presence: Player["presence"]) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return;
-    roomRec.room.players = roomRec.room.players.map((p) =>
-      p.id === playerId ? { ...p, presence } : p
-    );
+    roomRec.room.players = roomRec.room.players.map((p) => {
+      if (p.id !== playerId) return p;
+      if (presence === "online") return { ...p, presence, offlineSince: undefined };
+      // Don't restamp someone who was already offline -- a duplicate close
+      // event would otherwise keep resetting how long they have been gone,
+      // and voidAbandonedRound measures exactly that.
+      return { ...p, presence, offlineSince: p.offlineSince ?? Date.now() };
+    });
   }
 
   leaveRoom(roomId: string, playerId: string) {
@@ -733,7 +743,10 @@ export class GameStore {
         : { amount, payer: bankerId, payee: turn.player.id };
     roomRec.room.wallets[balance.payer] = (roomRec.room.wallets[balance.payer] ?? 0) - amount;
     roomRec.room.wallets[balance.payee] = (roomRec.room.wallets[balance.payee] ?? 0) + amount;
-    if (amount > 0) roomRec.room.balances = [balance, ...roomRec.room.balances];
+    if (amount > 0) {
+      roomRec.room.balances = [balance, ...roomRec.room.balances];
+      round.ledger = [...(round.ledger ?? []), balance];
+    }
     round.turns[turnIndex] = { ...turn, settled: true, settledBet: turn.bet };
   }
 
@@ -900,6 +913,99 @@ export class GameStore {
       return turn;
     });
     const updated: RoundContext = { ...round, turns: resolved, state: "terminate", bankLock: undefined };
+    return this.persistRound(roundId, updated, round);
+  }
+
+  // Is the table stuck waiting on a banker who isn't coming back? Exported as
+  // a read so clients can show the escape hatch only once it actually exists,
+  // rather than offering a button that throws.
+  //
+  // "Stuck" is deliberately narrow. A banker being offline is not enough on
+  // its own -- while it is still a player's turn the table can carry on
+  // without them, and voiding then would let a seat wipe a round it simply
+  // didn't like the look of. It has to be the banker's own go, with no timer
+  // able to move it along, which is precisely the state that has no other exit.
+  abandonedBankerInfo(roomId: string): { stuck: boolean; since?: number; eligibleAt?: number } {
+    const roomRec = this.rooms.get(roomId);
+    const roundId = roomRec?.room.roundId;
+    const round = roundId ? this.rounds.get(roundId) : undefined;
+    if (!roomRec || !round || round.state === "terminate") return { stuck: false };
+
+    const bankerTurn = round.turns.find((turn) => turn.player.type === "admin");
+    if (!bankerTurn) return { stuck: false };
+    const banker = roomRec.room.players.find((p) => p.id === bankerTurn.player.id);
+    if (!banker || banker.presence === "online" || banker.isBot) return { stuck: false };
+
+    const waitingOnBanker =
+      round.bankLock?.stage === "decision" ||
+      round.bankLock?.stage === "banker" ||
+      (round.state === "final" && bankerTurn.state === "pending") ||
+      this.getActiveTurnId(round) === bankerTurn.player.id;
+    if (!waitingOnBanker) return { stuck: false };
+
+    const since = banker.offlineSince ?? Date.now();
+    return { stuck: true, since, eligibleAt: since + BANKER_ABANDON_MS };
+  }
+
+  // The escape hatch a stranded table pulls itself out with. Any seated player
+  // may call it, and the round is voided rather than settled: every chip this
+  // round moved goes back where it came from, and no hand wins or loses. That
+  // is the whole point -- a banker's phone dying is a technical failure, and a
+  // technical failure must not decide who won money. Settling on the banker's
+  // half-played hand would have done exactly that.
+  voidAbandonedRound(roomId: string, actorId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    const actor = roomRec.room.players.find((p) => p.id === actorId);
+    if (!actor || actor.type === "spectator") throw new Error("forbidden");
+    const roundId = roomRec.room.roundId;
+    if (!roundId) throw new Error("round_not_found");
+    const round = this.rounds.get(roundId);
+    if (!round) throw new Error("round_not_found");
+
+    const info = this.abandonedBankerInfo(roomId);
+    if (!info.stuck) throw new Error("banker_not_absent");
+    if (Date.now() < (info.eligibleAt ?? Infinity)) throw new Error("banker_not_absent_long_enough");
+
+    // Put back everything this round already moved, newest first so a pair of
+    // transfers between the same two seats unwinds in the order it was made.
+    const refunded = [...(round.ledger ?? [])].reverse();
+    for (const { payer, payee, amount } of refunded) {
+      roomRec.room.wallets[payee] = (roomRec.room.wallets[payee] ?? 0) - amount;
+      roomRec.room.wallets[payer] = (roomRec.room.wallets[payer] ?? 0) + amount;
+    }
+    // The room's own ledger keeps the reversals rather than deleting the
+    // originals: what happened, and that it was undone, are both true.
+    if (refunded.length > 0) {
+      roomRec.room.balances = [
+        ...refunded.map((b) => ({ amount: b.amount, payer: b.payee, payee: b.payer })),
+        ...roomRec.room.balances,
+      ];
+    }
+    const bankerId = this.getBankerId(round);
+    if (bankerId) roomRec.room.bankerBuyIn = roomRec.room.wallets[bankerId] ?? roomRec.room.bankerBuyIn;
+
+    // Every seat lands on "skipped", which is already the one state
+    // calculateBalances refuses to pay out on -- so the ordinary finalize path
+    // that follows settles nothing, with no special case threaded through it.
+    const voidedTurns = round.turns.map((turn) => ({
+      ...turn,
+      state: "skipped" as const,
+      bet: 0,
+      settledBet: 0,
+      settledNet: undefined,
+      settled: false,
+      bankRequest: false,
+    }));
+    const updated: RoundContext = {
+      ...round,
+      turns: voidedTurns,
+      state: "terminate",
+      bankLock: undefined,
+      ledger: [],
+      voided: true,
+    };
+    this.audit("void-abandoned-round", roomId, actorId, { roundId, refunded: refunded.length });
     return this.persistRound(roundId, updated, round);
   }
 
@@ -1237,6 +1343,7 @@ export class GameStore {
     roomRec.room.bankerBuyIn = roomRec.room.wallets[bankerId] ?? roomRec.room.bankerBuyIn;
     if (balances.length > 0) {
       roomRec.room.balances = [...balances, ...roomRec.room.balances];
+      round.ledger = [...(round.ledger ?? []), ...balances];
     }
 
     round.turns = round.turns.map((turn, index) => {

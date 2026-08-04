@@ -71,6 +71,7 @@ export default function App() {
     bankDisabledReason,
     statsData,
     waitingInfo,
+    abandonedBanker,
   } = useTableData({ room, round, playerId, reactions, nowTs, statsPlayerId, roundHistory });
 
   useEffect(() => {
@@ -373,6 +374,7 @@ export default function App() {
         bankDisabledReason={bankDisabledReason}
         canBank={canBank}
         waitingInfo={waitingInfo}
+        abandonedBanker={abandonedBanker}
         firstBetCardIndex={firstBetCardIndex}
         latestReactionByPlayer={latestReactionByPlayer}
         onBet={(amount, options) => store.bet(amount, options)}
@@ -395,6 +397,7 @@ export default function App() {
           setShowHowTo(true);
         }}
         onEndRoundDueToBank={() => store.endRoundDueToBank()}
+        onVoidAbandonedRound={() => store.voidAbandonedRound()}
         onAdjustChips={(id, amount, note) => store.adjustPlayerBankroll(id, amount, note)}
         onKick={(id) => store.kickPlayer(id)}
         onExportHistory={() => exportRoundHistoryTxt()}

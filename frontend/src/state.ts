@@ -69,6 +69,7 @@ interface UIState {
   rejectBuyIn: (playerId: string) => void;
   topUpBanker: (amount: number, note?: string) => void;
   endRoundDueToBank: () => void;
+  voidAbandonedRound: () => void;
   dismissBankerSummary: () => void;
   kickPlayer: (playerId: string) => void;
   adjustPlayerBankroll: (playerId: string, amount: number, note?: string) => void;
@@ -738,6 +739,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             ? "That action already went through."
             : errorMessage === "not_your_turn"
             ? "It's not your turn yet."
+            : errorMessage === "banker_not_absent"
+            ? "The banker is back — the round can carry on."
+            : errorMessage === "banker_not_absent_long_enough"
+            ? "Give the banker another moment to reconnect."
             : errorMessage === "forbidden"
             ? "Only the banker can perform that action."
             : errorMessage === "invalid_bank_amount"
@@ -1068,6 +1073,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("round:banker-end", { roomId });
+    },
+    // Deliberately not admin-gated, unlike everything else that ends a round:
+    // this exists precisely because the admin is the one who has gone.
+    voidAbandonedRound: () => {
+      const roomId = get().room?.roomId;
+      if (!roomId) return;
+      client.send("round:void-abandoned", { roomId });
     },
     dismissBankerSummary: () => set({ bankerSummaryAt: undefined }),
     setFormError: (form, message) => {
