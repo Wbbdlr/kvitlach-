@@ -16,8 +16,15 @@ export function BankPanel({ bankerWallet, reserved = 0 }: BankPanelProps) {
   const free = Math.max(bankerWallet - reserved, 0);
 
   return (
+    // One row, not two. The reservation used to sit on its own line beneath
+    // the total, and the panel is anchored by its TOP -- so that second line
+    // grew downward, straight onto the bottom seat's name plate. Measured on a
+    // landscape phone (vf 0.54): 21px over "Guest (you)", covering their own
+    // name and wallet, on every round where anyone had a live wager. The felt's
+    // centre is too tight at that flattening to grow upward instead (the
+    // dealer's total is right above), so the fix is to stop growing at all.
     <div
-      className="absolute left-1/2 -translate-x-1/2 z-[12] flex flex-col items-center gap-1.5"
+      className="absolute left-1/2 -translate-x-1/2 z-[12] flex flex-row flex-wrap items-center justify-center gap-x-2.5 gap-y-1"
       style={{ top: "calc(var(--play-top, 0px) + 300px * var(--vf, 1))" }}
     >
       <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
