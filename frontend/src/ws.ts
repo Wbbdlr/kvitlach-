@@ -60,7 +60,21 @@ export class WSClient {
       this.openListeners.forEach((fn) => fn());
     };
     this.socket.onmessage = (event) => {
-      const data = JSON.parse(event.data) as ServerEnvelope;
+      // The server (ws-server.ts) only ever sends its own JSON.stringify
+      // output, but a proxy/tunnel hiccup or a truncated frame is still a
+      // real possibility over a live connection -- the backend guards its
+      // own inbound parse the same way (invalid_json), this was the one
+      // side that didn't. An uncaught throw here wouldn't crash the tab
+      // (browsers just log it), but it WOULD skip calling every listener
+      // for that message with no chance to recover -- silently dropping
+      // whatever state update it carried instead of just this one message.
+      let data: ServerEnvelope;
+      try {
+        data = JSON.parse(event.data) as ServerEnvelope;
+      } catch (err) {
+        console.warn("Dropped malformed WS message", err);
+        return;
+      }
       this.listeners.forEach((fn) => fn(data));
     };
     this.socket.onerror = (event) => {

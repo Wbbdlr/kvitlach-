@@ -116,15 +116,39 @@ describe("WSClient", () => {
 
       expect(messageSpy).not.toHaveBeenCalled();
     });
+  });
 
-    it("allows a fresh connect() after close()", () => {
+  describe("onmessage", () => {
+    // Regression: onmessage's JSON.parse had no try/catch. The server always
+    // sends its own valid JSON.stringify output, but a proxy/tunnel hiccup or
+    // a truncated frame over a live connection is a real possibility -- and
+    // an uncaught throw there would skip calling every listener for that
+    // message, with no chance to recover, rather than just dropping the one
+    // malformed message and carrying on.
+    it("drops a malformed message without throwing, and still delivers the next valid one", () => {
       const client = new WSClient("ws://test");
+      const messageSpy = vi.fn();
+      client.onMessage(messageSpy);
       client.connect();
-      MockWebSocket.instances[0].triggerOpen();
-      client.close();
-      client.connect();
-      expect(MockWebSocket.instances).toHaveLength(2);
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+
+      expect(() => socket.onmessage?.({ data: "{not valid json" })).not.toThrow();
+      expect(messageSpy).not.toHaveBeenCalled();
+
+      socket.onmessage?.({ data: JSON.stringify({ type: "ack" }) });
+      expect(messageSpy).toHaveBeenCalledTimes(1);
+      expect(messageSpy).toHaveBeenCalledWith({ type: "ack" });
     });
+  });
+
+  it("allows a fresh connect() after close()", () => {
+    const client = new WSClient("ws://test");
+    client.connect();
+    MockWebSocket.instances[0].triggerOpen();
+    client.close();
+    client.connect();
+    expect(MockWebSocket.instances).toHaveLength(2);
   });
 
   describe("reconnect backoff", () => {
