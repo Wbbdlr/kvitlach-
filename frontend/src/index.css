@@ -675,7 +675,11 @@ body:has(.k-fit) {
   animation: resvIn 0.32s cubic-bezier(0.2, 1.3, 0.5, 1) both;
 }
 .k-resv-amt {
-  font-size: 12px;
+  /* Counter-scaled: these paint inside the scaled stage, so a flat 12px became
+     8px on a landscape phone and under 4px in portrait. Dividing by the stage
+     scale holds them at a roughly constant on-screen size, clamped so they
+     neither shrink away nor balloon past the seat they annotate. */
+  font-size: clamp(12px, calc(10px / var(--stage-scale, 1)), 19px);
   font-weight: 800;
   letter-spacing: 0.01em;
 }
@@ -703,16 +707,19 @@ body:has(.k-fit) {
     animation: none;
   }
 }
-/* A portrait phone scales the stage to ~0.3x, which would render these as
-   unreadable specks on top of the cards. Dropped there rather than shrunk:
-   the bet controls still refuse an over-limit wager and say why, so nothing
-   is actually unenforceable -- and landscape/fullscreen (the intended way to
-   play on a phone) clears this breakpoint and gets the chips back. */
-@media (max-width: 520px), (max-height: 440px) {
-  .k-resv-lines,
-  .k-resv {
-    display: none;
-  }
+/* These live INSIDE the scaled stage, so what decides whether anyone can read
+   them is the stage scale -- not the viewport's dimensions. The breakpoint
+   that used to gate them, `(max-width: 520px), (max-height: 440px)`, is an OR:
+   a phone in LANDSCAPE is ~390-412px TALL, so it matched the second arm and
+   hid the chips in the very orientation the table asks people to play in. The
+   comment there claimed landscape "gets the chips back". It never did, and the
+   reservation illustration was invisible on a phone in either orientation.
+   Now: counter-scaled (see .k-resv-amt) so they paint at a constant readable
+   size whatever the stage is doing, and hidden only where the stage really is
+   too small to annotate at all (portrait, ~0.30 -- TINY_STAGE_SCALE). */
+.felt-table[data-stage="tiny"] .k-resv-lines,
+.felt-table[data-stage="tiny"] .k-resv {
+  display: none;
 }
 
 /* Centered bank total. */
@@ -883,17 +890,28 @@ body:has(.k-fit) {
    which is where their attention already is. */
 .k-controls {
   position: absolute;
-  left: 50%;
+  /* Spans the full width and centres its children, rather than being pinned
+     at left:50%. That looks equivalent and is not: an absolutely positioned
+     box with `left: 50%` and no `right` gets a shrink-to-fit width whose
+     available space is only what remains to the RIGHT of the anchor -- half
+     the container. The `max-width: calc(100% - 20px)` that used to sit here
+     was therefore unreachable, and on a 360px phone the dock was laid out
+     into 175px, wrapping its controls into a narrow six-row column with the
+     felt squeezed to a strip above it. With left/right both pinned, the
+     available width is the whole container and the tray uses it. */
+  left: 0;
+  right: 0;
   /* Anchored to the felt's bottom edge (see .k-fit's --stage-h), not the
      window's. They coincide whenever the felt fills the viewport; when it
      letterboxes the tray follows the table down instead of floating alone
      in the surround. */
   bottom: calc((100% - var(--stage-h)) / 2 + max(10px, env(safe-area-inset-bottom)));
-  transform: translateX(-50%);
   display: flex;
   align-items: flex-end;
+  justify-content: center;
   gap: 8px;
-  max-width: calc(100% - 20px);
+  padding-left: max(10px, env(safe-area-inset-left));
+  padding-right: max(10px, env(safe-area-inset-right));
   z-index: 25;
 }
 
@@ -1252,54 +1270,87 @@ body:has(.k-fit) {
 }
 
 /* The dock lives outside the scaled stage (see .k-fit's comment) so its
-   buttons stay tappable at any screen size -- but at true phone widths its
-   ~6 controls don't fit in one row, so flex-wrap pushes it to 2-3 rows and
-   min-height:84px no longer caps how tall it actually gets, eating into the
-   player's own cards/total above it. Shrink the controls themselves (not
-   just padding) so more fit per row and the wrapped height stays small.
-   The dock height here must stay in step with stage.ts's
-   COMPACT_DOCK_HEIGHT_PX, which reserves the felt band this sits in. */
+   buttons stay tappable at any screen size. This block used to chase a
+   different goal -- shrink everything so the row wraps less -- and it went too
+   far. Measured on a 360x800 Android: the +/- steppers were 18x15, the
+   Eleveroon checkbox 13x13, MAX 36x20, BANK! 51x25, and Bet/Blatt/Stand only
+   32px tall. Nine of eleven controls were under 44px, and it wrapped to three
+   rows anyway. Shrinking to avoid a wrap bought a cramped dock that wrapped
+   regardless.
+   Two things changed since: the felt band under the dock is MEASURED now
+   (stage.ts's dockHeight), so a taller dock reserves its own room instead of
+   sitting on the player's cards; and the constants here no longer have to
+   second-guess it. So target real fingers -- ~40px -- and let the row wrap
+   where it must. */
 @media (max-width: 520px), (max-height: 440px) {
   .k-chrome-react {
     min-height: 60px;
   }
   .k-dock {
     min-height: 60px;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 8px;
+    padding: 8px 10px;
   }
   .k-betbox {
-    padding: 4px 6px;
-    gap: 4px;
+    padding: 3px 5px;
+    gap: 5px;
   }
   .k-betbox .k-amt {
     /* The iOS anti-zoom rule above forces 16px !important on every input on
        mobile, this one included -- size the box for that, not a smaller
        font this rule can never actually apply. */
-    width: 40px;
+    width: 44px;
   }
   .k-btn {
-    padding: 7px 12px;
-    font-size: 12px;
-    border-radius: 7px;
+    min-height: 40px;
+    padding: 9px 15px;
+    font-size: 13px;
+    border-radius: 8px;
   }
+  /* BANK! carries `sm`, but it wagers a player's whole available window --
+     it is not a secondary control and must not be a 25px sliver. */
   .k-btn.sm {
-    padding: 5px 9px;
-    font-size: 10px;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 11.5px;
+  }
+  /* Each arrow was 18x15. Now the pair fills the bet pill's full height,
+     giving two ~30x19 targets stacked instead of two specks. */
+  .k-stepbtn {
+    width: 30px;
+    height: 19px;
+  }
+  .k-maxbtn {
+    min-height: 34px;
+    padding: 6px 9px;
+    font-size: 10.5px;
   }
   .k-toggle {
-    font-size: 10px;
-    gap: 4px;
+    min-height: 40px;
+    padding: 0 4px;
+    font-size: 11px;
+    gap: 6px;
   }
-  /* Trim secondary/decorative text (not the primary Bet/Hit/Stand buttons,
-     which stay full-size for tap accuracy) so the dock's ~6 controls have a
-     better chance of fitting in one row instead of wrapping to a second --
-     each wrapped row directly adds to the dock's height, crowding the
-     player's own cards/total just above it. The checkbox and the button's
-     title tooltip still carry the same information. */
-  .k-toggle-label,
+  /* A bare 13x13 checkbox is both hard to hit and, with its label hidden
+     below, unlabelled -- see the k-toggle-label rule further down. */
+  .k-toggle input {
+    width: 20px;
+    height: 20px;
+  }
+  /* The BANK! button's running total is genuinely decorative here -- the bet
+     pill already shows what a player can stake, and MAX fills it in. Dropping
+     it buys row width for free.
+     Its neighbour in this rule, the Eleveroon LABEL, is a different matter and
+     no longer goes with it: hiding the text left a bare checkbox with nothing
+     saying what it does, on the one platform where there is no hover tooltip
+     to fall back on. A rule people have to opt into cannot be an unlabelled
+     box. */
   .k-bankall-amt {
     display: none;
+  }
+  .k-toggle-label {
+    font-size: 11px;
+    white-space: nowrap;
   }
   /* A corner placement (top or, per the base rule above, bottom) sits close
      to the compact felt's own edge and, per user feedback on the original

@@ -33,6 +33,15 @@ const DEFAULT_WATERMARK = "משפחת שלעזינגער קוויטלעך";
 // the actual amount credited is always server-authoritative.
 const PRACTICE_TOPUP_DISPLAY = 100;
 
+// Below this the whole stage is squeezed so far down that in-felt annotations
+// stop being readable at all: a phone held in PORTRAIT lands around 0.30, so a
+// 12px badge paints at under 4px. Landscape -- which the table actively asks
+// people to use -- sits near 0.71, where the same badge is perfectly legible
+// once it counter-scales (see .k-resv in index.css). Judged on the rendered
+// scale rather than a viewport breakpoint, because scale is the thing that
+// actually decides whether a person can read it.
+const TINY_STAGE_SCALE = 0.45;
+
 export interface BankInfo {
   available: number;
   outstanding: number;
@@ -346,6 +355,13 @@ export function TableRoot({
     >
       <div
         className="felt-table"
+        // Whether the in-felt reservation chips are legible depends on how far
+        // the stage is scaled down, which is not the same question as how wide
+        // the viewport is -- and the CSS breakpoint that used to gate them got
+        // it wrong: `(max-height: 440px)` matches a phone in LANDSCAPE, the
+        // very orientation the game asks people to play in, so the chips were
+        // hidden in both orientations rather than just the unreadable one.
+        data-stage={scale < TINY_STAGE_SCALE ? "tiny" : undefined}
         style={
           {
             transform: `scale(${scale})`,
