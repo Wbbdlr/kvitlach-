@@ -23,6 +23,21 @@ export interface SeatProps {
   isBankActor?: boolean;
   onSkipOther?: (playerId: string) => void;
   onOpenStats?: (playerId: string) => void;
+  // Round-scopes CardView's key (see CardView.tsx) so a fresh round's cards
+  // mount as genuinely new DOM nodes instead of reusing last round's -- see
+  // TableRoot.tsx for why that reuse silently killed the deal animation
+  // past round 1.
+  roundId?: string;
+  pastFirstPaint?: boolean;
+  // This seat's position in deal order (TableRoot's seatedTurns index),
+  // staggering the opening deal's animation-delay so it visibly goes around
+  // the table rather than every seat's card 1 landing at once.
+  dealOrder?: number;
+  // Nominal stage-px from the shoe to THIS seat, already divided by `scale`
+  // (see TableRoot.tsx) -- set as CSS vars on .k-hand so cardDealIn can fly
+  // every card in from the shoe's actual on-screen position.
+  dealDx?: number;
+  dealDy?: number;
 }
 
 export function initialsOf(player: { firstName?: string; lastName?: string }): string {
@@ -51,6 +66,11 @@ export function Seat({
   isBankActor,
   onSkipOther,
   onOpenStats,
+  roundId,
+  pastFirstPaint,
+  dealOrder = 0,
+  dealDx = 0,
+  dealDy = 0,
 }: SeatProps) {
   const isMe = viewerId === turn.player.id;
   const isBanker = turn.player.type === "admin";
@@ -163,7 +183,10 @@ export function Seat({
         </div>
       )}
 
-      <div className={clsx("k-hand", isMe && "is-me")}>
+      <div
+        className={clsx("k-hand", isMe && "is-me")}
+        style={{ "--deal-dx": `${dealDx}px`, "--deal-dy": `${dealDy}px` } as React.CSSProperties}
+      >
         {turn.cards.map((c, idx) => {
           const isInitialCard = idx === 0;
           const isBlattCard = hasBet ? idx > 0 && idx < (betStart as number) : isBlattPhase && idx > 0;
@@ -177,7 +200,20 @@ export function Seat({
           else if (isBlattPhase) hide = idx === 0;
           else if (hasBet) hide = isInitialCard || isBetOrHitCard ? true : !isBlattCard;
 
-          return <CardView key={idx} card={c} hidden={hide} />;
+          return (
+            <CardView
+              // Round-scoped: a fresh round's index 0 must mount as a new
+              // DOM node, not reuse the previous round's (see TableRoot.tsx).
+              key={`${roundId ?? "r"}-${idx}`}
+              card={c}
+              hidden={hide}
+              // idx 0 is only ever a fresh round's opening card (every later
+              // card is a hit/bet appended at idx>=1) -- stagger it by this
+              // seat's place in deal order; +1 leaves room 0 for the dealer.
+              dealDelayMs={isInitialCard ? (dealOrder + 1) * 90 : 0}
+              pastFirstPaint={pastFirstPaint}
+            />
+          );
         })}
       </div>
 

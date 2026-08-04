@@ -206,3 +206,14 @@ export function orderSeatsForViewer<T>(items: T[], isViewer: (item: T) => boolea
   const shift = (viewerIdx - target + items.length) % items.length;
   return [...items.slice(shift), ...items.slice(0, shift)];
 }
+
+// Where the shoe sits, in the same nominal stage-px used by seatPositions()
+// -- mirrors .k-shoe's own CSS (index.css: `left: calc(50% + 110px)`,
+// `top: calc(var(--play-top) + 116px * var(--vf))`). Seat.tsx/Dealer.tsx use
+// this as the ORIGIN for the card-deal-in animation, so a card visibly
+// travels from the shoe to its resting seat rather than just popping in
+// place -- if the shoe's own CSS position ever changes, this needs to change
+// with it, and vice versa.
+export function shoePosition(playTop: number, vf: number): { x: number; y: number } {
+  return { x: STAGE_WIDTH / 2 + 110, y: playTop + 116 * vf };
+}

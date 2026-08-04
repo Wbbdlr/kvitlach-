@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useFelt } from "../theme";
-import { orderSeatsForViewer, seatPositions, seatScale, spreadFactor, STAGE_WIDTH } from "./layout";
+import { orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { Seat } from "./Seat";
@@ -175,6 +175,15 @@ export function TableRoot({
   const { wrapRef, dockRef, scale, stageHeight, vf, playTop } = useStageScale();
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
+  // Flips true once, right after this table's very first paint. Cards
+  // already on the felt at that paint (a fresh join, or a reload mid-round)
+  // must NOT animate as if freshly dealt -- see CardView.tsx's pastFirstPaint
+  // prop, which each card freezes at its own mount time.
+  const [pastFirstPaint, setPastFirstPaint] = useState(false);
+  useEffect(() => {
+    setPastFirstPaint(true);
+  }, []);
+
   // The Fullscreen API can only be entered from a real tap (see
   // fullscreen.ts), so it can never auto-start -- nudge new visitors to tap
   // it themselves instead, once, and never again once they've either done
@@ -286,6 +295,22 @@ export function TableRoot({
   );
   const positions = seatPositions(seatedTurns.length, vf, playTop);
   const seatShrink = seatScale(positions);
+
+  // Origin for the card-deal-in flight animation (see Seat.tsx/Dealer.tsx) --
+  // nominal stage-px from the shoe to a given seat, divided by seatShrink so
+  // a shrunk seat's cards still travel the true on-screen distance instead of
+  // a fraction of it (the seat's own transform: scale() would otherwise
+  // shrink the raw offset a second time). The dealer is never shrunk (no
+  // scale in Dealer.tsx's own transform), so its own delta skips that
+  // division -- dividing it too would over-correct for a scale that was
+  // never applied in the first place.
+  const shoe = shoePosition(playTop, vf);
+  const dealDeltaFor = (position: { x: number; y: number }, scaleFactor: number) => ({
+    dx: (shoe.x - position.x) / scaleFactor,
+    dy: (shoe.y - position.y) / scaleFactor,
+  });
+  // Mirrors Dealer.tsx's own anchor: left:640, top:play-top+160px*vf.
+  const dealerDealDelta = dealDeltaFor({ x: STAGE_WIDTH / 2, y: playTop + 160 * vf }, 1);
 
   // Chips the bank currently has committed, per seat -- drawn on the felt so
   // a shrinking bet limit has a visible cause (see BankReservations).
@@ -416,30 +441,42 @@ export function TableRoot({
             onStand={onStand}
             deckCount={round?.deckRemaining ?? 0}
             onOpenStats={onOpenStats}
+            roundId={round?.roundId}
+            pastFirstPaint={pastFirstPaint}
+            dealDx={dealerDealDelta.dx}
+            dealDy={dealerDealDelta.dy}
           />
         )}
 
-        {seatedTurns.map((turn, idx) => (
-          <Seat
-            key={turn.player.id}
-            turn={turn}
-            viewerId={playerId}
-            isAdmin={isAdmin}
-            isActiveTurn={activeTurnId === turn.player.id}
-            isNextTurn={nextTurnId === turn.player.id}
-            roundState={round?.state}
-            firstBetCardIndex={firstBetCardIndex}
-            turnTimer={activeTurnTimer?.playerId === turn.player.id ? activeTurnTimer : undefined}
-            reactionEmoji={latestReactionByPlayer[turn.player.id]?.emoji}
-            walletAmount={room.wallets?.[turn.player.id]}
-            presence={presenceByPlayerId[turn.player.id]}
-            position={positions[idx]}
-            scale={seatShrink}
-            isBankActor={bankLock?.playerId === turn.player.id}
-            onSkipOther={isAdmin ? onSkip : undefined}
-            onOpenStats={onOpenStats}
-          />
-        ))}
+        {seatedTurns.map((turn, idx) => {
+          const seatDelta = positions[idx] ? dealDeltaFor(positions[idx], seatShrink) : { dx: 0, dy: 0 };
+          return (
+            <Seat
+              key={turn.player.id}
+              turn={turn}
+              viewerId={playerId}
+              isAdmin={isAdmin}
+              isActiveTurn={activeTurnId === turn.player.id}
+              isNextTurn={nextTurnId === turn.player.id}
+              roundState={round?.state}
+              firstBetCardIndex={firstBetCardIndex}
+              turnTimer={activeTurnTimer?.playerId === turn.player.id ? activeTurnTimer : undefined}
+              reactionEmoji={latestReactionByPlayer[turn.player.id]?.emoji}
+              walletAmount={room.wallets?.[turn.player.id]}
+              presence={presenceByPlayerId[turn.player.id]}
+              position={positions[idx]}
+              scale={seatShrink}
+              isBankActor={bankLock?.playerId === turn.player.id}
+              onSkipOther={isAdmin ? onSkip : undefined}
+              onOpenStats={onOpenStats}
+              roundId={round?.roundId}
+              pastFirstPaint={pastFirstPaint}
+              dealOrder={idx}
+              dealDx={seatDelta.dx}
+              dealDy={seatDelta.dy}
+            />
+          );
+        })}
 
         {!roundOver && <BankReservations reservations={reservations} scale={seatShrink} playTop={playTop} vf={vf} />}
 

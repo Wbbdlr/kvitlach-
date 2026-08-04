@@ -1621,16 +1621,22 @@ body:has(.k-fit) {
   }
 }
 
-/* Cards pop in on mount rather than just appearing -- relies on React's own
-   array-key reconciliation (a card at a brand-new index is a genuinely new
-   DOM node) instead of tracking "is this new" by hand, so it's automatic
-   the moment a card is actually dealt, with zero extra state. */
+/* Cards fly in from the shoe rather than just appearing -- relies on React's
+   own array-key reconciliation (a card at a brand-new index is a genuinely
+   new DOM node) instead of tracking "is this new" by hand, so it's automatic
+   the moment a card is actually dealt, with zero extra state (see
+   CardView.tsx/Seat.tsx/Dealer.tsx for the round-scoped key that makes this
+   fire every round, not just the session's first).
+   --deal-dx/--deal-dy are nominal stage-px from the shoe to THIS hand, set
+   once per seat (Seat.tsx/Dealer.tsx) and inherited down to every card in
+   it; the -6px fallback on dy is the original small in-place pop, used
+   anywhere those vars aren't set (e.g. the old list UI's cards). */
 @keyframes cardDealIn {
-  from { opacity: 0; transform: scale(0.7) translateY(-6px); }
+  from { opacity: 0; transform: translate(var(--deal-dx, 0px), var(--deal-dy, -6px)) scale(0.7); }
   to { opacity: 1; transform: none; }
 }
 .k-card-in {
-  animation: cardDealIn 220ms ease-out;
+  animation: cardDealIn 340ms ease-out backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .k-card-in {

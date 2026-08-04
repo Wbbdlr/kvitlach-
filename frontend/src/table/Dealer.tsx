@@ -17,6 +17,12 @@ export interface DealerProps {
   onStand?: () => void;
   deckCount?: number;
   onOpenStats?: (playerId: string) => void;
+  // See Seat.tsx -- same round-scoped-key/first-paint-gate/shoe-flight
+  // mechanism, applied to the bank's own hand.
+  roundId?: string;
+  pastFirstPaint?: boolean;
+  dealDx?: number;
+  dealDy?: number;
 }
 
 // The Bank's own seat, fixed at the top of the oval, with the shoe sitting
@@ -33,6 +39,10 @@ export function Dealer({
   onStand,
   deckCount,
   onOpenStats,
+  roundId,
+  pastFirstPaint,
+  dealDx = 0,
+  dealDy = 0,
 }: DealerProps) {
   // NOTE: round.state === "final" means the banker's turn has just BEGUN
   // (all other players are resolved), not that the banker is done -- see
@@ -91,9 +101,21 @@ export function Dealer({
           )}
         </button>
 
-        <div className="k-hand is-dealer">
+        <div
+          className="k-hand is-dealer"
+          style={{ "--deal-dx": `${dealDx}px`, "--deal-dy": `${dealDy}px` } as React.CSSProperties}
+        >
           {turn.cards.map((c, idx) => (
-            <CardView key={idx} card={c} hidden={idx === 0 && !bankerReveal} />
+            <CardView
+              // Round-scoped for the same reason as Seat.tsx -- otherwise
+              // the bank's own opening card never re-animates past round 1.
+              key={`${roundId ?? "r"}-${idx}`}
+              card={c}
+              hidden={idx === 0 && !bankerReveal}
+              // The bank deals to itself first, so no extra stagger delay.
+              dealDelayMs={0}
+              pastFirstPaint={pastFirstPaint}
+            />
           ))}
         </div>
 
