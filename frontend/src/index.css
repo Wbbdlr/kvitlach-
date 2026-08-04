@@ -228,7 +228,16 @@ body:has(.k-fit) {
    action always collects. A radial mask does the same thing on purpose: the
    watermark fades out approaching the pot and is fully present toward the
    rail, so the pot reads as sitting ON the felt's print instead of erasing a
-   chunk of it. */
+   chunk of it.
+   First attempt sized the ellipse in PERCENT, which resolves against this
+   element's own box -- and that box is exactly as wide as the (nowrap)
+   watermark text, not the pot pill sitting on top of it. A long family name
+   made the box wide, so the same percentages hid a much bigger share of the
+   phrase than the ~209x60px pill ever covered -- measured live, 44%+ of the
+   text was fully hidden with only the outermost ~10% at full opacity,
+   leaving stray letters at each end and nothing readable in between. Fixed
+   px sized off the pill's own measured footprint fixes this regardless of
+   how long the configured watermark string is. */
 .k-oval::after {
   content: var(--wm, "");
   position: absolute;
@@ -241,8 +250,8 @@ body:has(.k-fit) {
   color: rgba(230, 164, 75, 0.09);
   font-weight: 700;
   white-space: nowrap;
-  mask-image: radial-gradient(ellipse 58% 220% at 50% 50%, transparent 0%, transparent 38%, black 78%);
-  -webkit-mask-image: radial-gradient(ellipse 58% 220% at 50% 50%, transparent 0%, transparent 38%, black 78%);
+  mask-image: radial-gradient(ellipse 125px 48px at 50% 50%, transparent 0%, transparent 60%, black 100%);
+  -webkit-mask-image: radial-gradient(ellipse 125px 48px at 50% 50%, transparent 0%, transparent 60%, black 100%);
 }
 
 /* Dashed inner betting ring. */
