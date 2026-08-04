@@ -1,8 +1,15 @@
-type SfxKey = "deal" | "win" | "bust" | "lose" | "shuffle" | "chip" | "eleveroon";
+type SfxKey = "deal" | "win" | "natural21" | "bust" | "lose" | "shuffle" | "chip" | "eleveroon";
 
 const SFX_PATHS: Record<SfxKey, string[]> = {
   deal:        ["/sounds/card-place-1.ogg", "/sounds/card-place-2.ogg"],
   win:         ["/sounds/chips-stack-1.ogg"],
+  // Hitting 21 outright is its own moment -- App.tsx plays this instead of
+  // "win" when a hand goes straight from "pending" to "won" (calcState fires
+  // the instant 21 is reachable, mid-turn), reserving the generic "win" for
+  // a showdown win decided later by the banker's own hand.
+  // card-slide-1.ogg was the one asset in this folder nothing else claimed;
+  // swap in a proper fanfare here if/when there's one worth using instead.
+  natural21:   ["/sounds/card-slide-1.ogg"],
   // "bust" is the futch horn -- it means the hand went over 21, and nothing
   // else. Losing the showdown with a good hand is a different event and gets
   // its own chips-swept-away sound, so a futch stays the thing that turns

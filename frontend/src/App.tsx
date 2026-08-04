@@ -4,7 +4,7 @@ import { useGameStore } from "./state";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
 
-import { isPushTurn, statusDisplay } from "./table/selectors";
+import { bestTotal, isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
 import { TableRoot } from "./table/TableRoot";
 import { RulesModals } from "./RulesModals";
@@ -179,7 +179,19 @@ export default function App() {
       }
       if (turn.state !== prevTurn.state) {
         // A push returns the wager, not a win -- it shouldn't sound like one.
-        if (turn.state === "won" && !isPushTurn(turn)) audioManager.playSfx("win");
+        if (turn.state === "won" && !isPushTurn(turn)) {
+          // calcState (backend/src/turn.ts) flips a hand straight to "won" the
+          // instant 21 becomes reachable -- during the player's OWN turn, well
+          // before the banker resolves anything. A showdown win (the banker's
+          // hand was simply worse) can only ever arrive LATER, as a "standby"
+          // turn flipping to "won" once the round settles. Those are different
+          // moments for the player -- one is "I just hit it," the other is
+          // "turns out I was ahead" -- so, same as bust already gets its own
+          // horn instead of sharing "lose", a natural 21 gets its own sound
+          // instead of sharing the generic showdown "win".
+          const justHit21 = prevTurn.state === "pending" && bestTotal(turn.cards).total === 21;
+          audioManager.playSfx(justHit21 ? "natural21" : "win");
+        }
         // The futch horn is for going over 21, not for losing. Keying it off
         // state === "lost" got this backwards at both ends: the BANKER's state
         // also reads "lost" when they merely finish the round down on money
