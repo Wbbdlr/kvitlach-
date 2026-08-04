@@ -103,8 +103,14 @@ export function Dealer({
             status tag on its own line pushed the stack down onto the bank
             panel, which painted over it ("BANK PLAYING" half-hidden behind the
             bank total). Reclaiming the row fixes it where it starts, instead
-            of shoving the panel down onto the seat below. */}
-        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+            of shoving the panel down onto the seat below.
+            Deliberately nowrap, not wrap: .k-seat is a fixed 168px column, and
+            "Total: hidden" + "WAITING..." together need ~190px -- flex-wrap
+            would fall back to two lines for exactly the worst case this exists
+            to fix, silently undoing it. .k-seat has no overflow:hidden, so a
+            wider row just overflows its column and stays centred on the
+            dealer's own anchor point instead of clipping. */}
+        <div className="flex items-center justify-center gap-1.5 flex-nowrap w-max max-w-none">
           <div className={clsx("k-readout", !/^\d/.test(totalInfo.value) && "is-muted")}>
             {totalInfo.prefix} <b>{totalInfo.value}</b>
           </div>
