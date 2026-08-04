@@ -33,6 +33,9 @@ export function BankPanel({ bankerWallet, reserved = 0 }: BankPanelProps) {
       // Dealer.tsx also puts that tag on the total's row rather than its own;
       // without that, the clearance needed to miss the dealer was big enough
       // to land the panel on the viewer's seat below instead.
+      // BankReservations.tsx's potY() mirrors this exact formula (+22 more, to
+      // sit just under it) so its connector lines start where this pill
+      // actually renders -- change one, change both.
       style={{ top: "calc(var(--play-top, 0px) + 300px * var(--vf, 1) + 14px)" }}
     >
       <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>

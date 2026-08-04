@@ -11,13 +11,29 @@ export interface Reservation {
 export interface BankReservationsProps {
   reservations: Reservation[];
   scale?: number;
+  // Same two inputs TableRoot already threads through seatPositions() for
+  // this exact reason -- see potY() below.
+  playTop?: number;
+  vf?: number;
 }
 
 // Where the bank's money sits on the felt -- just under the BANK total (see
 // BankPanel, which is anchored at 300px), so a reservation reads as chips
 // pushed out FROM the bank.
 const POT_X = STAGE_WIDTH / 2;
-const POT_Y = 336;
+
+// Was a bare 336 constant, tuned once at playTop=0, vf=1 and never revisited.
+// Reported live: the connector lines didn't touch the "BANK $x" pill at all,
+// because on a real layout playTop is essentially never 0 (it's however much
+// the top chrome bar reserves) -- while seatPositions() bakes playTop AND vf
+// into every seat's own y, this pot anchor baked in neither, so the two drifted
+// apart by exactly however big playTop was. Mirrors BankPanel's own
+// `top: calc(var(--play-top) + 300px * var(--vf) + 14px)` plus the same +22
+// "just under it" margin the old constant implied (314 + 22 = 336) -- if that
+// calc ever changes, this needs to change with it, and vice versa.
+function potY(playTop: number, vf: number): number {
+  return playTop + 300 * vf + 36;
+}
 
 // Chips rest a fixed distance BACK from the seat rather than at a fixed
 // fraction of the way there: seats sit at very different distances from the
@@ -49,16 +65,16 @@ const T_MAX = 0.7;
 // seat's dashed line to the pot.
 const MIN_VIABLE_DISTANCE = SEAT_CLEARANCE / (1 - T_MIN);
 
-function restPoint(position: SeatPosition): { x: number; y: number } {
+function restPoint(position: SeatPosition, potYVal: number): { x: number; y: number } {
   const dx = position.x - POT_X;
-  const dy = position.y - POT_Y;
+  const dy = position.y - potYVal;
   const distance = Math.hypot(dx, dy);
   const t = distance > 0 ? Math.min(T_MAX, Math.max(T_MIN, (distance - SEAT_CLEARANCE) / distance)) : T_MIN;
-  return { x: POT_X + dx * t, y: POT_Y + dy * t };
+  return { x: POT_X + dx * t, y: potYVal + dy * t };
 }
 
-function isPlaceable(position: SeatPosition): boolean {
-  return Math.hypot(position.x - POT_X, position.y - POT_Y) >= MIN_VIABLE_DISTANCE;
+function isPlaceable(position: SeatPosition, potYVal: number): boolean {
+  return Math.hypot(position.x - POT_X, position.y - potYVal) >= MIN_VIABLE_DISTANCE;
 }
 
 // Chips the bank has committed to wagers it hasn't settled yet, drawn on the
@@ -68,8 +84,9 @@ function isPlaceable(position: SeatPosition): boolean {
 // into what you're allowed to bet, which is why a BANK! window shrinks as the
 // round goes round and why a table can stall on an empty bank. None of that
 // was visible before -- players just found their limit had moved.
-export function BankReservations({ reservations, scale = 1 }: BankReservationsProps) {
-  const placeable = reservations.filter((r) => isPlaceable(r.position));
+export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 }: BankReservationsProps) {
+  const potYVal = potY(playTop, vf);
+  const placeable = reservations.filter((r) => isPlaceable(r.position, potYVal));
   if (placeable.length === 0) return null;
 
   return (
@@ -82,12 +99,12 @@ export function BankReservations({ reservations, scale = 1 }: BankReservationsPr
         aria-hidden="true"
       >
         {placeable.map((r) => {
-          const end = restPoint(r.position);
+          const end = restPoint(r.position, potYVal);
           return (
             <line
               key={r.playerId}
               x1={POT_X}
-              y1={POT_Y}
+              y1={potYVal}
               x2={end.x}
               y2={end.y}
               className="k-resv-line"
@@ -97,7 +114,7 @@ export function BankReservations({ reservations, scale = 1 }: BankReservationsPr
       </svg>
 
       {placeable.map((r) => {
-        const at = restPoint(r.position);
+        const at = restPoint(r.position, potYVal);
         return (
           <div
             key={r.playerId}

@@ -441,7 +441,7 @@ export function TableRoot({
           />
         ))}
 
-        {!roundOver && <BankReservations reservations={reservations} scale={seatShrink} />}
+        {!roundOver && <BankReservations reservations={reservations} scale={seatShrink} playTop={playTop} vf={vf} />}
 
         {bankerPlayer && <BankPanel bankerWallet={bankerWallet} reserved={roundOver ? 0 : totalReserved} />}
 
