@@ -25,18 +25,26 @@ export function BankPanel({ bankerWallet, reserved = 0 }: BankPanelProps) {
     // dealer's total is right above), so the fix is to stop growing at all.
     <div
       className="absolute left-1/2 -translate-x-1/2 z-[12] flex flex-row flex-wrap items-center justify-center gap-x-2.5 gap-y-1"
-      // The +14 is deliberately NOT scaled by --vf. Everything above this in
-      // the centre column -- the dealer's plate, cards and total row -- is
-      // fixed-size content that does not shrink when the table flattens, so a
-      // purely vf-scaled offset closes on it: at vf 0.54 this pill landed on
-      // the dealer's status tag and painted over it. It stays small because
-      // Dealer.tsx also puts that tag on the total's row rather than its own;
-      // without that, the clearance needed to miss the dealer was big enough
-      // to land the panel on the viewer's seat below instead.
+      // Anchored off the SAME 160px*vf the dealer's own seat uses (Dealer.tsx),
+      // not an independent, bigger coefficient (used to be 300) -- a bigger
+      // coefficient meant this pill's distance from the dealer GREW with vf,
+      // so a normal (near-vf=1) desktop table left a wide, empty band of felt
+      // between the dealer's total and "BANK $x" that a flattened phone table
+      // never had room for. Sharing the coefficient makes the gap to the
+      // dealer's total row a near-constant ~35px regardless of vf, which is
+      // both the "closer to the banker" the pill was asked for and, on a
+      // flattened phone, a bigger safety margin than the old formula's ~9px
+      // worst case (measured live at vf 0.5, where the old pill nearly
+      // touched the dealer's status tag).
+      // +110 covers the dealer's own fixed (non-vf-scaled) plate+hand+total
+      // content (measured ~75px tall below its anchor) PLUS the wider case
+      // where the dealer is the human viewer mid-turn and Hit/Stand buttons
+      // add another ~18px (measured live by mounting that exact button
+      // markup) -- both clear this pill with room to spare.
       // BankReservations.tsx's potY() mirrors this exact formula (+22 more, to
       // sit just under it) so its connector lines start where this pill
       // actually renders -- change one, change both.
-      style={{ top: "calc(var(--play-top, 0px) + 300px * var(--vf, 1) + 14px)" }}
+      style={{ top: "calc(var(--play-top, 0px) + 160px * var(--vf, 1) + 110px)" }}
     >
       <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
       {reserved > 0 && (

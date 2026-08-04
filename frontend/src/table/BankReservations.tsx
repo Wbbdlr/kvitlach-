@@ -18,21 +18,16 @@ export interface BankReservationsProps {
 }
 
 // Where the bank's money sits on the felt -- just under the BANK total (see
-// BankPanel, which is anchored at 300px), so a reservation reads as chips
-// pushed out FROM the bank.
+// BankPanel, which is anchored off the dealer's own vf coefficient), so a
+// reservation reads as chips pushed out FROM the bank.
 const POT_X = STAGE_WIDTH / 2;
 
-// Was a bare 336 constant, tuned once at playTop=0, vf=1 and never revisited.
-// Reported live: the connector lines didn't touch the "BANK $x" pill at all,
-// because on a real layout playTop is essentially never 0 (it's however much
-// the top chrome bar reserves) -- while seatPositions() bakes playTop AND vf
-// into every seat's own y, this pot anchor baked in neither, so the two drifted
-// apart by exactly however big playTop was. Mirrors BankPanel's own
-// `top: calc(var(--play-top) + 300px * var(--vf) + 14px)` plus the same +22
-// "just under it" margin the old constant implied (314 + 22 = 336) -- if that
-// calc ever changes, this needs to change with it, and vice versa.
+// Mirrors BankPanel's own
+// `top: calc(var(--play-top) + 160px * var(--vf) + 110px)` plus the same +22
+// "just under it" margin the old constant implied -- if that calc ever
+// changes, this needs to change with it, and vice versa.
 function potY(playTop: number, vf: number): number {
-  return playTop + 300 * vf + 36;
+  return playTop + 160 * vf + 132;
 }
 
 // Chips rest a fixed distance BACK from the seat rather than at a fixed
