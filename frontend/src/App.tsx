@@ -427,6 +427,7 @@ export default function App() {
           setUserInteracted(true);
           audioManager.noteInteraction();
         }}
+        wsStatus={status}
       />
       {rulesModals}
     </>

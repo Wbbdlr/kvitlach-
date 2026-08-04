@@ -106,6 +106,7 @@ export interface TableRootProps {
   sfxEnabled: boolean;
   onToggleMusic: () => void;
   onToggleSfx: () => void;
+  wsStatus: "disconnected" | "connecting" | "connected";
 }
 
 export function TableRoot({
@@ -165,6 +166,7 @@ export function TableRoot({
   sfxEnabled,
   onToggleMusic,
   onToggleSfx,
+  wsStatus,
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
@@ -605,6 +607,22 @@ export function TableRoot({
               {myBuyInRequest ? "Chip request pending…" : "Out of chips — tap to request more"}
             </button>
           ))}
+        {wsStatus !== "connected" && (
+          // The only place a viewer's OWN connection state was visible used
+          // to be the lobby footer -- which this view replaces entirely (see
+          // App.tsx's room ? <TableRoot/> : <lobby+footer/> branch), so once
+          // seated there was no signal at all that a lost/reconnecting socket
+          // was why Bet/Hit/Deal had gone quiet. Reusing the footer's own
+          // wording here rather than inventing new copy.
+          <span
+            className={clsx("k-tag", wsStatus === "disconnected" ? "warn" : "muted")}
+            role="status"
+            aria-live="polite"
+            title="Your connection to the table"
+          >
+            {wsStatus === "disconnected" ? "Connection lost — reconnecting…" : "Connecting…"}
+          </span>
+        )}
         {waitingInfo && (
           <span className="k-tag muted" title={`${waitingInfo.namesLabel} will join after this round ends.`}>
             {waitingInfo.isViewerWaiting
