@@ -15,7 +15,9 @@ const baseCards: Card[] = [
   { name: "12", attributes: { values: [12, 9, 10] } },
 ];
 
-function shuffle<T>(items: T[]): T[] {
+// Exported so buildShoe (round.ts) can re-shuffle a multi-deck shoe as one
+// unit -- see there for why that matters.
+export function shuffle<T>(items: T[]): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));

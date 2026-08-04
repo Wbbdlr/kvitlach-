@@ -1,5 +1,5 @@
 import { v4 as uuid } from "uuid";
-import { newDeck } from "./deck.js";
+import { newDeck, shuffle } from "./deck.js";
 import { calcState, getSums, initializeTurns } from "./turn.js";
 import { Balance, Card, Player, RoundHistoryEntry, RoundPhase, RoundState, Turn } from "./types.js";
 
@@ -18,10 +18,22 @@ export interface RoundContext extends RoundState {
 
 // Builds a fresh shuffled shoe of `deckCount` decks -- used both for a brand
 // new room and for a reshuffle triggered by the shoe running out mid-play.
+//
+// Each newDeck() call is already its own fair Fisher-Yates shuffle, but
+// concatenating deckCount of them and stopping there leaves rigid 48-card
+// blocks: every deck-aligned window is guaranteed exactly 4-of-each-rank,
+// which a genuinely mixed multi-deck shoe would NOT be (a real shoe's rank
+// composition varies window to window, hypergeometrically). No single
+// card's odds were biased by this -- each block's shuffle was still
+// individually fair -- but it's a real structural deviation from "one
+// shuffled shoe," and it's the common case: recommendedDeckCount() puts
+// almost any table above 1 player onto a multi-deck shoe. One more
+// shuffle() pass over the assembled shoe (itself still a uniform random
+// permutation of whatever order it starts from) fixes it for free.
 export function buildShoe(deckCount: number): Card[] {
   const decks: Card[][] = [];
   for (let i = 0; i < deckCount; i += 1) decks.push(newDeck());
-  return decks.flat();
+  return shuffle(decks.flat());
 }
 
 // `existingDeck` carries the leftover shoe forward from the room's previous
