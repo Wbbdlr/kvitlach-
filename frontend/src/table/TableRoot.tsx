@@ -15,6 +15,7 @@ import { ReactionLayer } from "./ReactionLayer";
 import { FeltSwitcher } from "./FeltSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
+import { WaitingListDrawer, WaitingListEntry } from "./WaitingListDrawer";
 import { StatsModal } from "./StatsModal";
 import { BankSummaryModal } from "./BankSummaryModal";
 import { CompletedRoundSummary } from "../state";
@@ -65,7 +66,7 @@ export interface TableRootProps {
   bankIncrement: number;
   bankDisabledReason?: string;
   canBank: boolean;
-  waitingInfo?: { count: number; isViewerWaiting: boolean; namesLabel: string };
+  waitingInfo?: { count: number; isViewerWaiting: boolean; namesLabel: string; players: WaitingListEntry[] };
   abandonedBanker?: { name: string; since: number; eligibleAt: number; canVoid: boolean; secondsLeft: number };
   firstBetCardIndex?: Record<string, number>;
   latestReactionByPlayer: Record<string, ReactionEvent>;
@@ -171,6 +172,7 @@ export function TableRoot({
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
   const [manageOpen, setManageOpen] = useState(false);
   const [roomInfoOpen, setRoomInfoOpen] = useState(false);
+  const [waitingListOpen, setWaitingListOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
   const { wrapRef, dockRef, scale, stageHeight, vf, playTop } = useStageScale();
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
@@ -661,13 +663,18 @@ export function TableRoot({
           </span>
         )}
         {waitingInfo && (
-          <span className="k-tag muted" title={`${waitingInfo.namesLabel} will join after this round ends.`}>
+          <button
+            type="button"
+            className="k-tag muted"
+            onClick={() => setWaitingListOpen(true)}
+            title={`${waitingInfo.namesLabel} will join after this round ends -- tap to see the full list.`}
+          >
             {waitingInfo.isViewerWaiting
               ? waitingInfo.count > 1
                 ? `You + ${waitingInfo.count - 1} queued`
                 : "You're queued — next round"
               : `${waitingInfo.count} queued for next round`}
-          </span>
+          </button>
         )}
         <button
           type="button"
@@ -821,6 +828,14 @@ export function TableRoot({
         onRequestRename={onRequestRename}
         onRequestBuyIn={onRequestBuyIn}
       />
+
+      {waitingInfo && (
+        <WaitingListDrawer
+          open={waitingListOpen}
+          onClose={() => setWaitingListOpen(false)}
+          players={waitingInfo.players}
+        />
+      )}
     </div>
   );
 }

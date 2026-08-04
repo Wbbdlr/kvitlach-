@@ -102,18 +102,21 @@ export function useTableData({
 
   // Players cut from this round by the seat cap (store.ts's
   // MAX_SEATED_PLAYERS_PER_ROUND) or who joined mid-round -- both land in
-  // room.waitingPlayerIds and are seated automatically next round.
+  // room.waitingPlayerIds and are seated automatically next round. The array
+  // is already in rotation order (store.ts's startRound advances the seat
+  // window by exactly one player per round), so `position` here doubles as
+  // "rounds until seated" -- position 1 is seated next round, not "someday".
   const waitingInfo = useMemo(() => {
     const ids = room?.waitingPlayerIds ?? [];
     if (!round || ids.length === 0) return undefined;
     const isViewerWaiting = Boolean(playerId && ids.includes(playerId));
-    const otherNames = ids
-      .filter((id) => id !== playerId)
+    const players = ids
       .map((id) => room?.players.find((p) => p.id === id))
       .filter((p): p is Player => Boolean(p))
-      .map((p) => fullName(p) || "New player");
+      .map((player, index) => ({ player, isViewer: player.id === playerId, position: index + 1 }));
+    const otherNames = players.filter((p) => !p.isViewer).map((p) => fullName(p.player) || "New player");
     const namesLabel = formatNames([...(isViewerWaiting ? ["You"] : []), ...otherNames]);
-    return { count: ids.length, isViewerWaiting, namesLabel };
+    return { count: ids.length, isViewerWaiting, namesLabel, players };
   }, [room?.waitingPlayerIds, room?.players, round, playerId]);
 
   const playerTurns = turns.filter((t) => t.player?.type !== "admin");

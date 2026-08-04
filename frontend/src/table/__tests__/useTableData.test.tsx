@@ -151,7 +151,12 @@ describe("useTableData", () => {
       const { result } = renderHook(() =>
         useTableData({ room, round, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
       );
-      expect(result.current.waitingInfo).toEqual({ count: 1, isViewerWaiting: false, namesLabel: "P2" });
+      expect(result.current.waitingInfo).toEqual({
+        count: 1,
+        isViewerWaiting: false,
+        namesLabel: "P2",
+        players: [{ player: p2, isViewer: false, position: 1 }],
+      });
     });
 
     it("flags isViewerWaiting when the viewer themself is queued", () => {
@@ -159,7 +164,28 @@ describe("useTableData", () => {
       const { result } = renderHook(() =>
         useTableData({ room, round, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
       );
-      expect(result.current.waitingInfo).toEqual({ count: 2, isViewerWaiting: true, namesLabel: "You and P2" });
+      expect(result.current.waitingInfo).toEqual({
+        count: 2,
+        isViewerWaiting: true,
+        namesLabel: "You and P2",
+        players: [
+          { player: p1, isViewer: true, position: 1 },
+          { player: p2, isViewer: false, position: 2 },
+        ],
+      });
+    });
+
+    it("gives each waiting player their rotation-order position -- position 1 is seated next round", () => {
+      const p3: Player = { id: "p3", firstName: "P3", lastName: "", type: "player", presence: "online" };
+      const room = makeRoom({ waitingPlayerIds: [p2.id, p1.id, p3.id], players: [banker, p1, p2, p3] });
+      const { result } = renderHook(() =>
+        useTableData({ room, round, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
+      );
+      expect(result.current.waitingInfo?.players.map((p) => [p.player.id, p.position])).toEqual([
+        [p2.id, 1],
+        [p1.id, 2],
+        [p3.id, 3],
+      ]);
     });
   });
 

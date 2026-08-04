@@ -14,10 +14,12 @@ interface ConnectionMeta {
 
 // Bounds accidental abuse (e.g. a buggy client stuck in a reconnect loop),
 // not determined attackers -- those just rotate IPs regardless. Needs to
-// comfortably clear a real family/friends game night, where a dozen-plus
+// comfortably clear a real family/friends game night, where dozens of
 // players are commonly behind the same home-WiFi NAT and would otherwise
-// all share one IP and get throttled together.
-const MAX_CONNS_PER_IP = 40;
+// all share one IP and get throttled together. Was 40 -- too tight for the
+// ~50-person night this app is meant to host (the waiting-list drawer only
+// helps once someone's actually connected).
+const MAX_CONNS_PER_IP = 80;
 const MAX_MSGS_PER_WINDOW = 30;
 const MSG_WINDOW_MS = 10_000;
 
