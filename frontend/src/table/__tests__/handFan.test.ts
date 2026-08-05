@@ -72,6 +72,37 @@ describe("useHandFan", () => {
     expect(result.current.fanned).toBe(true);
   });
 
+  it("resets to collapsed when roundId changes", () => {
+    // Regression: Seat.tsx/Dealer.tsx are keyed by player id, not round id
+    // (see TableRoot.tsx), so this hook's state otherwise survives a round
+    // change -- a hand fanned right as a round ends could still read
+    // fanned:true once the NEXT round's hand regrows to 4+ cards, rendering
+    // pre-expanded before the player ever taps it that round.
+    const { ref } = setup();
+    const { result, rerender } = renderHook(({ roundId }) => useHandFan(ref, roundId), {
+      initialProps: { roundId: "round-1" },
+    });
+    act(() => result.current.toggle());
+    expect(result.current.fanned).toBe(true);
+
+    rerender({ roundId: "round-2" });
+
+    expect(result.current.fanned).toBe(false);
+  });
+
+  it("does not reset on a re-render that keeps the same roundId", () => {
+    const { ref } = setup();
+    const { result, rerender } = renderHook(({ roundId }) => useHandFan(ref, roundId), {
+      initialProps: { roundId: "round-1" },
+    });
+    act(() => result.current.toggle());
+    expect(result.current.fanned).toBe(true);
+
+    rerender({ roundId: "round-1" });
+
+    expect(result.current.fanned).toBe(true);
+  });
+
   it("never arms the outside-click listener (or the timer) while collapsed", () => {
     // Regression guard for "no point paying for a global mousedown listener
     // on every seat's hand for the entire round" -- a stray outside click

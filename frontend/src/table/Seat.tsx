@@ -104,7 +104,7 @@ export function Seat({
   // fan out and no reason to make it tappable.
   const canFan = turn.cards.length >= 4;
   const handRef = useRef<HTMLDivElement>(null);
-  const { fanned, toggle } = useHandFan(handRef);
+  const { fanned, toggle } = useHandFan(handRef, roundId);
   const resolved = turn.state === "lost" || turn.state === "won";
   const isPublicStandby = turn.state === "standby";
   const hasBet = typeof betStart === "number";

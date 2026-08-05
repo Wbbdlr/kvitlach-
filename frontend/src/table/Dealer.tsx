@@ -65,7 +65,7 @@ export function Dealer({
   // See Seat.tsx -- same tap-to-fan-out treatment, same 4-card threshold.
   const canFan = turn.cards.length >= 4;
   const handRef = useRef<HTMLDivElement>(null);
-  const { fanned, toggle } = useHandFan(handRef);
+  const { fanned, toggle } = useHandFan(handRef, roundId);
 
   return (
     <>

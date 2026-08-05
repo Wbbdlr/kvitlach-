@@ -12,7 +12,7 @@ import { useClickOutside } from "./clickOutside";
 // doesn't linger once you've looked away without tapping to confirm.
 export const FAN_OUT_MS = 4000;
 
-export function useHandFan(handRef: RefObject<HTMLDivElement>) {
+export function useHandFan(handRef: RefObject<HTMLDivElement>, roundId?: string) {
   const [fanned, setFanned] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -21,6 +21,18 @@ export function useHandFan(handRef: RefObject<HTMLDivElement>) {
     timeoutRef.current = setTimeout(() => setFanned(false), FAN_OUT_MS);
     return () => clearTimeout(timeoutRef.current);
   }, [fanned]);
+
+  // Seat.tsx/Dealer.tsx are keyed by player id, not round id (see
+  // TableRoot.tsx), so this hook's state survives a round change by design --
+  // that's what lets the auto-collapse timer above keep running across a
+  // round boundary instead of getting reset early. Without this, a hand
+  // fanned right as a round ends could still read `fanned: true` once the
+  // NEW round's hand regrows to 4+ cards, rendering pre-expanded before the
+  // player ever taps it this round. Normally the 4s timeout beats any round
+  // transition, but nothing here should depend on winning that race.
+  useEffect(() => {
+    setFanned(false);
+  }, [roundId]);
 
   // Only listens while actually fanned open -- no point paying for a global
   // mousedown listener on every seat's hand for the entire round.

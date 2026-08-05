@@ -113,7 +113,7 @@ Key message types:
 - Client: `room:create`, `room:join`, `room:switch-admin`, `room:get`, `round:start`, `round:get`, `round:banker-end`, `turn:bet`, `turn:hit`, `turn:stand`, `turn:skip`, rename (`player:rename-request|approve|reject|block|cancel`), buy-in (`player:buyin-request|approve|reject|block|cancel`), admin tools (`player:kick`, `player:bank-adjust`), and `room:banker-topup`.
 - Server: `room:state`, `round:state`, `round:ended`, `round:banker-ended`, `room:banker-topup`, `player:bank-adjusted`, `ack`, `error`.
 
-Deck sizing defaults to an auto calculation (≈ six cards per seat plus buffer, capped at 16 decks). A 50-player table auto-selects 7 decks; override via deck input if desired.
+Deck sizing defaults to an auto calculation (`recommendedDeckCount` in `round.ts`: ~4 cards/hand × 8 rounds per seat, divided by the 24-card Kvitlach deck -- 2 copies of each of 1-12, not a standard playing-card deck -- capped at 16 decks). A 50-player table auto-selects the 16-deck cap; override via deck input if desired.
 
 ## Docker / Compose
 
