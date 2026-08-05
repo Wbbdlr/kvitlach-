@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { APP_VERSION } from "./version";
 
 const NAV_LINKS = [
   { href: "/about", label: "About" },
@@ -20,7 +21,7 @@ export default function SiteFooter({ active, children }: SiteFooterProps) {
       <div className="flex items-center gap-3">
         <span className="font-semibold text-slate-600">Kvitlach.us</span>
         <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
-          v2.5
+          v{APP_VERSION}
           <span className="text-amber-700">Beta</span>
         </span>
       </div>
