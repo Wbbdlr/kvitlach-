@@ -16,10 +16,19 @@ const TOP_CHROME_PX = 44;
 
 // Growing past the 1280x760 design size is fine -- every in-stage visual is a
 // font glyph, an SVG, or a high-resolution source image, so it doesn't cost
-// sharpness the way a small raster asset would. Stopping short of a full
-// uncap avoids betting on source-image resolution holding up at, say, 3x on
-// an 8K display nobody has tested this against.
-const MAX_SCALE = 1.6;
+// sharpness the way a small raster asset would. Checked, not guessed: the
+// card art (the biggest raster asset on the felt) ships at 946x1438, and the
+// tallest a card ever renders at nominal (unscaled) stage size is the
+// viewer's own 92px hand -- so even at this cap, a card is only ever drawn
+// at 92*3/1438 =~ 19% of its source resolution, nowhere near visible
+// softening. The old 1.6 cap was set well below that budget on an untested
+// guess ("3x on an 8K display") rather than this number, and produced real,
+// reported pillarboxing on an ordinary wide monitor (2560px wide needs 2.0
+// to fill edge to edge). 3.0 exactly fills a 3840px (4K) window and leaves
+// the same comfortable margin -- still a real ceiling for the hypothetical
+// display few of these dimensions actually reach, just recalibrated to what
+// the assets can actually take instead of a number nobody checked.
+const MAX_SCALE = 3.0;
 
 // How flat the table may get. The play area's height is STAGE_HEIGHT * vf, so
 // 0.5 bottoms out around a 1280x380 surface -- roughly a 3.4:1 table. Below

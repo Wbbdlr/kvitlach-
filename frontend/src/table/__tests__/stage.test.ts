@@ -51,7 +51,10 @@ describe("stage fit", () => {
   });
 
   it("never upscales past the cap, so a huge monitor doesn't bet on image resolution", () => {
-    expect(computeFit(3840, 2160, false).scale).toBe(1.6);
+    // 3840 (4K) is exactly the cap's own break-even width (3840/1280 = 3.0),
+    // not past it -- 7680 (8K) actually exceeds it, so this is the one that
+    // pins the ceiling itself rather than a coincidence of the fixture.
+    expect(computeFit(7680, 2160, false).scale).toBe(3.0);
   });
 
   it("keeps the play area on the stage when the viewport is too tall to fill", () => {

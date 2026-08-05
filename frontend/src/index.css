@@ -239,11 +239,16 @@ body:has(.k-fit) {
   direction: rtl;
   text-align: center;
   transform: translate(-50%, -50%);
-  font-size: 64px;
+  font-size: 46px;
   line-height: 1.15;
   letter-spacing: 1px;
   /* Bigger and fainter than the old single-line version (was 28px/0.16) --
-     it's meant to read as felt print showing through, not as a caption. */
+     it's meant to read as felt print showing through, not as a caption.
+     Pulled back down from 64px on live feedback once actually seen on a
+     real desktop screen (where --stage-scale runs well past 1, so the
+     rendered text was considerably bigger than either number alone
+     suggests) -- still noticeably larger than the original caption size,
+     just not dominating the middle of the table. */
   color: rgba(230, 164, 75, 0.07);
   font-weight: 700;
   white-space: normal;
@@ -867,6 +872,17 @@ body:has(.k-fit) {
   --controls-band: 84px;
   bottom: calc((100% - var(--stage-h)) / 2 + var(--controls-band) + max(8px, env(safe-area-inset-bottom)));
   left: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-left)));
+  /* This stack sits outside the scaled stage (position is computed from the
+     felt's true rendered box, not inherited from it -- see above), so its
+     own text stayed a flat 12px regardless of how big the felt itself was
+     rendering everything else. Fine at the phone/laptop scales this was
+     tuned at; reported as unreadably small on a wide desktop monitor, where
+     --stage-scale can run to 3 and everything ELSE on the felt was a third
+     bigger than this text. max(), not clamp(): never shrinks below the
+     tuned 1x (the compact override below already covers small screens in
+     its own right), only grows past it in step with the stage. */
+  transform: scale(max(1, var(--stage-scale, 1)));
+  transform-origin: bottom left;
   z-index: 45;
   display: flex;
   flex-direction: column;
@@ -1441,7 +1457,15 @@ body:has(.k-fit) {
     top: 50%;
     bottom: auto;
     left: max(6px, env(safe-area-inset-left));
-    transform: translateY(-50%);
+    /* Composes with the base rule's scale-with-the-stage growth above --
+       this breakpoint is almost always stage-scale <= 1 (max() floors it
+       right back to the tuned 1x, i.e. no change from before), but a wide,
+       short window (a landscape tablet, or just a short browser window)
+       can trigger compact via height while still being wide enough for
+       stage-scale > 1, and the toast should keep growing with the felt
+       there too. */
+    transform: translateY(-50%) scale(max(1, var(--stage-scale, 1)));
+    transform-origin: left center;
     max-width: min(150px, 38vw);
   }
   .k-toast {
