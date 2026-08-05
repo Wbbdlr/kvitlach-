@@ -82,11 +82,38 @@ export function computeFit(
   const rawVf = (availHeight / scale - dockBand - playTop) / STAGE_HEIGHT;
   const vf = Math.round(Math.min(Math.max(rawVf, MIN_VF), 1) * 100) / 100;
 
-  // Cap at the viewport so an over-tall stage can't push the dock off-screen;
-  // otherwise the felt is exactly the play area plus both bands.
-  const stageHeight = Math.min(availHeight / scale, playTop + STAGE_HEIGHT * vf + dockBand);
+  // On a portrait phone (width binds the scale long before height runs out)
+  // vf ceilings at 1 with room to spare -- the play area plus both bands
+  // can total well under availHeight. That leftover used to just vanish:
+  // stageHeight capped at the smaller "content" sum, and .k-fit's centering
+  // turned the difference into matching dead bars above and below the
+  // WHOLE stage, dock included (it's bottom-anchored to the felt's own
+  // edge -- see .k-controls -- so it rode down with it, floating with a
+  // gap under it that mirrored the one above the logo). Folded back in
+  // here instead of left as dead space -- but not split evenly: an even
+  // split (tried first, checked live on a 360x800 profile) pushed the play
+  // area ~180px further from the top chrome, which reads as the table
+  // adrift in a big green void rather than anchored near the branding the
+  // way it sits on every other viewport. Most of the room goes to the dock
+  // band instead -- more felt showing below the last seat, which is inert
+  // (nothing is anchored to that edge) rather than a gap that visibly
+  // pushes something around -- and only a modest share widens the top
+  // gutter, enough that it doesn't feel clipped without the table drifting
+  // far from where it sits everywhere else. Neither share touches vf or
+  // the dock's own reserved height, so the seat arc and the dock's layout
+  // are exactly as collision-tested either way; only how much room the two
+  // bands either side of them get grows.
+  const contentHeight = playTop + STAGE_HEIGHT * vf + dockBand;
+  const room = Math.max(0, availHeight / scale - contentHeight);
+  const grownPlayTop = playTop + room * 0.2;
+  const grownDockBand = dockBand + room * 0.8;
 
-  return { scale, stageHeight, vf, playTop };
+  // Cap at the viewport so an over-tall stage can't push the dock off-screen;
+  // otherwise the felt is exactly the play area plus both (now possibly
+  // grown) bands.
+  const stageHeight = Math.min(availHeight / scale, grownPlayTop + STAGE_HEIGHT * vf + grownDockBand);
+
+  return { scale, stageHeight, vf, playTop: grownPlayTop };
 }
 
 export function useStageScale() {

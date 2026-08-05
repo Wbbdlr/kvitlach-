@@ -55,11 +55,34 @@ describe("stage fit", () => {
   });
 
   it("keeps the play area on the stage when the viewport is too tall to fill", () => {
-    // Portrait can't be filled by a 1280-wide design -- it letterboxes, which
-    // is fine, but the stage must not claim more height than it can show.
+    // A 1280-wide design can't make a portrait phone's aspect ratio without
+    // flattening past the floor -- vf ceilings at 1 instead, and the stage
+    // fills the rest of the available height (see the next test) rather
+    // than claiming more than it can show.
     const fit = computeFit(390, 844, true);
     expect(fit.vf).toBe(1);
     expect(fit.stageHeight * fit.scale).toBeLessThanOrEqual(844);
+  });
+
+  it("fills a portrait phone's leftover height instead of letterboxing it away", () => {
+    // Regression: vf ceilings at 1 well before a portrait phone's height
+    // runs out (width bound the scale first), and the leftover used to just
+    // vanish -- stageHeight capped at playTop + play area + dockBand, and
+    // .k-fit's centering turned the rest into dead bars above and below the
+    // WHOLE stage. Measured on a 360x800 Android: the felt rendered at only
+    // 434.75 of the 800px viewport (54%), and the dock -- bottom-anchored to
+    // the felt's own edge -- floated with a ~183px dead gap under it that
+    // mirrored the one above the logo.
+    const fit = computeFit(360, 800, true);
+    // Within a rounding quantum of the full viewport, not most of it.
+    expect(fit.stageHeight * fit.scale).toBeGreaterThan(800 - 3);
+    // The leftover went into playTop (more headroom above the play area)
+    // and the dock band (more felt showing below the last seat) rather than
+    // being clawed back from either -- both are strictly larger than their
+    // un-grown minimums for this profile.
+    expect(fit.playTop * fit.scale).toBeGreaterThan(40);
+    const dockBandPx = (fit.stageHeight - fit.playTop - 760 * fit.vf) * fit.scale;
+    expect(dockBandPx).toBeGreaterThan(60);
   });
 
   it("reserves the tray's real height when it grows past the nominal dock", () => {

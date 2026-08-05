@@ -1198,6 +1198,38 @@ body:has(.k-fit) {
     padding: 5px 12px;
     top: max(6px, env(safe-area-inset-top));
   }
+
+  /* .k-topbar's branding and .k-chrome-top's controls are two independent
+     absolutely-positioned rows -- one growing from the left, one anchored
+     to the right -- that were never made aware of each other's real width.
+     Measured live on real landscape-phone widths (568-915px CSS px): at
+     the wide end (~915px, a big-screen Android in landscape) there's room
+     to spare; by ~800px the felt-colour swatches and the "?" button
+     already overlap the tagline, and it only gets worse going narrower.
+     The tagline and Beta badge are decorative -- neither is needed to
+     identify or play the game -- so they're the first thing to give at
+     this breakpoint, same principle as k-futch-flash's own explanatory
+     half above. */
+  .k-logo-tag,
+  .k-beta {
+    display: none;
+  }
+  /* The wordmark's own counter-scale (see .k-topbar > * above) targets a
+     constant ~32px regardless of stage scale, which is exactly right on a
+     normal phone -- but on the narrowest real Android widths even that
+     constant size, plus the icon beside it, doesn't leave chrome-top's
+     own (also constant-width, also un-shrinking) button row enough
+     space. Capped lower here rather than removed outright: still legibly
+     bigger than the felt shrinks it to on its own, just not chasing the
+     same ~32px target a full-width topbar can afford. Measured live
+     across the realistic Android landscape range (568-915px CSS width):
+     1.15 clears every real width (640px+) with room to spare and leaves
+     only ~2px on the narrowest, least-common width tested (568, smaller
+     than nearly every Android phone shipped in years -- closer to an old
+     iPhone SE's landscape width). */
+  .k-topbar > * {
+    transform: scale(clamp(1, calc(1 / var(--stage-scale, 1)), 1.15));
+  }
 }
 
 /* The bank busting is THE big moment -- every player still in reads it as a

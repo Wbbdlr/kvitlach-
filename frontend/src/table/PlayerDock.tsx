@@ -182,10 +182,12 @@ export function PlayerDock({
 
       <label className="k-toggle" title="Eleveroon ignores a busting eleven when your total was 11 (only after you turn it on).">
         <input type="checkbox" checked={eleveroonSelected} onChange={(e) => setEleveroonSelected(e.target.checked)} />
-        {/* Hidden at the compact mobile breakpoint (index.css) -- the
-            checkbox and title tooltip stay, only the label text goes, to
-            free up row width so the dock is less likely to wrap to a second
-            row on a short phone screen. */}
+        {/* Stays visible at the compact mobile breakpoint (index.css), unlike
+            k-bankall-amt above -- an earlier pass hid it too to buy back row
+            width, but that left a bare checkbox with nothing saying what it
+            does on the one platform with no hover tooltip to fall back on.
+            A rule people have to opt into can't be an unlabelled box, so
+            this one keeps its row rather than disappearing into one. */}
         <span className="k-toggle-label">Eleveroon</span>
       </label>
 

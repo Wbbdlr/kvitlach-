@@ -1,6 +1,7 @@
 import { SeatPosition } from "./layout";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 import { Icon } from "./icons";
+import { bankPanelTop } from "./BankPanel";
 
 export interface Reservation {
   playerId: string;
@@ -18,16 +19,15 @@ export interface BankReservationsProps {
 }
 
 // Where the bank's money sits on the felt -- just under the BANK total (see
-// BankPanel, which is anchored off the dealer's own vf coefficient), so a
-// reservation reads as chips pushed out FROM the bank.
+// BankPanel), so a reservation reads as chips pushed out FROM the bank.
 const POT_X = STAGE_WIDTH / 2;
 
-// Mirrors BankPanel's own
-// `top: calc(var(--play-top) + 160px * var(--vf) + 110px)` plus the same +22
-// "just under it" margin the old constant implied -- if that calc ever
-// changes, this needs to change with it, and vice versa.
+// Reuses BankPanel's own top-anchor formula directly (not a copy of its
+// constants) so the two can never drift apart the way the old parallel
+// formula did -- +22 is the same "just under it" margin (this pill's own
+// height plus a small gap) the original constant always implied.
 function potY(playTop: number, vf: number): number {
-  return playTop + 160 * vf + 132;
+  return bankPanelTop(playTop, vf) + 22;
 }
 
 // Chips rest a fixed distance BACK from the seat rather than at a fixed
