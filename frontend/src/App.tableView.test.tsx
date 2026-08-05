@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, fireEvent } from "@testing-library/react";
 import App from "./App";
 import { Player, RoomState, RoundState, Turn } from "./types";
 
@@ -239,6 +239,77 @@ describe("the felt table is the only in-room view", () => {
       const bankerHand = seats[0].querySelector(".k-hand");
       expect(bankerHand?.querySelectorAll("img, .k-cardback")).toHaveLength(3);
       expect(seats[0].querySelector(".k-tag")?.textContent).toMatch(/FUTCHED/i);
+    });
+  });
+
+  // Below the overlap threshold there's nothing to fan out; at/above it,
+  // tapping the hand should reveal every card, and tapping away (or the
+  // hook's own auto-collapse, covered in handFan.test.ts) should put it back.
+  describe("tap-to-fan-out a 4+ card hand", () => {
+    const longHandTurn: Turn = {
+      ...playerTurn,
+      cards: [
+        { name: "1", attributes: { values: [1] } },
+        { name: "2", attributes: { values: [2], type: "rosier" } },
+        { name: "3", attributes: { values: [3] } },
+        { name: "4", attributes: { values: [4] } },
+      ],
+    };
+
+    beforeEach(() => {
+      // adminTurn keeps its single card here -- a deliberate contrast so the
+      // "not interactive below the threshold" case is covered in the same
+      // render, not asserted from a separate fixture.
+      mockState.round = { ...round, turns: [longHandTurn, adminTurn] };
+    });
+
+    it("is not interactive below the 4-card threshold", () => {
+      const { container } = render(<App />);
+      const bankerHand = container.querySelectorAll(".k-seat")[0].querySelector(".k-hand");
+      expect(bankerHand?.querySelectorAll("img, .k-cardback")).toHaveLength(1);
+      expect(bankerHand?.getAttribute("role")).toBeNull();
+      fireEvent.click(bankerHand!);
+      expect(bankerHand?.classList.contains("is-fanned")).toBe(false);
+    });
+
+    it("fans out on tap, marking both the hand and its seat", () => {
+      const { container } = render(<App />);
+      const playerSeat = [...container.querySelectorAll(".k-seat")].find((s) =>
+        s.querySelector(".k-hand")?.querySelectorAll("img, .k-cardback").length === 4
+      )!;
+      const hand = playerSeat.querySelector(".k-hand")!;
+      expect(hand.getAttribute("role")).toBe("button");
+      expect(hand.getAttribute("aria-expanded")).toBe("false");
+
+      fireEvent.click(hand);
+
+      expect(hand.classList.contains("is-fanned")).toBe(true);
+      expect(hand.getAttribute("aria-expanded")).toBe("true");
+      expect(playerSeat.classList.contains("hand-fanned")).toBe(true);
+    });
+
+    it("collapses again on a second tap", () => {
+      const { container } = render(<App />);
+      const hand = [...container.querySelectorAll(".k-hand")].find(
+        (h) => h.querySelectorAll("img, .k-cardback").length === 4
+      )!;
+      fireEvent.click(hand);
+      expect(hand.classList.contains("is-fanned")).toBe(true);
+      fireEvent.click(hand);
+      expect(hand.classList.contains("is-fanned")).toBe(false);
+    });
+
+    it("collapses on a tap outside the hand", () => {
+      const { container } = render(<App />);
+      const hand = [...container.querySelectorAll(".k-hand")].find(
+        (h) => h.querySelectorAll("img, .k-cardback").length === 4
+      )!;
+      fireEvent.click(hand);
+      expect(hand.classList.contains("is-fanned")).toBe(true);
+
+      fireEvent.mouseDown(document.body);
+
+      expect(hand.classList.contains("is-fanned")).toBe(false);
     });
   });
 });

@@ -1,9 +1,12 @@
+import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
 import { totalDisplay, statusDisplay, betDisplay, tagVariant } from "./selectors";
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
 import { Icon } from "./icons";
+import { useClickOutside } from "./clickOutside";
+import { FAN_OUT_MS, useHandFan } from "./handFan";
 
 export interface SeatProps {
   turn: Turn;
@@ -96,6 +99,12 @@ export function Seat({
   const isBlattPhase = (turn.bet ?? 0) === 0;
   const bankerReveal = !isBanker || shouldForceReveal || turn.state !== "pending";
   const roundFinished = roundState === "terminate" || shouldForceReveal;
+  // Matches index.css's own overlap threshold (:nth-last-child(n+4)) -- a
+  // shorter hand never overlaps in the first place, so there's nothing to
+  // fan out and no reason to make it tappable.
+  const canFan = turn.cards.length >= 4;
+  const handRef = useRef<HTMLDivElement>(null);
+  const { fanned, toggle } = useHandFan(handRef);
   const resolved = turn.state === "lost" || turn.state === "won";
   const isPublicStandby = turn.state === "standby";
   const hasBet = typeof betStart === "number";
@@ -114,7 +123,11 @@ export function Seat({
 
   return (
     <div
-      className={clsx("k-seat", isCurrentTurn && "is-active")}
+      // hand-fanned bumps THIS seat's own z-index, not just .k-hand's --
+      // .k-seat is a stacking context (position + z-index + transform), so a
+      // fanned hand wide enough to reach a neighbour needs its whole seat
+      // raised, not just the hand inside it, or it would fan out UNDER them.
+      className={clsx("k-seat", isCurrentTurn && "is-active", canFan && fanned && "hand-fanned")}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -184,8 +197,24 @@ export function Seat({
       )}
 
       <div
-        className={clsx("k-hand", isMe && "is-me")}
+        ref={handRef}
+        className={clsx("k-hand", isMe && "is-me", canFan && fanned && "is-fanned")}
         style={{ "--deal-dx": `${dealDx}px`, "--deal-dy": `${dealDy}px` } as React.CSSProperties}
+        onClick={canFan ? toggle : undefined}
+        onKeyDown={
+          canFan
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggle();
+                }
+              }
+            : undefined
+        }
+        role={canFan ? "button" : undefined}
+        tabIndex={canFan ? 0 : undefined}
+        aria-expanded={canFan ? fanned : undefined}
+        aria-label={canFan ? `${fanned ? "Collapse" : "Show"} all ${turn.cards.length} cards in this hand` : undefined}
       >
         {turn.cards.map((c, idx) => {
           const isInitialCard = idx === 0;

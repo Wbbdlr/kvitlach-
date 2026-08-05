@@ -20,8 +20,8 @@ export interface RoundContext extends RoundState {
 // new room and for a reshuffle triggered by the shoe running out mid-play.
 //
 // Each newDeck() call is already its own fair Fisher-Yates shuffle, but
-// concatenating deckCount of them and stopping there leaves rigid 48-card
-// blocks: every deck-aligned window is guaranteed exactly 4-of-each-rank,
+// concatenating deckCount of them and stopping there leaves rigid 24-card
+// blocks: every deck-aligned window is guaranteed exactly 2-of-each-rank,
 // which a genuinely mixed multi-deck shoe would NOT be (a real shoe's rank
 // composition varies window to window, hypergeometrically). No single
 // card's odds were biased by this -- each block's shuffle was still
@@ -227,13 +227,15 @@ function sanitizeDeckCount(count: number): number {
 // shuffle. The shoe used to be sized for a SINGLE round, which was right when
 // every round dealt itself a brand new deck -- but the deck now carries over
 // between rounds, so that sizing meant a 7-player table burned through its
-// 48 cards in about two rounds and reshuffled constantly.
+// one 24-card deck in well under a round and reshuffled constantly.
 const TARGET_ROUNDS_PER_SHOE = 8;
 // Measured, not guessed: simulating hands against the real deck puts the
 // average at ~3.3 cards each, so 4 leaves headroom for a table full of long
 // hands without making the shoe absurd.
 const ASSUMED_CARDS_PER_HAND = 4;
-const CARDS_PER_DECK = 48;
+// A real Kvitlach deck: identical pairs numbered 1-12, 2 copies of each (see
+// deck.ts's newDeck) -- not a standard playing-card deck.
+const CARDS_PER_DECK = 24;
 
 export function recommendedDeckCount(playerCount: number): number {
   const seats = Math.max(1, playerCount); // includes the banker

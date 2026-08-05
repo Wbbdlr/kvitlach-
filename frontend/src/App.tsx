@@ -32,6 +32,12 @@ export default function App() {
   const [joinFirstName, setJoinFirst] = useState("");
   const [joinLastName, setJoinLast] = useState("");
   const [practiceBotCount, setPracticeBotCount] = useState(2);
+  const [practiceFirstName, setPracticeFirst] = useState("");
+  const [practiceDecks, setPracticeDecks] = useState(4);
+  const [practiceBuyIn, setPracticeBuyIn] = useState(100);
+  const [practiceBankBuyIn, setPracticeBankBuyIn] = useState(400);
+  const [practiceBankBuyInManuallySet, setPracticeBankBuyInManuallySet] = useState(false);
+  const [practiceExpanded, setPracticeExpanded] = useState(false);
   const [roomIdInput, setRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [customRoomId, setCustomRoomId] = useState("");
@@ -594,35 +600,6 @@ export default function App() {
                   Watch
                 </button>
               </div>
-              <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                <span>Computer players</span>
-                <div className="flex gap-1" role="group" aria-label="Number of computer players">
-                  {[2, 3, 4, 5].map((count) => (
-                    <button
-                      key={count}
-                      type="button"
-                      onClick={() => setPracticeBotCount(count)}
-                      aria-pressed={practiceBotCount === count}
-                      className={clsx(
-                        "h-6 w-6 rounded-full border text-xs font-semibold transition-colors",
-                        practiceBotCount === count
-                          ? "border-accent bg-accent text-white"
-                          : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                      )}
-                    >
-                      {count}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => store.createPracticeRoom(joinFirstName.trim() || "Guest", practiceBotCount)}
-                className="w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-accent/85"
-                title="Start a solo table against computer players -- no code needed"
-              >
-                Practice Against the Computer
-              </button>
           </form>
           <form
             className={clsx("card-surface p-4 flex flex-col", bankerFormExpanded ? "gap-3" : "gap-2")}
@@ -742,6 +719,176 @@ export default function App() {
 
         </section>
       )}
+
+        {/* Deliberately its own card, not a row in the grid above: this is a
+            solo sandbox (no other humans, no real stakes), and burying it
+            inside the Join form made it easy to miss and easy to confuse
+            with actually joining someone's table. Dashed border + amber
+            tint reads as "not a real table" without leaving the app's
+            existing color language. */}
+        {!room && (
+          <section className="card-surface p-4 flex flex-col gap-3 border-2 border-dashed border-amber-300 bg-amber-50/60">
+            <header className="flex flex-col gap-1 pb-3 border-b border-amber-200">
+              <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
+                Practice Against the Computer
+                <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
+                  Solo
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500">
+                Learn the flow against computer players -- nobody else needs to be online, and nothing here touches a
+                real table.
+              </p>
+            </header>
+
+            <label className="text-sm">First name (optional)
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={practiceFirstName}
+                onChange={(e) => setPracticeFirst(e.target.value)}
+                placeholder="Guest"
+              />
+            </label>
+
+            {formErrors.practice && (
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                {formErrors.practice}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() =>
+                store.createPracticeRoom(practiceFirstName.trim() || "Guest", {
+                  botCount: practiceBotCount,
+                  deckCount: practiceDecks,
+                  buyIn: practiceBuyIn,
+                  bankBuyIn: practiceBankBuyIn,
+                })
+              }
+              className="w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-accent/85"
+              title="Start a solo table against computer players -- no code needed"
+            >
+              Practice Against the Computer
+            </button>
+
+            <button
+              type="button"
+              className="self-start text-xs font-semibold text-amber-700 hover:text-amber-800"
+              onClick={() => setPracticeExpanded((v) => !v)}
+              aria-expanded={practiceExpanded}
+              aria-controls="practice-settings"
+            >
+              {practiceExpanded ? "Hide table settings" : "Customize table settings"}
+            </button>
+
+            {practiceExpanded && (
+              <div className="flex flex-col gap-4 pt-1" id="practice-settings">
+                <label className="text-sm flex flex-col gap-1">
+                  <span className="flex items-center justify-between">
+                    <span>Computer players</span>
+                    <span className="font-semibold text-ink">{practiceBotCount}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={2}
+                    max={7}
+                    step={1}
+                    value={practiceBotCount}
+                    onChange={(e) => setPracticeBotCount(Number(e.target.value))}
+                    className="w-full accent-amber-600"
+                    aria-label="Number of computer players"
+                  />
+                </label>
+
+                <label className="text-sm flex flex-col gap-1">
+                  <span className="flex items-center justify-between">
+                    <span>Decks</span>
+                    <span className="font-semibold text-ink">{practiceDecks}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={practiceDecks}
+                    onChange={(e) => setPracticeDecks(Number(e.target.value))}
+                    className="w-full accent-amber-600"
+                    aria-label="Number of decks"
+                  />
+                </label>
+
+                <label className="text-sm flex flex-col gap-1">
+                  <span className="flex items-center justify-between">
+                    <span>Your starting money</span>
+                    <span className="font-semibold text-ink">${practiceBuyIn.toLocaleString()}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={20}
+                    max={1000}
+                    step={10}
+                    value={practiceBuyIn}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setPracticeBuyIn(next);
+                      // Tracks 4x buy-in automatically, same as the Host
+                      // form's bankerBankroll -- but if the bank amount was
+                      // hand-set, re-clamp it into the new [buyIn, 10x] range
+                      // instead of silently overriding it, so a big manual
+                      // bank value survives a small buy-in tweak intact.
+                      if (!practiceBankBuyInManuallySet) {
+                        setPracticeBankBuyIn(next * 4);
+                      } else {
+                        setPracticeBankBuyIn((prev) => Math.min(Math.max(prev, next), next * 10));
+                      }
+                    }}
+                    className="w-full accent-amber-600"
+                    aria-label="Your starting money"
+                  />
+                </label>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm flex flex-col gap-1">
+                    <span className="flex items-center justify-between">
+                      <span>Bank's starting money</span>
+                      <span className="font-semibold text-ink">${practiceBankBuyIn.toLocaleString()}</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={practiceBuyIn}
+                      max={practiceBuyIn * 10}
+                      step={10}
+                      value={practiceBankBuyIn}
+                      onChange={(e) => {
+                        const next = Number(e.target.value);
+                        setPracticeBankBuyIn(next);
+                        setPracticeBankBuyInManuallySet(next !== practiceBuyIn * 4);
+                      }}
+                      className="w-full accent-amber-600"
+                      aria-label="Bank's starting money"
+                    />
+                  </label>
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>Defaults to 4x your starting money.</span>
+                    {practiceBankBuyInManuallySet && (
+                      <button
+                        type="button"
+                        className="text-amber-700 font-semibold"
+                        onClick={() => {
+                          setPracticeBankBuyIn(practiceBuyIn * 4);
+                          setPracticeBankBuyInManuallySet(false);
+                        }}
+                      >
+                        Reset to 4x
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
 
 

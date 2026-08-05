@@ -192,9 +192,11 @@ describe("a real multiplayer game (human banker, three human players, no bots)",
   });
 
   it("gives a four-seat table a shoe that lasts, instead of reshuffling every other round", () => {
-    // 4 seats -> 3 decks under the session-based sizing (was 1 deck / 48 cards,
-    // which a table this size exhausted in about three rounds).
-    expect(finalRound.deckCount).toBe(3);
+    // 4 seats -> 6 decks under the session-based sizing (was 1 deck / 24
+    // cards -- a real Kvitlach deck is 2 copies of each of 1-12, not a
+    // standard playing-card deck -- which a table this size exhausted in
+    // about three rounds).
+    expect(finalRound.deckCount).toBe(6);
 
     // The real symptom was the shoe "starting over" constantly, and the server
     // stamps deckReshuffledAt every time it does. Four rounds in, it never has.
@@ -205,7 +207,7 @@ describe("a real multiplayer game (human banker, three human players, no bots)",
     // ...and the count really is draining, i.e. the shoe carries between
     // rounds rather than being rebuilt each time.
     const counts = roundStates.map((r) => r.deckRemaining);
-    expect(Math.max(...counts)).toBeLessThan(3 * 48); // cards were dealt from it
+    expect(Math.max(...counts)).toBeLessThan(finalRound.deckCount! * 24); // cards were dealt from it
     expect(finalRound.deckRemaining).toBe(Math.min(...counts));
     expect(finalRound.deckRemaining).toBeGreaterThan(0);
   });

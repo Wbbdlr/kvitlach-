@@ -1,9 +1,11 @@
+import { useRef } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
 import { totalDisplay, statusDisplay, fullName, tagVariant } from "./selectors";
 import { CardView } from "./CardView";
 import { Icon } from "./icons";
 import { initialsOf } from "./Seat";
+import { useHandFan } from "./handFan";
 
 export interface DealerProps {
   turn: Turn;
@@ -60,11 +62,16 @@ export function Dealer({
   const name = bankerPlayer ? fullName(bankerPlayer) || bankerPlayer.firstName : "Bank";
   const isOffline = bankerPlayer ? bankerPlayer.presence !== "online" : false;
   const isActive = turn.state === "pending" && roundState === "final";
+  // See Seat.tsx -- same tap-to-fan-out treatment, same 4-card threshold.
+  const canFan = turn.cards.length >= 4;
+  const handRef = useRef<HTMLDivElement>(null);
+  const { fanned, toggle } = useHandFan(handRef);
 
   return (
     <>
       <div
-        className="k-seat"
+        // See Seat.tsx's hand-fanned comment -- same stacking-context reason.
+        className={clsx("k-seat", canFan && fanned && "hand-fanned")}
         style={{ left: "640px", top: "calc(var(--play-top, 0px) + 160px * var(--vf, 1))", transform: "translate(-50%, -50%)" }}
       >
         <button
@@ -102,8 +109,24 @@ export function Dealer({
         </button>
 
         <div
-          className="k-hand is-dealer"
+          ref={handRef}
+          className={clsx("k-hand", "is-dealer", canFan && fanned && "is-fanned")}
           style={{ "--deal-dx": `${dealDx}px`, "--deal-dy": `${dealDy}px` } as React.CSSProperties}
+          onClick={canFan ? toggle : undefined}
+          onKeyDown={
+            canFan
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggle();
+                  }
+                }
+              : undefined
+          }
+          role={canFan ? "button" : undefined}
+          tabIndex={canFan ? 0 : undefined}
+          aria-expanded={canFan ? fanned : undefined}
+          aria-label={canFan ? `${fanned ? "Collapse" : "Show"} all ${turn.cards.length} cards in the bank's hand` : undefined}
         >
           {turn.cards.map((c, idx) => (
             <CardView

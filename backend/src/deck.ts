@@ -26,7 +26,12 @@ export function shuffle<T>(items: T[]): T[] {
   return arr;
 }
 
+// A real Kvitlach deck is 24 cards -- identical pairs numbered 1-12 (2
+// copies of each), not a standard playing-card deck. This is also why more
+// players means more decks (see round.ts's recommendedDeckCount): the shoe
+// scales by combining full 24-card decks, the same way a real table would
+// bring out a second deck.
 export function newDeck(): Card[] {
-  const expanded = baseCards.flatMap((card) => Array.from({ length: 4 }, () => card));
+  const expanded = baseCards.flatMap((card) => Array.from({ length: 2 }, () => card));
   return shuffle(expanded);
 }

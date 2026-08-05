@@ -41,7 +41,7 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
               <div>
                 <div className="font-semibold">Deck &amp; cards</div>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>Each deck has the numbers 1 through 12, with four copies of every card (48 cards total).</li>
+                  <li>Each deck has the numbers 1 through 12, with two copies of every card (24 cards total).</li>
                   <li>Tables can combine between one and six decks; larger games benefit from extra decks.</li>
                   <li>Card 2 and card 11 are Rosiers (also called Framed cards) &mdash; pairing them deals an automatic 21.</li>
                 </ul>

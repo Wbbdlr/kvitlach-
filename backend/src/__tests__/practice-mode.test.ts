@@ -243,15 +243,77 @@ describe("createPracticeRoom bot count selection", () => {
     expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(2);
   });
 
-  it("clamps a request above 5 down to the 5-bot ceiling (the name pool's own limit)", () => {
+  it("clamps a request above 7 down to the 7-bot ceiling (the name pool's own limit)", () => {
     const store = new GameStore();
     const { room } = store.createPracticeRoom({ firstName: "Alice", botCount: 99 });
-    expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(5);
+    expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(7);
+    // Seven distinct personas, not the pool wrapping around / repeating.
+    const names = room.players.filter((p) => p.type === "player" && p.isBot).map((b) => b.firstName);
+    expect(new Set(names).size).toBe(7);
   });
 
   it("ignores a non-finite count and falls back to the default of 2", () => {
     const store = new GameStore();
     const { room } = store.createPracticeRoom({ firstName: "Alice", botCount: NaN });
     expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(2);
+  });
+});
+
+describe("createPracticeRoom buy-in, bankroll and deck overrides", () => {
+  it("defaults to a $100 buy-in and 4x bankroll when none are given (pre-existing behavior)", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice" });
+    expect(room.buyIn).toBe(100);
+    expect(room.bankerBuyIn).toBe(400);
+  });
+
+  it("honors an explicit buy-in and bank bankroll", () => {
+    const store = new GameStore();
+    const { room, player } = store.createPracticeRoom({ firstName: "Alice", buyIn: 250, bankBuyIn: 900 });
+    expect(room.buyIn).toBe(250);
+    expect(room.bankerBuyIn).toBe(900);
+    expect(room.wallets[player.id]).toBe(250);
+  });
+
+  it("still defaults the bankroll to 4x buy-in when only buy-in is overridden", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", buyIn: 50 });
+    expect(room.bankerBuyIn).toBe(200);
+  });
+
+  it("falls back to defaults for non-finite or non-positive money values", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", buyIn: -5, bankBuyIn: NaN });
+    expect(room.buyIn).toBe(100);
+    expect(room.bankerBuyIn).toBe(400);
+  });
+
+  it("caps an absurd money value rather than trusting a crafted payload", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", buyIn: 999_999_999 });
+    expect(room.buyIn).toBeLessThanOrEqual(100_000);
+  });
+
+  it("passes an explicit deck count through to the opening round", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice", deckCount: 3 });
+    const round = store.getRound(room.roundId!)!;
+    // getRound returns the internal RoundState (deck: Card[]), not the
+    // sanitized client view (deckRemaining) -- deck.length plus every
+    // already-dealt card should account for the whole 3-deck shoe. A real
+    // Kvitlach deck is 24 cards -- 2 copies of each of 1-12 (round.ts's
+    // CARDS_PER_DECK), not a standard playing-card deck.
+    expect(round.deck.length + round.turns.reduce((sum, t) => sum + t.cards.length, 0)).toBe(3 * 24);
+  });
+});
+
+describe("createPracticeRoom concurrency cap", () => {
+  it("rejects a new practice room once the concurrent-practice-room cap is hit", () => {
+    const store = new GameStore();
+    // The cap only counts practice rooms -- a wall of ordinary rooms must
+    // never trip it.
+    for (let i = 0; i < 5; i += 1) store.createRoom({ firstName: `Banker${i}` });
+    for (let i = 0; i < 25; i += 1) store.createPracticeRoom({ firstName: `Learner${i}` });
+    expect(() => store.createPracticeRoom({ firstName: "OneTooMany" })).toThrow("practice_capacity");
   });
 });

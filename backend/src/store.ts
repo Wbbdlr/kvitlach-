@@ -11,15 +11,26 @@ const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
 const BOT_THINK_DELAY_MIN_MS = 500;
 const BOT_THINK_DELAY_MAX_MS = 1200;
-// Small, warm, in-community pool -- 2 are drawn per practice room. "The
+// Small, warm, in-community pool -- 2 to 7 are drawn per practice room. "The
 // Gabbai" (a shul's lay administrator, traditionally trusted with its funds)
 // is the fixed banker persona, a deliberately apt pick for a card game's bank.
 const PRACTICE_BANKER_NAME = "The Gabbai";
-const PRACTICE_BOT_NAME_POOL = ["Yanky", "Shmuli", "Mendy", "Berel", "Zalmy", "Duvid"];
+const PRACTICE_BOT_NAME_POOL = ["Yanky", "Shmuli", "Mendy", "Berel", "Zalmy", "Duvid", "Chaim"];
 // A practice room's "banker" is a bot with no session to approve a real
 // buy-in request through -- self-serve top-ups are how a solo learner
 // recovers from going broke instead. Fixed amount, no form: a button.
 const PRACTICE_TOPUP_AMOUNT = 100;
+// Sanity ceiling on the practice-only buy-in/bankroll sliders -- these come
+// straight off a WS payload (see room:create-practice), so this exists to
+// stop a crafted request from parking a silly number in a solo, throwaway
+// room, not to model a real limit anyone would want in practice.
+const PRACTICE_MAX_BUYIN = 100_000;
+// Practice rooms are throwaway but not free -- each seats up to 8 bots that
+// all run their own think-delay timers (syncBotTurn). Capped generously
+// above any realistic number of people learning the rules at once on a
+// family-night server, so it bounds the worst case without ever being the
+// thing a real user runs into.
+const MAX_CONCURRENT_PRACTICE_ROOMS = 25;
 const MAX_PLAYERS_PER_ROOM = 100;
 // How many non-banker players get an active seat in a single round. The felt
 // table's oval seating (frontend/src/table/layout.ts) can only fit players
@@ -389,19 +400,30 @@ export class GameStore {
     return { room, player, sessionToken };
   }
 
-  // Solo practice table: a computer banker plus two computer players fill
-  // out the seats so a new player can learn the flow without needing other
-  // humans online. A real room in every other respect -- same GameStore,
-  // same round engine, same turn-state guard -- just with `practice: true`
-  // (never persisted, short TTL, see bumpRoomTimer) and some seats driven by
-  // syncBotTurn instead of a human's WS messages.
-  createPracticeRoom(host: { firstName: string; botCount?: number }) {
+  // Solo practice table: a computer banker plus two-to-seven computer
+  // players fill out the seats so a new player can learn the flow without
+  // needing other humans online. A real room in every other respect -- same
+  // GameStore, same round engine, same turn-state guard -- just with
+  // `practice: true` (never persisted, short TTL, see bumpRoomTimer) and
+  // some seats driven by syncBotTurn instead of a human's WS messages.
+  createPracticeRoom(host: {
+    firstName: string;
+    botCount?: number;
+    buyIn?: number;
+    bankBuyIn?: number;
+    deckCount?: number;
+  }) {
+    const activePracticeRooms = [...this.rooms.values()].filter((r) => r.room.practice === true).length;
+    if (activePracticeRooms >= MAX_CONCURRENT_PRACTICE_ROOMS) {
+      throw new Error("practice_capacity");
+    }
+
     const humanName = this.sanitizeName(host.firstName) || "You";
-    // Clamped to the name pool's own range (PRACTICE_BOT_NAME_POOL has 6
-    // entries, plenty of headroom above the 5-bot ceiling) -- defaults to 2
-    // to match every pre-existing caller/test that never passed a count.
+    // Clamped to the name pool's own range (PRACTICE_BOT_NAME_POOL has
+    // exactly 7 entries, one per seat at the cap) -- defaults to 2 to match
+    // every pre-existing caller/test that never passed a count.
     const rawBotCount = Number(host.botCount);
-    const botCount = Number.isFinite(rawBotCount) ? Math.min(5, Math.max(2, Math.floor(rawBotCount))) : 2;
+    const botCount = Number.isFinite(rawBotCount) ? Math.min(7, Math.max(2, Math.floor(rawBotCount))) : 2;
     const bankerBot: Player = { id: uuid(), firstName: PRACTICE_BANKER_NAME, lastName: "", type: "admin", presence: "online", isBot: true };
     const human: Player = { id: uuid(), firstName: humanName, lastName: "", type: "player", presence: "online" };
 
@@ -419,7 +441,17 @@ export class GameStore {
       isBot: true,
     }));
 
-    const buyIn = 100;
+    // Same shape as the real Host form's buy-in/bankroll validation (see
+    // createRoom): finite and positive, or fall back to the sane default --
+    // this comes straight off a WS payload, so a crafted request must not be
+    // able to zero out (or blow up) a solo learner's table.
+    const rawBuyIn = Number(host.buyIn);
+    const buyIn = Number.isFinite(rawBuyIn) && rawBuyIn > 0 ? Math.min(Math.floor(rawBuyIn), PRACTICE_MAX_BUYIN) : 100;
+    const rawBankBuyIn = Number(host.bankBuyIn);
+    // Defaults to 4x buy-in when not set explicitly -- gives the bot bank
+    // room to absorb a losing streak without running dry.
+    const bankBuyIn =
+      Number.isFinite(rawBankBuyIn) && rawBankBuyIn > 0 ? Math.min(Math.floor(rawBankBuyIn), PRACTICE_MAX_BUYIN) : buyIn * 4;
     let roomId = shortId();
     while (this.rooms.has(roomId)) roomId = shortId();
 
@@ -427,9 +459,9 @@ export class GameStore {
       roomId,
       name: "Practice Table",
       buyIn,
-      bankerBuyIn: buyIn * 4, // give the bot bank room to absorb a losing streak without running dry
+      bankerBuyIn: bankBuyIn,
       wallets: {
-        [bankerBot.id]: buyIn * 4,
+        [bankerBot.id]: bankBuyIn,
         [human.id]: buyIn,
         ...Object.fromEntries(bots.map((b) => [b.id, buyIn])),
       },
@@ -449,7 +481,10 @@ export class GameStore {
     const sessionToken = this.issueSession(roomId, human.id);
     // No human banker exists to click Start -- begin immediately, as the
     // human (the only actor startRound's own check would allow here anyway).
-    this.startRound(roomId, human.id);
+    // deckCount flows through startRound's own optional override -- same
+    // sanitizeDeckCount() clamp the real Host "decks to use" field gets, so
+    // an invalid value degrades to a safe default instead of throwing here.
+    this.startRound(roomId, human.id, host.deckCount);
     return { room: this.rooms.get(roomId)!.room, player: human, sessionToken };
   }
 

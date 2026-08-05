@@ -103,7 +103,7 @@ describe("the shoe never leaves the server", () => {
     // seats have been dealt one card each out of a full shoe.
     const remaining = broadcasts[broadcasts.length - 1].deckRemaining;
     expect(typeof remaining).toBe("number");
-    const shoeSize = store.getRound(started.round.roundId)!.deckCount! * 48;
+    const shoeSize = store.getRound(started.round.roundId)!.deckCount! * 24; // 24: a real Kvitlach deck (2x each of 1-12)
     expect(remaining).toBe(shoeSize - 2);
 
     banker.close();

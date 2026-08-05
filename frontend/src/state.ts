@@ -48,12 +48,12 @@ interface UIState {
   bankerSummaryAt?: number;
   init: () => void;
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
-  createPracticeRoom: (firstName: string, botCount?: number) => void;
+  createPracticeRoom: (firstName: string, options?: { botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => void;
   joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => void;
   notifications: UINotification[];
   dismissNotification: (id: string) => void;
-  setFormError: (form: "join" | "create" | "round" | "global", message?: string) => void;
-  formErrors: Partial<Record<"join" | "create" | "round" | "global", string>>;
+  setFormError: (form: "join" | "create" | "round" | "global" | "practice", message?: string) => void;
+  formErrors: Partial<Record<"join" | "create" | "round" | "global" | "practice", string>>;
   startRound: (deckCount?: number) => void;
   bet: (amount: number, options?: { bank?: boolean }) => void;
   hit: (options?: { eleveroon?: boolean }) => void;
@@ -356,6 +356,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   let pendingWatermarkRequestId: string | undefined;
   let pendingReshuffleRequestId: string | undefined;
   let pendingRoundStartRequestId: string | undefined;
+  // Practice mode now has its own lobby card, separate from the Join Game
+  // form (see App.tsx) -- routing its errors through the generic join/create
+  // fallback below would risk surfacing them under the wrong card, so this
+  // gets the same tracked-requestId treatment as the other actions above.
+  let pendingPracticeRequestId: string | undefined;
 
   // Every notification (round outcomes, deck reshuffles, rename/buy-in
   // approvals, bank top-ups, ...) is built through this one factory, so
@@ -660,6 +665,24 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         }));
         return;
       }
+      const isPracticeError = Boolean(msg.requestId && msg.requestId === pendingPracticeRequestId);
+      if (isPracticeError) pendingPracticeRequestId = undefined;
+      if (isPracticeError) {
+        // Inline, not a notification: unlike round:start/watermark/reshuffle
+        // (fired from a popover the banker might have already closed), this
+        // form is the only place this action can even be triggered from, and
+        // it's still on screen the instant the ack comes back.
+        const friendly =
+          errorMessage === "practice_capacity"
+            ? "Practice tables are full right now. Please try again in a few minutes."
+            : errorMessage === "maintenance_mode"
+            ? "New games are temporarily paused for maintenance. Existing games are unaffected. Check back soon."
+            : "Something went wrong. Please try again.";
+        set((state: UIState) => ({
+          formErrors: { ...state.formErrors, practice: friendly },
+        }));
+        return;
+      }
       if (errorMessage === "deck_empty") {
         // Can arrive on ANY bet/hit, not just a tracked admin action -- the
         // shoe ran out mid-hand and the dealer has to choose to bring in a
@@ -900,12 +923,15 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const trimmedRoomId = roomId?.trim() || undefined;
         client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll });
     },
-    createPracticeRoom: (firstName: string, botCount?: number) => {
+    // An options object rather than createRoom's positional style: four
+    // same-typed optional numbers in a row would be an easy mix-up
+    // (buyIn/bankBuyIn especially) at every call site.
+    createPracticeRoom: (firstName: string, options?: { botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => {
       if (!firstName) {
-        set((s) => ({ formErrors: { ...s.formErrors, create: "Enter a first name to start a practice game." } }));
+        set((s) => ({ formErrors: { ...s.formErrors, practice: "Enter a first name to start a practice game." } }));
         return;
       }
-      client.send("room:create-practice", { firstName, botCount });
+      pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options });
     },
     joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => {
       if (!roomId) {

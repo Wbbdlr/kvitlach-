@@ -21,6 +21,22 @@ const SFX_PATHS: Record<SfxKey, string[]> = {
   eleveroon:   ["/sounds/eleveroon.mp3"],
 };
 
+// Every SFX used to play at the same flat 0.5 regardless of which sound it
+// was -- the deal click and the futch horn were coded identically loud, but
+// the source files themselves aren't mastered to the same level, so in
+// practice the futch (the biggest moment at the table) read as no louder
+// than the card-place click that happens on every single card. Missing keys
+// fall back to the 0.5 default below.
+const SFX_VOLUME: Partial<Record<SfxKey, number>> = {
+  bust: 1.0, // the futch horn -- deliberately the loudest thing in the game
+  deal: 0.35, // happens on every card, every turn; should recede, not compete
+  // Reusing a generic card-slide sample (see the comment on natural21 above)
+  // means it already sounds a lot like "deal" -- louder is what keeps it
+  // reading as its own moment instead of blending into the deal sounds
+  // around it, short of swapping in a real fanfare asset.
+  natural21: 0.75,
+};
+
 const BGM_PATH = "/sounds/bgm.m4a";
 
 function pickRandom<T>(arr: T[]): T {
@@ -66,7 +82,7 @@ export class AudioManager {
     // keys (the two card-place samples) replayed the same sample forever.
     if (!el.src.endsWith(path)) el.src = path;
     el.currentTime = 0;
-    el.volume = 0.5;
+    el.volume = SFX_VOLUME[name] ?? 0.5;
     void el.play().catch(() => { /* blocked before interaction */ });
     if (!idle) {
       const arr = this.sfxPool[name] ?? [];

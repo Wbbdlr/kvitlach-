@@ -219,6 +219,64 @@ describe("state.ts room_not_found handling", () => {
   });
 });
 
+describe("practice mode", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub
+    global.WebSocket = MockWebSocket;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("routes a practice-room error to formErrors.practice, not .join -- separate lobby cards now", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    useGameStore.getState().createPracticeRoom("Alice");
+    const practiceRequestId = socket.sent[socket.sent.length - 1].requestId;
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "error", requestId: practiceRequestId, error: { message: "practice_capacity" } }),
+    });
+
+    expect(useGameStore.getState().formErrors.practice).toBe(
+      "Practice tables are full right now. Please try again in a few minutes."
+    );
+    expect(useGameStore.getState().formErrors.join).toBeUndefined();
+  });
+
+  it("sends bot count, buy-in, bank bankroll and deck count together", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    useGameStore.getState().createPracticeRoom("Alice", { botCount: 6, buyIn: 200, bankBuyIn: 800, deckCount: 4 });
+
+    const sent = socket.sent[socket.sent.length - 1];
+    expect(sent.type).toBe("room:create-practice");
+    expect(sent.payload).toEqual({ firstName: "Alice", botCount: 6, buyIn: 200, bankBuyIn: 800, deckCount: 4 });
+  });
+
+  it("does not send an empty options object's undefined keys when none are given", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    useGameStore.getState().createPracticeRoom("Alice");
+
+    const sent = socket.sent[socket.sent.length - 1];
+    expect(sent.payload).toEqual({ firstName: "Alice" });
+  });
+});
+
 describe("deck reshuffle notification", () => {
   beforeEach(() => {
     window.localStorage.clear();

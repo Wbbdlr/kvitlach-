@@ -5,9 +5,13 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 // shorter there, so it needs a smaller band reserved for it below.
 const COMPACT_MEDIA_QUERY = "(max-width: 520px), (max-height: 440px)";
 const DOCK_HEIGHT_PX = 66;
-const COMPACT_DOCK_HEIGHT_PX = 60;
-// Breathing room between the dock tray and the lowest seat above it.
-const DOCK_GUTTER_PX = 16;
+const COMPACT_DOCK_HEIGHT_PX = 54;
+// Breathing room between the dock tray and the lowest seat above it. Trimmed
+// from 16 (still clears every measured dock state -- see the tallest-state
+// regression test below -- just with less pure margin, in service of a
+// bigger play area on a flattened landscape phone, where this reservation
+// directly trades off against vf rather than becoming unused felt).
+const DOCK_GUTTER_PX = 10;
 // .k-chrome-top's row (buttons + its 8px inset) plus a gutter. The felt used
 // to letterbox, which kept the dealer well clear of this row by accident;
 // now that the stage reaches the viewport's top edge, the play area has to

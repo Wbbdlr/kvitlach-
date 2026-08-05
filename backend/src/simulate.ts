@@ -53,12 +53,12 @@ console.log("══════════════════════�
 console.log("── Deck composition ──");
 {
   const deck = newDeck();
-  assert(deck.length === 48, "Deck has exactly 48 cards");
+  assert(deck.length === 24, "Deck has exactly 24 cards");
   const counts = new Map<string, number>();
   deck.forEach((c) => counts.set(c.name, (counts.get(c.name) ?? 0) + 1));
   for (let i = 1; i <= 12; i++) {
     const n = counts.get(String(i)) ?? 0;
-    assert(n === 4, `Card ${i}: exactly 4 copies`, `got ${n}`);
+    assert(n === 2, `Card ${i}: exactly 2 copies`, `got ${n}`);
   }
   let identicalPairs = 0;
   for (let i = 0; i < 500; i++) {
@@ -95,7 +95,9 @@ console.log("\n── Shuffle randomness (chi-square goodness-of-fit) ──");
     return chiSquare;
   }
 
-  for (const pos of [0, 23, 47] as const) {
+  // Start, middle, end of a single 24-card deck (was [0, 23, 47] against the
+  // old 48-card deck -- 47 is out of bounds now, deck[47] on a 24-card deck).
+  for (const pos of [0, 11, 23] as const) {
     const chiSquare = chiSquareForPosition(1, pos);
     assert(
       chiSquare < CHI_SQUARE_CRITICAL_11DOF_P01,
@@ -501,7 +503,7 @@ for (const deckCount of DECK_COUNTS) {
   console.log(`  Player win     : ${winPct}%   (expected: ~40–50%)`);
   console.log(`  Player loss    : ${lossPct}%`);
   console.log(`  Bust           : ${bustPct}%   (expected: 15–35%)`);
-  console.log(`  Rosier pair    : ${rosierPct}% (expected: ~2.5% — 8 rosier cards: P=8/48×7/47)`);
+  console.log(`  Rosier pair    : ${rosierPct}% (expected: ~2.2-2.8% — 4 rosier cards: P=4/24×3/23 single-deck, approaching (4/24)²=~2.8% as decks combine)`);
   console.log(`  Natural 2-card : ${naturalPct}% (includes rosier + any 2-card 21)`);
   console.log(`  Card 12 start  : ${c12Pct}%   (expected: ~8.3%)`);
   console.log(`  Eleveroon fires: ${elevPct}% of hands`);

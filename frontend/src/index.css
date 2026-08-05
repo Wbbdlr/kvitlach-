@@ -239,7 +239,16 @@ body:has(.k-fit) {
   direction: rtl;
   text-align: center;
   transform: translate(-50%, -50%);
-  font-size: 46px;
+  /* Was a flat 46px -- scales with the outer stage zoom but not with --vf,
+     so a flattened landscape phone (--vf as low as 0.5) got the SAME font
+     size as an unflattened table sitting in a much shorter oval. Measured
+     live at 844x390 (vf=0.56): a 199px-tall oval against a 30px, un-vf-
+     scaled font wrapped the (24-character) watermark to multiple lines,
+     eating ~35-50% of the oval's height instead of reading as a faint
+     print. Multiplying by --vf keeps it proportionate to the oval's own
+     height at every flatten level, the same way --hf already sizes the
+     oval's width. */
+  font-size: calc(46px * var(--vf, 1));
   line-height: 1.15;
   letter-spacing: 1px;
   /* Bigger and fainter than the old single-line version (was 28px/0.16) --
@@ -271,12 +280,31 @@ body:has(.k-fit) {
 /* Topbar scrim + wordmark. */
 .k-topbar {
   position: absolute;
-  top: 0;
+  /* Measured live at 375x812 (stage-scale ~0.293): the 11/12 logo images sat
+     at top:1.6px against a flush top:0 row -- barely inside the viewport,
+     and easily read (or actually clipped) as cut off; on a flattened
+     landscape phone (844x390) it measured genuinely negative. Matches
+     .k-chrome-top's own max(8px, env(...)) clearance -- but this lives
+     INSIDE the scaled stage, unlike chrome-top's real screen px, so the
+     same clearance has to be divided by --stage-scale first to land on a
+     constant few screen-px regardless of device (flat 8px here would
+     vanish at phone scale and barely register at desktop scale). Even with
+     this, the rotated logo images can still poke a couple px above their
+     own unrotated box (see the -rotate-[24deg]/rotate-[23deg] in
+     TableRoot.tsx) -- accounted for by the extra headroom, not eliminated,
+     since it's inherent to the fanned-card look. */
+  top: calc(max(8px, env(safe-area-inset-top)) / var(--stage-scale, 1));
   left: 0;
   right: 0;
   height: calc(60px * var(--vf, 1));
   display: flex;
-  align-items: center;
+  /* flex-start, not center: on a flattened landscape phone (small --vf) this
+     row can be shorter than the counter-scaled content below, and centering
+     an over-tall item spills it both up AND down -- the up half is what was
+     escaping the viewport. Anchoring to the row's own top means the only
+     direction left to overflow is down, into the decorative scrim, which is
+     harmless (nothing else sits there). */
+  align-items: flex-start;
   justify-content: space-between;
   padding: 0 24px;
   z-index: 30;
@@ -298,7 +326,11 @@ body:has(.k-fit) {
 .k-topbar > * {
   pointer-events: auto;
   transform: scale(clamp(1.05, calc(1 / var(--stage-scale, 1)), 2.6));
-  transform-origin: left center;
+  /* left TOP, not center: growing from the vertical center pushes the top
+     edge upward by half the added height, which is exactly what let this
+     poke above the row (and the viewport) at small stage-scale/--vf combos.
+     Top-anchored, the scale-up only ever grows downward. */
+  transform-origin: left top;
 }
 .k-logo-word {
   font-family: "Playfair Display", "Didot", "Bodoni MT", "Hoefler Text", Georgia, serif;
@@ -506,6 +538,45 @@ body:has(.k-fit) {
 .k-hand > :nth-child(6) { z-index: 6; }
 .k-hand > :nth-child(7) { z-index: 7; }
 .k-hand > :nth-child(n + 8) { z-index: 8; }
+
+/* Tap-to-fan-out: a hand of 4+ cards is otherwise only ever readable ~60%
+   card at a time (see the comment atop this block). Seat.tsx/Dealer.tsx only
+   wire the click/keyboard handlers and role="button" once the hand actually
+   overlaps, so this cursor is exactly the interactive-vs-not signal. */
+.k-hand[role="button"] {
+  cursor: pointer;
+}
+.k-hand > * {
+  transition: margin-left 220ms ease, transform 220ms ease;
+}
+.k-hand {
+  transition: transform 220ms ease;
+}
+/* "Raise up a bit" -- lifted clear of its resting position, same easing as
+   the card spacing below so the whole hand reads as one motion. */
+.k-hand.is-fanned {
+  transform: translateY(-10px);
+}
+/* Cancels the overlap rules above entirely (specificity: two classes beats
+   one) rather than just loosening --k-fan -- "see all the cards clearly"
+   means the full card, not a bigger sliver of it. */
+.k-hand.is-fanned > :nth-last-child(n + 4) ~ *,
+.k-hand.is-fanned > :nth-last-child(n + 7) ~ * {
+  margin-left: 3px;
+}
+/* .k-hand.is-fanned can render wider than its 168px seat column (a fully
+   spread 7-8 card hand easily reaches a neighbour) -- .k-seat is its own
+   stacking context (position + z-index + transform), so the SEAT itself has
+   to rise above its neighbours (z-index 10), not just the hand inside it. */
+.k-seat.hand-fanned {
+  z-index: 20;
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-hand,
+  .k-hand > * {
+    transition: none;
+  }
+}
 
 /* Status pills -- translucent tint + matching border, per state. */
 .k-tag {
@@ -1374,12 +1445,20 @@ body:has(.k-fit) {
    where it must. */
 @media (max-width: 520px), (max-height: 440px) {
   .k-chrome-react {
-    min-height: 60px;
+    /* Tracks .k-dock's own min-height below -- see that rule's comment. */
+    min-height: 54px;
   }
   .k-dock {
-    min-height: 60px;
-    gap: 8px;
-    padding: 8px 10px;
+    /* Trimmed the CONTAINER's own padding/gap, not any control inside it --
+       every control here stays at the ~40px floor the comment above this
+       block measured its way to. Buttons packed 2px tighter is still a
+       clean tap target; the 40px buttons themselves are what actually
+       needed the room. min-height follows: a 40px button plus 6+6px
+       padding is 52px, +2 for the border/shadow headroom already assumed
+       elsewhere in this file. */
+    min-height: 54px;
+    gap: 6px;
+    padding: 6px 8px;
   }
   .k-betbox {
     padding: 3px 5px;
