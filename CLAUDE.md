@@ -61,18 +61,6 @@ Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - `App.tsx` — lobby (join / host / practice) plus in-room chrome and sound.
   ~1000 lines.
 
-### ⚠️ Dead code at the repo root
-
-The repository root holds an abandoned **Elixir/Phoenix** implementation
-(`deck.ex`, `round.ex`, `turn.ex`, `room.ex`, `game_rules.ex`, `mix.exs`, …)
-plus loose card PNGs. **None of it runs.** It is kept for historical reference
-only — and its filenames shadow the real ones in `backend/src/`.
-
-This matters because a grep for `deck`, `round`, or `turn` will hit those files,
-and they are **actively out of date** — e.g. `deck.ex` still builds a 48-card
-deck (4 copies of each card), which is the bug fixed in `deck.ts`. Always work
-in `backend/src/` and `frontend/src/`. Never take a rule from a `.ex` file.
-
 ## Local development
 
 - **`npm run dev` in `frontend/` defaults to the PRODUCTION WebSocket**

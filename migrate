@@ -1,3 +1,0 @@
-#!/bin/sh
-cd -P -- "$(dirname -- "$0")"
-exec ./kurten eval Kurten.Release.migrate

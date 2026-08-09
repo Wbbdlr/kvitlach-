@@ -3,8 +3,6 @@
 Modern take on the traditional Chanukah twenty-one variant featuring a dedicated banker. The active stack is Node.js (Fastify + WebSocket) for the backend and React + Vite + Tailwind for the frontend.
 
 > **Working on this repo with Claude Code?** Start with [CLAUDE.md](CLAUDE.md) — it carries the project rules, invariants, and the non-obvious test/build commands.
->
-> **Heads up:** the root-level Phoenix/Elixir files (`deck.ex`, `round.ex`, `turn.ex`, …) are dead code kept for historical reference. They do not run and contain stale rules. The live implementation is `backend/src/` and `frontend/src/`.
 
 ## Table of Contents
 - [Features](#features)
@@ -47,7 +45,7 @@ backend/   Fastify HTTP + WebSocket server, game logic, Vitest tests
 frontend/  React + Vite client, Zustand state, Tailwind styling
 deploy/    docker-compose.yml and build-tarball.sh
 docs/      Architecture and game-rules reference
-*.ex       Dead legacy Phoenix files, reference only — see the note above
+notes/     Dated dev-session change logs
 ```
 
 ## Getting Started

@@ -19,12 +19,14 @@ for how to work in this repo.
 - [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
       Unit/component coverage is good; nothing exercises two real browsers
       against one table.
-- [ ] Retire or archive the root-level legacy Elixir/Phoenix files. They no
-      longer run, contain stale rules (`deck.ex` still builds a 48-card deck),
-      and shadow the real filenames in `backend/src/`.
-
 ## Done
 
+- [x] Retired the root-level legacy Elixir/Phoenix tree — 121 dead files
+      (~20MB: compiled JS/CSS bundles, `kvitlech-master.zip`, `fly.toml` for
+      an old Fly.io deploy, duplicate card art, `mix.exs`/`.ex` sources) removed
+      from the working tree; still recoverable from git history if ever needed.
+      `notes/2026-01-01-change-summary.md` (a real changelog about the live
+      `store.ts`, not legacy code) was kept.
 - [x] Cryptographically secure shuffle RNG — `deck.ts`'s Fisher-Yates now
       uses `crypto.randomInt` instead of `Math.random()`. Fairness sim
       (`npm run simulate`) confirms unchanged odds/distributions.
