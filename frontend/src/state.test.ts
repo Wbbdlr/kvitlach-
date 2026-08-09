@@ -43,6 +43,27 @@ async function freshState() {
   return mod.useGameStore;
 }
 
+// state.ts registers a `popstate` listener once per module instantiation
+// (correct for a real page load -- one listener, lives for the tab), but
+// freshState() re-imports the module many times across this file's tests,
+// each adding another listener to this file's one shared jsdom `window`.
+// Without cleanup, a later test's window.dispatchEvent(new
+// PopStateEvent(...)) would also fire every earlier test's now-stale
+// listener (each still closing over its own now-abandoned store instance).
+// Track and remove each one after its test.
+const popstateListeners: EventListenerOrEventListenerObject[] = [];
+const realAddEventListener = window.addEventListener.bind(window);
+beforeEach(() => {
+  vi.spyOn(window, "addEventListener").mockImplementation((type: string, listener: any, options?: any) => {
+    if (type === "popstate") popstateListeners.push(listener);
+    return realAddEventListener(type, listener, options);
+  });
+});
+afterEach(() => {
+  popstateListeners.forEach((l) => window.removeEventListener("popstate", l));
+  popstateListeners.length = 0;
+});
+
 // jsdom's Location.prototype.assign is a non-configurable inherited property,
 // so vi.spyOn(window.location, "assign") throws "Cannot redefine property".
 // Swap the whole location object for a plain stand-in instead.
@@ -166,6 +187,117 @@ describe("state.ts session lifecycle", () => {
 
       expect(useGameStore.getState().session).toBeUndefined();
       expect(window.localStorage.getItem(GENERIC_KEY)).toBeNull();
+      restore();
+    });
+  });
+
+  describe("URL history (back-button support)", () => {
+    function sendRoomAck(socket: MockWebSocket, roomId: string, requestId = "r1") {
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "ack",
+          requestId,
+          payload: {
+            room: { roomId, players: [], renameRequests: [], buyInRequests: [] },
+            session: { roomId, playerId: "p1", token: "t1" },
+          },
+        }),
+      });
+    }
+
+    // jsdom's Location.prototype.reload is also non-configurable -- same
+    // workaround as stubLocationAssign above, extended to cover both.
+    function stubLocationReloadAndAssign() {
+      const original = window.location;
+      const reloadSpy = vi.fn();
+      const assignSpy = vi.fn();
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { href: original.href, pathname: original.pathname, search: original.search, origin: original.origin, assign: assignSpy, reload: reloadSpy },
+      });
+      return {
+        reloadSpy,
+        assignSpy,
+        restore: () => Object.defineProperty(window, "location", { configurable: true, value: original }),
+      };
+    }
+
+    it("pushes a new history entry the first time a room is entered", async () => {
+      const useGameStore = await freshState();
+      useGameStore.getState().init();
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+
+      const pushSpy = vi.spyOn(window.history, "pushState");
+      const replaceSpy = vi.spyOn(window.history, "replaceState");
+
+      sendRoomAck(socket, "ROOMX");
+
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+      expect(replaceSpy).not.toHaveBeenCalled();
+      expect(window.location.search).toContain("room=ROOMX");
+    });
+
+    it("does not push a second entry for the same room (e.g. a reconnect's resume ack)", async () => {
+      const useGameStore = await freshState();
+      useGameStore.getState().init();
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+      sendRoomAck(socket, "ROOMY");
+
+      const pushSpy = vi.spyOn(window.history, "pushState");
+      const replaceSpy = vi.spyOn(window.history, "replaceState");
+
+      sendRoomAck(socket, "ROOMY", "r2"); // same room re-confirmed, not a new one
+
+      expect(pushSpy).not.toHaveBeenCalled();
+      expect(replaceSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("pushes another entry when a genuinely different room replaces the current one", async () => {
+      const useGameStore = await freshState();
+      useGameStore.getState().init();
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+      sendRoomAck(socket, "ROOMA");
+
+      const pushSpy = vi.spyOn(window.history, "pushState");
+      sendRoomAck(socket, "ROOMB", "r2");
+
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+      expect(window.location.search).toContain("room=ROOMB");
+    });
+
+    it("tears the session down and reloads in place when the browser Back button fires while in a room", async () => {
+      const useGameStore = await freshState();
+      const { reloadSpy, restore } = stubLocationReloadAndAssign();
+
+      useGameStore.setState({
+        room: { roomId: "ROOMZ" } as any,
+        session: { roomId: "ROOMZ", playerId: "p1", token: "t1" },
+      });
+      window.localStorage.setItem(roomKey("ROOMZ"), JSON.stringify({ roomId: "ROOMZ", playerId: "p1", token: "t1", savedAt: Date.now() }));
+      window.localStorage.setItem(GENERIC_KEY, JSON.stringify({ roomId: "ROOMZ", playerId: "p1", token: "t1", savedAt: Date.now() }));
+      const closeSpy = vi.spyOn(useGameStore.getState().client, "close");
+
+      window.dispatchEvent(new PopStateEvent("popstate"));
+
+      expect(closeSpy).toHaveBeenCalledTimes(1);
+      expect(window.localStorage.getItem(roomKey("ROOMZ"))).toBeNull();
+      expect(window.localStorage.getItem(GENERIC_KEY)).toBeNull();
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
+      restore();
+    });
+
+    it("does nothing on a popstate with no active room, so ordinary browser back-navigation off the site still works", async () => {
+      const useGameStore = await freshState();
+      const { reloadSpy, restore } = stubLocationReloadAndAssign();
+      const closeSpy = vi.spyOn(useGameStore.getState().client, "close");
+
+      window.dispatchEvent(new PopStateEvent("popstate"));
+
+      expect(reloadSpy).not.toHaveBeenCalled();
+      expect(closeSpy).not.toHaveBeenCalled();
       restore();
     });
   });

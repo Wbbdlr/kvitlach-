@@ -240,15 +240,31 @@ const persistSession = (session?: SessionData) => {
 
 // Reflects which room we're in directly in the address bar (?room=CODE) so the
 // URL is meaningful to share/bookmark and isn't identical across every stage
-// of the app. Uses replaceState, not pushState -- in-game transitions aren't
-// meant to create back-button history entries.
+// of the app.
+//
+// Entering a genuinely NEW room (the address bar didn't already say this
+// roomId) gets its own history entry via pushState, so the browser Back
+// button returns to the lobby instead of leaving the site outright -- see
+// the popstate listener below, which is what actually tears the room down
+// when that happens. Every other call -- re-confirming the room already
+// reflected in the URL (a reconnect's resume ack fires this on every
+// reconnect, not just the first) or clearing it (left/kicked/closed) --
+// keeps using replaceState, exactly as before this was added. We don't want
+// a duplicate entry per reconnect, or a phantom "back into the room" entry
+// left behind once the room's already gone.
 const setUrlRoomId = (roomId?: string) => {
   if (typeof window === "undefined") return;
   try {
     const url = new URL(window.location.href);
+    const currentRoomId = url.searchParams.get("room") ?? undefined;
     if (roomId) url.searchParams.set("room", roomId);
     else url.searchParams.delete("room");
-    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    const next = `${url.pathname}${url.search}`;
+    if (roomId && roomId !== currentRoomId) {
+      window.history.pushState(null, "", next);
+    } else {
+      window.history.replaceState(null, "", next);
+    }
   } catch {
     /* ignore -- URL sync is a nicety, never worth breaking the app over */
   }
@@ -895,6 +911,37 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   });
   client.onError(() => set({ status: "disconnected", message: `WebSocket error. Tried ${WS_URL}`, pendingAction: undefined }));
 
+  // Shared by leaveGame (the explicit "Leave" button) and the popstate
+  // listener below (the browser Back button while in a room) -- both need
+  // to tear the session down the same way before navigating away.
+  const teardownRoomSession = () => {
+    const roomId = get().room?.roomId ?? get().session?.roomId;
+    if (roomId) clearRoomSession(roomId);
+    persistSession(undefined);
+    // Close the socket before navigating: an in-flight room:resume ack
+    // (e.g. one sent right after the 1.5s auto-reconnect, landing just as
+    // the user leaves) would otherwise still be able to fire after the
+    // clears above and re-persist a session, undoing the leave.
+    get().client.close();
+  };
+
+  // The browser Back button while in a room. setUrlRoomId (above) only ever
+  // pushes a new history entry when entering a room, so a popstate here
+  // always means "leave the room, back to the lobby" -- there's no other
+  // in-app screen to return to. Tear the session down exactly like the
+  // explicit Leave button, then reload: the browser has already moved the
+  // address bar back to "/" by the time this fires, so reload (not assign)
+  // re-renders the lobby there without pushing yet another history entry on
+  // top of the one we just popped.
+  if (typeof window !== "undefined") {
+    window.addEventListener("popstate", () => {
+      if (get().room) {
+        teardownRoomSession();
+        window.location.reload();
+      }
+    });
+  }
+
   return {
     client,
     status: "disconnected",
@@ -1191,14 +1238,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       client.send("room:close", { roomId });
     },
     leaveGame: () => {
-      const roomId = get().room?.roomId ?? get().session?.roomId;
-      if (roomId) clearRoomSession(roomId);
-      persistSession(undefined);
-      // Close the socket before navigating: an in-flight room:resume ack
-      // (e.g. one sent right after the 1.5s auto-reconnect, landing just as
-      // the user clicks Leave) would otherwise still be able to fire after
-      // the clears above and re-persist a session, undoing the leave.
-      get().client.close();
+      teardownRoomSession();
       // A hard navigation (not just clearing in-memory state) is deliberate:
       // the existing WebSocket stays attached server-side to this room/player,
       // so anything short of tearing down the socket would let the next

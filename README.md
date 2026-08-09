@@ -141,7 +141,7 @@ Gameplay is WebSocket-only — the HTTP server exposes `/health`, a token-gated 
 
 ### URLs
 
-The app routes only `/`, `/about`, `/disclaimer`, and `/contact`. The whole game (lobby, waiting, live table) renders at `/`, with the active room mirrored as `?room=CODE` via `history.replaceState`. Reconnection uses a session token in `localStorage`, not the URL; `?room=` only pre-fills the join form, so invite links still ask for a name.
+The app routes only `/`, `/about`, `/disclaimer`, and `/contact`. The whole game (lobby, waiting, live table) renders at `/`, with the active room mirrored as `?room=CODE`. Entering a room pushes a history entry (`history.pushState`); reconnects and other updates to the same room use `history.replaceState` instead, so they don't pile up duplicate entries. The browser Back button while in a room tears the session down and returns to the lobby (`state.ts`'s `popstate` listener) rather than leaving the site. Reconnection itself uses a session token in `localStorage`, not the URL; `?room=` only pre-fills the join form, so invite links still ask for a name.
 
 Deck sizing defaults to an auto calculation (`recommendedDeckCount` in `round.ts`: ~4 cards/hand × 8 rounds per seat, divided by the 24-card Kvitlach deck -- 2 copies of each of 1-12, not a standard playing-card deck -- capped at 16 decks). A 50-player table auto-selects the 16-deck cap; override via deck input if desired.
 

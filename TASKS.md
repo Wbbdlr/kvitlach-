@@ -22,13 +22,23 @@ for how to work in this repo.
       with the win sound as a workaround. A real fanfare would let that
       layering be dropped.
 - [ ] Decide whether the app needs richer URLs (e.g. `/table/:roomId`,
-      shareable practice-mode link, back-button support). Today everything is
-      `/?room=CODE` synced via `replaceState`. See "URL model" below.
+      shareable practice-mode link). Today everything is `/?room=CODE`.
+      Back-button support (below) is done; the remaining trade-offs are a
+      product decision, not a fix. See "URL model" below.
 - [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
       Unit/component coverage is good; nothing exercises two real browsers
       against one table.
 ## Done
 
+- [x] Browser Back button support. Entering a room now pushes a history
+      entry (`history.pushState` in `state.ts`'s `setUrlRoomId`, only on a
+      genuinely new room -- reconnects re-confirming the same room still use
+      `replaceState`, so they don't pile up duplicate entries). A `popstate`
+      listener tears the session down and returns to the lobby the same way
+      the explicit Leave button does (shared `teardownRoomSession` helper),
+      instead of leaving the site. Verified live (create a practice table,
+      press Back, land cleanly on the lobby with no stale session) and with
+      5 new tests in `state.test.ts`.
 - [x] `/metrics` endpoint (Prometheus text format, unauthenticated like
       `/health`) — `backend/src/metrics.ts`. Tracks HTTP request count, WS
       connections (current gauge + total), WS messages received, rounds
@@ -57,20 +67,25 @@ for how to work in this repo.
 
 `main.tsx` routes only `/`, `/about`, `/disclaimer`, `/contact`. The entire
 game — lobby, joined-but-waiting, and live table — renders at `/`, with the
-current room reflected as `?room=CODE` via `history.replaceState`.
+current room reflected as `?room=CODE`.
+
+Entering a room pushes a history entry (`history.pushState`); every other
+URL update for an already-shown room (reconnects, kicks, room-closed) uses
+`history.replaceState` so it doesn't add another. A `popstate` listener
+(the browser Back button firing while in a room) tears the session down and
+reloads at the lobby -- see `state.ts`'s `teardownRoomSession` and the
+comment above `setUrlRoomId`.
 
 Reconnection does **not** depend on the URL: it uses a session token in
 `localStorage` (generic + per-room keys). `?room=` only pre-fills the join
 form, so an invite link still asks for a name rather than silently seating
 someone.
 
-Known trade-offs of the current model:
+Remaining known trade-offs of the current model:
 
-- No history entries, so the browser Back button leaves the site instead of
-  returning to the lobby.
 - No shareable link for practice mode.
 - Lobby and table are indistinguishable by URL (analytics/bookmarks can't tell
   them apart).
 
-None of these are correctness bugs, and the session model would not get simpler
-with real routes — so this is a product decision, not a fix.
+Neither is a correctness bug, and the session model would not get simpler
+with real routes — so this remains a product decision, not a fix.
