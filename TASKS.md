@@ -5,10 +5,6 @@ for how to work in this repo.
 
 ## Open
 
-- [ ] Switch deck shuffling to a cryptographically secure RNG (`crypto.randomInt`
-      in `deck.ts`'s Fisher-Yates). Currently `Math.random()`. Not a fairness
-      problem in practice for a family game, but it is the one place the shuffle
-      is predictable in principle.
 - [ ] Instrument the server with basic telemetry (request counts, WS
       connections, round durations) behind a `/metrics` endpoint. Today
       `http-server.ts` exposes only `/health` and the token-gated `/admin`.
@@ -29,6 +25,9 @@ for how to work in this repo.
 
 ## Done
 
+- [x] Cryptographically secure shuffle RNG — `deck.ts`'s Fisher-Yates now
+      uses `crypto.randomInt` instead of `Math.random()`. Fairness sim
+      (`npm run simulate`) confirms unchanged odds/distributions.
 - [x] Automated frontend coverage for key flows — 169 tests across lobby,
       table view, dock, drawers, stage maths, and store/WS handling.
 - [x] Persistence layer so tables survive process restarts — `db.ts`
