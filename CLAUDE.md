@@ -168,6 +168,41 @@ cd frontend && npx vitest run src/path/to.test.ts  # single file
 - jsdom (the frontend test env) has no `ResizeObserver` — guard any code that
   uses it or component tests touching it will crash, not just fail.
 
+## Deploy
+
+Deploys are RDP-driven, not CI. **Whenever a push to `origin/main` touches
+`backend/` or `frontend/`, build the deploy tarball and hand the user one
+pastable server-side block as part of that same turn — don't wait to be
+asked separately.** Skip this for doc-only pushes (README/CLAUDE.md/docs/,
+no runtime-code diff); nothing running needs to change for those.
+
+1. Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 first (see
+   Constraints below), so the footer badge proves which build is live.
+2. Build the tarball:
+   ```bash
+   bash deploy/build-tarball.sh
+   ```
+   This writes `C:\Users\sws22\Downloads\kvitlach-deploy.tar.gz`, overwriting
+   any previous one — there should only ever be one canonical "deploy this"
+   tarball in Downloads. Confirm it landed in **Downloads**, not the repo; a
+   tarball built anywhere else means the user's next RDP copy grabs a stale
+   one already sitting in Downloads instead.
+3. Give the user exactly this block (they copy the tarball from their PC's
+   Downloads to the server's Downloads over RDP, then paste this in the
+   server terminal):
+   ```bash
+   cd ~/docker/kvitlach && tar -xzf ~/Downloads/kvitlach-deploy.tar.gz && cd deploy && DOCKER_BUILDKIT=0 docker compose up -d --build backend frontend db && echo "DONE."
+   ```
+   Always a full rebuild — both containers build from source (Vite/tsc), so
+   there's no lighter `docker compose cp`-and-restart path here the way
+   there is for plain-file-copy apps on other projects. `DOCKER_BUILDKIT=0`
+   is required (BuildKit can't resolve DNS through this server's resolver).
+   One block only — never "run this, then run that": the user pastes
+   directly into an RDP terminal, and multiple blocks means multiple paste
+   operations and more chances for error.
+   **Never add `-v` to any `docker compose down`** in a command given to the
+   user — it destroys the Postgres volume (all round/room history).
+
 ## Constraints
 
 - **Never** `docker compose down -v` — it destroys the Postgres volume.
