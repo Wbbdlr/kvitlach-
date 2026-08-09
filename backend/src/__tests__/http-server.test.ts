@@ -92,3 +92,28 @@ describe("admin HTTP routes", () => {
     }
   });
 });
+
+describe("/metrics", () => {
+  it("200s with no token required, in Prometheus text-exposition format", async () => {
+    const app = createHttpServer(new GameStore());
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/plain");
+    expect(res.body).toContain("# TYPE kvitlach_http_requests_total counter");
+    expect(res.body).toContain("kvitlach_ws_connections_current");
+    expect(res.body).toContain("kvitlach_round_duration_seconds_bucket");
+  });
+
+  it("counts this and prior requests to the server, /metrics's own scrapes included", async () => {
+    const app = createHttpServer(new GameStore());
+    await app.inject({ method: "GET", url: "/health" });
+    await app.inject({ method: "GET", url: "/health" });
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    // Exact count isn't asserted -- the shared `metrics` singleton also
+    // picks up requests from any other test file running in this process.
+    // What matters here is that /health hits are visibly counted at all.
+    const match = res.body.match(/kvitlach_http_requests_total (\d+)/);
+    expect(match).not.toBeNull();
+    expect(Number(match![1])).toBeGreaterThanOrEqual(2);
+  });
+});

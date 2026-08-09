@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import Fastify, { FastifyRequest } from "fastify";
 import type { GameStore } from "./store.js";
+import { metrics } from "./metrics.js";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -132,7 +133,23 @@ export function createHttpServer(store: GameStore) {
       },
     },
   });
+  // Counts every response this server sends, /metrics's own scrapes
+  // included -- that's normal for a self-counting endpoint and not worth
+  // special-casing.
+  app.addHook("onResponse", async () => {
+    metrics.recordHttpRequest();
+  });
+
   app.get("/health", async () => ({ status: "ok" }));
+
+  // Unauthenticated, like /health: this only ever exposes aggregate counts
+  // (no room IDs, no player data), and a Prometheus scraper expects to hit
+  // it without a token. The backend HTTP port is only reachable from
+  // localhost/the Docker network anyway (see deploy/docker-compose.yml),
+  // not the public internet.
+  app.get("/metrics", async (request, reply) => {
+    reply.type("text/plain; version=0.0.4; charset=utf-8").send(metrics.render());
+  });
 
   // Token-gated admin tooling for freeing up stuck/stale Game IDs -- routes
   // only do anything useful when ADMIN_TOKEN is set. Requests without a

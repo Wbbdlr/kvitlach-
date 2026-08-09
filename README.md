@@ -132,7 +132,7 @@ cd backend && npm run simulate
 - Server → client envelope: `{ type, roomId?, playerId?, requestId?, payload, error? }`
 - `ack` responses echo the originating `requestId`; failures use `error` with `{ message, code?, details? }`.
 
-Gameplay is WebSocket-only — the HTTP server exposes just `/health` and a token-gated `/admin`. The authoritative list of message types is the `switch` in `backend/src/ws-server.ts`; the main ones:
+Gameplay is WebSocket-only — the HTTP server exposes `/health`, a token-gated `/admin`, and `/metrics` (Prometheus text format; unauthenticated, like `/health` — see `backend/src/metrics.ts`). The authoritative list of message types is the `switch` in `backend/src/ws-server.ts`; the main ones:
 
 - Client: `room:create`, `room:create-practice`, `room:join`, `room:resume`, `room:switch-admin`, `room:get`, `room:close`, `round:start`, `round:get`, `round:banker-end`, `round:void-abandoned`, `turn:bet`, `turn:hit`, `turn:stand`, `turn:skip`, `player:react`, rename (`player:rename-request|approve|reject|block|cancel`), buy-in (`player:buyin-request|approve|reject|block|cancel`, `player:practice-topup`), admin tools (`player:kick`, `player:bank-adjust`, `room:set-watermark`, `room:reshuffle-deck`), and `room:banker-topup`.
 - Server: `room:state`, `round:state`, `round:ended`, `round:banker-ended`, `room:closed`, `reaction:new`, `room:banker-topup`, `player:bank-adjusted`, `ack`, `error`.

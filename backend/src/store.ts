@@ -6,6 +6,7 @@ import { decideBotAction, decideBotBet } from "./bot.js";
 import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
+import { metrics } from "./metrics.js";
 
 const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
@@ -614,6 +615,7 @@ export class GameStore {
       roomRec.deck,
       roomRec.deckJustReshuffledAt !== undefined
     );
+    metrics.recordRoundStart(round.roundId);
     const stored = this.persistRound(round.roundId, round);
 
     if (others.length > 0) {
@@ -899,6 +901,11 @@ export class GameStore {
   finalizeRound(roundId: string) {
     const round = this.rounds.get(roundId);
     if (!round) return { balances: [] as Balance[] };
+    // The single chokepoint every round funnels through regardless of how
+    // it ended (normal showdown, banker-end, or void-abandoned) -- see
+    // ws-server.ts's handleRoundUpdate, which calls this exactly once per
+    // round the instant its state reaches "terminate".
+    metrics.recordRoundEnd(roundId);
     if (round.turnTimer) clearTimeout(round.turnTimer);
     if (round.timer) clearTimeout(round.timer);
     if (round.botTimer) clearTimeout(round.botTimer);

@@ -12,9 +12,10 @@ browser (React/Zustand) ──WS:3001──> ws-server.ts ──> GameStore (in-
                                           health + admin              (optional)
 ```
 
-Gameplay is **WebSocket-only**. The Fastify HTTP server serves `/health` and a
-token-gated `/admin` surface for freeing stuck Game IDs — nothing else. Do not
-add gameplay REST endpoints; the client has no code path for them.
+Gameplay is **WebSocket-only**. The Fastify HTTP server serves `/health`, a
+token-gated `/admin` surface for freeing stuck Game IDs, and `/metrics`
+(Prometheus text format, unauthenticated) — nothing else. Do not add gameplay
+REST endpoints; the client has no code path for them.
 
 ## Server authority
 

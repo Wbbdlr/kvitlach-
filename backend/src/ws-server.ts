@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import type { IncomingMessage } from "http";
 import { GameStore } from "./store.js";
+import { metrics } from "./metrics.js";
 import { ClientEnvelope, PublicRoundState, RoomState, RoundState, ServerEnvelope, ReactionEvent } from "./types.js";
 import type { RoundContext } from "./round.js";
 
@@ -58,6 +59,7 @@ export class WSServer {
     }
     existing.add(socket);
     this.connsByIp.set(ipKey, existing);
+    metrics.wsConnectionOpened();
 
     this.meta.set(socket, { ip: ip ?? undefined, userAgent: userAgent ?? undefined });
     this.msgCount.set(socket, { count: 0, resetAt: Date.now() + MSG_WINDOW_MS });
@@ -67,6 +69,7 @@ export class WSServer {
   }
 
   private onClose(socket: WebSocket) {
+    metrics.wsConnectionClosed();
     const info = this.meta.get(socket);
     if (info?.ip) {
       const ipSet = this.connsByIp.get(info.ip);
@@ -94,6 +97,7 @@ export class WSServer {
   }
 
   private async onMessage(socket: WebSocket, data: RawData) {
+    metrics.wsMessageReceived();
     const rate = this.msgCount.get(socket);
     if (rate) {
       const now = Date.now();

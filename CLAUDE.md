@@ -26,9 +26,9 @@ Live at kvitlach.us, self-hosted via Docker Compose behind a Cloudflare Tunnel.
 
 ## Architecture
 
-Two processes. The backend exposes HTTP on 3000 (health + token-gated admin
-only) and **WebSocket on 3001, which is where all gameplay happens**. There is
-no gameplay REST API.
+Two processes. The backend exposes HTTP on 3000 (health, token-gated admin,
+and `/metrics`) and **WebSocket on 3001, which is where all gameplay
+happens**. There is no gameplay REST API.
 
 Authoritative game state lives in `GameStore` (`backend/src/store.ts`) as an
 in-memory `Map` of rooms. Postgres is a **persistence mirror** for restart
@@ -48,7 +48,8 @@ Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   mutations. **~1500 lines; grep before reading whole.**
 - `round.ts` / `turn.ts` — pure game logic (hit/stand/bet, totals, end-state).
 - `deck.ts` — deck composition. `bot.ts` — computer-player decisions.
-- `ws-server.ts` — WS protocol, auth, rate limits. `http-server.ts` — health/admin.
+- `ws-server.ts` — WS protocol, auth, rate limits. `http-server.ts` — health/admin/metrics.
+- `metrics.ts` — in-process counters/gauges, rendered as Prometheus text by `/metrics`.
 - `simulate.ts` — Monte Carlo fairness/odds harness (`npm run simulate`).
 
 **Frontend** (`frontend/src/`)
@@ -155,6 +156,14 @@ cd frontend && npx vitest run src/path/to.test.ts  # single file
   reach a live table.
 - jsdom (the frontend test env) has no `ResizeObserver` — guard any code that
   uses it or component tests touching it will crash, not just fail.
+- **The full backend suite has a known intermittent flake** (~20–30% of runs,
+  confirmed pre-existing as of 2026-08-09, not caused by any specific
+  change — see TASKS.md). A different real-WebSocket/real-timer test file
+  fails each time (seen: `ws-auth.test.ts`, `abandoned-banker.test.ts`,
+  `turn-order.test.ts`); every one passes cleanly run alone. If a full-suite
+  run shows one red file, re-run it in isolation
+  (`npx vitest run src/__tests__/<file>.test.ts`) before concluding you broke
+  something — it almost certainly didn't fail because of your change.
 
 ## Deploy
 

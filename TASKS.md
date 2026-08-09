@@ -5,9 +5,17 @@ for how to work in this repo.
 
 ## Open
 
-- [ ] Instrument the server with basic telemetry (request counts, WS
-      connections, round durations) behind a `/metrics` endpoint. Today
-      `http-server.ts` exposes only `/health` and the token-gated `/admin`.
+- [ ] Investigate the backend suite's intermittent full-run flake (found
+      2026-08-09). Running `cd backend && npx vitest run` shows a failure in
+      roughly 20–30% of runs; which file fails is not consistent (seen:
+      `ws-auth.test.ts`, `abandoned-banker.test.ts`, `turn-order.test.ts`,
+      one each on separate runs) and every failing file passes cleanly
+      100% of the time run alone. Confirmed pre-existing and unrelated to
+      this session's changes — reproduces identically on commit `b83be16`,
+      before the crypto RNG swap or `/metrics` work. Likely several real
+      `WSServer` instances + real `setTimeout` turn/session timers racing
+      for CPU across parallel Vitest workers, not a game-logic bug. Never
+      reproduces file-by-file; only under a full parallel run.
 - [ ] Replace the natural-21 sound asset. `natural21` currently reuses
       `card-slide-1.ogg`, a card-motion sample — it fires correctly (verified
       live) but doesn't *read* as a distinct moment, so it's currently layered
@@ -21,6 +29,10 @@ for how to work in this repo.
       against one table.
 ## Done
 
+- [x] `/metrics` endpoint (Prometheus text format, unauthenticated like
+      `/health`) — `backend/src/metrics.ts`. Tracks HTTP request count, WS
+      connections (current gauge + total), WS messages received, rounds
+      completed, and round duration (histogram, deal to finalize).
 - [x] Retired the root-level legacy Elixir/Phoenix tree — 121 dead files
       (~20MB: compiled JS/CSS bundles, `kvitlech-master.zip`, `fly.toml` for
       an old Fly.io deploy, duplicate card art, `mix.exs`/`.ex` sources) removed
