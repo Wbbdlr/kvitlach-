@@ -45,7 +45,7 @@ Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **Backend** (`backend/src/`)
 - `store.ts` — the heart. Rooms, sessions, seating/rotation, bots, timers, all
-  mutations. Large; grep before reading whole.
+  mutations. **~1500 lines; grep before reading whole.**
 - `round.ts` / `turn.ts` — pure game logic (hit/stand/bet, totals, end-state).
 - `deck.ts` — deck composition. `bot.ts` — computer-player decisions.
 - `ws-server.ts` — WS protocol, auth, rate limits. `http-server.ts` — health/admin.
@@ -53,11 +53,13 @@ Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **Frontend** (`frontend/src/`)
 - `state.ts` — Zustand store, WS message handling, session/localStorage. The
-  single place client state is mutated.
-- `table/` — the felt table UI. `TableRoot.tsx` composes it; `layout.ts` +
-  `stage.ts` own the coordinate system; `selectors.ts` / `useTableData.ts` hold
-  derived display logic (prefer these over inlining logic in components).
+  single place client state is mutated. **~1200 lines; grep before reading whole.**
+- `table/` — the felt table UI. `TableRoot.tsx` (~850 lines) composes it;
+  `layout.ts` + `stage.ts` own the coordinate system; `selectors.ts` /
+  `useTableData.ts` hold derived display logic (prefer these over inlining
+  logic in components).
 - `App.tsx` — lobby (join / host / practice) plus in-room chrome and sound.
+  ~1000 lines.
 
 ### ⚠️ Dead code at the repo root
 
@@ -70,6 +72,26 @@ This matters because a grep for `deck`, `round`, or `turn` will hit those files,
 and they are **actively out of date** — e.g. `deck.ex` still builds a 48-card
 deck (4 copies of each card), which is the bug fixed in `deck.ts`. Always work
 in `backend/src/` and `frontend/src/`. Never take a rule from a `.ex` file.
+
+## Local development
+
+- **`npm run dev` in `frontend/` defaults to the PRODUCTION WebSocket**
+  (`wss://ws.kvitlach.us`, hardcoded fallback in `state.ts` when `VITE_WS_URL`
+  isn't set). A plain `npm run dev` with no local backend running will silently
+  connect you to the live server instead of erroring — don't mistake that for a
+  working local setup, and don't create/join rooms there while testing.
+  Point at a local backend instead: run the `kvitlach-backend` launch config (or
+  `cd backend && npm run dev`) and set `frontend/.env.local` (gitignored, so
+  recreate it after a fresh clone) to:
+  ```
+  VITE_WS_URL=ws://localhost:3001
+  ```
+- **Two tabs on the same `localhost` origin share `localStorage`**, including
+  the session-resume token — opening a second tab to test as a different player
+  just resumes as whichever player most recently created/joined in *any* tab, it
+  does not give you a second identity. For a genuine second player, use a second
+  browser profile or an incognito window (or `localStorage.removeItem`ing the
+  session keys before joining fresh in the second tab).
 
 ## Game rules Claude must know
 
@@ -143,6 +165,8 @@ cd frontend && npx vitest run src/path/to.test.ts  # single file
 - Verify UI changes in a real browser at a real viewport, not by reasoning
   alone — layout here is genuinely subtle. Practice mode is the fastest way to
   reach a live table.
+- jsdom (the frontend test env) has no `ResizeObserver` — guard any code that
+  uses it or component tests touching it will crash, not just fail.
 
 ## Constraints
 
