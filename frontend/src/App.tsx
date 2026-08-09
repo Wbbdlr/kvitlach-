@@ -196,7 +196,22 @@ export default function App() {
           // horn instead of sharing "lose", a natural 21 gets its own sound
           // instead of sharing the generic showdown "win".
           const justHit21 = prevTurn.state === "pending" && bestTotal(turn.cards).total === 21;
-          audioManager.playSfx(justHit21 ? "natural21" : "win");
+          if (justHit21) {
+            // Live-verified this fires correctly (captured the actual
+            // audio call, mid-round, at the right volume) -- the real
+            // problem was the asset itself: card-slide-1.ogg is a
+            // repurposed card-motion sample, so even playing correctly it
+            // reads as just another card noise, not a distinct moment.
+            // Layering the showdown-win chip sound underneath -- rather
+            // than swapping to a louder version of the same weak asset --
+            // gives it a genuinely different signature using only sounds
+            // that already exist, instead of sharing win's exact sound
+            // (which would make natural21 undetectable as its own thing).
+            audioManager.playSfx("win");
+            audioManager.playSfx("natural21");
+          } else {
+            audioManager.playSfx("win");
+          }
         }
         // The futch horn is for going over 21, not for losing. Keying it off
         // state === "lost" got this backwards at both ends: the BANKER's state

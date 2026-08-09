@@ -100,7 +100,20 @@ vi.mock("./state", () => {
   };
 });
 
-vi.mock("./audio", () => ({ AudioManager: class { noteInteraction() {} setMusicEnabled() {} setSfxEnabled() {} playSfx() {} } }));
+// vi.hoisted: vi.mock's factory is hoisted above these imports, so the spy
+// it closes over has to be created through here rather than a plain outer
+// const, or the factory would run before playSfxMock exists.
+const { playSfxMock } = vi.hoisted(() => ({ playSfxMock: vi.fn() }));
+vi.mock("./audio", () => ({
+  AudioManager: class {
+    noteInteraction() {}
+    setMusicEnabled() {}
+    setSfxEnabled() {}
+    playSfx(...args: unknown[]) {
+      playSfxMock(...args);
+    }
+  },
+}));
 vi.mock("./ws", () => ({ WSClient: class {} }));
 
 // The felt table is the only in-room view -- there is no second (classic
@@ -310,6 +323,64 @@ describe("the felt table is the only in-room view", () => {
       fireEvent.mouseDown(document.body);
 
       expect(hand.classList.contains("is-fanned")).toBe(false);
+    });
+  });
+
+  // Live-verified separately (captured the real Audio.play() call, mid-game,
+  // at the right volume) that natural21 fires correctly on its own -- the
+  // actual complaint was that the sound itself doesn't read as a distinct
+  // moment. This pins the fix: layering "win" underneath so a natural 21
+  // has a signature the plain card-slide sample alone didn't.
+  describe("natural-21 sound", () => {
+    // playerTurn's own bet is 0 -- isPushTurn would read a $0 "win" as a
+    // push (see the comment above this block's App.tsx counterpart) and
+    // neither sound would fire, which is correct for a real blatt hand but
+    // not what this is testing. A real wager is the point here.
+    const pendingTurn: Turn = {
+      ...playerTurn,
+      bet: 25,
+      cards: [{ name: "9", attributes: { values: [9] } }],
+    };
+    // 9 + 12(read as 12) = 21 -- bestTotal's own re-reading of a flexible card.
+    const natural21Turn: Turn = {
+      ...playerTurn,
+      bet: 25,
+      state: "won",
+      cards: [
+        { name: "9", attributes: { values: [9] } },
+        { name: "12", attributes: { values: [12, 9, 10] } },
+      ],
+    };
+
+    beforeEach(() => {
+      playSfxMock.mockClear();
+    });
+
+    it("plays both win and natural21 when a hand hits exactly 21 mid-turn", () => {
+      mockState.round = { ...round, roundId: "R-nat21", turns: [pendingTurn, adminTurn] };
+      const { rerender } = render(<App />);
+      playSfxMock.mockClear(); // ignore whatever the initial mount itself fires
+
+      mockState.round = { ...mockState.round, turns: [natural21Turn, adminTurn] };
+      rerender(<App />);
+
+      expect(playSfxMock).toHaveBeenCalledWith("win");
+      expect(playSfxMock).toHaveBeenCalledWith("natural21");
+    });
+
+    it("plays only win (not natural21) for an ordinary showdown win", () => {
+      const standbyTurn: Turn = { ...playerTurn, bet: 25, state: "standby", cards: pendingTurn.cards };
+      const showdownWinTurn: Turn = { ...playerTurn, bet: 25, state: "won", cards: pendingTurn.cards };
+
+      mockState.round = { ...round, roundId: "R-showdown", turns: [standbyTurn, adminTurn] };
+      const { rerender } = render(<App />);
+      playSfxMock.mockClear();
+
+      mockState.round = { ...mockState.round, turns: [showdownWinTurn, adminTurn] };
+      rerender(<App />);
+
+      expect(playSfxMock).toHaveBeenCalledWith("win");
+      expect(playSfxMock).not.toHaveBeenCalledWith("natural21");
     });
   });
 });
