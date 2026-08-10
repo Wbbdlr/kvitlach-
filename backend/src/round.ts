@@ -301,6 +301,19 @@ export function calculateEndState(turns: Turn[]): Turn[] {
     // (Both money branches below move $0 for these either way -- this is
     // about not telling a player they LOST a hand they never wagered on.)
     const noWager = (turn.bet ?? 0) === 0 && (turn.settledBet ?? 0) === 0;
+    // A turn can arrive here already fully paid by an EARLIER settlement --
+    // store.ts's settleBankOutcome resets `bet` to 0 the moment it pays a
+    // seat out, but keeps `settledBet` so noWager (above) still reads this
+    // as a real result instead of collapsing it into a push on the next
+    // recompute (a later BANK! frame in the same round, or the round's own
+    // final settlement, both run this function again over every turn, not
+    // just the ones still live). That combination -- nothing left at stake
+    // NOW, but something real paid out BEFORE -- means this turn's
+    // beat/lostTo point was already counted the first time it settled, so
+    // it must not add a second one here (2026-08-10 bug hunt: a second
+    // BANK! lock was inflating the banker's BEAT/LOST TO tag by re-counting
+    // every seat an earlier frame had already resolved).
+    const alreadySettled = (turn.bet ?? 0) === 0 && (turn.settledBet ?? 0) !== 0;
     let resolvedState = noWager
       ? turn.state === "skipped"
         ? "skipped"
@@ -318,8 +331,9 @@ export function calculateEndState(turns: Turn[]): Turn[] {
     if (resolvedState === "lost") adminBalance += turn.bet;
 
     // Only hands with something at stake are a head-to-head result -- a blatt
-    // pushes, it doesn't beat anyone.
-    if (!noWager) {
+    // pushes, it doesn't beat anyone -- and an already-settled turn (see
+    // alreadySettled above) already contributed its point the first time.
+    if (!noWager && !alreadySettled) {
       if (resolvedState === "won") lostTo += 1;
       else if (resolvedState === "lost") beat += 1;
     }

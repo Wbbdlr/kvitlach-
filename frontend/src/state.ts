@@ -475,6 +475,48 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     return undefined;
   };
 
+  // Public, table-wide, same shape as eleveroonNotification above -- a BANK!
+  // wager that leaves seats still waiting forces the banker straight into a
+  // fresh hand, and the server overwrites their turn with that redeal in the
+  // very same update that resolves the frame which just finished. Without
+  // this, nobody at the table ever sees what that frame actually did -- only
+  // the bank's wallet total quietly moving (2026-08-10 bug hunt; see
+  // TASKS.md and store.ts's settleBankOutcome). Diffed by `settledAt`, not
+  // presence, since the field is never cleared back to undefined between
+  // frames -- see BankFrameResult in types.ts.
+  const bankFrameNotification = (
+    prevRound: RoundState | undefined,
+    nextRound: RoundState
+  ): UINotification | undefined => {
+    // Same guard as eleveroonNotification, and for the same reason: a client
+    // that just connected (fresh join, or reconnecting mid-round) has no
+    // prevRound to diff against, and firing off whatever frame happened to
+    // already be sitting on the round would replay a stale event as if it
+    // just happened.
+    if (!prevRound || prevRound.roundId !== nextRound.roundId) return undefined;
+    const frame = nextRound.lastBankFrame;
+    if (!frame || frame.settledAt === prevRound.lastBankFrame?.settledAt) return undefined;
+    const { total, bustedTotal } = bestTotal(frame.cards);
+    const busted = total === undefined && bustedTotal !== undefined;
+    const headline = busted
+      ? `Bank Futched with a ${bustedTotal}`
+      : total === 21
+        ? "Bank hit 21!"
+        : `Bank showed ${total ?? "--"}`;
+    const record =
+      frame.beat === undefined || frame.lostTo === undefined
+        ? ""
+        : frame.beat === 0 && frame.lostTo === 0
+          ? " (no wagers)"
+          : frame.lostTo === 0
+            ? ` (beat ${frame.beat})`
+            : frame.beat === 0
+              ? ` (lost to ${frame.lostTo})`
+              : ` (beat ${frame.beat}, lost ${frame.lostTo})`;
+    const tone: NotificationTone = busted ? "error" : total === 21 ? "success" : "info";
+    return makeNotification(`${headline}${record} -- new hand dealt to keep the table live.`, tone);
+  };
+
   const analyzeRoomTransition = (state: UIState, nextRoom: RoomState): Partial<UIState> => {
     const updates: Partial<UIState> = { room: nextRoom };
     let history = state.roundHistory;
@@ -562,6 +604,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           deckReshuffleNotification(state.round, nextRound),
           outcomeNotification(state.round, nextRound, state.playerId),
           eleveroonNotification(state.round, nextRound),
+          bankFrameNotification(state.round, nextRound),
         ].filter((n): n is UINotification => Boolean(n));
         return {
           round: nextRound,

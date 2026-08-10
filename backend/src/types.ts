@@ -83,6 +83,28 @@ export interface BankLockState {
   initiatedAt: number;
 }
 
+// A BANK! wager that still leaves seats waiting forces the banker straight
+// into a fresh hand -- store.ts's settleBankOutcome pays out the frame that
+// just finished and OVERWRITES the banker's turn with the redeal in the same
+// call, so no ordinary round:state broadcast ever carries the resolved
+// hand/score on its own (2026-08-10 bug hunt -- see TASKS.md). This rides
+// alongside that fresh hand specifically so a client can toast what the
+// discarded frame actually did. `settledAt` is a timestamp, not a boolean,
+// so it can be diffed the same way `deckReshuffledAt` is: fires once per
+// actual frame, not once per later round:state broadcast that still carries
+// the same value. Only ever set when a redeal happens -- a BANK! that
+// terminates the round normally already reaches the client on its own turn
+// object, nothing extra needed.
+export interface BankFrameResult {
+  bankerId: string;
+  cards: Card[];
+  state: TurnState;
+  busted?: boolean;
+  beat?: number;
+  lostTo?: number;
+  settledAt: number;
+}
+
 export interface Balance {
   amount: number;
   payer: string;
@@ -143,6 +165,11 @@ export interface RoundState {
   // The table gave up on an absent banker and threw this round away. Every
   // wager was returned; no hand won or lost.
   voided?: boolean;
+  // See BankFrameResult -- only present the instant a BANK! forces a redeal,
+  // cleared again by the next actual frame's own value (never unset back to
+  // undefined, so clients must diff `settledAt`, not presence, the same way
+  // deckReshuffledAt works).
+  lastBankFrame?: BankFrameResult;
 }
 
 // What a client is actually allowed to see of a round. `deck` is the live

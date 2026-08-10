@@ -30,47 +30,37 @@ for how to work in this repo.
       and disappears from the hand, expandable to review every card
       discarded that round. Open design question if revisited: Eleveroon-
       rejects only, or every resolved card in the round.
-- [ ] BUG (found 2026-08-10, bug-hunting pass, confirmed via a throwaway
-      repro test -- not yet committed): a BANK! "two frames" redeal
-      (`store.ts`'s `settleBankOutcome`) computes and pays out frame 1's
-      outcome, then OVERWRITES the banker's turn with frame 2's fresh single
-      card, all inside one synchronous call -- no `round:state` broadcast
-      ever carries frame 1's resolved hand. Confirmed live: banker wins
-      frame 1 with a 20 (wallet 100 -> 200, correct money), but what
-      `applyStand` actually returns/broadcasts is already the fresh
-      one-card frame-2 hand at `state: "pending"`, `round.state: "playing"`,
-      no pause. The table never sees frame 1's cards, total, or outcome tag
-      (no "BANK 21!"/"FUTCHED!"/"BEAT N", nothing in `round.ledger` reaches
-      a client) -- only the bank's total wallet number moves, silently. This
-      is exactly half of the "an indicator when Bank hits 21 (or the two
-      frames)" ask (2026-08-10 session) -- the indicator work that shipped
-      only fires for a single, non-redealing BANK! resolution; it is
-      currently unreachable for a genuine two-frames round. Fix needs a
-      design call (pause+broadcast frame 1 before redealing? carry a
-      transient "last frame" field alongside the fresh hand for a toast?) --
-      deliberately not implemented blind.
-- [ ] BUG (found 2026-08-10, same pass, same repro): a SECOND BANK! lock
-      settling later in the same round double-counts seats already paid out
-      by an EARLIER BANK! frame into the banker's `beat`/`lostTo` tally.
-      Root cause: `settleBankOutcome`'s `involvedEntries` filters by
-      `index <= lock.throughIndex` only, which re-includes already-settled
-      earlier seats every time; `calculateEndState`'s `noWager` check
-      (`round.ts`) treats them as still "at stake" because their
-      `settledBet` from the earlier payout is non-zero, even though their
-      `bet` was correctly reset to 0. Confirmed: a frame-2 settlement with
-      exactly ONE real opponent (who beat the busted banker) reported
-      `beat: 2, lostTo: 1` instead of the correct `beat: 0, lostTo: 1` --
-      inflated by the two players from frame 1. Money is NOT affected (the
-      `bet: 0` reset correctly zeroes their payout contribution either way)
-      -- this is a display-only bug, but it corrupts the "BEAT N / LOST TO
-      N" tag for any round with 2+ BANK! locks. `settleBankOutcome` also
-      never sets `settled: true` on the turns it resolves the way
-      `settleImmediateTurn` does for ordinary settlements (`store.ts:787`)
-      -- a related inconsistency, though not itself confirmed to cause a
-      live bug beyond the beat/lostTo count above.
-
 ## Done
 
+- [x] Fixed both confirmed BANK! "two frames" bugs from the 2026-08-10
+      bug-hunting pass (repro'd in `backend/src/__tests__/bank-frames.test.ts`):
+      1. A redeal used to overwrite the banker's turn with the fresh hand
+         before any `round:state` ever carried the frame that just finished
+         -- only the wallet number moved, silently. Fixed by carrying that
+         frame forward on a new transient field, `RoundState.lastBankFrame`
+         (`store.ts`'s `settleBankOutcome`, only ever set on an actual
+         redeal), diffed by client(s) the same way `deckReshuffledAt` is
+         (`state.ts`'s `bankFrameNotification`) to toast "Bank showed 18
+         (beat 2) -- new hand dealt to keep the table live." to the whole
+         table the instant it happens. Chosen over pausing the round to wait
+         for an acknowledgment -- the banker is still forced to keep dealing
+         regardless, so there's nothing for anyone to actually decide before
+         the next card; a toast tells the story without adding a click.
+      2. A second BANK! lock later in the same round was double-counting
+         seats an earlier frame had already paid out into the banker's
+         `beat`/`lostTo` tally (`beat: 2, lostTo: 1` instead of `beat: 0,
+         lostTo: 1` in the confirmed repro). Two-part fix: `settleBankOutcome`
+         now marks the turns it resolves `settled: true` (mirroring
+         `settleImmediateTurn`, `store.ts:787`) and excludes already-`settled`
+         seats from a later frame's `involvedEntries` -- which also stops a
+         second frame from clobbering an earlier frame's real `settledBet`
+         back to 0. `calculateEndState` (`round.ts`) additionally guards its
+         own beat/lostTo increment against a turn that's already been paid
+         (`bet: 0` but `settledBet` non-zero) re-adding a point on any later
+         recompute -- this is the one that actually mattered for the live
+         bug, since the round's own final settlement re-runs
+         `calculateEndState` over every turn regardless of the
+         `involvedEntries` filter. Money was never affected by either bug.
 - [x] Eleveroon is now visible to the WHOLE table, not just the player it
       happened to (2026-08-10). Two parts: (1) a public toast
       ("Eleveroon! <Name> just saved a busting eleven.") fires for every

@@ -600,3 +600,120 @@ describe("public Eleveroon notification (whole table, not just the player it hap
     expect(useGameStore.getState().notifications.some((n) => n.message.includes("Eleveroon!"))).toBe(false);
   });
 });
+
+// 2026-08-10 bug hunt: a BANK! redeal overwrites the banker's turn with the
+// fresh hand in the same server update that resolves the frame that just
+// finished, so no round:state on its own ever carries the discarded frame's
+// cards/score. `lastBankFrame` rides alongside that redeal specifically so
+// the whole table can be told what happened -- see TASKS.md.
+describe("public BANK! frame notification (a redealt frame's discarded outcome)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub
+    global.WebSocket = MockWebSocket;
+  });
+
+  const admin = { id: "admin1", firstName: "Bank", lastName: "", type: "admin" as const, presence: "online" as const };
+  const card = (n: number) => ({ name: String(n), attributes: { values: [n] } });
+  const roundWith = (lastBankFrame?: Record<string, unknown>) => ({
+    roundId: "R1",
+    roomId: "ROOM1",
+    deckRemaining: 0,
+    turns: [{ player: admin, state: "pending", cards: [card(2)], bet: 0 }],
+    state: "playing",
+    roundNumber: 1,
+    ...(lastBankFrame ? { lastBankFrame } : {}),
+  });
+
+  it("announces a redealt frame's outcome, including the beat/lost record, to the whole table", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith() }) });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith({
+          bankerId: admin.id,
+          cards: [card(9), card(9)],
+          state: "standby",
+          busted: false,
+          beat: 2,
+          lostTo: 0,
+          settledAt: 111,
+        }),
+      }),
+    });
+
+    const notification = useGameStore.getState().notifications.find((n) => n.message.includes("Bank showed"));
+    expect(notification).toBeDefined();
+    expect(notification!.message).toContain("Bank showed 18");
+    expect(notification!.message).toContain("beat 2");
+    expect(notification!.tone).toBe("info");
+  });
+
+  it("uses the Futched/21 headline and error/success tone for a bust or a natural 21", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith() }) });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith({
+          bankerId: admin.id,
+          cards: [card(10), card(9), card(5)],
+          state: "lost",
+          busted: true,
+          beat: 0,
+          lostTo: 1,
+          settledAt: 222,
+        }),
+      }),
+    });
+
+    const busted = useGameStore.getState().notifications.find((n) => n.message.includes("Futched"));
+    expect(busted).toBeDefined();
+    expect(busted!.message).toContain("lost to 1");
+    expect(busted!.tone).toBe("error");
+  });
+
+  it("does not fire on the very first round:state a client sees, even carrying an already-settled frame (a mid-round reconnect)", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith({ bankerId: admin.id, cards: [card(9), card(9)], state: "standby", beat: 2, lostTo: 0, settledAt: 111 }),
+      }),
+    });
+
+    expect(useGameStore.getState().notifications.some((n) => n.message.includes("Bank showed"))).toBe(false);
+  });
+
+  it("does not repeat on a later re-broadcast of the same frame (settledAt unchanged)", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    const frame = { bankerId: admin.id, cards: [card(9), card(9)], state: "standby", beat: 2, lostTo: 0, settledAt: 111 };
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith() }) });
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith(frame) }) });
+    const fired = useGameStore.getState().notifications.find((n) => n.message.includes("Bank showed"));
+    useGameStore.getState().dismissNotification(fired!.id);
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith(frame) }) }); // same settledAt
+
+    expect(useGameStore.getState().notifications.some((n) => n.message.includes("Bank showed"))).toBe(false);
+  });
+});

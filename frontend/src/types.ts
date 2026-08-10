@@ -72,6 +72,25 @@ export interface BankLockState {
   initiatedAt: number;
 }
 
+// A BANK! wager that leaves seats still waiting forces the banker straight
+// into a fresh hand -- the server overwrites their turn with the redeal in
+// the same update that computes the frame that just finished, so this rides
+// alongside it (only ever present on a redeal) so the table can be told what
+// the discarded frame actually did instead of just seeing the bank's wallet
+// total move. `settledAt` is a timestamp, not a boolean, so it can be diffed
+// the same way `deckReshuffledAt` is (state.ts's bankFrameNotification):
+// fires once per actual frame, not once per later round:state broadcast
+// that still carries the same value.
+export interface BankFrameResult {
+  bankerId: string;
+  cards: Card[];
+  state: TurnState;
+  busted?: boolean;
+  beat?: number;
+  lostTo?: number;
+  settledAt: number;
+}
+
 export interface Balance {
   amount: number;
   payer: string;
@@ -117,6 +136,10 @@ export interface RoundState {
   turnTimerDurationMs?: number;
   // The table gave up on an absent banker and voided this round.
   voided?: boolean;
+  // See BankFrameResult -- only present the instant a BANK! forces a redeal;
+  // never cleared back to undefined afterward, so diff `settledAt`, not
+  // presence, the same way deckReshuffledAt works.
+  lastBankFrame?: BankFrameResult;
 }
 
 export interface RoomState {

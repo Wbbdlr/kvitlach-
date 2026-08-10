@@ -1321,9 +1321,17 @@ export class GameStore {
 
   private settleBankOutcome(round: RoundContext, roomRec: RoomRecord, lock: BankLockState, bankerTurn: Turn): RoundContext {
     const bankerId = bankerTurn.player.id;
+    // `!turn.settled` matters as much as the index bound: a table can run
+    // through more than one BANK! lock in the same round, and without this
+    // every seat an EARLIER frame already paid out gets swept back into
+    // THIS frame's evaluation just because its index still sits at or below
+    // the new throughIndex. That both double-counted the banker's
+    // beat/lostTo tally (calculateEndState's own `alreadySettled` guard is
+    // the other half of that fix) and, worse, would have overwritten their
+    // real settledBet with 0 below -- see the turn-mapping's own comment.
     const involvedEntries = round.turns
       .map((turn, index) => ({ turn, index }))
-      .filter(({ turn, index }) => turn.player.type !== "admin" && index <= lock.throughIndex);
+      .filter(({ turn, index }) => turn.player.type !== "admin" && index <= lock.throughIndex && !turn.settled);
 
     if (involvedEntries.length === 0) {
       round.bankLock = undefined;
@@ -1408,6 +1416,14 @@ export class GameStore {
         settledBet: outcome.bet,
         bet: 0,
         bankRequest: outcome.player.id === lock.playerId ? true : turn.bankRequest,
+        // Mirrors settleImmediateTurn's own marker (store.ts:787) -- without
+        // it, a LATER BANK! lock's involvedEntries filter (above) has no way
+        // to tell "already paid by an earlier frame" from "still live", and
+        // would recompute this turn a second time: settledBet reset to 0
+        // (this same outcome.bet, but outcome came from re-running
+        // calculateEndState over a turn whose `bet` was already 0 by then)
+        // and a second beat/lostTo point on the banker's tag.
+        settled: true,
       };
     });
 
@@ -1418,6 +1434,23 @@ export class GameStore {
       round.bankLock = projectedBankerWallet <= 0 ? { ...lock, stage: "decision" } : undefined;
       return round;
     }
+
+    // The redeal below overwrites the banker's turn before any broadcast
+    // ever carries this frame's resolved hand -- stash it here so a client
+    // can toast what just happened instead of only seeing the bank's wallet
+    // total silently move (2026-08-10 bug hunt; see BankFrameResult in
+    // types.ts). `resolvedBanker` already holds this frame's actual cards
+    // (untouched by the redeal below) and the beat/lostTo this settlement
+    // just computed for it.
+    round.lastBankFrame = {
+      bankerId,
+      cards: resolvedBanker.cards,
+      state: resolvedBanker.state,
+      busted: resolvedBanker.busted,
+      beat: resolvedBanker.beat,
+      lostTo: resolvedBanker.lostTo,
+      settledAt: Date.now(),
+    };
 
     round.turns[bankerIndex] = {
       ...round.turns[bankerIndex],
