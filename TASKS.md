@@ -25,6 +25,16 @@ for how to work in this repo.
 
 ## Done
 
+- [x] Fixed a live-reported bug: Eleveroon did nothing on the Bet path (only
+      Hit had the rule). See `round.ts`'s `applyEleveroonRule` comment --
+      pinned by `backend/src/__tests__/eleveroon.test.ts`.
+- [x] Live "BANK 21!" indicator for the banker's own natural 21, mirroring
+      FUTCHED! (`selectors.ts`'s `statusDisplay`).
+- [x] Motion toggle (footer checkbox / TableRoot chip icon, matching
+      Music/SFX) -- blanket-kills all animation/transition via a single
+      `motion-off` class on `<html>`, independent of `prefers-reduced-motion`.
+- [x] Credited ComputerRabbis.com as the developer (site-wide footer +
+      About page), and the natural-21 fanfare's Mixkit source (About).
 - [x] Card-dealing animation report (2026-08-10): the mechanism itself
       (`k-card-in`/`cardDealIn` in `index.css`, dealDx/dealDy per seat,
       round-scoped keys, first-paint gate) was already correctly wired and
