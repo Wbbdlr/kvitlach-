@@ -787,7 +787,7 @@ export class GameStore {
     round.turns[turnIndex] = { ...turn, settled: true, settledBet: turn.bet };
   }
 
-  applyBet(roundId: string, playerId: string, amount: number, options?: { bank?: boolean }) {
+  applyBet(roundId: string, playerId: string, amount: number, options?: { bank?: boolean; eleveroon?: boolean }) {
     const round = this.rounds.get(roundId);
     if (!round) throw new Error("round_not_found");
     const roomRec = this.rooms.get(round.roomId);
@@ -812,7 +812,7 @@ export class GameStore {
     if (available <= 0) throw new Error("bank_empty");
     if (newBet > available) throw new Error(`bank_limit:${available}`);
 
-    const updated = handleBet(round, playerId, amount);
+    const updated = handleBet(round, playerId, amount, { eleveroon: options?.eleveroon });
     const settledIndex = updated.turns.findIndex((t) => t.player.id === playerId);
     if (settledIndex >= 0) this.settleImmediateTurn(updated, roomRec, settledIndex);
 

@@ -10,7 +10,7 @@ const baseTurn: Turn = {
   bet: 0,
 };
 
-function renderDock(overrides: { wallet?: number; bankIncrement?: number; canBank?: boolean; onBet?: (a: number, o: { bank: boolean }) => void } = {}) {
+function renderDock(overrides: { wallet?: number; bankIncrement?: number; canBank?: boolean; onBet?: (a: number, o: { bank: boolean; eleveroon: boolean }) => void } = {}) {
   const onBet = overrides.onBet ?? vi.fn();
   render(
     <PlayerDock
@@ -39,7 +39,7 @@ describe("PlayerDock bet amount field", () => {
     const input = screen.getByLabelText("Bet amount");
     fireEvent.change(input, { target: { value: "37" } });
     fireEvent.click(screen.getByText("Bet"));
-    expect(onBet).toHaveBeenCalledWith(37, { bank: false });
+    expect(onBet).toHaveBeenCalledWith(37, { bank: false, eleveroon: false });
   });
 
   it("ignores non-digit characters", () => {
@@ -87,6 +87,18 @@ describe("PlayerDock bet amount field", () => {
     expect(input.value).toBe("4");
   });
 
+  // Regression: Eleveroon only ever reached the server on the Hit path --
+  // the checkbox is shared UI, but a plain Bet (the more common way to draw
+  // once a wager is already down, since "Bet adds to the wager and deals a
+  // card") silently ignored it, busting a player who'd deliberately turned
+  // it on. Reported live 2026-08-10.
+  it("includes the Eleveroon toggle's state on a plain bet, not just Hit", () => {
+    const { onBet } = renderDock({ wallet: 200 });
+    fireEvent.click(screen.getByLabelText("Eleveroon"));
+    fireEvent.click(screen.getByText("Bet"));
+    expect(onBet).toHaveBeenCalledWith(5, { bank: false, eleveroon: true });
+  });
+
 });
 
 describe("PlayerDock BANK! confirmation", () => {
@@ -110,8 +122,19 @@ describe("PlayerDock BANK! confirmation", () => {
     const { onBet } = renderDock({ bankIncrement: 80, wallet: 200 });
     fireEvent.click(screen.getByText("BANK!"));
     fireEvent.click(screen.getByText("Yes, bet BANK!"));
-    expect(onBet).toHaveBeenCalledWith(80, { bank: true });
+    expect(onBet).toHaveBeenCalledWith(80, { bank: true, eleveroon: false });
     expect(screen.queryByText("Bet BANK!?")).not.toBeInTheDocument();
+  });
+
+  // Same regression as the plain-bet case above: BANK! also draws a card via
+  // the bet itself (before the auto-hit that follows it), so it needs the
+  // toggle's live state too, not just a hardcoded false.
+  it("includes the Eleveroon toggle's state on a bank bet too", () => {
+    const { onBet } = renderDock({ bankIncrement: 80, wallet: 200 });
+    fireEvent.click(screen.getByLabelText("Eleveroon"));
+    fireEvent.click(screen.getByText("BANK!"));
+    fireEvent.click(screen.getByText("Yes, bet BANK!"));
+    expect(onBet).toHaveBeenCalledWith(80, { bank: true, eleveroon: true });
   });
 
   it("blocks confirmation and explains when the wallet can't cover the full bank", () => {

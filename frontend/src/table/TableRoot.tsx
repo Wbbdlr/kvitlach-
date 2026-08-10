@@ -70,7 +70,7 @@ export interface TableRootProps {
   abandonedBanker?: { name: string; since: number; eligibleAt: number; canVoid: boolean; secondsLeft: number };
   firstBetCardIndex?: Record<string, number>;
   latestReactionByPlayer: Record<string, ReactionEvent>;
-  onBet: (amount: number, options: { bank: boolean }) => void;
+  onBet: (amount: number, options: { bank: boolean; eleveroon: boolean }) => void;
   onHit: (options: { eleveroon: boolean }) => void;
   onStand: () => void;
   onSkip: (playerId?: string) => void;

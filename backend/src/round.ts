@@ -94,7 +94,30 @@ function drawCard(state: RoundContext): { card: Card; deck: Card[] } {
   return { card, deck: rest };
 }
 
-export function handleBet(state: RoundContext, playerId: string, amount: number) {
+// Shared by handleBet and handleHit -- both draw a card into an existing
+// hand, and the Eleveroon rule (docs/GAME_RULES.md) applies to either the
+// same way: it doesn't matter which button drew the card. This used to live
+// only in handleHit, which meant a player who bet more chips to draw
+// (rather than plain-Hit) got zero Eleveroon protection even with the
+// checkbox on -- the "Bet adds to the wager and deals a card" cumulative-bet
+// mechanic (README) makes that the MORE common way to draw once a wager is
+// already down, not an edge case. Factored out so the two draw paths can't
+// drift apart on this again.
+function applyEleveroonRule(existingCards: Card[], pickedCard: Card, eleveroonActive: boolean): Card {
+  const isElevenCard = pickedCard.attributes.values?.includes(11);
+  // Check every achievable total, not just the single best one -- a flexible
+  // card (e.g. "12" has values [12,9,10]) can put 11 within reach even when
+  // it isn't the highest-scoring reading of the hand (12+2 can be read as
+  // 9+2=11, even though winningNumber(...) alone would report 12 or 14).
+  const currentTotals = getSums(existingCards);
+  const cardWouldBust = calcState([...existingCards, pickedCard]) === "lost";
+  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && cardWouldBust && currentTotals.includes(11));
+  return shouldIgnoreEleven
+    ? { ...pickedCard, attributes: { ...pickedCard.attributes, eleveroonIgnored: true } }
+    : pickedCard;
+}
+
+export function handleBet(state: RoundContext, playerId: string, amount: number, options?: { eleveroon?: boolean }) {
   const turnIndex = state.turns.findIndex((t) => t.player.id === playerId);
   if (turnIndex < 0) throw new Error("turn_not_found");
   const turn = state.turns[turnIndex];
@@ -103,14 +126,17 @@ export function handleBet(state: RoundContext, playerId: string, amount: number)
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("invalid_bet");
   const { card: pickedCard, deck: remainingDeck } = drawCard(state);
 
+  const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
+  const effectiveCard = applyEleveroonRule(turn.cards, pickedCard, eleveroonActive);
+
   const newBet = turn.bet + amount;
 
   const updatedTurn: Turn = {
     ...turn,
     bet: newBet,
     // Keep the first card as the leftmost and append new cards to the right
-    cards: [...turn.cards, pickedCard],
-    state: calcState([...turn.cards, pickedCard]),
+    cards: [...turn.cards, effectiveCard],
+    state: calcState([...turn.cards, effectiveCard]),
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
@@ -126,18 +152,7 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   const { card: pickedCard, deck: remainingDeck } = drawCard(state);
 
   const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
-  const isElevenCard = pickedCard.attributes.values?.includes(11);
-  // Check every achievable total, not just the single best one -- a flexible
-  // card (e.g. "12" has values [12,9,10]) can put 11 within reach even when
-  // it isn't the highest-scoring reading of the hand (12+2 can be read as
-  // 9+2=11, even though winningNumber(...) alone would report 12 or 14).
-  const currentTotals = getSums(turn.cards);
-  const cardWouldBust = calcState([...turn.cards, pickedCard]) === "lost";
-  const shouldIgnoreEleven = Boolean(eleveroonActive && isElevenCard && cardWouldBust && currentTotals.includes(11));
-
-  const effectiveCard = shouldIgnoreEleven
-    ? { ...pickedCard, attributes: { ...pickedCard.attributes, eleveroonIgnored: true } }
-    : pickedCard;
+  const effectiveCard = applyEleveroonRule(turn.cards, pickedCard, eleveroonActive);
 
   const cards = [...turn.cards, effectiveCard];
   let nextState = calcState(cards);

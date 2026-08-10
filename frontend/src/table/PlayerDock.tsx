@@ -12,7 +12,7 @@ export interface PlayerDockProps {
   bankIncrement: number;
   canBank: boolean;
   bankDisabledReason?: string;
-  onBet: (amount: number, options: { bank: boolean }) => void;
+  onBet: (amount: number, options: { bank: boolean; eleveroon: boolean }) => void;
   onHit: (options: { eleveroon: boolean }) => void;
   onStand: () => void;
 }
@@ -103,7 +103,7 @@ export function PlayerDock({
       setBetError("Insufficient chips for this wager.");
       return;
     }
-    onBet(amount, { bank: false });
+    onBet(amount, { bank: false, eleveroon: eleveroonSelected });
     setBetError(undefined);
     setBetAmount(String(DEFAULT_BET));
   };
@@ -115,7 +115,7 @@ export function PlayerDock({
   const bankShortfall = (turn.bet ?? 0) + bankBetAmount > wallet;
 
   const confirmBank = () => {
-    onBet(bankBetAmount, { bank: true });
+    onBet(bankBetAmount, { bank: true, eleveroon: eleveroonSelected });
     pendingBankAutoHitRef.current = true;
     setBankConfirmOpen(false);
     setBetError(undefined);

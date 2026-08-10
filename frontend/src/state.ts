@@ -56,7 +56,7 @@ interface UIState {
   setFormError: (form: "join" | "create" | "round" | "global" | "practice", message?: string) => void;
   formErrors: Partial<Record<"join" | "create" | "round" | "global" | "practice", string>>;
   startRound: (deckCount?: number) => void;
-  bet: (amount: number, options?: { bank?: boolean }) => void;
+  bet: (amount: number, options?: { bank?: boolean; eleveroon?: boolean }) => void;
   hit: (options?: { eleveroon?: boolean }) => void;
   stand: () => void;
   skip: (playerId?: string) => void;
@@ -1028,7 +1028,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       // actually reach the banker.
       pendingRoundStartRequestId = client.send("round:start", { roomId, deckCount });
     },
-    bet: (amount: number, options?: { bank?: boolean }) => {
+    bet: (amount: number, options?: { bank?: boolean; eleveroon?: boolean }) => {
       const roundId = get().round?.roundId;
       const playerId = get().playerId;
       if (get().pendingAction) return;
@@ -1044,7 +1044,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set({ message: "Enter a valid bet amount." });
         return;
       }
-      const requestId = client.send("turn:bet", { roundId, amount, playerId, bank: Boolean(options?.bank) });
+      const requestId = client.send("turn:bet", {
+        roundId,
+        amount,
+        playerId,
+        bank: Boolean(options?.bank),
+        eleveroon: Boolean(options?.eleveroon),
+      });
       set({ pendingAction: { requestId, type: "bet" } });
     },
     hit: (options?: { eleveroon?: boolean }) => {

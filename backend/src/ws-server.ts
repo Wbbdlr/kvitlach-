@@ -212,11 +212,11 @@ export class WSServer {
           break;
         }
         case "turn:bet": {
-          const { roundId, amount, bank } = (payload as any) || {};
+          const { roundId, amount, bank, eleveroon } = (payload as any) || {};
           const meta = this.meta.get(socket);
           const actorId = meta?.playerId;
           if (!roundId || typeof amount !== "number" || !actorId) throw new Error("invalid_payload");
-          const round = this.store.applyBet(roundId, actorId, amount, { bank: Boolean(bank) });
+          const round = this.store.applyBet(roundId, actorId, amount, { bank: Boolean(bank), eleveroon: Boolean(eleveroon) });
           this.handleRoundUpdate(round);
           this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
           break;
