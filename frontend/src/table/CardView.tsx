@@ -49,6 +49,7 @@ export function CardView({
   const [animate] = useState(() => Boolean(pastFirstPaint));
   const key = hidden ? "blank" : card.name;
   const src = cardImages[key] ?? cardImages.blank;
+  const isBlank = src === cardImages.blank;
   const alt = hidden ? "Face-down card" : `Card ${card.name}`;
   const showFallback = !hidden && !cardImages[key];
   const ignored = Boolean(card.attributes?.eleveroonIgnored);
@@ -104,11 +105,34 @@ export function CardView({
           it on the wrapper used to desaturate the gold glow/badge below right
           along with the card, which defeated the point of making this read as
           a good moment rather than a dead one. */}
-      <img
-        src={src}
-        alt={alt}
-        className={clsx(size ? "w-full h-full object-contain" : undefined, elevActive && "opacity-70 grayscale")}
-      />
+      {isBlank ? (
+        // blank.png ships at 946x1438 -- deliberately, see stage.ts's MAX_SCALE
+        // comment, so a card stays crisp scaled up on a 4K desktop. But that
+        // resolution is wasted on literally every phone/tablet (stage-scale
+        // never exceeds 1.0 below the design's native 1280px), and this is
+        // the single most-loaded image in the app (every hidden card, every
+        // seat, all game long). <source media> switches on viewport width,
+        // matching stage.ts's own scale = min(availWidth / 1280, MAX_SCALE) --
+        // NOT srcset/sizes, which resolves against the img's unscaled ~92px
+        // layout box (the stage's transform: scale() never touches that) and
+        // would keep fetching the small file even at MAX_SCALE on a big
+        // desktop monitor, reintroducing the softening this asset exists to
+        // avoid.
+        <picture>
+          <source media="(min-width: 1280px)" srcSet={cardImages.blank} />
+          <img
+            src="/blank-sm.png"
+            alt={alt}
+            className={clsx(size ? "w-full h-full object-contain" : undefined, elevActive && "opacity-70 grayscale")}
+          />
+        </picture>
+      ) : (
+        <img
+          src={src}
+          alt={alt}
+          className={clsx(size ? "w-full h-full object-contain" : undefined, elevActive && "opacity-70 grayscale")}
+        />
+      )}
       {showFallback && (
         <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-slate-700">
           {card.name}

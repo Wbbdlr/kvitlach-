@@ -943,6 +943,18 @@ body:has(.k-fit) {
   border-radius: 5px;
   aspect-ratio: 170 / 272;
 }
+/* blank.png is 946x1438 on purpose (stage.ts's MAX_SCALE comment) so it
+   stays crisp scaled up on a big desktop monitor, but that's wasted
+   resolution below the design's native 1280px width, where the stage's
+   scale can never exceed 1.0 -- see CardView.tsx's matching <picture>
+   swap for the same asset in a player's hand. This is the shoe/discard
+   pile's own decorative stack, a plain background-image rather than an
+   <img>, so it needs its own override instead of sharing that markup. */
+@media (max-width: 1279px) {
+  .k-cardback {
+    background-image: url("/blank-sm.png");
+  }
+}
 
 /* Chrome layer -- interactive controls, rendered as a sibling of the stage
    inside .k-fit so they are NOT affected by the stage's scale transform. */
@@ -1560,10 +1572,35 @@ body:has(.k-fit) {
     font-size: 11.5px;
   }
   /* Each arrow was 18x15. Now the pair fills the bet pill's full height,
-     giving two ~30x19 targets stacked instead of two specks. */
+     giving two ~30x19 targets stacked instead of two specks. Still short of
+     a real ~40px finger target height-wise -- stacking two buttons in one
+     pill that has to match its neighbours' height in this same row caps
+     what's available, and this is the bet amount, used every single wager,
+     not a rare settings toggle. Pseudo-element hit-slop below extends the
+     actual clickable region without growing the visible pill: more room
+     above the increase button and below the decrease one (empty dock
+     padding on those sides, nothing to steal a tap from), kept short of
+     .k-amt/.k-maxbtn sideways so it doesn't start eating their taps. */
   .k-stepbtn {
     width: 30px;
     height: 19px;
+    position: relative;
+  }
+  .k-stepbtn:first-child::before {
+    content: "";
+    position: absolute;
+    top: -10px;
+    right: -3px;
+    bottom: -1px;
+    left: -3px;
+  }
+  .k-stepbtn:last-child::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    right: -3px;
+    bottom: -10px;
+    left: -3px;
   }
   .k-maxbtn {
     min-height: 34px;
@@ -1578,6 +1615,21 @@ body:has(.k-fit) {
   }
   /* A bare 13x13 checkbox is both hard to hit and, with its label hidden
      below, unlabelled -- see the k-toggle-label rule further down. */
+  /* Icon-only chrome (felt swatches aside -- FeltSwitcher.tsx already sizes
+     those up to 28px for the same reason) measured ~35x27 in this row: "?",
+     music, SFX, motion, fullscreen, Manage, Leave. Scoped to .k-chrome-top
+     specifically -- .k-chip-btn is also reused for Seat.tsx's admin "Skip"
+     button (small on purpose, inside a scaled seat) and ReactionLayer's
+     36x36 React button (already sized via its own Tailwind classes, which
+     a bare .k-chip-btn rule risks fighting) -- neither of those needs or
+     was measured for this. .k-chrome-top wraps (flex-wrap: wrap), so
+     growing these can only ever push a button onto a second line, never
+     overflow -- unlike .k-dock below, there's no fixed width budget this
+     has to fit inside. */
+  .k-chrome-top .k-chip-btn {
+    padding: 10px 12px;
+    min-height: 40px;
+  }
   .k-toggle input {
     width: 20px;
     height: 20px;

@@ -19,8 +19,67 @@ for how to work in this repo.
       full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
+- [ ] Unverified: possible top-of-table clipping on landscape phones (e.g.
+      812x375, the orientation the app itself recommends). A Browser-pane
+      geometry check during the 2026-08-10 mobile audit below returned a
+      physically-impossible reading (an element's resolved `top: 8px`
+      painted 108px higher than that allows -- not something a real browser
+      does) right after a synthetic resize, so it wasn't trusted or acted
+      on. `stage.ts`/`index.css` show past awareness of exactly this class
+      of issue (rotated logo poking off-screen on a "flattened landscape
+      phone"), so it's plausible enough to be worth a real check next time
+      someone's on an actual phone in landscape -- specifically whether
+      `.k-chrome-top` (help/music/SFX/motion/fullscreen/Leave) and the
+      topmost seat stay fully reachable. Don't act on this without a real
+      device or a working screenshot session.
 ## Done
 
+- [x] Mobile optimization pass (2026-08-10). Three fixes from a general
+      audit (DOM/CSSOM introspection, not live screenshots -- the Browser
+      pane wasn't compositing frames this session; see the still-open
+      landscape-clipping item above for the one thing that limitation
+      actually blocked):
+      1. `blank.png` (the card back -- every hidden card, the shoe, the
+         discard pile stack) was 2.6MB at 946x1438. That resolution is
+         real and deliberate for desktop (`stage.ts`'s `MAX_SCALE=3.0`
+         comment: sized so a card stays crisp scaled up on a 4K monitor,
+         already tuned once before after a reported softening/pillarboxing
+         bug) -- shrinking the source file outright would have undone that.
+         Instead added a 316x480 `blank-sm.png` (390KB) and switched both
+         places that reference it -- `CardView.tsx`'s `<img>` (via
+         `<picture><source media>`) and `.k-cardback`'s CSS
+         `background-image` (via a plain media query) -- to serve it below
+         1280px viewport width, matching `stage.ts`'s own
+         `scale = min(availWidth/1280, MAX_SCALE)` math. Deliberately NOT
+         `srcset`/`sizes`: the stage scales via CSS `transform`, which
+         `sizes` resolution can't see -- it resolves against the `<img>`'s
+         unscaled ~92px layout box and would keep serving the small file
+         forever, including at `MAX_SCALE` on a real desktop monitor.
+         Verified live: narrow viewport resolves both paths to
+         `blank-sm.png`, a fresh load at 1600px resolves both to the full
+         `blank.png` (a live *resize* of an already-loaded page didn't
+         re-pick the `<picture>` source in this session's Browser pane --
+         another symptom of the same non-compositing limitation, not a
+         real bug; a fresh load at the target width proved the actual
+         logic). Scoped to the card back only -- the 12 face images are
+         already much smaller (25-274KB) and weren't part of this pass.
+      2. Bet amount +/- steppers were the shortest tap targets in the dock
+         (30x19, used on every wager) despite the mobile pass that already
+         sized every OTHER dock control to a ~40px floor -- stacking two
+         buttons inside a pill that has to match its row-mates' height
+         just doesn't leave more room. Added pseudo-element hit-slop
+         (extra clickable area above the increase button, below the
+         decrease one, where nothing else sits) instead of growing the
+         pill -- same ~40px+ effective target, zero layout/width-budget
+         change to a dock already measured to just fit at 375px.
+      3. `.k-chrome-top`'s icon-only buttons (help/music/SFX/motion/
+         fullscreen/Manage/Leave) measured ~35x27. Bumped to a 40px floor,
+         scoped to `.k-chrome-top .k-chip-btn` specifically -- `.k-chip-btn`
+         is also reused by Seat.tsx's small-on-purpose admin Skip button and
+         ReactionLayer's already-sized 36x36 React button, neither measured
+         or intended to grow here. Safe to grow (this row wraps instead of
+         overflowing, unlike the dock).
+      206/206 frontend tests still green, `vite build` clean.
 - [x] End-to-end coverage of a full multi-client round (2026-08-10) --
       `e2e/` is a new, separate Playwright package (own `package.json`, its
       own dedicated ports 3100/3101/5273 so it never collides with a
