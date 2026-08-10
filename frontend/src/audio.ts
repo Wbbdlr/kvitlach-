@@ -7,9 +7,13 @@ const SFX_PATHS: Record<SfxKey, string[]> = {
   // "win" when a hand goes straight from "pending" to "won" (calcState fires
   // the instant 21 is reachable, mid-turn), reserving the generic "win" for
   // a showdown win decided later by the banker's own hand.
-  // card-slide-1.ogg was the one asset in this folder nothing else claimed;
-  // swap in a proper fanfare here if/when there's one worth using instead.
-  natural21:   ["/sounds/card-slide-1.ogg"],
+  // Was card-slide-1.ogg (a repurposed card-motion sample, layered under
+  // "win" in App.tsx as a workaround -- see git history) until this real
+  // fanfare replaced it 2026-08-10: Mixkit's free SFX library ("Fantasy game
+  // success notification", mixkit.co/free-sound-effects/win/ -- Mixkit
+  // License, no attribution required). The layering workaround came out
+  // along with it.
+  natural21:   ["/sounds/natural21.mp3"],
   // "bust" is the futch horn -- it means the hand went over 21, and nothing
   // else. Losing the showdown with a good hand is a different event and gets
   // its own chips-swept-away sound, so a futch stays the thing that turns
@@ -30,11 +34,7 @@ const SFX_PATHS: Record<SfxKey, string[]> = {
 const SFX_VOLUME: Partial<Record<SfxKey, number>> = {
   bust: 1.0, // the futch horn -- deliberately the loudest thing in the game
   deal: 0.35, // happens on every card, every turn; should recede, not compete
-  // Reusing a generic card-slide sample (see the comment on natural21 above)
-  // means it already sounds a lot like "deal" -- louder is what keeps it
-  // reading as its own moment instead of blending into the deal sounds
-  // around it, short of swapping in a real fanfare asset.
-  natural21: 0.75,
+  natural21: 0.75, // a real fanfare now, but still a big moment -- keep it up with bust
 };
 
 const BGM_PATH = "/sounds/bgm.m4a";

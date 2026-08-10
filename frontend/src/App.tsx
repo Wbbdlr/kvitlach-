@@ -204,17 +204,9 @@ export default function App() {
           // instead of sharing the generic showdown "win".
           const justHit21 = prevTurn.state === "pending" && bestTotal(turn.cards).total === 21;
           if (justHit21) {
-            // Live-verified this fires correctly (captured the actual
-            // audio call, mid-round, at the right volume) -- the real
-            // problem was the asset itself: card-slide-1.ogg is a
-            // repurposed card-motion sample, so even playing correctly it
-            // reads as just another card noise, not a distinct moment.
-            // Layering the showdown-win chip sound underneath -- rather
-            // than swapping to a louder version of the same weak asset --
-            // gives it a genuinely different signature using only sounds
-            // that already exist, instead of sharing win's exact sound
-            // (which would make natural21 undetectable as its own thing).
-            audioManager.playSfx("win");
+            // audio.ts's natural21 is a real fanfare (see its own comment),
+            // not the old card-slide sample -- it no longer needs "win"
+            // layered underneath to read as its own moment.
             audioManager.playSfx("natural21");
           } else {
             audioManager.playSfx("win");

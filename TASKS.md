@@ -19,17 +19,33 @@ for how to work in this repo.
       full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
-- [ ] Replace the natural-21 sound asset. `natural21` currently reuses
-      `card-slide-1.ogg`, a card-motion sample — it fires correctly (verified
-      live) but doesn't *read* as a distinct moment, so it's currently layered
-      with the win sound as a workaround. A real fanfare would let that
-      layering be dropped.
 - [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
       Unit/component coverage is good; nothing exercises two real browsers
       against one table.
+- [ ] Card-dealing animation (`k-card-in` in `index.css`, `animations.ts`)
+      goes fully silent under `prefers-reduced-motion: reduce` — confirmed
+      2026-08-10 by disabling that media block at runtime and watching the
+      same deal register a real `cardDealIn` animation (opacity 0→1,
+      translate from the shoe position) that was invisible seconds before.
+      The wiring itself is correct (verified live: dealDx/dealDy per seat,
+      round-scoped keys, first-paint gate all behave as designed) — this
+      isn't a bug in the mechanism, it's Windows/Chrome's "reduce motion"
+      preference silently turning the deal into an instant pop-in with zero
+      visual cue a card moved. Worth a product decision: leave it deferring
+      to the OS setting (current behavior, correct a11y default), or carve
+      the deal animation out from the reduced-motion block since — unlike
+      the press/pulse effects it's grouped with — it's the only visual
+      signal a card was actually dealt, not just decorative polish. Chrome:
+      chrome://settings/accessibility, or Windows Settings > Ease of Access
+      > Display > "Show animations in Windows", is where to check locally.
 
 ## Done
 
+- [x] Real natural-21 fanfare (`frontend/public/sounds/natural21.mp3`,
+      Mixkit's "Fantasy game success notification" -- Mixkit License, no
+      attribution required). Replaces the reused `card-slide-1.ogg`
+      card-motion sample; the "win" sound is no longer layered underneath it
+      as a workaround (`audio.ts`, `App.tsx`).
 - [x] Fixed 3 confirmed sources of the intermittent backend flake (see the
       still-open item above for the small residual). Each test dealt with
       real crypto-random cards without pinning the hand before a bet/hit

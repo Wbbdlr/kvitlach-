@@ -326,11 +326,9 @@ describe("the felt table is the only in-room view", () => {
     });
   });
 
-  // Live-verified separately (captured the real Audio.play() call, mid-game,
-  // at the right volume) that natural21 fires correctly on its own -- the
-  // actual complaint was that the sound itself doesn't read as a distinct
-  // moment. This pins the fix: layering "win" underneath so a natural 21
-  // has a signature the plain card-slide sample alone didn't.
+  // Was layering "win" underneath natural21 as a workaround for the old
+  // card-slide sample not reading as its own moment (see git history) --
+  // now that natural21 is a real fanfare (audio.ts), it plays alone.
   describe("natural-21 sound", () => {
     // playerTurn's own bet is 0 -- isPushTurn would read a $0 "win" as a
     // push (see the comment above this block's App.tsx counterpart) and
@@ -356,7 +354,7 @@ describe("the felt table is the only in-room view", () => {
       playSfxMock.mockClear();
     });
 
-    it("plays both win and natural21 when a hand hits exactly 21 mid-turn", () => {
+    it("plays natural21 (not win) when a hand hits exactly 21 mid-turn", () => {
       mockState.round = { ...round, roundId: "R-nat21", turns: [pendingTurn, adminTurn] };
       const { rerender } = render(<App />);
       playSfxMock.mockClear(); // ignore whatever the initial mount itself fires
@@ -364,8 +362,8 @@ describe("the felt table is the only in-room view", () => {
       mockState.round = { ...mockState.round, turns: [natural21Turn, adminTurn] };
       rerender(<App />);
 
-      expect(playSfxMock).toHaveBeenCalledWith("win");
       expect(playSfxMock).toHaveBeenCalledWith("natural21");
+      expect(playSfxMock).not.toHaveBeenCalledWith("win");
     });
 
     it("plays only win (not natural21) for an ordinary showdown win", () => {
