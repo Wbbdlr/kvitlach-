@@ -67,6 +67,19 @@ describe("WS authorization — identity must come from the session, never the pa
     const started = await send(admin, "round:start", { roomId });
     const roundId = started.round.roundId;
 
+    // Force every hand to a safe, non-resolving starting card before
+    // betting. round:start deals real (crypto-random) cards, and if the
+    // attacker's own hand happened to already be near a natural 21, the
+    // bet's own dealt card could rarely push it to an immediate natural 21
+    // or bust -- resolving that turn (and shifting the active-turn/bank
+    // state) before this test's own assertions run. Root-caused via
+    // turn-order.test.ts's identical, more easily reproduced version of the
+    // same bug: this was the real, previously-unexplained source of the
+    // intermittent full-suite flake (see TASKS.md), not a concurrency race.
+    store.getRound(roundId)!.turns.forEach((t) => {
+      t.cards = [{ name: "5", attributes: { values: [5] } }];
+    });
+
     // Attacker sends turn:bet claiming to act as the admin.
     const afterBet = await send(attacker, "turn:bet", { roundId, amount: 25, playerId: adminId });
     const adminTurn = afterBet.round.turns.find((t: any) => t.player.id === adminId);

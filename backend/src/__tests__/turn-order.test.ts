@@ -41,6 +41,18 @@ describe("acting out of turn", () => {
     let r = store.startRound(room.roomId, admin.id);
     const [first, second] = r.turns.map((t) => t.player.id);
 
+    // Force every hand to a safe, non-resolving value before any bet can
+    // trigger a card deal. startRound deals real (crypto-random) cards, and
+    // if the seat about to bet happened to already be holding a
+    // near-natural-21 hand, the bet's own dealt card could rarely push it
+    // to an immediate natural 21 or bust -- resolving that turn on the
+    // spot and advancing the active-turn pointer past `first` before this
+    // test's own scripted moves run. The later `applyStand(first)` would
+    // then throw not_your_turn. This was a real, previously-unexplained
+    // source of the intermittent full-suite flake (see TASKS.md) -- it
+    // needed nothing more than an unlucky shuffle, no concurrency involved.
+    r.turns.forEach((t) => (t.cards = [C(5)]));
+
     try {
       store.applyBet(r.roundId, second, 10);
     } catch {

@@ -5,31 +5,43 @@ for how to work in this repo.
 
 ## Open
 
-- [ ] Investigate the backend suite's intermittent full-run flake (found
-      2026-08-09). Running `cd backend && npx vitest run` shows a failure in
-      roughly 20–30% of runs; which file fails is not consistent (seen:
-      `ws-auth.test.ts`, `abandoned-banker.test.ts`, `turn-order.test.ts`,
-      one each on separate runs) and every failing file passes cleanly
-      100% of the time run alone. Confirmed pre-existing and unrelated to
-      this session's changes — reproduces identically on commit `b83be16`,
-      before the crypto RNG swap or `/metrics` work. Likely several real
-      `WSServer` instances + real `setTimeout` turn/session timers racing
-      for CPU across parallel Vitest workers, not a game-logic bug. Never
-      reproduces file-by-file; only under a full parallel run.
+- [ ] The backend suite's intermittent full-run flake (found 2026-08-09) is
+      now rare but not fully eliminated. Root-caused and fixed 3 confirmed
+      instances (`turn-order.test.ts`, `ws-auth.test.ts`,
+      `abandoned-banker.test.ts` — see "Done" below): tests calling
+      `applyBet`/`applyHit` right after `startRound()` without pinning that
+      seat's hand first, so a real crypto-random card can rarely complete a
+      natural 21/bust and resolve the turn before the test's own scripted
+      moves run. NOT a concurrency race (reproduces with
+      `--no-file-parallelism` too). Post-fix measured rate: 1 failure in the
+      last ~63 full-suite runs (down from ~20–30%). That one residual
+      failure's specific file/cause wasn't captured — if it recurs, capture
+      full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
+      "randomly-dealt card auto-resolves a turn early" pattern before
+      assuming a new bug.
 - [ ] Replace the natural-21 sound asset. `natural21` currently reuses
       `card-slide-1.ogg`, a card-motion sample — it fires correctly (verified
       live) but doesn't *read* as a distinct moment, so it's currently layered
       with the win sound as a workaround. A real fanfare would let that
       layering be dropped.
-- [ ] Decide whether the app needs richer URLs (e.g. `/table/:roomId`,
-      shareable practice-mode link). Today everything is `/?room=CODE`.
-      Back-button support (below) is done; the remaining trade-offs are a
-      product decision, not a fix. See "URL model" below.
 - [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
       Unit/component coverage is good; nothing exercises two real browsers
       against one table.
+
 ## Done
 
+- [x] Fixed 3 confirmed sources of the intermittent backend flake (see the
+      still-open item above for the small residual). Each test dealt with
+      real crypto-random cards without pinning the hand before a bet/hit
+      that could resolve it early: `turn-order.test.ts` (preset all hands
+      before betting), `ws-auth.test.ts` (same, plus removed the now-
+      resolved standing `DEBUG_DUMP` debug line), `abandoned-banker.test.ts`
+      (stacked the deck for a bet that was only half-guarded).
+- [x] Richer URLs — distinguishable lobby vs. table (`/table/:roomId`,
+      `frontend/src/router.tsx`). Shareable practice-mode link was
+      explicitly decided against (practice mode stays single-human). See
+      "URL model" below for the current shape and the remount pitfall this
+      needed to avoid.
 - [x] Browser Back button support. Entering a room now pushes a history
       entry (`history.pushState` in `state.ts`'s `setUrlRoomId`, only on a
       genuinely new room -- reconnects re-confirming the same room still use
@@ -63,29 +75,51 @@ for how to work in this repo.
 - [x] Sound effects for deal, bet, hit/stand, win, futch, Eleveroon, reshuffle,
       and natural 21, with an independent SFX mute toggle.
 
-## URL model (context for the open item above)
+## URL model
 
-`main.tsx` routes only `/`, `/about`, `/disclaimer`, `/contact`. The entire
-game — lobby, joined-but-waiting, and live table — renders at `/`, with the
-current room reflected as `?room=CODE`.
+`router.tsx` (not `main.tsx` -- see below) routes `/about`, `/disclaimer`,
+`/contact`, and a catch-all `*` for everything else (the lobby, joined-but-
+waiting, and live table, all still rendered by the one `App` component,
+switching on Zustand `room`/`round` state exactly as before). The active
+room is reflected in the path as `/table/CODE`, not a query param.
 
-Entering a room pushes a history entry (`history.pushState`); every other
-URL update for an already-shown room (reconnects, kicks, room-closed) uses
-`history.replaceState` so it doesn't add another. A `popstate` listener
-(the browser Back button firing while in a room) tears the session down and
-reloads at the lobby -- see `state.ts`'s `teardownRoomSession` and the
-comment above `setUrlRoomId`.
+**Why a catch-all route, not separate `/` and `/table/:roomId` entries:**
+two distinct route objects rendering the same `<App/>` element would still
+make React Router remount it on every lobby<->table transition (route
+matches are keyed by route id, not element identity) -- re-running its
+WS-connect effect. `WSClient.connect()` safely no-ops on an already-open
+socket, but the re-run would still re-arm `store.init()`'s "connecting"
+status with nothing left to flip it back (the socket's `onopen` handler is
+only ever assigned once, on the original `connect()`, and won't fire again).
+A single `*` route never remounts on a path change, so this doesn't happen.
+`App` parses the room id out of the path itself (`state.ts`'s
+`getUrlRoomId`) rather than via `useParams()`, since it has to work either
+way -- state.ts is a vanilla Zustand store, no hook access.
 
-Reconnection does **not** depend on the URL: it uses a session token in
-`localStorage` (generic + per-room keys). `?room=` only pre-fills the join
-form, so an invite link still asks for a name rather than silently seating
-someone.
+Entering a room pushes a history entry via the router's own imperative
+`router.navigate()` (not raw `history.pushState` -- that would move the
+address bar without React Router's internal location state ever finding
+out, leaving the *next* navigation routed from a stale idea of where we
+are). Every other URL update for an already-shown room (reconnects, kicks,
+room-closed) replaces in place instead. A `popstate` listener (the browser
+Back button firing while in a room) tears the session down and reloads at
+the lobby -- see `state.ts`'s `teardownRoomSession` and the comment above
+`setUrlRoomId`.
 
-Remaining known trade-offs of the current model:
+A stale/invalid `/table/CODE` (no matching per-room session -- an old
+bookmark, a deleted room) folds back into `/?room=CODE` on load, both in
+`state.ts` (once the WS connects) and immediately in `App.tsx`'s own
+pre-fill effect (covers the gap before that, and stale-by-mount cases) --
+unlike `/table/`, a bare `?room=` was never a "you're seated here" claim,
+just an invite-link hint, so this is the same fallback an ordinary invite
+link already gets: the Game ID field gets filled in, not a silent reset.
 
-- No shareable link for practice mode.
-- Lobby and table are indistinguishable by URL (analytics/bookmarks can't tell
-  them apart).
+`?room=CODE` itself is unchanged: it's still the invite-link format
+(`RoomInfoDrawer`'s copy-link/WhatsApp-share both use it), pre-filling the
+join form for someone who hasn't joined yet. Reconnection does **not**
+depend on the URL either way -- it uses a session token in `localStorage`
+(generic + per-room keys), so `?room=`/`/table/CODE` are both just hints,
+never the source of truth.
 
-Neither is a correctness bug, and the session model would not get simpler
-with real routes — so this remains a product decision, not a fix.
+Shareable practice-mode links were explicitly decided against (2026-08-09)
+-- practice mode stays single-human, no multi-join support planned.

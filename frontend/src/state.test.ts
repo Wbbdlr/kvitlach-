@@ -235,7 +235,7 @@ describe("state.ts session lifecycle", () => {
 
       expect(pushSpy).toHaveBeenCalledTimes(1);
       expect(replaceSpy).not.toHaveBeenCalled();
-      expect(window.location.search).toContain("room=ROOMX");
+      expect(window.location.pathname).toBe("/table/ROOMX");
     });
 
     it("does not push a second entry for the same room (e.g. a reconnect's resume ack)", async () => {
@@ -265,7 +265,7 @@ describe("state.ts session lifecycle", () => {
       sendRoomAck(socket, "ROOMB", "r2");
 
       expect(pushSpy).toHaveBeenCalledTimes(1);
-      expect(window.location.search).toContain("room=ROOMB");
+      expect(window.location.pathname).toBe("/table/ROOMB");
     });
 
     it("tears the session down and reloads in place when the browser Back button fires while in a room", async () => {

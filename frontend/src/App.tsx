@@ -83,8 +83,15 @@ export default function App() {
   useEffect(() => {
     if (prefilledRoomIdRef.current) return;
     if (typeof window === "undefined") return;
+    // /table/:roomId (a stale bookmark/link to a room we're not actually
+    // seated in -- state.ts's onOpen handler folds this back into ?room=
+    // once the WS connects, but that's contingent on the connection
+    // succeeding; this covers the same case immediately on mount, and is
+    // the only path for a room id that's already stale by the time this
+    // runs) is treated exactly like an invite link's ?room= hint here.
+    const fromPath = window.location.pathname.match(/^\/table\/([^/]+)\/?$/)?.[1];
     const params = new URLSearchParams(window.location.search);
-    const fromQuery = params.get("room");
+    const fromQuery = fromPath ? decodeURIComponent(fromPath) : params.get("room");
     if (fromQuery) {
       setRoomId(fromQuery);
       prefilledRoomIdRef.current = true;

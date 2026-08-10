@@ -61,6 +61,15 @@ Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   logic in components).
 - `App.tsx` — lobby (join / host / practice) plus in-room chrome and sound.
   ~1000 lines.
+- `router.tsx` — a deliberate single catch-all `*` route to `App`, not
+  separate `/` and `/table/:roomId` entries. **Don't "clean this up" into
+  proper per-path routes** — two route objects rendering the same element
+  still remount it on every path change (React Router keys matches by route
+  id, not element identity), which would re-run `App`'s WS-connect effect
+  and leave `status` stuck on "connecting" after any room transition (the
+  socket's `onopen` only fires once; a no-op reconnect never flips it back).
+  `App` parses the room id out of the path itself — see TASKS.md's "URL
+  model" for the full reasoning.
 
 ## Local development
 

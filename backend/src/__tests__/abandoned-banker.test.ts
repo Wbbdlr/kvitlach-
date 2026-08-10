@@ -112,8 +112,18 @@ describe("a banker who drops mid-round", () => {
     expect(store.getRoom(room.roomId)!.wallets[firstId]).toBeLessThan(walletsAtStart[firstId]);
 
     // The other seat wagers and stands, leaving the table on the banker.
+    // Stack the bet-triggered card same as firstId's above -- left to the
+    // shuffle, a preset 10 plus a random 11 is a natural 21, which resolves
+    // this seat immediately, leaves no one waiting on the banker, and makes
+    // abandonedBankerInfo(...).stuck false: voidAbandonedRound then throws
+    // banker_not_absent instead of reaching the assertions below. This was
+    // a real, previously-unexplained source of the intermittent full-suite
+    // flake (see TASKS.md), not a concurrency race -- the `if (pending)`
+    // guard here already defends applyStand, but the round's own state
+    // still ends up wrong upstream of it.
     const secondId = r.turns[1].player.id;
     r.turns.find((t) => t.player.id === secondId)!.cards = [C(10)];
+    r.deck = [C(3), ...r.deck];
     r = store.applyBet(r.roundId, secondId, 7);
     if (r.turns.find((t) => t.player.id === secondId)!.state === "pending") {
       r = store.applyStand(r.roundId, secondId);

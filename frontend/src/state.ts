@@ -3,6 +3,7 @@ import { WSClient } from "./ws";
 import { Balance, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 import { ReactionEvent } from "./types";
 import { bestTotal, isPushTurn } from "./table/selectors";
+import { router } from "./router";
 
 type NotificationTone = "success" | "info" | "error";
 
@@ -187,9 +188,18 @@ const clearRoomSession = (roomId: string) => {
   }
 };
 
+// /table/:roomId (the URL shown once actually seated in a room) takes
+// priority over the legacy ?room= query param, which stays live as an
+// invite-link pre-fill hint (App.tsx reads it separately to fill the join
+// form's Game ID field for someone who hasn't joined yet) and for anyone
+// re-clicking an old-style link to a room they already have a stored
+// session for.
+const ROOM_PATH_RE = /^\/table\/([^/]+)\/?$/;
 const getUrlRoomId = (): string | undefined => {
   if (typeof window === "undefined") return undefined;
   try {
+    const pathMatch = window.location.pathname.match(ROOM_PATH_RE);
+    if (pathMatch) return decodeURIComponent(pathMatch[1]).trim().toUpperCase();
     const params = new URLSearchParams(window.location.search);
     const roomId = params.get("room");
     return roomId ? roomId.trim().toUpperCase() : undefined;
@@ -238,32 +248,32 @@ const persistSession = (session?: SessionData) => {
   }
 };
 
-// Reflects which room we're in directly in the address bar (?room=CODE) so the
-// URL is meaningful to share/bookmark and isn't identical across every stage
-// of the app.
+// Reflects which room we're in directly in the address bar (/table/CODE) so
+// the URL is meaningful to share/bookmark and isn't identical across every
+// stage of the app. Goes through the router's own imperative navigate()
+// (not raw history.pushState/replaceState) so React Router's internal
+// location state stays in sync -- a raw pushState would move the address
+// bar without the router ever noticing, leaving it to route the NEXT
+// navigation from a stale idea of where we are.
 //
 // Entering a genuinely NEW room (the address bar didn't already say this
-// roomId) gets its own history entry via pushState, so the browser Back
-// button returns to the lobby instead of leaving the site outright -- see
-// the popstate listener below, which is what actually tears the room down
-// when that happens. Every other call -- re-confirming the room already
-// reflected in the URL (a reconnect's resume ack fires this on every
-// reconnect, not just the first) or clearing it (left/kicked/closed) --
-// keeps using replaceState, exactly as before this was added. We don't want
-// a duplicate entry per reconnect, or a phantom "back into the room" entry
-// left behind once the room's already gone.
+// roomId) gets its own history entry, so the browser Back button returns to
+// the lobby instead of leaving the site outright -- see the popstate
+// listener below, which is what actually tears the room down when that
+// happens. Every other call -- re-confirming the room already reflected in
+// the URL (a reconnect's resume ack fires this on every reconnect, not just
+// the first) or clearing it (left/kicked/closed) -- replaces in place. We
+// don't want a duplicate entry per reconnect, or a phantom "back into the
+// room" entry left behind once the room's already gone.
 const setUrlRoomId = (roomId?: string) => {
   if (typeof window === "undefined") return;
   try {
-    const url = new URL(window.location.href);
-    const currentRoomId = url.searchParams.get("room") ?? undefined;
-    if (roomId) url.searchParams.set("room", roomId);
-    else url.searchParams.delete("room");
-    const next = `${url.pathname}${url.search}`;
+    const currentRoomId = window.location.pathname.match(ROOM_PATH_RE)?.[1];
+    const next = roomId ? `/table/${encodeURIComponent(roomId)}` : "/";
     if (roomId && roomId !== currentRoomId) {
-      window.history.pushState(null, "", next);
+      router.navigate(next);
     } else {
-      window.history.replaceState(null, "", next);
+      router.navigate(next, { replace: true });
     }
   } catch {
     /* ignore -- URL sync is a nicety, never worth breaking the app over */
@@ -894,6 +904,19 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         autoResumeRequestId = client.send("room:resume", { roomId: roomSession.roomId, playerId: roomSession.playerId, token: roomSession.token });
         persistLastRoomId(roomSession.roomId);
         return;
+      }
+      // /table/:roomId with no matching per-room session -- a stale or
+      // invalid bookmark/link. Unlike ?room=, this URL shape implies actual
+      // room membership, so leaving it as-is while the lobby renders would
+      // be misleading (address bar says "you're at this table", the page
+      // says otherwise). Fold it back into the ?room= query form, which
+      // App.tsx's own pre-fill effect already reads -- same helpful
+      // "Game ID filled in" outcome as an ordinary invite link, just
+      // reached from a stale table URL. Harmless if priority 2 below goes
+      // on to resume a DIFFERENT room -- that success path calls
+      // setUrlRoomId with the real roomId and overwrites this.
+      if (window.location.pathname.match(ROOM_PATH_RE)) {
+        router.navigate(`/?room=${encodeURIComponent(urlRoomId)}`, { replace: true });
       }
     }
 
