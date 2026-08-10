@@ -76,6 +76,18 @@ export default function About() {
         <h2 className="text-lg font-semibold text-amber-700">Credits</h2>
         <ul className="list-disc list-inside space-y-1">
           <li>
+            Kvitlach.us is developed by{" "}
+            <a
+              href="https://computerrabbis.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-700 hover:underline font-semibold"
+            >
+              ComputerRabbis.com
+            </a>
+            .
+          </li>
+          <li>
             Background music: <strong>Chanuka Medley</strong> by{" "}
             <a
               href="https://www.youtube.com/@MichaGamerman"
@@ -97,6 +109,18 @@ export default function About() {
               Casino Audio pack
             </a>{" "}
             by Kenney (CC0 / public domain).
+          </li>
+          <li>
+            Natural 21 fanfare:{" "}
+            <a
+              href="https://mixkit.co/free-sound-effects/win/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-700 hover:underline"
+            >
+              Mixkit
+            </a>{" "}
+            (free, no attribution required).
           </li>
         </ul>
       </section>

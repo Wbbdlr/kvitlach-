@@ -37,7 +37,17 @@ export default function SiteFooter({ active, children }: SiteFooterProps) {
           </a>
         ))}
       </nav>
-      <span>© SWS 2026</span>
+      <span>
+        © SWS 2026 · Developed by{" "}
+        <a
+          href="https://computerrabbis.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-ink underline-offset-4 hover:underline"
+        >
+          ComputerRabbis.com
+        </a>
+      </span>
     </footer>
   );
 }

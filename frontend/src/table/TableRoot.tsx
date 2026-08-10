@@ -107,6 +107,8 @@ export interface TableRootProps {
   sfxEnabled: boolean;
   onToggleMusic: () => void;
   onToggleSfx: () => void;
+  motionEnabled: boolean;
+  onToggleMotion: () => void;
   wsStatus: "disconnected" | "connecting" | "connected";
 }
 
@@ -167,6 +169,8 @@ export function TableRoot({
   sfxEnabled,
   onToggleMusic,
   onToggleSfx,
+  motionEnabled,
+  onToggleMotion,
   wsStatus,
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
@@ -577,6 +581,17 @@ export function TableRoot({
           aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
         >
           <Icon name="speaker" size={13} />
+        </button>
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={onToggleMotion}
+          aria-pressed={motionEnabled}
+          style={!motionEnabled ? { opacity: 0.45 } : undefined}
+          title={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+          aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+        >
+          <Icon name="motion" size={13} />
         </button>
         {fullscreenSupported && (
           <span className="relative inline-flex">

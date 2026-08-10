@@ -55,6 +55,7 @@ export default function App() {
   const [nowTs, setNowTs] = useState(() => Date.now());
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [motionEnabled, setMotionEnabled] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false);
   const audioManager = useMemo(() => new AudioManager(), []);
   const prevRoundRef = useRef<RoundState | undefined>(undefined);
@@ -155,6 +156,19 @@ export default function App() {
     audioManager.setMusicEnabled(musicEnabled && userInteracted);
     return () => audioManager.setMusicEnabled(false);
   }, [audioManager, musicEnabled, userInteracted]);
+
+  // A single root class, not a per-animation flag: index.css's .motion-off
+  // rule blanket-kills every animation/transition site-wide, present and
+  // future, rather than requiring each new animation to remember to opt in
+  // (exactly the kind of per-path drift that let the Eleveroon bug ship --
+  // see round.ts's applyEleveroonRule comment). Independent of the OS's
+  // prefers-reduced-motion, which the deal animation deliberately no longer
+  // defers to (see index.css's .k-card-in comment) -- this is the explicit,
+  // in-game way to turn everything off regardless of that system setting.
+  useEffect(() => {
+    document.documentElement.classList.toggle("motion-off", !motionEnabled);
+    return () => document.documentElement.classList.remove("motion-off");
+  }, [motionEnabled]);
 
   useEffect(() => {
     if (!round) {
@@ -459,6 +473,8 @@ export default function App() {
           setUserInteracted(true);
           audioManager.noteInteraction();
         }}
+        motionEnabled={motionEnabled}
+        onToggleMotion={() => setMotionEnabled((prev) => !prev)}
         wsStatus={status}
       />
       {rulesModals}
@@ -955,6 +971,15 @@ export default function App() {
               }}
             />
             <span className="text-[11px] font-semibold text-ink">SFX</span>
+          </label>
+          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              checked={motionEnabled}
+              onChange={(e) => setMotionEnabled(e.target.checked)}
+            />
+            <span className="text-[11px] font-semibold text-ink">Motion</span>
           </label>
         </div>
       </SiteFooter>

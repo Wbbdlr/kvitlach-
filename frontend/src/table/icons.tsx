@@ -38,7 +38,8 @@ export type IconName =
   | "expand"
   | "compress"
   | "cpu"
-  | "close";
+  | "close"
+  | "motion";
 
 // Inner <svg> markup for each icon, static and developer-authored (no user
 // data ever flows through this map) — safe to inject verbatim.
@@ -78,6 +79,9 @@ const ICON_PATHS: Record<IconName, string> = {
   compress: '<path d="M4 9h5V4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M20 15h-5v5"/>',
   cpu: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9.5 7V3.5M14.5 7V3.5M9.5 21v-3.5M14.5 21v-3.5M7 9.5H3.5M7 14.5H3.5M21 9.5h-3.5M21 14.5h-3.5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  // Three shrinking speed-lines -- same idea as music's notes/speaker's waves,
+  // a simple abstract "movement" glyph rather than a literal running figure.
+  motion: '<path d="M3 8h11"/><path d="M3 12h15"/><path d="M3 16h8"/>',
 };
 
 export function Icon({ name, size = 15, className }: { name: IconName; size?: number; className?: string }) {

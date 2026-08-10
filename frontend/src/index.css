@@ -15,6 +15,23 @@ body {
   min-height: 100vh;
 }
 
+/* App.tsx's in-game Motion toggle (footer checkbox / TableRoot's chrome-top
+   icon button) stamps this class on <html> when the player turns it off.
+   One blanket rule, not a per-animation opt-in flag, so every animation and
+   transition in this file -- present and future -- is covered automatically;
+   the alternative (adding each new animation to a growing off-list one at a
+   time) is exactly the kind of per-path drift that let the Eleveroon bug
+   ship (one draw path got the rule, its sibling didn't -- see round.ts's
+   applyEleveroonRule comment). Independent of prefers-reduced-motion, which
+   .k-card-in deliberately no longer defers to -- this is the explicit,
+   player-chosen off switch, not an OS setting silently doing it for them. */
+:root.motion-off *,
+:root.motion-off *::before,
+:root.motion-off *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 .card-surface {
   @apply rounded-xl shadow-md bg-white/90 border border-slate-200;
 }
