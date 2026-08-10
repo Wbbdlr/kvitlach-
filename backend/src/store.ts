@@ -12,11 +12,26 @@ const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
 const BOT_THINK_DELAY_MIN_MS = 500;
 const BOT_THINK_DELAY_MAX_MS = 1200;
-// Small, warm, in-community pool -- 2 to 7 are drawn per practice room. "The
+// Small, warm, in-community pool -- 2 to 10 are drawn per practice room. "The
 // Gabbai" (a shul's lay administrator, traditionally trusted with its funds)
 // is the fixed banker persona, a deliberately apt pick for a card game's bank.
+// Ten entries, not more: MAX_SEATED_PLAYERS_PER_ROUND below caps a round's
+// non-banker seats at 11 (the felt's own collision math), and the human
+// learner always occupies one of those -- 10 bots is the actual ceiling, not
+// a round number picked on its own.
 const PRACTICE_BANKER_NAME = "The Gabbai";
-const PRACTICE_BOT_NAME_POOL = ["Yanky", "Shmuli", "Mendy", "Berel", "Zalmy", "Duvid", "Chaim"];
+const PRACTICE_BOT_NAME_POOL = [
+  "Yanky",
+  "Shmuli",
+  "Mendy",
+  "Berel",
+  "Zalmy",
+  "Duvid",
+  "Chaim",
+  "Avrumi",
+  "Moishy",
+  "Shloimy",
+];
 // A practice room's "banker" is a bot with no session to approve a real
 // buy-in request through -- self-serve top-ups are how a solo learner
 // recovers from going broke instead. Fixed amount, no form: a button.
@@ -26,8 +41,9 @@ const PRACTICE_TOPUP_AMOUNT = 100;
 // stop a crafted request from parking a silly number in a solo, throwaway
 // room, not to model a real limit anyone would want in practice.
 const PRACTICE_MAX_BUYIN = 100_000;
-// Practice rooms are throwaway but not free -- each seats up to 8 bots that
-// all run their own think-delay timers (syncBotTurn). Capped generously
+// Practice rooms are throwaway but not free -- each seats up to 11 bots (the
+// fixed banker plus up to 10 players) that all run their own think-delay
+// timers (syncBotTurn). Capped generously
 // above any realistic number of people learning the rules at once on a
 // family-night server, so it bounds the worst case without ever being the
 // thing a real user runs into.
@@ -421,10 +437,10 @@ export class GameStore {
 
     const humanName = this.sanitizeName(host.firstName) || "You";
     // Clamped to the name pool's own range (PRACTICE_BOT_NAME_POOL has
-    // exactly 7 entries, one per seat at the cap) -- defaults to 2 to match
+    // exactly 10 entries, one per seat at the cap) -- defaults to 2 to match
     // every pre-existing caller/test that never passed a count.
     const rawBotCount = Number(host.botCount);
-    const botCount = Number.isFinite(rawBotCount) ? Math.min(7, Math.max(2, Math.floor(rawBotCount))) : 2;
+    const botCount = Number.isFinite(rawBotCount) ? Math.min(10, Math.max(2, Math.floor(rawBotCount))) : 2;
     const bankerBot: Player = { id: uuid(), firstName: PRACTICE_BANKER_NAME, lastName: "", type: "admin", presence: "online", isBot: true };
     const human: Player = { id: uuid(), firstName: humanName, lastName: "", type: "player", presence: "online" };
 

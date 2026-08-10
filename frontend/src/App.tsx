@@ -822,7 +822,7 @@ export default function App() {
                   <input
                     type="range"
                     min={2}
-                    max={7}
+                    max={10}
                     step={1}
                     value={practiceBotCount}
                     onChange={(e) => setPracticeBotCount(Number(e.target.value))}

@@ -243,13 +243,13 @@ describe("createPracticeRoom bot count selection", () => {
     expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(2);
   });
 
-  it("clamps a request above 7 down to the 7-bot ceiling (the name pool's own limit)", () => {
+  it("clamps a request above 10 down to the 10-bot ceiling (the name pool's own limit)", () => {
     const store = new GameStore();
     const { room } = store.createPracticeRoom({ firstName: "Alice", botCount: 99 });
-    expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(7);
-    // Seven distinct personas, not the pool wrapping around / repeating.
+    expect(room.players.filter((p) => p.type === "player" && p.isBot)).toHaveLength(10);
+    // Ten distinct personas, not the pool wrapping around / repeating.
     const names = room.players.filter((p) => p.type === "player" && p.isBot).map((b) => b.firstName);
-    expect(new Set(names).size).toBe(7);
+    expect(new Set(names).size).toBe(10);
   });
 
   it("ignores a non-finite count and falls back to the default of 2", () => {

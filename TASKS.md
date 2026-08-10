@@ -34,6 +34,17 @@ for how to work in this repo.
       device or a working screenshot session.
 ## Done
 
+- [x] Practice mode's computer-player cap raised from 7 to 10 (2026-08-10) --
+      the backend (`botCount`, `PRACTICE_BOT_NAME_POOL`) and the lobby's
+      "Customize table settings" slider already supported an arbitrary count
+      end to end; 7 was just where the bot name pool ran out. Added 3 more
+      names (Avrumi, Moishy, Shloimy) and raised both clamps to 10 -- the
+      real ceiling, not a round number: `MAX_SEATED_PLAYERS_PER_ROUND` caps
+      a round's non-banker seats at 11, and the human learner always takes
+      one of those, so 10 bots is exactly as many as the felt can seat
+      without anyone queuing. Verified live: a 10-bot room seats all 10
+      distinct personas plus the human, 11/11, nobody queued, no console
+      errors. 151 backend + 206 frontend tests still green.
 - [x] Mobile optimization pass (2026-08-10). Three fixes from a general
       audit (DOM/CSSOM introspection, not live screenshots -- the Browser
       pane wasn't compositing frames this session; see the still-open
