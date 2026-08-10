@@ -626,6 +626,14 @@ body:has(.k-fit) {
   color: #b6e6c6;
   border-color: rgba(60, 140, 90, 0.5);
 }
+/* Bank hits 21 outright, live -- the same gold used for the active-turn
+   pulse and the Eleveroon save, not plain "won" green: this is the moment
+   the bank beats everyone still in the round, not an ordinary win. */
+.k-tag.natural {
+  background: rgba(230, 164, 75, 0.22);
+  color: #f0c579;
+  border-color: rgba(230, 164, 75, 0.55);
+}
 .k-tag.muted {
   background: rgba(255, 255, 255, 0.06);
   color: #b9c2b9;

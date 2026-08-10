@@ -224,6 +224,7 @@ export function totalDisplay(
 // never silently drift out of sync with a regular player's again.
 export function tagVariant(label: string, isCurrentTurn: boolean): string {
   if (isCurrentTurn) return "turn";
+  if (label === "BANK 21!") return "natural";
   if (label === "WON") return "won";
   if (label === "LOST" || label === "FUTCHED!") return "bust";
   if (label === "STANDING") return "stand";
@@ -262,7 +263,23 @@ export function statusDisplay(turn: Turn): { label: string; className: string } 
   if (banker) return banker;
   if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
   if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
-  if (turn.state === "won") return { label: "WON", className: "text-emerald-700 font-bold" };
+  if (turn.state === "won") {
+    // The banker hitting exactly 21 outright beats everyone still live in
+    // the round, the same instant a bust futches them -- it deserves the
+    // same kind of stand-out moment FUTCHED! gets, not the plain "WON" a
+    // player's ordinary showdown win shows. bankerOutcome (above) already
+    // claims this turn once beat/lostTo exist post-settlement (the "BEAT N"
+    // tag), so this only ever fires in the live window before that -- same
+    // mid-turn timing as App.tsx's own natural-21 sound check.
+    // Reads off the turn's own live cards/state rather than a once-per-round
+    // flag, so a SECOND banker hand within one round (a BANK! wager's forced
+    // auto-redeal -- see store.ts's settleBankOutcome) gets caught the same
+    // way if it also lands on 21.
+    if (turn.player.type === "admin" && bestTotal(turn.cards).total === 21) {
+      return { label: "BANK 21!", className: "text-amber-700 font-bold" };
+    }
+    return { label: "WON", className: "text-emerald-700 font-bold" };
+  }
   if (turn.state === "lost") {
     // `turn.busted` wins when present -- a server-backfilled history turn
     // carries no cards to derive this from (see the `busted` field on Turn).

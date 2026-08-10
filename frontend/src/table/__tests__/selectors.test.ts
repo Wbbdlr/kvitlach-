@@ -172,3 +172,54 @@ describe("statusDisplay -- the banker's outcome against a whole table", () => {
     expect(statusDisplay(turn).label).toBe("LOST");
   });
 });
+
+describe("statusDisplay -- the bank hitting exactly 21 outright", () => {
+  it("gets its own live tag, not the plain WON a showdown win gets", () => {
+    const turn = makeTurn(banker, {
+      state: "won",
+      cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
+    });
+    expect(statusDisplay(turn).label).toBe("BANK 21!");
+    expect(tagVariant("BANK 21!", false)).toBe("natural");
+  });
+
+  it("does not apply to a player's own natural 21 -- banker-only tag", () => {
+    const turn = makeTurn(p1, {
+      state: "won",
+      cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
+    });
+    expect(statusDisplay(turn).label).toBe("WON");
+  });
+
+  it("does not fire for a showdown win that only reaches 21 by coincidence of a settled beat/lostTo tally", () => {
+    // Once beat/lostTo exist, bankerOutcome already owns this turn -- the
+    // BANK 21! check must never see it.
+    const turn = makeTurn(banker, {
+      state: "won",
+      beat: 3,
+      lostTo: 0,
+      cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
+    });
+    expect(statusDisplay(turn).label).toBe("BEAT 3");
+  });
+
+  it("catches a second banker hand within the same round (a BANK! auto-redeal) the same way", () => {
+    // settleBankOutcome (store.ts) can deal the banker a fresh single-card
+    // hand mid-round after a BANK! wager settles ("the two frames"). This
+    // check reads off the turn's own live cards/state, not a once-per-round
+    // flag, so it doesn't matter what the FIRST hand did -- a natural 21 on
+    // the SECOND, redealt hand is caught exactly the same way.
+    const firstHandBusted = makeTurn(banker, {
+      state: "lost",
+      busted: true,
+      cards: [{ name: "10", attributes: { values: [10] } }, { name: "9", attributes: { values: [9] } }, { name: "5", attributes: { values: [5] } }],
+    });
+    expect(statusDisplay(firstHandBusted).label).toBe("FUTCHED!");
+
+    const redealtSecondHand = makeTurn(banker, {
+      state: "won",
+      cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
+    });
+    expect(statusDisplay(redealtSecondHand).label).toBe("BANK 21!");
+  });
+});
