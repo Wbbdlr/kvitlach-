@@ -22,25 +22,19 @@ for how to work in this repo.
 - [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
       Unit/component coverage is good; nothing exercises two real browsers
       against one table.
-- [ ] Card-dealing animation (`k-card-in` in `index.css`, `animations.ts`)
-      goes fully silent under `prefers-reduced-motion: reduce` — confirmed
-      2026-08-10 by disabling that media block at runtime and watching the
-      same deal register a real `cardDealIn` animation (opacity 0→1,
-      translate from the shoe position) that was invisible seconds before.
-      The wiring itself is correct (verified live: dealDx/dealDy per seat,
-      round-scoped keys, first-paint gate all behave as designed) — this
-      isn't a bug in the mechanism, it's Windows/Chrome's "reduce motion"
-      preference silently turning the deal into an instant pop-in with zero
-      visual cue a card moved. Worth a product decision: leave it deferring
-      to the OS setting (current behavior, correct a11y default), or carve
-      the deal animation out from the reduced-motion block since — unlike
-      the press/pulse effects it's grouped with — it's the only visual
-      signal a card was actually dealt, not just decorative polish. Chrome:
-      chrome://settings/accessibility, or Windows Settings > Ease of Access
-      > Display > "Show animations in Windows", is where to check locally.
 
 ## Done
 
+- [x] Card-dealing animation report (2026-08-10): the mechanism itself
+      (`k-card-in`/`cardDealIn` in `index.css`, dealDx/dealDy per seat,
+      round-scoped keys, first-paint gate) was already correctly wired and
+      verified live -- what was actually invisible is that it went fully
+      silent under `prefers-reduced-motion: reduce`, which every other
+      animation in `index.css` respects. Decided this one shouldn't: it's
+      the only visual cue a card was dealt at all, not just decorative
+      polish, so `.k-card-in` was pulled out of that media block and now
+      always plays. Confirmed live with `prefers-reduced-motion: reduce`
+      still on.
 - [x] Real natural-21 fanfare (`frontend/public/sounds/natural21.mp3`,
       Mixkit's "Fantasy game success notification" -- Mixkit License, no
       attribution required). Replaces the reused `card-slide-1.ogg`

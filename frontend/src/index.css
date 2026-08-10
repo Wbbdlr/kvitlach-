@@ -1773,11 +1773,12 @@ body:has(.k-fit) {
 .k-card-in {
   animation: cardDealIn 340ms ease-out backwards;
 }
-@media (prefers-reduced-motion: reduce) {
-  .k-card-in {
-    animation: none;
-  }
-}
+/* Deliberately NOT inside a prefers-reduced-motion block, unlike every other
+   animation in this file (2026-08-10 product decision). Reduced motion
+   turned this into a silent instant pop-in with zero visual sign a card was
+   dealt at all -- for the merely decorative pulses/glows elsewhere that's
+   the right tradeoff, but this is the only cue a card moved, so it stays on
+   regardless of the system setting. */
 
 /* Eleveroon save -- a card marked eleveroonIgnored mounts already flagged
    (the server never sends the un-ignored version to the client), so this is
