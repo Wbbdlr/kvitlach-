@@ -64,6 +64,29 @@ describe("Eleveroon", () => {
     expect(turn.cards[2].attributes.eleveroonIgnored).toBe(true);
   });
 
+  it("permanently removes a rejected card from the deck -- it cannot be drawn again", () => {
+    // "Ignored" only ever means excluded from the hand's own sum (turn.ts's
+    // getSums filters eleveroonIgnored cards) -- it was already drawn off
+    // the live deck via drawCard (round.ts) the same as any other card, and
+    // nothing anywhere puts it back. Confirmed explicitly here since a
+    // player can't see the deck to check for themselves.
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 200 });
+    const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
+    let r = store.startRound(room.roomId, admin.id);
+
+    const turnIndex = r.turns.findIndex((t) => t.player.id === p1.id);
+    r.turns[turnIndex].cards = [C(5), C(6)];
+    const rejectedCard = C(11);
+    const deckSizeBefore = r.deck.length;
+    r.deck = [rejectedCard, ...r.deck];
+
+    r = store.applyBet(r.roundId, p1.id, 5, { eleveroon: true });
+
+    expect(r.deck).toHaveLength(deckSizeBefore); // +1 stacked on, -1 drawn off -> net unchanged
+    expect(r.deck.some((c) => c === rejectedCard)).toBe(false);
+  });
+
   it("protects the banker's own Hit with no option needed -- Eleveroon is always on for the banker", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 200 });

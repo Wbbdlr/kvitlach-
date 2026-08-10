@@ -1806,28 +1806,16 @@ body:has(.k-fit) {
    regardless of the system setting. */
 
 /* Eleveroon save -- a card marked eleveroonIgnored mounts already flagged
-   (the server never sends the un-ignored version to the client), so this is
-   pure CSS keyed off the same mount that already drives cardDealIn above; no
-   extra JS state needed even though a single turn can rack up several of
-   these in a row (each ignored 11 is its own new array index -> its own new
-   DOM node -> its own fresh animation, automatically). Two glow pulses read
-   as "something just happened" without turning into a permanent distraction
-   for a hand that sits on the felt for the rest of the turn, and the ring
-   stays faintly visible after so a hand with several saves still reads at a
-   glance without re-inspecting every card's tiny label. Gold rather than the
-   bank-futch red: this is a good moment for the player, not a bust. */
+   (the server never sends the un-ignored version to the client). The ring
+   and badge below are the PERMANENT marker -- they show every time this
+   card renders, reload or not, so a hand that sits on the felt for the rest
+   of the turn still reads at a glance. Gold rather than the bank-futch red:
+   this is a good moment for the player, not a bust. */
 .k-card-elev {
   border-radius: 6px;
-  animation: elevGlow 0.7s ease-out 2;
   box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.55);
 }
-@keyframes elevGlow {
-  0% { box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.55), 0 0 0 0 rgba(230, 164, 75, 0.65); transform: scale(1); }
-  35% { box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.85), 0 0 14px 4px rgba(230, 164, 75, 0.55); transform: scale(1.08); }
-  100% { box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.55), 0 0 0 0 rgba(230, 164, 75, 0); transform: scale(1); }
-}
 .k-elev-badge {
-  animation: elevPop 0.4s cubic-bezier(0.2, 0.8, 0.3, 1) 0.15s backwards;
   background: rgba(38, 26, 10, 0.55);
   border-radius: 6px;
 }
@@ -1844,16 +1832,52 @@ body:has(.k-fit) {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
   white-space: nowrap;
 }
+
+/* The ONE-SHOT "this just got rejected" motion -- CardView.tsx only adds
+   k-card-elev-in/k-elev-badge-in when this card is BOTH eleveroon-ignored
+   AND genuinely new this session (the same `animate` gate cardDealIn uses),
+   so a reconnect/reload that mounts an already-resolved ignored card for
+   the first time on THIS client shows the permanent ring/badge above but
+   does NOT replay this -- it didn't just happen for this viewer.
+   Sequenced after cardDealIn (see the -in variant's 340ms delay matching
+   cardDealIn's own duration above): the card visibly arrives first, THEN
+   visibly gets tossed, rather than both happening on top of each other. */
+.k-card-elev-in {
+  animation:
+    eleveroonReject 620ms ease-out 340ms backwards,
+    elevGlow 0.7s ease-out 2 340ms backwards;
+}
+@keyframes eleveroonReject {
+  /* Puffs up, crumbles down small and desaturated, then rebounds back to
+     its normal resting scale/rotation -- it has to end flat and untilted,
+     since it's still sitting in the hand fan next to its neighbours. The
+     permanent grayscale (CardView's opacity-70/grayscale classes on the
+     <img>, unconditional) is what actually leaves it looking "discarded"
+     once this settles. */
+  0%   { transform: scale(1) rotate(0deg); filter: none; }
+  30%  { transform: scale(1.08) rotate(-5deg); filter: none; }
+  55%  { transform: scale(0.78) rotate(6deg); filter: saturate(0.25); }
+  80%  { transform: scale(0.92) rotate(-2deg); filter: saturate(0.6); }
+  100% { transform: scale(1) rotate(0deg); filter: none; }
+}
+@keyframes elevGlow {
+  0% { box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.55), 0 0 0 0 rgba(230, 164, 75, 0.65); }
+  35% { box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.85), 0 0 14px 4px rgba(230, 164, 75, 0.55); }
+  100% { box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.55), 0 0 0 0 rgba(230, 164, 75, 0); }
+}
+.k-elev-badge-in {
+  animation: elevPop 0.4s cubic-bezier(0.2, 0.8, 0.3, 1) 340ms backwards;
+}
 @keyframes elevPop {
   0% { opacity: 0; transform: scale(0.4) rotate(-12deg); }
   65% { opacity: 1; transform: scale(1.15) rotate(4deg); }
   100% { opacity: 1; transform: scale(1) rotate(0deg); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .k-card-elev {
+  .k-card-elev-in {
     animation: none;
   }
-  .k-elev-badge {
+  .k-elev-badge-in {
     animation: none;
   }
 }

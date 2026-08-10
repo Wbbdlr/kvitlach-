@@ -52,7 +52,19 @@ export function CardView({
 
   return (
     <span
-      className={clsx("relative inline-flex", animate && "k-card-in", sizeClass, elevActive && "k-card-elev")}
+      className={clsx(
+        "relative inline-flex",
+        animate && "k-card-in",
+        sizeClass,
+        // k-card-elev is the PERMANENT marker (ring) -- shows any time this
+        // card is rendered, reload or not, same as the badge below it.
+        // k-card-elev-in is the one-shot "just got rejected" motion, gated
+        // on `animate` the same way k-card-in is: a reconnect/reload that
+        // mounts an already-resolved ignored card for the first time on
+        // THIS client must not replay it as if it just happened.
+        elevActive && "k-card-elev",
+        elevActive && animate && "k-card-elev-in"
+      )}
       style={animate && dealDelayMs ? { animationDelay: `${dealDelayMs}ms` } : undefined}
     >
       {/* The muted/grayscale treatment belongs on the card face only -- putting
@@ -70,7 +82,7 @@ export function CardView({
         </span>
       )}
       {ignored && !hidden && (
-        <span className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 k-elev-badge">
+        <span className={clsx("absolute inset-0 flex flex-col items-center justify-center gap-0.5 k-elev-badge", animate && "k-elev-badge-in")}>
           <Icon name="star" size={12} className="k-elev-badge-icon" />
           <span className="k-elev-badge-label">Eleveroon</span>
         </span>
