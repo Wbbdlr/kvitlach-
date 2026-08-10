@@ -173,6 +173,14 @@ cd frontend && npx vitest run src/path/to.test.ts  # single file
   run shows one red file, re-run it in isolation
   (`npx vitest run src/__tests__/<file>.test.ts`) before concluding you broke
   something — it almost certainly didn't fail because of your change.
+- **`e2e/`** is a separate Playwright package (own `package.json`, not part of
+  the backend/frontend workspaces) covering real two-browser multiplayer
+  flows neither unit suite can reach — `cd e2e && npm install && npx
+  playwright test` (see `e2e/README.md`). It boots its own backend/frontend
+  processes on dedicated ports (3100/3101/5273), so it never touches a
+  developer's own `npm run dev` session. Not part of the "narrowest relevant
+  check" default above — run it when a change touches real WS/multi-client
+  behavior, not for routine backend/frontend-only work.
 
 ## Deploy
 

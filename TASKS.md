@@ -19,11 +19,26 @@ for how to work in this repo.
       full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
-- [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
-      Unit/component coverage is good; nothing exercises two real browsers
-      against one table.
 ## Done
 
+- [x] End-to-end coverage of a full multi-client round (2026-08-10) --
+      `e2e/` is a new, separate Playwright package (own `package.json`, its
+      own dedicated ports 3100/3101/5273 so it never collides with a
+      developer's own `npm run dev`) covering what unit/component coverage
+      structurally can't reach: two real browser CONTEXTS (genuinely
+      isolated sessions, sidestepping the shared-localStorage gotcha in this
+      file's "Local development" section) with two real WebSocket
+      connections on one real table. `full-round.spec.ts`: banker creates a
+      room, a second real player joins and is visible on the BANKER's own
+      live view (not just the player's), the bank's hand reads concealed to
+      the player the instant it's dealt, the player plays a hand, the banker
+      resolves theirs, and both clients end up agreeing on the same
+      WON/LOST/PUSH outcome off the same `round:state` broadcast. Cards are
+      real crypto-random draws, not scripted -- the test drives whichever
+      controls actually show up (`clickIfAppears`) rather than assuming one
+      fixed Bet-then-Hit-then-Stand path, since a natural stop can
+      legitimately resolve a turn at any of several points. 6/6 runs green
+      locally across genuinely different random hands. See `e2e/README.md`.
 - [x] A real discard pile (2026-08-10, replacing the old in-hand disintegrate
       animation): a rejected Eleveroon card now flies from its hand to a new
       clickable felt element (`DiscardPile.tsx`, styled and positioned like
