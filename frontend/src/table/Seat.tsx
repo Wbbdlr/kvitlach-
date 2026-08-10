@@ -110,6 +110,14 @@ export function Seat({
   const hasBet = typeof betStart === "number";
   const isOffline = (presence ?? turn.player.presence) !== "online";
 
+  // The real-table "I'm calling Eleveroon!" moment -- announced the instant
+  // they act, regardless of whether their bet/hit cards are themselves still
+  // hidden from the rest of the table (see the `hide` logic above). Never
+  // true for the banker (round.ts only sets this from the raw checkbox
+  // request, not their always-on protection), and only shown while their
+  // turn is still live -- once it resolves the card's own permanent ring/
+  // badge (CardView.tsx) is the record of what actually happened.
+  const showEleveroonCall = Boolean(!isBanker && turn.eleveroonCalled && turn.state === "pending");
   const label = isNextPlayer ? "Up next" : isCurrentTurn ? (isMe ? "Your turn" : "Active") : statusInfo.label;
   const variant = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
   const showBet = !isBanker && betInfo.label !== "—";
@@ -151,6 +159,11 @@ export function Seat({
           {isBanker && (
             <span className="k-bankmark">
               <Icon name="bank" size={8} />
+            </span>
+          )}
+          {showEleveroonCall && (
+            <span className="k-elev-mark" title={`${displayName} is calling Eleveroon`} aria-label="Calling Eleveroon">
+              <Icon name="star" size={8} />
             </span>
           )}
         </span>

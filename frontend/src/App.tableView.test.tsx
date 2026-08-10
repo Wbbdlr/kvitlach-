@@ -255,6 +255,41 @@ describe("the felt table is the only in-room view", () => {
     });
   });
 
+  // The real-table "I'm calling Eleveroon!" moment (Seat.tsx's
+  // showEleveroonCall) -- a gold star on the avatar, independent of whether
+  // the player's actual bet/hit cards are still hidden from the rest of the
+  // table at this point in the hand.
+  describe("Eleveroon 'calling it out' seat indicator", () => {
+    const callingTurn: Turn = { ...playerTurn, state: "pending", eleveroonCalled: true };
+
+    it("shows a gold star mark on the player's own seat while their turn is live", () => {
+      mockState.round = { ...round, turns: [callingTurn, adminTurn] };
+      const { container } = render(<App />);
+      const playerSeat = [...container.querySelectorAll(".k-seat")].find((s) => s.textContent?.includes("Alice"))!;
+      expect(playerSeat.querySelector(".k-elev-mark")).not.toBeNull();
+    });
+
+    it("does not show it once the turn is no longer pending -- the card's own badge takes over from there", () => {
+      mockState.round = { ...round, turns: [{ ...callingTurn, state: "won" }, adminTurn] };
+      const { container } = render(<App />);
+      const playerSeat = [...container.querySelectorAll(".k-seat")].find((s) => s.textContent?.includes("Alice"))!;
+      expect(playerSeat.querySelector(".k-elev-mark")).toBeNull();
+    });
+
+    it("never shows for the banker, even if the field were somehow set on their turn", () => {
+      mockState.round = { ...round, turns: [playerTurn, { ...adminTurn, eleveroonCalled: true }] };
+      const { container } = render(<App />);
+      const bankerSeat = container.querySelectorAll(".k-seat")[0];
+      expect(bankerSeat.querySelector(".k-elev-mark")).toBeNull();
+    });
+
+    it("does not show it when the flag is off", () => {
+      mockState.round = round; // playerTurn carries no eleveroonCalled
+      const { container } = render(<App />);
+      expect(container.querySelector(".k-elev-mark")).toBeNull();
+    });
+  });
+
   // Below the overlap threshold there's nothing to fan out; at/above it,
   // tapping the hand should reveal every card, and tapping away (or the
   // hook's own auto-collapse, covered in handFan.test.ts) should put it back.

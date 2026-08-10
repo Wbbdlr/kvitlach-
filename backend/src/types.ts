@@ -61,6 +61,18 @@ export interface Turn {
   busted?: boolean;
   beat?: number;
   lostTo?: number;
+  // Set by handleBet/handleHit from the RAW `options?.eleveroon` the client
+  // sent for its most recent Bet/Hit -- true or false either way, overwritten
+  // every action, regardless of whether the rule actually needed to save
+  // anything that draw. This is the real-table "I'm calling Eleveroon!"
+  // moment: a player announces it before seeing the card, the same as here.
+  // Deliberately NOT the derived eleveroonActive the round logic itself uses
+  // (that's also unconditionally true for the banker, who never toggles
+  // anything -- see round.ts's applyEleveroonRule) -- this field is only
+  // ever true when a PLAYER explicitly checked the box for that action, so
+  // clients can flag it near their seat without falsely tagging the
+  // banker's always-on protection as something they "called".
+  eleveroonCalled?: boolean;
 }
 
 export interface BankLockState {

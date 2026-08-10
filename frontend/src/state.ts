@@ -443,6 +443,38 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     return makeNotification(busted ? "You Futched!" : "You lost this hand.", "error");
   };
 
+  // Public, table-wide, and deliberately NOT gated to `playerId` like
+  // outcomeNotification above -- a real table hears an Eleveroon save called
+  // out loud, whoever it happens to. Every client independently diffs the
+  // same broadcast round state (this mirrors deckReshuffleNotification's
+  // "only on an actual change" shape), so this fires once for everyone at
+  // the table, including the player it happened to -- not just whoever's
+  // bet/hit cards happen to still be hidden from the rest of the table (see
+  // Seat.tsx's `hide` logic -- the specific card can stay concealed while
+  // this announcement still goes out, same as a verbal call-out would).
+  const eleveroonNotification = (
+    prevRound: RoundState | undefined,
+    nextRound: RoundState
+  ): UINotification | undefined => {
+    if (!prevRound || prevRound.roundId !== nextRound.roundId) return undefined;
+    for (const turn of nextRound.turns) {
+      // Guards against a partial/malformed turn object the same way the
+      // deckReshuffle/outcome checks above tolerate one -- this runs on
+      // every broadcast for every client, so a crash here is worse than a
+      // skipped notification.
+      if (!turn?.player?.id || !turn.cards) continue;
+      const prevTurn = prevRound.turns.find((t) => t?.player?.id === turn.player.id);
+      const prevCount = prevTurn?.cards?.length ?? 0;
+      const newlyIgnored = turn.cards.slice(prevCount).some((c) => c.attributes?.eleveroonIgnored);
+      if (newlyIgnored) {
+        const name =
+          [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName || "A player";
+        return makeNotification(`Eleveroon! ${name} just saved a busting eleven.`, "success");
+      }
+    }
+    return undefined;
+  };
+
   const analyzeRoomTransition = (state: UIState, nextRoom: RoomState): Partial<UIState> => {
     const updates: Partial<UIState> = { room: nextRoom };
     let history = state.roundHistory;
@@ -529,6 +561,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const notifications = [
           deckReshuffleNotification(state.round, nextRound),
           outcomeNotification(state.round, nextRound, state.playerId),
+          eleveroonNotification(state.round, nextRound),
         ].filter((n): n is UINotification => Boolean(n));
         return {
           round: nextRound,

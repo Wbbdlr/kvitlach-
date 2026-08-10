@@ -126,7 +126,8 @@ export function handleBet(state: RoundContext, playerId: string, amount: number,
   if (!Number.isFinite(amount) || amount <= 0) throw new Error("invalid_bet");
   const { card: pickedCard, deck: remainingDeck } = drawCard(state);
 
-  const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
+  const eleveroonRequested = Boolean(options?.eleveroon);
+  const eleveroonActive = eleveroonRequested || turn.player.type === "admin";
   const effectiveCard = applyEleveroonRule(turn.cards, pickedCard, eleveroonActive);
 
   const newBet = turn.bet + amount;
@@ -137,6 +138,10 @@ export function handleBet(state: RoundContext, playerId: string, amount: number,
     // Keep the first card as the leftmost and append new cards to the right
     cards: [...turn.cards, effectiveCard],
     state: calcState([...turn.cards, effectiveCard]),
+    // Overwritten every action (see types.ts) -- the raw request, not
+    // eleveroonActive, so the banker's always-on protection above never
+    // shows up as something they "called".
+    eleveroonCalled: eleveroonRequested,
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));
@@ -151,7 +156,8 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
   if (turn.state !== "pending") throw new Error("turn_not_pending");
   const { card: pickedCard, deck: remainingDeck } = drawCard(state);
 
-  const eleveroonActive = Boolean(options?.eleveroon) || turn.player.type === "admin";
+  const eleveroonRequested = Boolean(options?.eleveroon);
+  const eleveroonActive = eleveroonRequested || turn.player.type === "admin";
   const effectiveCard = applyEleveroonRule(turn.cards, pickedCard, eleveroonActive);
 
   const cards = [...turn.cards, effectiveCard];
@@ -180,6 +186,8 @@ export function handleHit(state: RoundContext, playerId: string, options?: { ele
     cards,
     state: nextState,
     settledBet: blattPush ? 0 : turn.settledBet,
+    // See handleBet's identical field -- overwritten every action.
+    eleveroonCalled: eleveroonRequested,
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));

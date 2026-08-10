@@ -461,6 +461,36 @@ body:has(.k-fit) {
   justify-content: center;
   border: 1.5px solid rgba(20, 15, 5, 0.9);
 }
+/* "I'm calling Eleveroon!" -- same gold star as the card's own
+   k-elev-badge-icon (CardView.tsx), so the two read as one visual language.
+   Top-right rather than k-bankmark's bottom-right: the two are mutually
+   exclusive (this never shows for the banker -- Seat.tsx), but keeping them
+   visually distinct avoids anyone reading this as the bank marker at a
+   glance. */
+.k-elev-mark {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e6a44b;
+  color: #241a06;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(20, 15, 5, 0.9);
+  animation: elevMarkPulse 1.6s ease-in-out infinite;
+}
+@keyframes elevMarkPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(230, 164, 75, 0.6); }
+  50% { box-shadow: 0 0 0 3px rgba(230, 164, 75, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-elev-mark {
+    animation: none;
+  }
+}
 .k-plate-name {
   font-size: 12px;
   font-weight: 600;

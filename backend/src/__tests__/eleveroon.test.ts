@@ -114,5 +114,49 @@ describe("Eleveroon", () => {
     const bankerTurn = r.turns.find((t) => t.player.type === "admin")!;
     expect(bankerTurn.state).toBe("pending");
     expect(bankerTurn.cards[2].attributes.eleveroonIgnored).toBe(true);
+    // The banker never toggles anything -- this must not read as "the
+    // banker called Eleveroon" the same way a player's own checkbox does
+    // (see Seat.tsx's seat-level indicator, which keys off exactly this).
+    expect(bankerTurn.eleveroonCalled).toBeFalsy();
+  });
+
+  // turn.eleveroonCalled (types.ts) is the real-table "I'm calling
+  // Eleveroon!" announcement -- the whole point is that it reflects the
+  // player's own request for THIS draw, independent of whether the rule
+  // ended up needing to save anything, so the table can see the call the
+  // same instant the player made it, not only once/if it turns out to
+  // matter.
+  it("flags the turn as called on a plain Bet even when the draw didn't need saving", () => {
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 200 });
+    const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
+    let r = store.startRound(room.roomId, admin.id);
+
+    const turnIndex = r.turns.findIndex((t) => t.player.id === p1.id);
+    r.turns[turnIndex].cards = [C(2), C(3)]; // total 5 -- nowhere near 11
+    r.deck = [C(4), ...r.deck];
+
+    r = store.applyBet(r.roundId, p1.id, 5, { eleveroon: true });
+
+    const turn = r.turns.find((t) => t.player.id === p1.id)!;
+    expect(turn.cards[2].attributes.eleveroonIgnored).toBeFalsy(); // nothing to save
+    expect(turn.eleveroonCalled).toBe(true); // but the call itself is still on record
+  });
+
+  it("clears the called flag the moment a later action is taken without the option", () => {
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 200 });
+    const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
+    let r = store.startRound(room.roomId, admin.id);
+
+    const turnIndex = r.turns.findIndex((t) => t.player.id === p1.id);
+    r.turns[turnIndex].cards = [C(2), C(3)];
+    r.deck = [C(4), C(2), ...r.deck];
+
+    r = store.applyBet(r.roundId, p1.id, 5, { eleveroon: true });
+    expect(r.turns.find((t) => t.player.id === p1.id)!.eleveroonCalled).toBe(true);
+
+    r = store.applyHit(r.roundId, p1.id); // no option this time -- unchecked the box
+    expect(r.turns.find((t) => t.player.id === p1.id)!.eleveroonCalled).toBe(false);
   });
 });

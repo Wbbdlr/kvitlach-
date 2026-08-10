@@ -518,3 +518,85 @@ describe("deck reshuffle notification", () => {
     }
   });
 });
+
+// A real table hears an Eleveroon save called out loud, whoever it happens
+// to -- outcomeNotification above is deliberately scoped to the viewer's OWN
+// turn (see its comment), so this is a separate, un-scoped notification.
+describe("public Eleveroon notification (whole table, not just the player it happened to)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub
+    global.WebSocket = MockWebSocket;
+  });
+
+  const player = { id: "p1", firstName: "Dana", lastName: "", type: "player" as const, presence: "online" as const };
+  const admin = { id: "admin1", firstName: "Bank", lastName: "", type: "admin" as const, presence: "online" as const };
+  const card = (n: number, extra: Record<string, unknown> = {}) => ({
+    name: String(n),
+    attributes: { values: [n], ...extra },
+  });
+  const roundWith = (cards: ReturnType<typeof card>[]) => ({
+    roundId: "R1",
+    roomId: "ROOM1",
+    deckRemaining: 0,
+    turns: [
+      { player, state: "pending", cards, bet: 5 },
+      { player: admin, state: "pending", cards: [card(5)], bet: 0 },
+    ],
+    state: "playing",
+    roundNumber: 1,
+  });
+
+  it("announces it to every client the instant a card is newly saved -- not just the player it happened to", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith([card(5), card(6)]) }) });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith([card(5), card(6), card(11, { eleveroonIgnored: true })]),
+      }),
+    });
+
+    const notifications = useGameStore.getState().notifications;
+    expect(notifications.some((n) => n.message.includes("Eleveroon!") && n.message.includes("Dana"))).toBe(true);
+  });
+
+  it("does not fire on the very first round:state a client sees, even carrying an already-ignored card (a mid-round reconnect)", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith([card(5), card(6), card(11, { eleveroonIgnored: true })]),
+      }),
+    });
+
+    expect(useGameStore.getState().notifications.some((n) => n.message.includes("Eleveroon!"))).toBe(false);
+  });
+
+  it("does not repeat on a later, unrelated re-broadcast of the same already-resolved hand", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    const cards = [card(5), card(6), card(11, { eleveroonIgnored: true })];
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith([card(5), card(6)]) }) });
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith(cards) }) });
+    const fired = useGameStore.getState().notifications.find((n) => n.message.includes("Eleveroon!"));
+    useGameStore.getState().dismissNotification(fired!.id);
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith(cards) }) }); // rebroadcast, nothing new
+
+    expect(useGameStore.getState().notifications.some((n) => n.message.includes("Eleveroon!"))).toBe(false);
+  });
+});

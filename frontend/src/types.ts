@@ -57,6 +57,11 @@ export interface Turn {
   // beats a 17 and loses to a 20 at the same time.
   beat?: number;
   lostTo?: number;
+  // True/false (never the banker's automatic protection -- see backend
+  // types.ts) reflecting whether THIS player had the Eleveroon checkbox on
+  // for their most recent Bet/Hit. The real-table "calling it out" moment --
+  // Seat.tsx flags it near their name while turn.state is still "pending".
+  eleveroonCalled?: boolean;
 }
 
 export interface BankLockState {
