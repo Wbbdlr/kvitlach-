@@ -16,6 +16,16 @@ describe("DiscardPileModal", () => {
     expect(screen.getByText(/Bank \(bank\)/)).toBeInTheDocument();
   });
 
+  it("only explains itself for an Eleveroon reject, not an ordinary resolved-hand card", () => {
+    const mixed: DiscardEntry[] = [
+      { key: "p1-0", playerName: "Alice Smith", isBanker: false, card: { name: "11", attributes: { values: [11], eleveroonIgnored: true } } },
+      { key: "p2-0", playerName: "Bob Jones", isBanker: false, card: { name: "7", attributes: { values: [7] } } },
+    ];
+    render(<DiscardPileModal entries={mixed} onClose={vi.fn()} />);
+    expect(screen.getByText(/Alice Smith -- saved by Eleveroon/)).toBeInTheDocument();
+    expect(screen.getByText("Bob Jones")).toBeInTheDocument();
+  });
+
   it("shows a placeholder when nothing's been discarded", () => {
     render(<DiscardPileModal entries={[]} onClose={vi.fn()} />);
     expect(screen.getByText("No cards discarded yet.")).toBeInTheDocument();

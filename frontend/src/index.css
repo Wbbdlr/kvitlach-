@@ -2011,10 +2011,11 @@ body:has(.k-fit) {
 
 /* The discard pile -- the shoe's mirror image on the dealer's other side
    (left: 50% - 110px vs. the shoe's 50% + 110px; see layout.ts's
-   discardPilePosition, which the fly-out above travels toward). Only ever
-   rendered once the round's first reject happens (DiscardPile.tsx) --
-   Eleveroon is opt-in, so most rounds never touch this, and a permanently-
-   empty pile promising a tap that does nothing is worse than not drawing it. */
+   discardPilePosition, which an Eleveroon reject's fly-out above travels
+   toward -- every other entry here logs in place, still sitting in its own
+   hand, see DiscardPile.tsx's discardedEntries). Only ever rendered once the
+   round has its first entry (DiscardPile.tsx) -- a permanently-empty pile
+   promising a tap that does nothing is worse than not drawing it. */
 .k-discard {
   position: absolute;
   top: calc(var(--play-top, 0px) + 116px * var(--vf, 1));

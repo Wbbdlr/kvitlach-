@@ -12,9 +12,12 @@ export interface DiscardPileModalProps {
 // DiscardPile.tsx). Same light card-modal shell as StatsModal -- deliberately
 // NOT reusing CardView here: CardView's Eleveroon treatment is tuned for
 // living inside a hand (it self-removes once its one-shot fly-out finishes,
-// see CardView.tsx), which would just make every row in this list disappear
-// a moment after it renders. This draws the same face/grayscale/ring
-// language directly instead, with no hand-lifecycle attached to it.
+// see CardView.tsx), which would just make every Eleveroon row in this list
+// disappear a moment after it renders -- and most entries here now aren't
+// Eleveroon at all, just an ordinary card from a hand that's already
+// resolved and still sitting in its seat (see DiscardPile.tsx's
+// discardedEntries). This draws the same face/grayscale/ring language
+// directly instead, with no hand-lifecycle attached to it.
 export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
   return (
     <StageOverlay>
@@ -53,7 +56,11 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
                   <span className="text-slate-700 font-medium">{entry.card.name}</span>
                   <span className="text-xs text-slate-500">
                     {entry.playerName}
-                    {entry.isBanker ? " (bank)" : ""} -- saved by Eleveroon
+                    {entry.isBanker ? " (bank)" : ""}
+                    {/* Only the Eleveroon case gets a reason -- every other
+                        entry is just an ordinary card from a hand that's
+                        done, nothing to explain. */}
+                    {entry.card.attributes?.eleveroonIgnored ? " -- saved by Eleveroon" : ""}
                   </span>
                 </div>
               </div>

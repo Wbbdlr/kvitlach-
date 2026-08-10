@@ -34,6 +34,31 @@ for how to work in this repo.
       device or a working screenshot session.
 ## Done
 
+- [x] Discard pile widened to every resolved hand, not just Eleveroon rejects
+      (2026-08-10) -- a user report ("i thought we're making a discard
+      pile..") surfaced that the original Eleveroon-only scope (see the
+      entry below) read as narrower than "discard pile" naturally implies
+      to anyone not already steeped in that design call. Confirmed via
+      AskUserQuestion which of three real options was wanted (leave as-is;
+      fly every resolved hand's cards out of the seat into the pile; or
+      keep cards sitting in the seat as before AND also log them in the
+      pile) -- picked the third, lowest-risk option, which leaves
+      CardView.tsx's fly-out/`flown` state machine completely untouched
+      (still Eleveroon-only) and only changes `DiscardPile.tsx`'s
+      `discardedEntries`: a turn's cards are now logged once
+      `turn.state` is `"won"` or `"lost"` -- deliberately reusing
+      selectors.ts's `totalDisplay`/`canRevealTotal` threshold exactly, not
+      a new one, so a `"standby"` (stood, banker hasn't played yet) or
+      `"skipped"` hand's cards stay OUT of the log the same way their total
+      stays hidden from everyone else at that point -- logging them the
+      instant a hand stops being `"pending"` would have leaked exactly what
+      that hiding protects. An Eleveroon-rejected card still logs
+      immediately regardless of its hand's own state, same as before (it
+      was already public the moment the toast fired). `DiscardPileModal.tsx`
+      now only prints "-- saved by Eleveroon" on entries that actually were
+      one. Verified live: a resolved 4-player round produced a 13-card pile
+      matching every seat's own total exactly, every hand still visible in
+      its seat, no console errors. 210/210 frontend tests (4 new).
 - [x] Practice mode's computer-player cap raised from 7 to 10 (2026-08-10) --
       the backend (`botCount`, `PRACTICE_BOT_NAME_POOL`) and the lobby's
       "Customize table settings" slider already supported an arbitrary count

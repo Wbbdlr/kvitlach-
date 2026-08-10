@@ -47,6 +47,30 @@ describe("discardedEntries", () => {
     const [entry] = discardedEntries([banker]);
     expect(entry.isBanker).toBe(true);
   });
+
+  it("logs every card once a hand is fully won or lost, not just rejects", () => {
+    const won = makeTurn({ state: "won", cards: [normalCard, normalCard] });
+    expect(discardedEntries([won])).toHaveLength(2);
+    const lost = makeTurn({ state: "lost", cards: [normalCard, normalCard, normalCard] });
+    expect(discardedEntries([lost])).toHaveLength(3);
+  });
+
+  it("keeps a standing or skipped hand's cards out -- their total is still hidden from everyone else", () => {
+    // Mirrors selectors.ts's totalDisplay: "standby" (stood, banker hasn't
+    // played yet) and "skipped" both stop short of the won/lost reveal, so
+    // logging their cards here would leak exactly what that's protecting.
+    const standing = makeTurn({ state: "standby", cards: [normalCard, normalCard] });
+    expect(discardedEntries([standing])).toEqual([]);
+    const skipped = makeTurn({ state: "skipped", cards: [normalCard, normalCard] });
+    expect(discardedEntries([skipped])).toEqual([]);
+  });
+
+  it("still logs an Eleveroon reject immediately, before the rest of that hand resolves", () => {
+    const midHand = makeTurn({ state: "pending", cards: [normalCard, ignoredCard] });
+    const entries = discardedEntries([midHand]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].card).toBe(ignoredCard);
+  });
 });
 
 describe("DiscardPile", () => {
