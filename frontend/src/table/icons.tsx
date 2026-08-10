@@ -79,9 +79,13 @@ const ICON_PATHS: Record<IconName, string> = {
   compress: '<path d="M4 9h5V4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M20 15h-5v5"/>',
   cpu: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9.5 7V3.5M14.5 7V3.5M9.5 21v-3.5M14.5 21v-3.5M7 9.5H3.5M7 14.5H3.5M21 9.5h-3.5M21 14.5h-3.5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
-  // Three shrinking speed-lines -- same idea as music's notes/speaker's waves,
-  // a simple abstract "movement" glyph rather than a literal running figure.
-  motion: '<path d="M3 8h11"/><path d="M3 12h15"/><path d="M3 16h8"/>',
+  // A ball with a speed trail -- replaced the original three shrinking
+  // horizontal lines, which at 13px in the chrome-top row read as a
+  // menu/list button rather than "motion" (nearly identical silhouette to
+  // the "list" icon above). This reads unambiguously as movement and
+  // doesn't collide with any other icon's shape in this set.
+  motion:
+    '<path d="M3.5 17c3.5-7 9-11.3 15.5-10.7"/><circle cx="19" cy="6.6" r="2.1"/><path d="M9.2 15l1.7-1.2"/><path d="M6.3 11.6l1.6-1.4"/>',
 };
 
 export function Icon({ name, size = 15, className }: { name: IconName; size?: number; className?: string }) {

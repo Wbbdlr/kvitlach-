@@ -188,10 +188,22 @@ body {
 /* Body sets min-height:100vh; on mobile the large-viewport 100vh exceeds
    100dvh, which left a strip of the light page background below the stage
    that the user could scroll to. Lock the document to the viewport while
-   the table view is mounted. */
+   the table view is mounted.
+   background matters too, separately from the scroll fix above: <body>'s
+   real background is bg-sand (cream, index.html) and never gets swapped for
+   the room view -- .k-fit's own height:100vh/100dvh is supposed to cover it
+   edge to edge, but vh/dvh math doesn't always land on an exact pixel
+   boundary (seen live at 100% zoom on Windows desktop, likely OS display
+   scaling), leaving a hairline of cream visible at the very top even in a
+   real browser Fullscreen (ruling out title-bar theming -- this reproduces
+   with zero browser chrome present). Cream anti-aliased against the dark
+   header reads as a dull, wrong-shade green sliver, not obviously "the
+   light page background" at a glance. Matching .k-fit's own background here
+   means any future rounding gap is dark-on-dark and invisible instead. */
 body:has(.k-fit) {
   min-height: 0;
   overflow: hidden;
+  background: #060d09;
 }
 
 /* The felt surface itself (kept as .felt-table -- existing selector).
