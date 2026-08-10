@@ -1873,14 +1873,17 @@ body:has(.k-fit) {
 }
 
 /* The ONE-SHOT "this just got rejected" motion -- CardView.tsx only adds
-   k-card-elev-in/k-elev-badge-in when this card is BOTH eleveroon-ignored
-   AND genuinely new this session (the same `animate` gate cardDealIn uses),
-   so a reconnect/reload that mounts an already-resolved ignored card for
-   the first time on THIS client shows the permanent ring/badge above but
-   does NOT replay this -- it didn't just happen for this viewer.
+   k-card-elev-in/k-elev-badge-in/k-card-discard-out when this card is BOTH
+   eleveroon-ignored AND genuinely new this session (the same `animate` gate
+   cardDealIn uses). A reconnect/reload that would otherwise mount an
+   already-resolved ignored card for the first time on THIS client instead
+   renders nothing at all for it (CardView.tsx's `flown` state) -- it flew
+   off to the discard pile in some earlier session, and the pile's own
+   expandable review (DiscardPileModal.tsx) is where it lives now, not a ring
+   left sitting in the hand.
    Sequenced after cardDealIn (see the -in variant's 340ms delay matching
    cardDealIn's own duration above): the card visibly arrives first, THEN
-   visibly gets tossed, rather than both happening on top of each other. */
+   visibly gets tossed, THEN (k-card-discard-out, below) visibly leaves. */
 .k-card-elev-in {
   animation:
     eleveroonReject 620ms ease-out 340ms backwards,
@@ -1889,10 +1892,10 @@ body:has(.k-fit) {
 @keyframes eleveroonReject {
   /* Puffs up, crumbles down small and desaturated, then rebounds back to
      its normal resting scale/rotation -- it has to end flat and untilted,
-     since it's still sitting in the hand fan next to its neighbours. The
-     permanent grayscale (CardView's opacity-70/grayscale classes on the
-     <img>, unconditional) is what actually leaves it looking "discarded"
-     once this settles. */
+     since it's still sitting in the hand fan next to its neighbours for this
+     beat. The permanent grayscale (CardView's opacity-70/grayscale classes
+     on the <img>, unconditional) is what actually leaves it looking
+     "discarded" once this settles, right before it flies out for good. */
   0%   { transform: scale(1) rotate(0deg); filter: none; }
   30%  { transform: scale(1.08) rotate(-5deg); filter: none; }
   55%  { transform: scale(0.78) rotate(6deg); filter: saturate(0.25); }
@@ -1912,6 +1915,24 @@ body:has(.k-fit) {
   65% { opacity: 1; transform: scale(1.15) rotate(4deg); }
   100% { opacity: 1; transform: scale(1) rotate(0deg); }
 }
+
+/* The card's actual exit, into the discard pile -- starts once eleveroonReject
+   has settled (340ms + 620ms delay, matching CardView.tsx's DISCARD_FLIGHT_MS
+   constant, which unmounts the card from the hand right as this finishes).
+   --discard-dx/--discard-dy are nominal stage-px from THIS hand to the pile,
+   set once per seat (Seat.tsx/Dealer.tsx, mirroring --deal-dx/--deal-dy) and
+   inherited down to every card in it -- the mirror image of cardDealIn's
+   shoe-to-hand delta, this one runs hand-to-pile. `forwards` holds the faded/
+   shrunk end state for the brief window between the animation finishing and
+   CardView's own JS timer actually unmounting the node, so there's no
+   snap-back flash in between. */
+@keyframes cardDiscardFly {
+  0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(var(--discard-dx, 0px), var(--discard-dy, -40px)) scale(0.45) rotate(14deg); }
+}
+.k-card-discard-out {
+  animation: cardDiscardFly 480ms ease-in 960ms forwards;
+}
 @media (prefers-reduced-motion: reduce) {
   .k-card-elev-in {
     animation: none;
@@ -1919,4 +1940,53 @@ body:has(.k-fit) {
   .k-elev-badge-in {
     animation: none;
   }
+  .k-card-discard-out {
+    animation: none;
+  }
+}
+
+/* The discard pile -- the shoe's mirror image on the dealer's other side
+   (left: 50% - 110px vs. the shoe's 50% + 110px; see layout.ts's
+   discardPilePosition, which the fly-out above travels toward). Only ever
+   rendered once the round's first reject happens (DiscardPile.tsx) --
+   Eleveroon is opt-in, so most rounds never touch this, and a permanently-
+   empty pile promising a tap that does nothing is worse than not drawing it. */
+.k-discard {
+  position: absolute;
+  top: calc(var(--play-top, 0px) + 116px * var(--vf, 1));
+  left: calc(50% - 110px);
+  width: 30px;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.k-discard-stack {
+  position: relative;
+  width: 30px;
+  height: 48px;
+}
+.k-discard-stack .k-cardback {
+  position: absolute;
+  inset: 0;
+}
+/* Two backs offset from each other rather than the shoe's single one --
+   the small stagger is what reads as "a growing pile" instead of "a second
+   shoe". */
+.k-discard-stack .k-cardback:first-child {
+  box-shadow: 0 4px 9px rgba(0, 0, 0, 0.4);
+}
+.k-discard-stack .k-cardback:last-child {
+  transform: translate(2px, -3px) rotate(5deg);
+  box-shadow: 0 4px 9px rgba(0, 0, 0, 0.35);
+}
+.k-discard-count {
+  font-size: 9px;
+  color: rgba(230, 164, 75, 0.75);
+  white-space: nowrap;
 }

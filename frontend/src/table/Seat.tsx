@@ -41,6 +41,11 @@ export interface SeatProps {
   // every card in from the shoe's actual on-screen position.
   dealDx?: number;
   dealDy?: number;
+  // The mirror image of dealDx/dealDy: nominal stage-px from THIS seat to
+  // the discard pile, for cardDiscardFly (CardView.tsx/index.css) to fly a
+  // rejected card out to the pile's actual on-screen position.
+  discardDx?: number;
+  discardDy?: number;
 }
 
 export function initialsOf(player: { firstName?: string; lastName?: string }): string {
@@ -74,6 +79,8 @@ export function Seat({
   dealOrder = 0,
   dealDx = 0,
   dealDy = 0,
+  discardDx = 0,
+  discardDy = 0,
 }: SeatProps) {
   const isMe = viewerId === turn.player.id;
   const isBanker = turn.player.type === "admin";
@@ -115,8 +122,9 @@ export function Seat({
   // hidden from the rest of the table (see the `hide` logic above). Never
   // true for the banker (round.ts only sets this from the raw checkbox
   // request, not their always-on protection), and only shown while their
-  // turn is still live -- once it resolves the card's own permanent ring/
-  // badge (CardView.tsx) is the record of what actually happened.
+  // turn is still live -- once it resolves the card flies off to the shared
+  // discard pile (DiscardPile.tsx), which is the record of what actually
+  // happened from then on, not a ring left sitting in the hand.
   const showEleveroonCall = Boolean(!isBanker && turn.eleveroonCalled && turn.state === "pending");
   const label = isNextPlayer ? "Up next" : isCurrentTurn ? (isMe ? "Your turn" : "Active") : statusInfo.label;
   const variant = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
@@ -212,7 +220,14 @@ export function Seat({
       <div
         ref={handRef}
         className={clsx("k-hand", isMe && "is-me", canFan && fanned && "is-fanned")}
-        style={{ "--deal-dx": `${dealDx}px`, "--deal-dy": `${dealDy}px` } as React.CSSProperties}
+        style={
+          {
+            "--deal-dx": `${dealDx}px`,
+            "--deal-dy": `${dealDy}px`,
+            "--discard-dx": `${discardDx}px`,
+            "--discard-dy": `${discardDy}px`,
+          } as React.CSSProperties
+        }
         onClick={canFan ? toggle : undefined}
         onKeyDown={
           canFan

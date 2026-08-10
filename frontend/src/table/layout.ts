@@ -217,3 +217,12 @@ export function orderSeatsForViewer<T>(items: T[], isViewer: (item: T) => boolea
 export function shoePosition(playTop: number, vf: number): { x: number; y: number } {
   return { x: STAGE_WIDTH / 2 + 110, y: playTop + 116 * vf };
 }
+
+// Where the discard pile sits -- the shoe's mirror image on the dealer's
+// OTHER side (index.css: `left: calc(50% - 110px)`, same top as the shoe).
+// Seat.tsx/Dealer.tsx use this as the DESTINATION for a rejected card's
+// fly-out (see CardView.tsx's cardDiscardFly), the reverse of the shoe's own
+// role as the deal-in's origin.
+export function discardPilePosition(playTop: number, vf: number): { x: number; y: number } {
+  return { x: STAGE_WIDTH / 2 - 110, y: playTop + 116 * vf };
+}

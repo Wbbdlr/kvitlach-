@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useFelt } from "../theme";
-import { orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
+import { discardPilePosition, orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { Seat } from "./Seat";
@@ -17,6 +17,8 @@ import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
 import { WaitingListDrawer, WaitingListEntry } from "./WaitingListDrawer";
 import { StatsModal } from "./StatsModal";
+import { DiscardPile, discardedEntries } from "./DiscardPile";
+import { DiscardPileModal } from "./DiscardPileModal";
 import { BankSummaryModal } from "./BankSummaryModal";
 import { CompletedRoundSummary } from "../state";
 import { StatsData } from "./useTableData";
@@ -177,6 +179,7 @@ export function TableRoot({
   const [manageOpen, setManageOpen] = useState(false);
   const [roomInfoOpen, setRoomInfoOpen] = useState(false);
   const [waitingListOpen, setWaitingListOpen] = useState(false);
+  const [discardPileOpen, setDiscardPileOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
   const { wrapRef, dockRef, scale, stageHeight, vf, playTop } = useStageScale();
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
@@ -318,6 +321,16 @@ export function TableRoot({
   // Mirrors Dealer.tsx's own anchor: left:640, top:play-top+160px*vf.
   const dealerDealDelta = dealDeltaFor({ x: STAGE_WIDTH / 2, y: playTop + 160 * vf }, 1);
 
+  // Destination for a rejected card's fly-out (CardView.tsx's
+  // cardDiscardFly) -- the same maths as dealDeltaFor above, aimed at the
+  // discard pile instead of the shoe.
+  const discardPile = discardPilePosition(playTop, vf);
+  const discardDeltaFor = (position: { x: number; y: number }, scaleFactor: number) => ({
+    dx: (discardPile.x - position.x) / scaleFactor,
+    dy: (discardPile.y - position.y) / scaleFactor,
+  });
+  const dealerDiscardDelta = discardDeltaFor({ x: STAGE_WIDTH / 2, y: playTop + 160 * vf }, 1);
+
   // Chips the bank currently has committed, per seat -- drawn on the felt so
   // a shrinking bet limit has a visible cause (see BankReservations).
   const reservations = useMemo(
@@ -451,11 +464,14 @@ export function TableRoot({
             pastFirstPaint={pastFirstPaint}
             dealDx={dealerDealDelta.dx}
             dealDy={dealerDealDelta.dy}
+            discardDx={dealerDiscardDelta.dx}
+            discardDy={dealerDiscardDelta.dy}
           />
         )}
 
         {seatedTurns.map((turn, idx) => {
           const seatDelta = positions[idx] ? dealDeltaFor(positions[idx], seatShrink) : { dx: 0, dy: 0 };
+          const seatDiscardDelta = positions[idx] ? discardDeltaFor(positions[idx], seatShrink) : { dx: 0, dy: 0 };
           return (
             <Seat
               key={turn.player.id}
@@ -480,6 +496,8 @@ export function TableRoot({
               dealOrder={idx}
               dealDx={seatDelta.dx}
               dealDy={seatDelta.dy}
+              discardDx={seatDiscardDelta.dx}
+              discardDy={seatDiscardDelta.dy}
             />
           );
         })}
@@ -488,6 +506,13 @@ export function TableRoot({
 
         {bankerPlayer && (
           <BankPanel bankerWallet={bankerWallet} reserved={roundOver ? 0 : totalReserved} playTop={playTop} vf={vf} />
+        )}
+
+        {round && (
+          <DiscardPile
+            turns={bankerTurn ? [bankerTurn, ...playerTurns] : playerTurns}
+            onOpen={() => setDiscardPileOpen(true)}
+          />
         )}
 
       </div>
@@ -828,6 +853,13 @@ export function TableRoot({
       )}
 
       {statsData && <StatsModal data={statsData} onClose={onCloseStats} />}
+
+      {discardPileOpen && (
+        <DiscardPileModal
+          entries={discardedEntries(bankerTurn ? [bankerTurn, ...playerTurns] : playerTurns)}
+          onClose={() => setDiscardPileOpen(false)}
+        />
+      )}
 
       {bankSummaryOpen && <BankSummaryModal summary={bankSummary} onClose={onDismissBankSummary} />}
 

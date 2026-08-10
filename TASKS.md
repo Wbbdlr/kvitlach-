@@ -22,16 +22,33 @@ for how to work in this repo.
 - [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
       Unit/component coverage is good; nothing exercises two real browsers
       against one table.
-- [ ] A real discard pile (2026-08-10): a rejected Eleveroon card currently
-      still sits in the hand, marked/greyed with a disintegrate animation --
-      it does NOT fly out to any pile (there isn't one yet). Deliberately
-      scoped down to just the animation for now; a real pile would be a
-      clickable felt element (like the shoe) the card actually flies into
-      and disappears from the hand, expandable to review every card
-      discarded that round. Open design question if revisited: Eleveroon-
-      rejects only, or every resolved card in the round.
 ## Done
 
+- [x] A real discard pile (2026-08-10, replacing the old in-hand disintegrate
+      animation): a rejected Eleveroon card now flies from its hand to a new
+      clickable felt element (`DiscardPile.tsx`, styled and positioned like
+      the shoe but mirrored to the dealer's other side -- `layout.ts`'s
+      `discardPilePosition`) and disappears from the hand for good --
+      `CardView.tsx`'s `flown` state renders nothing for an eleveroon-ignored
+      card once its one-shot puff/crumble/rebound-then-fly-out sequence
+      finishes (`index.css`'s `cardDiscardFly`), and renders nothing AT ALL
+      for one that already happened before this client connected (it flew
+      off in an earlier session -- the pile's own tap-to-expand review,
+      `DiscardPileModal.tsx`, is where it lives now). This is a real
+      behavior change from the old design: the permanent in-hand gold ring
+      is gone, superseded by the pile as "the record of what happened".
+      Scoped to Eleveroon-rejects only, per the open design question this
+      closes out -- every OTHER resolved card staying in its hand as before
+      was a deliberate line, not an oversight; revisit if a broader "every
+      card this round" pile is ever wanted. Covered by 15 new tests
+      (`CardView.test.tsx`'s fly-out timing, `DiscardPile.test.tsx`,
+      `DiscardPileModal.test.tsx`); the live Eleveroon-reject moment itself
+      wasn't reproducible through browser-click automation this session (it
+      needs both landing on a hand reading exactly 11 AND then drawing an
+      actual 11 -- 8 practice-mode attempts landed on 11 twice but never drew
+      the second one), so this shipped on the deterministic test suite +
+      code review rather than a live screenshot, the same standard used for
+      the BANK! two-frames fix above.
 - [x] Fixed both confirmed BANK! "two frames" bugs from the 2026-08-10
       bug-hunting pass (repro'd in `backend/src/__tests__/bank-frames.test.ts`):
       1. A redeal used to overwrite the banker's turn with the fresh hand

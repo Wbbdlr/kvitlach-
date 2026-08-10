@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { Card } from "../types";
 import { cardImages } from "./selectors";
 import { Icon } from "./icons";
+
+// Total ms from mount to a freshly-rejected card vanishing into the discard
+// pile: cardDealIn (340) + eleveroonReject's own delay (340) + its duration
+// (620) + cardDiscardFly's duration (480) -- see index.css's comment above
+// .k-card-discard-out for the full sequenced timeline this mirrors. Kept as
+// one constant so the JS unmount timer and the CSS delays can't drift apart.
+const DISCARD_FLIGHT_MS = 340 + 340 + 620 + 480;
 
 // A single card, shared by both UIs.
 //
@@ -50,20 +57,46 @@ export function CardView({
 
   const elevActive = ignored && !hidden;
 
+  // The discard pile (DiscardPile.tsx), not a ring left sitting in the hand,
+  // is the record of an Eleveroon reject -- see index.css's cardDiscardFly
+  // comment and TASKS.md's "real discard pile" entry. A card that's already
+  // resolved before this client connected (elevActive but not `animate`) has
+  // nothing left to show here at all; one that just got rejected plays its
+  // usual puff/crumble/rebound, THEN flies out and unmounts itself the same
+  // way. Frozen the same way `animate` is: only the mount-time snapshot of
+  // `elevActive`/`animate` should ever decide this, never a later re-render.
+  const [flown, setFlown] = useState(() => elevActive && !animate);
+  useEffect(() => {
+    if (!elevActive || !animate || flown) return undefined;
+    const timer = setTimeout(() => setFlown(true), DISCARD_FLIGHT_MS);
+    return () => clearTimeout(timer);
+    // Deliberately empty deps -- this fires once per card, off the frozen
+    // elevActive/animate captured at mount, exactly like the `animate` state
+    // itself; re-running it on some unrelated re-render would just re-arm a
+    // timer for a card that's already mid-flight or already gone.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (elevActive && flown) return null;
+
   return (
     <span
       className={clsx(
         "relative inline-flex",
         animate && "k-card-in",
         sizeClass,
-        // k-card-elev is the PERMANENT marker (ring) -- shows any time this
-        // card is rendered, reload or not, same as the badge below it.
-        // k-card-elev-in is the one-shot "just got rejected" motion, gated
-        // on `animate` the same way k-card-in is: a reconnect/reload that
-        // mounts an already-resolved ignored card for the first time on
-        // THIS client must not replay it as if it just happened.
+        // k-card-elev is the ring, shown for however long this render still
+        // happens at all -- brief for a live reject (it's mid-flight, see
+        // `flown` above), the whole rest of the round for the pile's own
+        // static review copy (DiscardPileModal.tsx doesn't set `elevActive`
+        // through this path at all, see that file's comment).
+        // k-card-elev-in/k-card-discard-out are the one-shot "just got
+        // rejected, now watch it leave" motion, gated on `animate` the same
+        // way k-card-in is: a reconnect/reload that would otherwise mount an
+        // already-resolved ignored card for the first time on THIS client
+        // instead returns null above, before ever reaching this markup.
         elevActive && "k-card-elev",
-        elevActive && animate && "k-card-elev-in"
+        elevActive && animate && "k-card-elev-in",
+        elevActive && animate && "k-card-discard-out"
       )}
       style={animate && dealDelayMs ? { animationDelay: `${dealDelayMs}ms` } : undefined}
     >

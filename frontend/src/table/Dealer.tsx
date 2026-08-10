@@ -25,6 +25,10 @@ export interface DealerProps {
   pastFirstPaint?: boolean;
   dealDx?: number;
   dealDy?: number;
+  // See Seat.tsx -- the mirror image of dealDx/dealDy, applied to the bank's
+  // own hand for cardDiscardFly.
+  discardDx?: number;
+  discardDy?: number;
 }
 
 // The Bank's own seat, fixed at the top of the oval, with the shoe sitting
@@ -45,6 +49,8 @@ export function Dealer({
   pastFirstPaint,
   dealDx = 0,
   dealDy = 0,
+  discardDx = 0,
+  discardDy = 0,
 }: DealerProps) {
   // NOTE: round.state === "final" means the banker's turn has just BEGUN
   // (all other players are resolved), not that the banker is done -- see
@@ -111,7 +117,14 @@ export function Dealer({
         <div
           ref={handRef}
           className={clsx("k-hand", "is-dealer", canFan && fanned && "is-fanned")}
-          style={{ "--deal-dx": `${dealDx}px`, "--deal-dy": `${dealDy}px` } as React.CSSProperties}
+          style={
+            {
+              "--deal-dx": `${dealDx}px`,
+              "--deal-dy": `${dealDy}px`,
+              "--discard-dx": `${discardDx}px`,
+              "--discard-dy": `${discardDy}px`,
+            } as React.CSSProperties
+          }
           onClick={canFan ? toggle : undefined}
           onKeyDown={
             canFan
