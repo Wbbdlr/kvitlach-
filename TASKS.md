@@ -33,6 +33,26 @@ for how to work in this repo.
 
 ## Done
 
+- [x] Eleveroon is now visible to the WHOLE table, not just the player it
+      happened to (2026-08-10). Two parts: (1) a public toast
+      ("Eleveroon! <Name> just saved a busting eleven.") fires for every
+      connected client -- including the player it happened to -- the instant
+      a card is newly marked `eleveroonIgnored`, independent of that specific
+      card still being concealed from other players by the ordinary bet/hit
+      secrecy rules (`state.ts`'s `eleveroonNotification`, diffed off the
+      same broadcast round state as the deck-reshuffle/outcome notices).
+      (2) A live "I'm calling Eleveroon!" gold star badge on the player's own
+      seat (`Seat.tsx`'s `k-elev-mark`) the moment they submit a Bet/Hit with
+      the checkbox on -- the real-table equivalent of announcing it out loud,
+      independent of whether the draw ends up needing the save. Backed by a
+      new `turn.eleveroonCalled` field, overwritten every action from the
+      raw checkbox request (never the banker's always-on protection --
+      `round.ts`'s `applyEleveroonRule`), shown only while `turn.state` is
+      still "pending". Verified live across two real browser clients (a
+      banker tab and a player tab, no bots) -- the banker's tab shows the
+      star on the player's seat while that player's own cards stay
+      concealed, exactly the intended split between "the call is public" and
+      "the hand stays private until it resolves".
 - [x] Fixed a live-reported bug: Eleveroon did nothing on the Bet path (only
       Hit had the rule). See `round.ts`'s `applyEleveroonRule` comment --
       pinned by `backend/src/__tests__/eleveroon.test.ts`, which also proves
