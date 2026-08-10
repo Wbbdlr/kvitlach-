@@ -22,12 +22,25 @@ for how to work in this repo.
 - [ ] End-to-end coverage of a full multi-client round (Playwright or similar).
       Unit/component coverage is good; nothing exercises two real browsers
       against one table.
+- [ ] A real discard pile (2026-08-10): a rejected Eleveroon card currently
+      still sits in the hand, marked/greyed with a disintegrate animation --
+      it does NOT fly out to any pile (there isn't one yet). Deliberately
+      scoped down to just the animation for now; a real pile would be a
+      clickable felt element (like the shoe) the card actually flies into
+      and disappears from the hand, expandable to review every card
+      discarded that round. Open design question if revisited: Eleveroon-
+      rejects only, or every resolved card in the round.
 
 ## Done
 
 - [x] Fixed a live-reported bug: Eleveroon did nothing on the Bet path (only
       Hit had the rule). See `round.ts`'s `applyEleveroonRule` comment --
-      pinned by `backend/src/__tests__/eleveroon.test.ts`.
+      pinned by `backend/src/__tests__/eleveroon.test.ts`, which also proves
+      a rejected card is permanently gone from the deck, not just excluded
+      from the hand's total. Added a disintegrate animation for the
+      rejected card (puff/crumble/rebound, sequenced after its deal-in) and
+      fixed the existing glow/badge-pop animations replaying on every
+      reconnect instead of only the first time (`CardView.tsx`, `index.css`).
 - [x] Live "BANK 21!" indicator for the banker's own natural 21, mirroring
       FUTCHED! (`selectors.ts`'s `statusDisplay`).
 - [x] Motion toggle (footer checkbox / TableRoot chip icon, matching
