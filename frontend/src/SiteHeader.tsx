@@ -35,7 +35,13 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
             loading="lazy"
           />
         </span>
-        <span className="text-blue-600">Kvitlach</span>
+        {/* Gold, not the lobby's blue accent -- this is the game's own brand
+            mark (matches the felt's --gold and the in-table .k-logo-word),
+            not a themeable UI element, so it doesn't follow the blue reskin
+            below it. amber-600 exactly, restoring what this span carried
+            before an unrelated theme pass swept it up in a blanket
+            amber->blue rename. */}
+        <span className="text-amber-600">Kvitlach</span>
       </a>
       <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-blue-700/80 leading-tight">
         Ah Heimishe Chanukah Shpil

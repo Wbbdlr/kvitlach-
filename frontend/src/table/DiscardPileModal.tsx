@@ -51,7 +51,14 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
         onClick={onClose}
       >
         <div
-          className="relative w-full max-w-xs rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
+          // max-h + overflow-y-auto matches RoomInfoDrawer's own modal --
+          // this one was missing both, so on a short viewport (a landscape
+          // phone, or portrait with the keyboard up) the fixed 12-card grid
+          // had nowhere to shrink and rendered straight off the top/bottom
+          // edges instead of scrolling. Confirmed live at 780x360: the panel
+          // (397px tall, uncapped) sat from y-18 to y378 against a 360px-tall
+          // viewport -- clipped on both ends, close button included.
+          className="relative w-full max-w-xs max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between">

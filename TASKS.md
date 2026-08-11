@@ -75,6 +75,49 @@ for how to work in this repo.
       password fields render masked with the right autocomplete token,
       watermark spellcheck off, no console errors).
 
+- [x] Theme/mobile follow-up on the same-day blue reskin (2026-08-11):
+      1. The new blue read as too vivid/saturated for "classy" next to the
+         cream background. Rather than hand-tune the ~50 literal `blue-*`
+         Tailwind utility occurrences across App.tsx/SiteHeader.tsx/
+         SiteFooter.tsx/RulesModals.tsx/RoomInfoDrawer.tsx/ManageDrawer.tsx/
+         WaitingListDrawer.tsx individually, overrode Tailwind's own `blue`
+         color scale in `tailwind.config.cjs` with a desaturated steel-blue
+         ramp at the same lightness steps as the stock scale -- every
+         existing `blue-*` call site is muted for free. `accent` (the
+         non-literal-`blue-*` call sites) updated to match the new blue-600
+         so both stay on one ramp.
+      2. The "Kvitlach" wordmark in `SiteHeader.tsx` went blue along with
+         everything else in that same reskin, but it's the game's own brand
+         mark (same gold as the felt's `--gold` and the in-table
+         `.k-logo-word`), not a themeable UI element -- traced via `git log
+         -p` to what it carried before an unrelated redesign commit
+         (`b364705`) touched it, then confirmed the color itself (only the
+         color, not that commit's separate font/logo-icon change) was
+         `amber-600` right up until the blue sweep caught it. Restored to
+         `text-amber-600`. Tagline/Beta pill next to it were NOT reverted --
+         not asked for, and left on the new muted blue.
+      3. `DiscardPileModal` had no `max-h`/`overflow-y-auto` (unlike its
+         sibling `RoomInfoDrawer`, which has both) -- on a short viewport its
+         fixed-size 12-card grid had nowhere to shrink. Confirmed live at
+         780x360 (landscape phone): the panel rendered 397px tall, uncapped,
+         landing at y-18..378 against a 360px-tall viewport -- clipped off
+         both the top and bottom, close button included. Added the same
+         `max-h-[85vh] overflow-y-auto` RoomInfoDrawer already uses; verified
+         live -- now renders fully on-screen (y27..333) and scrolls
+         internally instead of overflowing.
+      Investigated but could NOT reproduce the third report ("controls
+      scaled up too large, elements overlap") -- checked seat-vs-seat and
+      hand-vs-hand bounding-box collisions at a sparse (4-seat) and a full
+      (12-seat) practice table, both portrait (360x780) and landscape
+      (780x360): zero overlaps in every case: `layout.ts`'s collision math
+      (pinned by `layout.test.ts`) held even at its 0.36 `seatScale` floor.
+      Needs a screenshot or exact device/orientation/player-count from the
+      reporter before touching `stage.ts`/`layout.ts` -- both are tuned off
+      specific measured live-device numbers already (see stage.ts's own
+      history of "confirmed live at WxH" fixes); changing constants there
+      without a real repro risks reopening one of those.
+      219/219 frontend tests pass; clean `vite build`.
+
 - [x] Three small bug reports (2026-08-11):
       1. Practice mode couldn't reshuffle the shoe -- `reshuffleDeck` was
          still plain `isAdmin`-gated in `store.ts`, but a practice room's
