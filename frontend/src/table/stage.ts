@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
+import { STAGE_HEIGHT, STAGE_WIDTH, SEAT_HEIGHT } from "./layout";
 
 // Matches index.css's compact PlayerDock breakpoint exactly -- the dock is
 // shorter there, so it needs a smaller band reserved for it below.
@@ -18,6 +18,29 @@ const DOCK_GUTTER_PX = 10;
 // clear it deliberately or the felt switcher lands on the dealer's plate.
 const TOP_CHROME_PX = 44;
 
+// How far the viewer's own seat -- always bottom-centre, layout.ts's
+// bottomSeatCenterY -- extends below its own CENTER once translate(-50%,
+// -50%) is applied. layout.ts's ellipse (CY/RY) places that CENTER inside
+// the play area, shrinking with vf like everything else on the arc, but the
+// seat's own rendered box (name plate + hand + total + status tag) is a
+// fixed size that does NOT shrink with vf -- so at a flattened vf the
+// content pokes further past its own center, relative to the shrinking play
+// area, than layout.ts's RY comment ("198 clears the dock outright")
+// accounted for; that number was only ever checked at vf=1. Reused from
+// layout.ts's own SEAT_HEIGHT (already the single source of truth for "how
+// tall the viewer's own 92px-card seat renders") rather than a second
+// measured constant.
+//
+// Folded into the DOCK band below, not added as its own term elsewhere:
+// once the viewport is tight enough that this reservation pulls vf down at
+// all, the felt is already capped to fill the viewport exactly (see
+// stageHeight below), which pins the dock's own real screen position
+// independent of vf entirely -- from that point a HIGHER vf only pushes the
+// viewer's own seat further down toward that fixed point, so reserving room
+// that lowers vf is what actually buys clearance, not a floor that raises it
+// (see MIN_VF's own comment).
+const VIEWER_SEAT_OVERHANG_PX = SEAT_HEIGHT / 2;
+
 // Growing past the 1280x760 design size is fine -- every in-stage visual is a
 // font glyph, an SVG, or a high-resolution source image, so it doesn't cost
 // sharpness the way a small raster asset would. Checked, not guessed: the
@@ -35,11 +58,31 @@ const TOP_CHROME_PX = 44;
 const MAX_SCALE = 3.0;
 
 // How flat the table may get. The play area's height is STAGE_HEIGHT * vf, so
-// 0.5 bottoms out around a 1280x380 surface -- roughly a 3.4:1 table. Below
-// this the oval stops reading as a table and the seat ellipse gets flat
-// enough that neighbours start colliding (seatScale then shrinks everyone,
-// which would undo the legibility this whole mechanism exists to buy).
-const MIN_VF = 0.5;
+// this bottoming out around a 1280x304 surface is roughly a 4.2:1 table.
+//
+// Lowered from 0.5 (2026-08-10, alongside VIEWER_SEAT_OVERHANG_PX above):
+// forcing vf UP to a floor doesn't help dock/seat clearance the way it
+// sounds like it should. Once the viewport is tight enough that the floor
+// actually engages, the felt is already capped to fill the viewport exactly
+// (see stageHeight below), which pins the dock's own real position
+// independent of vf -- from there a HIGHER vf only pushes the viewer's own
+// seat further down toward that fixed point. A user report of the dock
+// covering their own hand's total traced to exactly this: at a live
+// landscape phone size with the dock in a taller-than-nominal state, the
+// old 0.5 floor was forcing vf just high enough to erase the ~5px of
+// clearance the seat had left, without the seat-overhang reservation above
+// to compensate. 0.4 was checked against stage.test.ts's two realistic
+// landscape profiles with the dock in its tallest measured state (79px, see
+// the "reserves the tray's real height" regression test below): both clear
+// the dock band by 40+ real px at this floor, comfortably past the ~0px
+// (and briefly negative) margin the old floor left once the seat's own
+// overhang is accounted for.
+//
+// Seats colliding with EACH OTHER (not the dock) is a separate concern,
+// already covered by seatScale()'s own independently-tested 0.36 floor in
+// layout.ts -- that's what stops the oval from reading as unreadable, not
+// this constant, so lowering it doesn't reopen that failure mode.
+const MIN_VF = 0.4;
 
 export interface StageFit {
   /** Uniform scale applied to the whole stage. */
@@ -86,7 +129,10 @@ export function computeFit(
   // what lets the play area between them be sized in the same units as
   // everything else.
   const nominalDock = isCompact ? COMPACT_DOCK_HEIGHT_PX : DOCK_HEIGHT_PX;
-  const dockBand = (Math.max(nominalDock, dockHeight) + DOCK_GUTTER_PX) / scale;
+  // VIEWER_SEAT_OVERHANG_PX is already stage-design px (see its own
+  // comment), unlike the rest of this sum, which starts as real px and
+  // needs the /scale conversion -- added after, not inside, the division.
+  const dockBand = (Math.max(nominalDock, dockHeight) + DOCK_GUTTER_PX) / scale + VIEWER_SEAT_OVERHANG_PX;
   const playTop = TOP_CHROME_PX / scale;
 
   // Whatever vertical room is left between the two bands decides how flat the

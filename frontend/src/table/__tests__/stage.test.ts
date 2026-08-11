@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeFit } from "../stage";
-import { STAGE_WIDTH } from "../layout";
+import { STAGE_WIDTH, bottomSeatCenterY } from "../layout";
 
 // Device profiles that actually matter, plus the two that drove this design.
 const PROFILES: Array<{ name: string; w: number; h: number; compact: boolean }> = [
@@ -43,11 +43,43 @@ describe("stage fit", () => {
   it("flattens the table only as far as the viewport demands, never past the floor", () => {
     for (const p of PROFILES) {
       const fit = computeFit(p.w, p.h, p.compact);
-      expect(fit.vf).toBeGreaterThanOrEqual(0.5);
+      // 0.4, not 0.5 -- see stage.ts's MIN_VF comment: forcing vf UP to a
+      // floor once the viewport is tight enough to engage one only pushes
+      // the viewer's own seat closer to the dock, it doesn't buy legibility
+      // for free the way it sounds like it should.
+      expect(fit.vf).toBeGreaterThanOrEqual(0.4);
       expect(fit.vf).toBeLessThanOrEqual(1);
     }
     // A generous 16:10 desktop barely needs to flatten; a squat phone does.
     expect(computeFit(1280, 800, false).vf).toBeGreaterThan(computeFit(914, 412, true).vf);
+  });
+
+  it("keeps the viewer's own seat clear of the dock band, even in the dock's tallest state", () => {
+    // Regression: a live landscape phone report ("controls covering the
+    // player's results beneath his hand") traced to this exact gap. Modelled
+    // directly off .k-controls's own CSS (index.css) and .k-seat's own
+    // translate(-50%,-50%) (Seat.tsx) rather than off computeFit's internal
+    // accounting, because that accounting is exactly what missed this: once
+    // a tight viewport caps the felt to fill it (as every profile here does
+    // with the dock's tallest known state, 79px -- see "reserves the tray's
+    // real height" above), .k-controls sits at a real screen position fixed
+    // by the viewport itself, NOT by how much stage-space vf/dockBand meant
+    // to leave beneath the play area -- and the viewer's own seat, always
+    // bottom-centre (layout.ts's bottomSeatCenterY), renders a fixed-size
+    // box that doesn't shrink with vf, half of it (SEAT_HEIGHT / 2)
+    // extending below its own centre point. Both real positions are derived
+    // here the same way TableRoot.tsx's own JSX does (felt centred in
+    // .k-fit via stageHeight*scale, dock bottom-anchored off what's left).
+    const DOCK_HEIGHT = 79;
+    const GUTTER = 10; // mirrors stage.ts's DOCK_GUTTER_PX
+    const SEAT_OVERHANG = 100; // mirrors stage.ts's VIEWER_SEAT_OVERHANG_PX
+    for (const p of PROFILES.filter((x) => x.compact)) {
+      const fit = computeFit(p.w, p.h, p.compact, DOCK_HEIGHT);
+      const feltRealY = (p.h - fit.stageHeight * fit.scale) / 2;
+      const dockRealTop = p.h - feltRealY - GUTTER - DOCK_HEIGHT;
+      const seatRealBottom = feltRealY + fit.scale * (bottomSeatCenterY(fit.vf, fit.playTop) + SEAT_OVERHANG);
+      expect(dockRealTop - seatRealBottom, `${p.name}`).toBeGreaterThan(0);
+    }
   });
 
   it("never upscales past the cap, so a huge monitor doesn't bet on image resolution", () => {

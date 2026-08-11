@@ -65,8 +65,22 @@ export function spreadFactor(vf: number): number {
 }
 // RY is deliberately short of the oval's own 250px radius: the bottom seat
 // is the viewer's, which renders the tallest hand (92px cards), and at 215
-// its lower edge slid under the 84px dock. 198 clears the dock outright.
+// its lower edge slid under the 84px dock. 198 clears the dock outright --
+// but only checked at vf=1. stage.ts's own dock-clearance reservation (see
+// its VIEWER_SEAT_OVERHANG_PX) is what covers a flattened, low-vf table;
+// bottomSeatCenterY below is what lets it do that math without duplicating
+// CY/RY here.
 const RY = 198;
+
+// The bottom-centre slot's own Y (design px) -- exported so stage.ts can
+// work out how much room THAT seat's content needs before the dock band can
+// safely start, without either duplicating CY/RY or importing the whole
+// seatPositions() machinery. BOTTOM_DEG=180 is always present regardless of
+// seat count (seatPositions anchors it first, see that function's own
+// comment), so this needs neither a count nor the arc-length table.
+export function bottomSeatCenterY(vf: number, playTop: number): number {
+  return CY * vf + playTop + RY * vf;
+}
 
 // Arc reserved at the top for the dealer, who is rendered separately.
 const DEALER_GAP_DEG = 110;

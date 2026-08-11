@@ -20,20 +20,57 @@ for how to work in this repo.
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
 - [ ] Unverified: possible top-of-table clipping on landscape phones (e.g.
-      812x375, the orientation the app itself recommends). A Browser-pane
-      geometry check during the 2026-08-10 mobile audit below returned a
-      physically-impossible reading (an element's resolved `top: 8px`
-      painted 108px higher than that allows -- not something a real browser
-      does) right after a synthetic resize, so it wasn't trusted or acted
-      on. `stage.ts`/`index.css` show past awareness of exactly this class
-      of issue (rotated logo poking off-screen on a "flattened landscape
-      phone"), so it's plausible enough to be worth a real check next time
-      someone's on an actual phone in landscape -- specifically whether
-      `.k-chrome-top` (help/music/SFX/motion/fullscreen/Leave) and the
-      topmost seat stay fully reachable. Don't act on this without a real
-      device or a working screenshot session.
+      812x375, the orientation the app itself recommends) -- specifically
+      whether `.k-chrome-top` (help/music/SFX/motion/fullscreen/Leave) and
+      the topmost seat stay fully reachable. A Browser-pane geometry check
+      during the 2026-08-10 mobile audit returned a physically-impossible
+      reading (an element's resolved `top: 8px` painted 108px higher than
+      that allows) right after a synthetic resize; the SAME reading recurred
+      on 2026-08-11 while investigating the (real, now-fixed -- see Done
+      below) bottom-seat/dock overlap, confirmed via cross-checking with
+      `offsetTop`/`offsetParent` chains (unaffected by whatever's wrong with
+      `getBoundingClientRect` in this non-compositing pane) instead of
+      trusting either reading blind. Still worth a real check next time
+      someone's on an actual phone in landscape; don't act on it without one.
 ## Done
 
+- [x] Dock covering the viewer's own hand/total on a landscape phone
+      (2026-08-11) -- user report: "the controls are still covering up the
+      players results beneath his hand... the controls can be scaled down
+      further." Root-caused, not a screenshot-tooling artifact this time:
+      layout.ts's RY (the ellipse radius that keeps the viewer's own
+      bottom-centre seat clear of the dock) was tuned once, at vf=1
+      ("198 clears the dock outright" -- see that comment). Nobody re-checked
+      it once stage.ts's later flattened-landscape-table feature let vf drop
+      well below 1: the seat's own rendered box (name + hand + total + tag)
+      is a FIXED size that doesn't shrink with vf, so at a flattened vf its
+      content pokes further past its own centre, relative to the shrinking
+      play area, than that vf=1 check accounted for. Measured live at
+      812x375 (properly this time -- see the landscape-clipping entry above
+      for the `getBoundingClientRect` pitfall this investigation had to
+      route around via `offsetTop` chains and Seat.tsx's own
+      `translate(-50%,-50%)`): ~5.5px of real clearance in the dock's normal
+      state, and negative (a real, visible overlap) once the dock grows to
+      its tallest known state (79px, "Round complete", already pinned by an
+      older regression test). Fixed in `stage.ts`: reserves
+      `VIEWER_SEAT_OVERHANG_PX` (half of layout.ts's own `SEAT_HEIGHT`) as
+      part of the dock band, and lowered `MIN_VF` 0.5 -> 0.4 -- counter-
+      intuitively, forcing vf UP to a floor doesn't buy clearance once the
+      viewport is tight enough to cap the felt to fill it exactly: past that
+      point the dock's own real screen position is fixed regardless of vf,
+      and a HIGHER vf only pushes the seat closer to it. New pinned
+      regression test in `stage.test.ts` models the dock's actual CSS anchor
+      and the seat's actual `translate` directly, at the dock's tallest
+      state, on both realistic landscape profiles -- margin went from
+      -1.6/-3.0px (real overlap) to +44/+53px. Verified live: rebuilt margin
+      measurement on the running app agreed (5.5px -> 46.4px at 812x375).
+      210 -> 211 frontend tests, `vite build` clean.
+- [x] Motion toggle icon redesigned a second time (2026-08-11) -- the
+      "comet" from the 2026-08-10 pass (see below) still didn't read as
+      motion to the user at 13px. Presented 4 new, more differentiated
+      candidates (swoosh wind-lines, EKG pulse, orbiting-arc spin,
+      dashed-arrow) via a visual comparison; user picked swoosh. Same
+      `icons.tsx` slot, no other files touched.
 - [x] Discard pile widened to every resolved hand, not just Eleveroon rejects
       (2026-08-10) -- a user report ("i thought we're making a discard
       pile..") surfaced that the original Eleveroon-only scope (see the
