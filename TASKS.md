@@ -34,6 +34,28 @@ for how to work in this repo.
       someone's on an actual phone in landscape; don't act on it without one.
 ## Done
 
+- [x] Green sliver above the header, take two (2026-08-11) -- the 2026-08-10
+      fix (`body:has(.k-fit) { background: #060d09; }`) was real and stayed
+      correctly deployed (re-verified live on kvitlach.us: body/`.k-fit` both
+      correctly dark), but a user screenshot on v4.3 proved a sliver was
+      still visible, so this wasn't the same bug wearing thin -- it was a
+      second, different one hiding behind the first. Root cause: `.k-topbar`
+      (the branding scrim) is offset `top: 8px/scale` to keep the logo clear
+      of the viewport edge (a deliberate, measured fix -- see that comment,
+      still preserved), but the offset moved the WHOLE box down, scrim
+      included, leaving an 8px gap above it where `.felt-table`'s raw radial
+      gradient showed through completely unshielded. `linear-gradient`
+      doesn't ease in from the box above it -- the scrim was already at its
+      full 0.7 alpha right at its own top edge -- so that gap met the
+      darkened band below it at a hard step (computed: roughly rgb(22,49,35)
+      above vs. rgb(12,26,19) at and below y=8, a real ~2x brightness jump),
+      which is exactly what reads as a thin lighter-green sliver on a real
+      screen. Fixed by moving the logo's clearance from `top` to
+      `padding-top` (and growing `height` to match) so the scrim's own box,
+      and therefore its gradient, starts flush at y=0 -- content lands at
+      the identical position (verified: child offsetTop still 8px at
+      scale=1), only the background's own coverage changed. 211/211 frontend
+      tests (untouched by a pure-CSS change), `vite build` clean.
 - [x] Dock covering the viewer's own hand/total on a landscape phone
       (2026-08-11) -- user report: "the controls are still covering up the
       players results beneath his hand... the controls can be scaled down

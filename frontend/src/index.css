@@ -318,23 +318,44 @@ body:has(.k-fit) {
 /* Topbar scrim + wordmark. */
 .k-topbar {
   position: absolute;
-  /* Measured live at 375x812 (stage-scale ~0.293): the 11/12 logo images sat
-     at top:1.6px against a flush top:0 row -- barely inside the viewport,
-     and easily read (or actually clipped) as cut off; on a flattened
-     landscape phone (844x390) it measured genuinely negative. Matches
-     .k-chrome-top's own max(8px, env(...)) clearance -- but this lives
-     INSIDE the scaled stage, unlike chrome-top's real screen px, so the
-     same clearance has to be divided by --stage-scale first to land on a
-     constant few screen-px regardless of device (flat 8px here would
-     vanish at phone scale and barely register at desktop scale). Even with
-     this, the rotated logo images can still poke a couple px above their
-     own unrotated box (see the -rotate-[24deg]/rotate-[23deg] in
-     TableRoot.tsx) -- accounted for by the extra headroom, not eliminated,
-     since it's inherent to the fanned-card look. */
-  top: calc(max(8px, env(safe-area-inset-top)) / var(--stage-scale, 1));
+  /* top:0, not an offset -- the offset that used to live here (see the
+     padding-top comment below) pushed the WHOLE box down, scrim included,
+     which left the felt's raw gradient green showing completely unshielded
+     in the gap above it. That gap sat right against the scrim's own top
+     edge, where its gradient is at FULL 0.7 alpha (linear-gradient starts
+     at its own 0%, it doesn't ease in from the box above) -- so the two
+     bands met at a hard brightness step, not a gradual one, and read as a
+     thin lighter-green sliver above the header on a real device (reported
+     2026-08-11; a live production check found body/.k-fit's own background
+     correctly dark, per the 2026-08-10 fix below, which is what had ruled
+     this out as "just" the earlier bug and left it unexplained until now).
+     Scrim now starts flush with y=0 so there's no gap left for the felt to
+     show through raw. */
+  top: 0;
   left: 0;
   right: 0;
-  height: calc(60px * var(--vf, 1));
+  /* The logo clearance that used to live in `top` moves to padding-top
+     instead -- same content position (flex-start + this padding lands the
+     children exactly where `top` used to put the whole box), but now it's
+     INSIDE the scrim's own box, so the gradient still covers it. Measured
+     live at 375x812 (stage-scale ~0.293): the 11/12 logo images sat at
+     top:1.6px against a flush top:0 row -- barely inside the viewport, and
+     easily read (or actually clipped) as cut off; on a flattened landscape
+     phone (844x390) it measured genuinely negative. Matches .k-chrome-top's
+     own max(8px, env(...)) clearance -- but this lives INSIDE the scaled
+     stage, unlike chrome-top's real screen px, so the same clearance has to
+     be divided by --stage-scale first to land on a constant few screen-px
+     regardless of device (flat 8px here would vanish at phone scale and
+     barely register at desktop scale). Even with this, the rotated logo
+     images can still poke a couple px above their own unrotated box (see
+     the -rotate-[24deg]/rotate-[23deg] in TableRoot.tsx) -- accounted for
+     by the extra headroom, not eliminated, since it's inherent to the
+     fanned-card look. */
+  padding-top: calc(max(8px, env(safe-area-inset-top)) / var(--stage-scale, 1));
+  /* Grown by the same amount `top` used to be offset, so the box's own
+     bottom edge -- and everything below it -- lands exactly where it did
+     before; only the scrim's own top moved, not its visible extent. */
+  height: calc(60px * var(--vf, 1) + max(8px, env(safe-area-inset-top)) / var(--stage-scale, 1));
   display: flex;
   /* flex-start, not center: on a flattened landscape phone (small --vf) this
      row can be shorter than the counter-scaled content below, and centering
@@ -344,7 +365,8 @@ body:has(.k-fit) {
      harmless (nothing else sits there). */
   align-items: flex-start;
   justify-content: space-between;
-  padding: 0 24px;
+  padding-left: 24px;
+  padding-right: 24px;
   z-index: 30;
   background: linear-gradient(180deg, rgba(8, 16, 12, 0.7), rgba(8, 16, 12, 0));
   pointer-events: none;
