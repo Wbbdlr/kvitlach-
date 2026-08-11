@@ -519,6 +519,146 @@ describe("deck reshuffle notification", () => {
   });
 });
 
+// 2026-08-11: "the discard pile should last until the deck is reshuffled" --
+// advanceShoeDiscards (state.ts) is what makes that true; DiscardPile/
+// DiscardPileModal themselves just render whatever list they're handed (see
+// their own test files).
+describe("shoe-scoped discard tally", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub
+    global.WebSocket = MockWebSocket;
+  });
+
+  const player = { id: "p1", firstName: "Dana", lastName: "", type: "player" as const, presence: "online" as const };
+  const card = (n: number) => ({ name: String(n), attributes: { values: [n] } });
+  const roundWith = (roundId: string, turns: unknown[], extra: Record<string, unknown> = {}) => ({
+    roundId,
+    roomId: "ROOM1",
+    deckRemaining: 0,
+    turns,
+    state: "playing",
+    roundNumber: 1,
+    ...extra,
+  });
+
+  it("does not fold anything in on the very first round:state a client ever sees", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: roundWith("R1", [{ player, state: "won", cards: [card(7)] }]) }),
+    });
+    expect(useGameStore.getState().shoeDiscards).toEqual([]);
+  });
+
+  it("stays empty across live re-broadcasts of the SAME round", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: roundWith("R1", [{ player, state: "won", cards: [card(7)] }]) }),
+    });
+    // Another player's hand resolving is still the same round, R1 -- nothing
+    // gets folded in until R1 itself is REPLACED by a later round.
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith("R1", [
+          { player, state: "won", cards: [card(7)] },
+          { player, state: "lost", cards: [card(9)] },
+        ]),
+      }),
+    });
+    expect(useGameStore.getState().shoeDiscards).toEqual([]);
+  });
+
+  it("folds a round's resolved cards into the tally once a new round replaces it", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith("R1", [{ player, state: "won", cards: [card(7), card(9)] }]),
+      }),
+    });
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith("R2", []) }) });
+
+    const tally = useGameStore.getState().shoeDiscards;
+    expect(tally.map((e) => e.card.name).sort()).toEqual(["7", "9"]);
+  });
+
+  it("keeps accumulating across three or more rounds on the same shoe", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: roundWith("R1", [{ player, state: "won", cards: [card(7)] }]) }),
+    });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith("R2", [{ player, state: "lost", cards: [card(4), card(10)] }]),
+      }),
+    });
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith("R3", []) }) });
+
+    expect(useGameStore.getState().shoeDiscards).toHaveLength(3);
+  });
+
+  it("wipes the tally the moment deckReshuffledAt changes, discarding even the outgoing round's own resolved cards", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: roundWith("R1", [{ player, state: "won", cards: [card(7)] }]) }),
+    });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: roundWith("R2", [{ player, state: "won", cards: [card(3)] }]),
+      }),
+    });
+    expect(useGameStore.getState().shoeDiscards).toHaveLength(1); // R1's card, folded in when R2 arrived
+
+    // R3 is the first round of a freshly reshuffled shoe -- R2's own already-
+    // resolved card must not ride along into the new tally.
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: roundWith("R3", [], { deckReshuffledAt: 1000 }) }),
+    });
+    expect(useGameStore.getState().shoeDiscards).toEqual([]);
+  });
+
+  it("clears on room:closed, so a later room doesn't inherit a stale tally", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: roundWith("R1", [{ player, state: "won", cards: [card(7)] }]) }),
+    });
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: roundWith("R2", []) }) });
+    expect(useGameStore.getState().shoeDiscards).toHaveLength(1);
+
+    socket.onmessage?.({ data: JSON.stringify({ type: "room:closed" }) });
+    expect(useGameStore.getState().shoeDiscards).toEqual([]);
+  });
+});
+
 // A real table hears an Eleveroon save called out loud, whoever it happens
 // to -- outcomeNotification above is deliberately scoped to the viewer's OWN
 // turn (see its comment), so this is a separate, un-scoped notification.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { STAGE_HEIGHT, STAGE_WIDTH, SEAT_HEIGHT } from "./layout";
+import { STAGE_HEIGHT, STAGE_WIDTH, SEAT_HEIGHT, seatPositions, seatScale } from "./layout";
 
 // Matches index.css's compact PlayerDock breakpoint exactly -- the dock is
 // shorter there, so it needs a smaller band reserved for it below.
@@ -140,7 +140,8 @@ export function computeFit(
   availWidth: number,
   availHeight: number,
   isCompact: boolean,
-  dockHeight = 0
+  dockHeight = 0,
+  seatCount = 0
 ): StageFit {
   if (availWidth <= 0 || availHeight <= 0) {
     return { scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0 };
@@ -150,6 +151,27 @@ export function computeFit(
   // this is what makes the felt reach both side edges with no pillarboxing.
   const scale = Math.min(availWidth / STAGE_WIDTH, MAX_SCALE);
 
+  // How much smaller than nominal every PLAYER seat is actually rendering,
+  // once seatScale() has packed `seatCount` of them onto the arc (see
+  // layout.ts) -- NOT the dealer's own seat, which TableRoot.tsx's own
+  // dealDeltaFor comment notes is never shrunk ("no scale in Dealer.tsx's
+  // own transform"). VIEWER_SEAT_OVERHANG_PX below was sized off the
+  // UNSHRUNK seat box (seatScale=1, i.e. a small table); reserving that full
+  // amount regardless of how crowded the table actually is meant a full
+  // 11-player practice table -- seatScale near its 0.36 floor there --
+  // reserved room sized for seats more than twice as tall as the ones
+  // actually on screen (live-measured 2026-08-11: seatScale 0.449, the
+  // viewer's own seat box rendering at 132px real against the ~300px the
+  // reservation assumed). That's most of what a "the table can be so much
+  // bigger" report traced to. Evaluated at vf=1 rather than whatever vf THIS
+  // call is about to solve for -- computeFit can't know that yet, it's what
+  // PRODUCES vf -- and spreadFactor already keeps seatScale roughly flat
+  // across the vf range that produces, so vf=1 is a stable, close-enough
+  // stand-in. seatCount defaults to 0 (no round dealt yet, so no real seat
+  // count to shrink by) and reads as "don't shrink the reservation" --
+  // the same safe-default shape as dockHeight's own 0 default.
+  const crowding = seatCount > 1 ? seatScale(seatPositions(seatCount, 1, 0)) : 1;
+
   // Both chrome rows sit at true viewport size (they never scale -- see
   // .k-fit), so converting their real pixel heights back into stage px is
   // what lets the play area between them be sized in the same units as
@@ -158,9 +180,12 @@ export function computeFit(
   // VIEWER_SEAT_OVERHANG_PX is already stage-design px (see its own
   // comment), unlike the rest of this sum, which starts as real px and
   // needs the /scale conversion -- added after, not inside, the division.
-  const dockBand = (Math.max(nominalDock, dockHeight) + DOCK_GUTTER_PX) / scale + VIEWER_SEAT_OVERHANG_PX;
+  // Scaled by `crowding` for the reason above.
+  const dockBand = (Math.max(nominalDock, dockHeight) + DOCK_GUTTER_PX) / scale + VIEWER_SEAT_OVERHANG_PX * crowding;
   // Same split as dockBand above: TOP_CHROME_PX is real px (needs /scale),
-  // DEALER_SEAT_OVERHANG_PX is already stage-design px (added after).
+  // DEALER_SEAT_OVERHANG_PX is already stage-design px (added after). NOT
+  // scaled by `crowding` -- the dealer's own seat never shrinks, so its
+  // overhang doesn't either, regardless of how many players are seated.
   const playTop = TOP_CHROME_PX / scale + DEALER_SEAT_OVERHANG_PX;
 
   // Whatever vertical room is left between the two bands decides how flat the
@@ -203,7 +228,15 @@ export function computeFit(
   return { scale, stageHeight, vf, playTop: grownPlayTop };
 }
 
-export function useStageScale() {
+// seatCount: how many (non-dealer) seats are on the arc right now --
+// TableRoot passes playerTurns.length, the same count that drives its own
+// seatScale(seatPositions(...)) call, so computeFit's crowding correction
+// (see its own comment) matches what's actually rendered. Not part of the
+// ref-driven measurement loop below (it can't be -- it's not a DOM size),
+// so it lives in the effect's own dependency array instead: a seat joining
+// or leaving mid-session re-runs apply() with the new count, same as a
+// resize would.
+export function useStageScale(seatCount = 0) {
   const wrapRef = useRef<HTMLDivElement>(null);
   // Attach to the controls tray so its real height feeds the bottom band.
   const dockRef = useRef<HTMLDivElement>(null);
@@ -219,7 +252,8 @@ export function useStageScale() {
         wrap.clientWidth,
         wrap.clientHeight,
         isCompact,
-        dockRef.current?.getBoundingClientRect().height ?? 0
+        dockRef.current?.getBoundingClientRect().height ?? 0,
+        seatCount
       );
       setFit((prev) =>
         prev.scale === next.scale &&
@@ -261,7 +295,7 @@ export function useStageScale() {
       document.removeEventListener("fullscreenchange", apply);
       window.removeEventListener("orientationchange", onOrientation);
     };
-  }, []);
+  }, [seatCount]);
 
   return { wrapRef, dockRef, ...fit };
 }

@@ -12,7 +12,7 @@ const entries: DiscardEntry[] = [
 describe("DiscardPileModal", () => {
   it("always shows the full 1-12 grid, tallying counts by face value rather than one row per card", () => {
     render(<DiscardPileModal entries={entries} onClose={vi.fn()} />);
-    expect(screen.getByText("Discarded this round")).toBeInTheDocument();
+    expect(screen.getByText("Discarded this shoe")).toBeInTheDocument();
     // Every value renders regardless of whether it's been discarded.
     for (let v = 1; v <= 12; v += 1) {
       expect(screen.getByAltText(`Card ${v}`)).toBeInTheDocument();

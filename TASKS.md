@@ -21,6 +21,43 @@ for how to work in this repo.
       assuming a new bug.
 ## Done
 
+- [x] Crowded-table desktop padding ("the table view can be so much bigger",
+      2026-08-11) -- root-caused, not just eyeballed off a screenshot: an
+      11-player practice table live-measured at 1920x1000 had `seatScale()`
+      shrunk to 0.449 (crowding near its own 0.36 floor, per `layout.ts`),
+      but `stage.ts`'s `VIEWER_SEAT_OVERHANG_PX` dock-clearance reservation
+      still assumed a full, UNSHRUNK seat (seatScale=1) regardless of how
+      many players were actually seated -- reserving green felt sized for
+      seats more than twice as tall as the ones actually on screen, on
+      every table past ~7 players (`SEAT_HEIGHT`'s own comment: past that
+      point seats can't stay full-size). `computeFit` now takes a
+      `seatCount` param and shrinks that one reservation by the table's own
+      `seatScale(seatPositions(seatCount, 1, 0))` -- vf=1 rather than the
+      real (unknown-yet) vf, since seatScale only ever reports LARGER there
+      than at a flatter vf, so it can't under-reserve (pinned by a new
+      regression test using the real, lower vf's seatScale as the harder
+      bound). The dealer's own overhang is untouched -- Dealer.tsx is never
+      seatScale-shrunk. Live-verified on the reproducing 1920x1000/11-player
+      case: vf 0.59 -> 0.65, the dead gap below the viewer's own seat
+      197px (was 249px). A small/typical table (<=7 players) sees no change
+      at all -- seatScale stays 1 there already.
+- [x] Discard pile now lasts until the shoe reshuffles, not just the current
+      round (2026-08-11). Previously reset every round (`turn.cards` itself
+      is round-scoped), so a multi-round shoe only ever showed whichever
+      round was still live. `state.ts`'s new `advanceShoeDiscards` folds
+      each round's own resolved cards into a running, shoe-scoped tally the
+      moment it's replaced by the next round, and wipes it outright the
+      moment `deckReshuffledAt` changes (even the outgoing round's own
+      cards, since those belong to the shoe that just got swapped out) --
+      TableRoot merges that history with the live round's own resolved
+      cards for `DiscardPile`/`DiscardPileModal`. The "only resolved hands
+      count" half of the report was already true (`discardedEntries` has
+      required won/lost/Eleveroon-rejected since the original feature); this
+      was purely about how long the tally survives. Known gap: a mid-round
+      reshuffle (rare -- an explicit banker action) can't separate a round's
+      pre- vs. post-reshuffle cards, since `turn.cards` carries no per-card
+      timestamp -- documented in `advanceShoeDiscards`'s own comment rather
+      than worked around.
 - [x] Top-of-table clipping on a crowded landscape table (2026-08-11) --
       resolves the item this section used to carry as unverified. Followed
       up with the `offsetTop`/`translate`-aware measurement technique

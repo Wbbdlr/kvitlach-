@@ -17,7 +17,7 @@ import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
 import { WaitingListDrawer, WaitingListEntry } from "./WaitingListDrawer";
 import { StatsModal } from "./StatsModal";
-import { DiscardPile, discardedEntries } from "./DiscardPile";
+import { DiscardEntry, DiscardPile, discardedEntries } from "./DiscardPile";
 import { DiscardPileModal } from "./DiscardPileModal";
 import { BankSummaryModal } from "./BankSummaryModal";
 import { CompletedRoundSummary } from "../state";
@@ -59,6 +59,12 @@ export interface TableRootProps {
   isAdmin: boolean;
   bankerTurn?: Turn;
   playerTurns: Turn[];
+  // Every resolved hand's cards from EARLIER rounds on the current shoe --
+  // this round's own are still derived live from bankerTurn/playerTurns
+  // below, merged with this at the point DiscardPile/DiscardPileModal are
+  // rendered. See state.ts's advanceShoeDiscards for how it accumulates and
+  // when it resets.
+  shoeDiscards: DiscardEntry[];
   myPlayerTurn?: Turn;
   activeTurnId?: string;
   nextTurnId?: string;
@@ -121,6 +127,7 @@ export function TableRoot({
   isAdmin,
   bankerTurn,
   playerTurns,
+  shoeDiscards,
   myPlayerTurn,
   activeTurnId,
   nextTurnId,
@@ -181,8 +188,21 @@ export function TableRoot({
   const [waitingListOpen, setWaitingListOpen] = useState(false);
   const [discardPileOpen, setDiscardPileOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
-  const { wrapRef, dockRef, scale, stageHeight, vf, playTop } = useStageScale();
+  // playerTurns.length, not room.players.length: it's exactly the count that
+  // feeds seatPositions()/seatScale() below (the dealer never shrinks, see
+  // dealDeltaFor's own comment), so computeFit's crowding correction shrinks
+  // its reservation by the same amount the seats themselves actually shrink.
+  const { wrapRef, dockRef, scale, stageHeight, vf, playTop } = useStageScale(playerTurns.length);
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
+
+  // Shoe-scoped discard tally: earlier rounds' resolved cards (shoeDiscards,
+  // folded in by state.ts as each round gets replaced) plus THIS round's own
+  // as they resolve live -- discardedEntries() only ever sees the round it's
+  // handed, so the live half still has to be computed here every render.
+  const discardEntries = useMemo(
+    () => [...shoeDiscards, ...discardedEntries(bankerTurn ? [bankerTurn, ...playerTurns] : playerTurns)],
+    [shoeDiscards, bankerTurn, playerTurns]
+  );
 
   // Flips true once, right after this table's very first paint. Cards
   // already on the felt at that paint (a fresh join, or a reload mid-round)
@@ -508,12 +528,7 @@ export function TableRoot({
           <BankPanel bankerWallet={bankerWallet} reserved={roundOver ? 0 : totalReserved} playTop={playTop} vf={vf} />
         )}
 
-        {round && (
-          <DiscardPile
-            turns={bankerTurn ? [bankerTurn, ...playerTurns] : playerTurns}
-            onOpen={() => setDiscardPileOpen(true)}
-          />
-        )}
+        {round && <DiscardPile entries={discardEntries} onOpen={() => setDiscardPileOpen(true)} />}
 
       </div>
 
@@ -854,12 +869,7 @@ export function TableRoot({
 
       {statsData && <StatsModal data={statsData} onClose={onCloseStats} />}
 
-      {discardPileOpen && (
-        <DiscardPileModal
-          entries={discardedEntries(bankerTurn ? [bankerTurn, ...playerTurns] : playerTurns)}
-          onClose={() => setDiscardPileOpen(false)}
-        />
-      )}
+      {discardPileOpen && <DiscardPileModal entries={discardEntries} onClose={() => setDiscardPileOpen(false)} />}
 
       {bankSummaryOpen && <BankSummaryModal summary={bankSummary} onClose={onDismissBankSummary} />}
 

@@ -74,16 +74,19 @@ describe("discardedEntries", () => {
 });
 
 describe("DiscardPile", () => {
-  it("renders nothing when the round has no rejects yet", () => {
-    const { container } = render(<DiscardPile turns={[makeTurn({ cards: [normalCard] })]} onOpen={vi.fn()} />);
+  // DiscardPile takes the already-merged entries list, not turns -- TableRoot
+  // is what merges shoe history with the live round (see state.ts's
+  // advanceShoeDiscards), so these fixtures build DiscardEntry[] directly
+  // rather than routing through discardedEntries().
+  it("renders nothing when nothing's been discarded yet", () => {
+    const { container } = render(<DiscardPile entries={[]} onOpen={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("shows the count and opens the review on click, once something's been rejected", () => {
     const onOpen = vi.fn();
-    const { getByText, getByRole } = render(
-      <DiscardPile turns={[makeTurn({ cards: [ignoredCard, ignoredCard] })]} onOpen={onOpen} />
-    );
+    const entries = discardedEntries([makeTurn({ cards: [ignoredCard, ignoredCard] })]);
+    const { getByText, getByRole } = render(<DiscardPile entries={entries} onOpen={onOpen} />);
     expect(getByText("2 out")).toBeInTheDocument();
     fireEvent.click(getByRole("button"));
     expect(onOpen).toHaveBeenCalledTimes(1);

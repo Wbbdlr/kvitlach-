@@ -410,6 +410,7 @@ export default function App() {
         isAdmin={isAdmin}
         bankerTurn={primaryBankerTurn}
         playerTurns={playerTurns}
+        shoeDiscards={store.shoeDiscards}
         myPlayerTurn={myPlayerTurn}
         activeTurnId={activeTurnId}
         nextTurnId={nextTurnId}

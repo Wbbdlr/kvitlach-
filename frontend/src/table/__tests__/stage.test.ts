@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeFit } from "../stage";
-import { STAGE_WIDTH, bottomSeatCenterY } from "../layout";
+import { STAGE_WIDTH, bottomSeatCenterY, seatPositions, seatScale } from "../layout";
 
 // Device profiles that actually matter, plus the two that drove this design.
 const PROFILES: Array<{ name: string; w: number; h: number; compact: boolean }> = [
@@ -78,6 +78,51 @@ describe("stage fit", () => {
       const feltRealY = (p.h - fit.stageHeight * fit.scale) / 2;
       const dockRealTop = p.h - feltRealY - GUTTER - DOCK_HEIGHT;
       const seatRealBottom = feltRealY + fit.scale * (bottomSeatCenterY(fit.vf, fit.playTop) + SEAT_OVERHANG);
+      expect(dockRealTop - seatRealBottom, `${p.name}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("shrinks the viewer-overhang reservation on a crowded table, buying back real table space", () => {
+    // Regression for the 2026-08-11 "the table view can be so much bigger"
+    // report: live-measured on an 11-player practice table at 1920x1000,
+    // seatScale() had shrunk every player seat to 0.449 (crowding near
+    // seatScale's own 0.36 floor), but the reservation in dockBand still
+    // assumed a full, UNSHRUNK seat (seatScale=1) -- wasting real screen on
+    // a margin sized for seats more than twice as tall as the ones actually
+    // on the felt. seatCount defaults to 0 (crowding=1, unchanged), so
+    // passing the real count should only ever raise vf, never lower it.
+    for (const p of PROFILES) {
+      const uncorrected = computeFit(p.w, p.h, p.compact);
+      const corrected = computeFit(p.w, p.h, p.compact, 0, 11);
+      expect(corrected.vf, `${p.name}`).toBeGreaterThanOrEqual(uncorrected.vf);
+    }
+    // The live-measured case itself: a real, not just non-negative, gain.
+    const before = computeFit(1920, 1000, false);
+    const after = computeFit(1920, 1000, false, 0, 11);
+    expect(after.vf - before.vf).toBeGreaterThan(0.03);
+  });
+
+  it("never shrinks the viewer-overhang reservation past what a crowded table's seats actually render at", () => {
+    // Same shape as "keeps the viewer's own seat clear of the dock band"
+    // above, but with a full, crowded 11-seat table (seatCount=11) run
+    // through computeFit for real, rather than asserting against the
+    // uncorrected SEAT_OVERHANG=100 that test pins. The crowding correction
+    // is evaluated at vf=1 (see computeFit's own comment on why), which
+    // seatScale() only ever reports as LARGER than at the flatter vf a
+    // compact landscape phone actually lands on (checked directly below) --
+    // so using the true, current vf's seatScale here is the harder, more
+    // honest bound: if THIS margin holds, the vf=1 approximation computeFit
+    // actually uses is strictly safer still.
+    const DOCK_HEIGHT = 79;
+    const GUTTER = 10;
+    const SEAT_COUNT = 11;
+    for (const p of PROFILES.filter((x) => x.compact)) {
+      const fit = computeFit(p.w, p.h, p.compact, DOCK_HEIGHT, SEAT_COUNT);
+      const crowding = seatScale(seatPositions(SEAT_COUNT, fit.vf, 0));
+      expect(crowding, `${p.name} crowding sanity`).toBeLessThanOrEqual(seatScale(seatPositions(SEAT_COUNT, 1, 0)));
+      const feltRealY = (p.h - fit.stageHeight * fit.scale) / 2;
+      const dockRealTop = p.h - feltRealY - GUTTER - DOCK_HEIGHT;
+      const seatRealBottom = feltRealY + fit.scale * (bottomSeatCenterY(fit.vf, fit.playTop) + 100 * crowding);
       expect(dockRealTop - seatRealBottom, `${p.name}`).toBeGreaterThan(0);
     }
   });

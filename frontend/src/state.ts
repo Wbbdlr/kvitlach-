@@ -3,6 +3,7 @@ import { WSClient } from "./ws";
 import { Balance, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 import { ReactionEvent } from "./types";
 import { bestTotal, isPushTurn } from "./table/selectors";
+import { DiscardEntry, discardedEntries } from "./table/DiscardPile";
 import { router } from "./router";
 
 type NotificationTone = "success" | "info" | "error";
@@ -38,6 +39,11 @@ interface UIState {
   round?: RoundState;
   balances: Balance[];
   roundHistory: CompletedRoundSummary[];
+  // Every resolved hand's cards from the CURRENT shoe, not just the round in
+  // progress -- see advanceShoeDiscards below for how it accumulates across
+  // rounds and resets on reshuffle. TableRoot merges this with the live
+  // round's own resolved cards for DiscardPile/DiscardPileModal.
+  shoeDiscards: DiscardEntry[];
   connections?: ConnectionSummary[];
   reactions: ReactionEvent[];
   playerId?: string;
@@ -419,6 +425,38 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     return makeNotification("Fresh deck shuffled in -- the shoe ran low.", "info");
   };
 
+  // Folds a round that's about to be replaced into the running shoe-scoped
+  // discard tally DiscardPile/DiscardPileModal show ("what's come out of the
+  // CURRENT shoe," not just the round in progress -- see 2026-08-11's
+  // "discard pile should last until the deck is reshuffled" report: a shoe
+  // runs through several rounds before it's thin enough to reshuffle, and
+  // the review only ever showed whichever one was still live). Two cases:
+  //   * A genuine reshuffle (deckReshuffledAt just changed) wipes the tally
+  //     outright -- none of the old shoe's discards belong to the new one,
+  //     not even the ones from whatever round was still live when the
+  //     reshuffle landed.
+  //   * Otherwise, whatever the OUTGOING round had already resolved --
+  //     exactly what discardedEntries(prevRound.turns) computes right now --
+  //     gets folded in before it's replaced, the same way round:ended
+  //     already folds a finished round into roundHistory.
+  // Known gap, not fixed here: store.ts's reshuffleDeck can swap the shoe
+  // MID-round (deckReshuffledAt changes, roundId doesn't) -- cards that
+  // round already resolved before the swap were drawn from the OLD shoe, but
+  // turn.cards carries no per-card timestamp to separate "before" from
+  // "after," so this still wipes on the change and then re-counts whatever
+  // that same round resolves afterward as if it were all post-reshuffle.
+  // Rare (an explicit banker action mid-hand), and there's no data here to
+  // do better with.
+  const advanceShoeDiscards = (
+    prevRound: RoundState | undefined,
+    nextRound: RoundState,
+    prevShoeDiscards: DiscardEntry[]
+  ): DiscardEntry[] => {
+    if (nextRound.deckReshuffledAt && nextRound.deckReshuffledAt !== prevRound?.deckReshuffledAt) return [];
+    if (!prevRound || prevRound.roundId === nextRound.roundId) return prevShoeDiscards;
+    return [...prevShoeDiscards, ...discardedEntries(prevRound.turns)];
+  };
+
   // Fires once, for the viewer specifically, the moment their OWN turn
   // resolves to a terminal state -- whether that's an immediate bust/21
   // mid-round or the standby -> won/lost resolution at round-terminate.
@@ -546,6 +584,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         updates.session = undefined;
         updates.playerId = undefined;
         updates.round = undefined;
+        updates.shoeDiscards = [];
       }
     }
 
@@ -608,6 +647,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         ].filter((n): n is UINotification => Boolean(n));
         return {
           round: nextRound,
+          shoeDiscards: advanceShoeDiscards(state.round, nextRound, state.shoeDiscards),
           notifications: notifications.length ? [...state.notifications, ...notifications].slice(-5) : state.notifications,
         };
       });
@@ -669,6 +709,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return {
           room: undefined,
           round: undefined,
+          shoeDiscards: [],
           balances: [],
           playerId: undefined,
           session: undefined,
@@ -826,6 +867,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           update.session = undefined;
           update.room = undefined;
           update.round = undefined;
+          update.shoeDiscards = [];
           update.playerId = undefined;
           update.message = "Session expired. Rejoin the game.";
           return update;
@@ -839,6 +881,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           update.session = undefined;
           update.room = undefined;
           update.round = undefined;
+          update.shoeDiscards = [];
           update.playerId = undefined;
           return update;
         }
@@ -935,6 +978,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         if (msg.requestId && state.pendingAction?.requestId === msg.requestId) update.pendingAction = undefined;
         if (payload.round) {
           const nextRound = payload.round as RoundState;
+          update.shoeDiscards = advanceShoeDiscards(state.round, nextRound, state.shoeDiscards);
           update.round = nextRound;
           const newNotifications = [
             deckReshuffleNotification(state.round, nextRound),
@@ -1046,6 +1090,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     status: "disconnected",
     balances: [],
     roundHistory: [],
+    shoeDiscards: [],
     reactions: [],
     wsUrl: WS_URL,
     pendingAction: undefined,

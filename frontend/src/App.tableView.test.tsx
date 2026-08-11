@@ -63,6 +63,7 @@ vi.mock("./state", () => {
       status: "connected",
       wsUrl: "ws://localhost:3001",
       roundHistory: [],
+      shoeDiscards: [],
       notifications: [],
       bankerSummaryAt: undefined,
       connections: [],

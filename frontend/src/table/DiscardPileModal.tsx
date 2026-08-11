@@ -36,7 +36,10 @@ function countsByValue(entries: DiscardEntry[]): Record<string, number> {
 // no longer show here -- that per-instance detail is what made the old list
 // grow unbounded in the first place; the seat itself (still showing every
 // resolved hand's cards in place, see DiscardPile.tsx) is where that detail
-// still lives.
+// still lives. `entries` is shoe-scoped, not round-scoped -- it spans every
+// round played on the current shoe, not just the one in progress (see
+// state.ts's advanceShoeDiscards), so the tally keeps growing hand after
+// hand until the banker actually reshuffles.
 export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
   const counts = countsByValue(entries);
   return (
@@ -54,7 +57,7 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-base font-semibold text-slate-800">
               <Icon name="list" size={16} className="text-amber-700" />
-              Discarded this round
+              Discarded this shoe
             </div>
             <button type="button" className="text-slate-400 hover:text-slate-600" onClick={onClose} aria-label="Close">
               ✕
