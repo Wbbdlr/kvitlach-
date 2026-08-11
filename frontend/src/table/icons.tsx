@@ -79,14 +79,15 @@ const ICON_PATHS: Record<IconName, string> = {
   compress: '<path d="M4 9h5V4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M20 15h-5v5"/>',
   cpu: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9.5 7V3.5M14.5 7V3.5M9.5 21v-3.5M14.5 21v-3.5M7 9.5H3.5M7 14.5H3.5M21 9.5h-3.5M21 14.5h-3.5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
-  // Three tapered, curved wind lines -- the second icon tried here. The
-  // original three straight, equal-length lines read as a menu/list button
-  // (nearly identical silhouette to "list" above); the comet that replaced
-  // it (a dot on a curved trail) still didn't land at 13px in the
-  // chrome-top row. These curve, taper, and vary in length, which keeps
-  // them reading as motion/wind rather than a static row of dashes even at
-  // that size, with no leading dot to get lost against the felt.
-  motion: '<path d="M2 9c4 0 6-1 9-1"/><path d="M2 13c6 0 9-1.5 14-1.5"/><path d="M2 17c3 0 5-.7 7-1"/>',
+  // Third icon tried here. Straight equal-length lines (v1) read as a menu
+  // button; a comet -- dot on a curved trail (v2) -- and wind lines (v3)
+  // both still didn't land at 13px in the chrome-top row (checked in situ,
+  // not just blown up in a mockup, after v3 shipped and still missed). A
+  // 4-point sparkle sidesteps trying to depict motion literally -- it's the
+  // same "effects/animate" shorthand a lot of software already uses (Notion,
+  // editing tools), so it doesn't need to read as a trajectory or a gust of
+  // wind at a glance, just as "something here is animated."
+  motion: '<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z"/><path d="M19 15l.7 2.1L22 18l-2.3.9L19 21l-.7-2.1L16 18l2.3-.9z"/>',
 };
 
 export function Icon({ name, size = 15, className }: { name: IconName; size?: number; className?: string }) {

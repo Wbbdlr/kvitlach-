@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import { DiscardEntry } from "./DiscardPile";
 import { cardImages } from "./selectors";
 import { Icon } from "./icons";
@@ -8,17 +9,36 @@ export interface DiscardPileModalProps {
   onClose: () => void;
 }
 
+// Every face value a Kvitlach deck can show, in reading order -- see
+// CLAUDE.md's "a Kvitlach deck is 24 cards, numbers 1-12, two copies each."
+const CARD_VALUES = Array.from({ length: 12 }, (_, i) => String(i + 1));
+
+// Tallied by face value rather than listed one row per instance. The pile
+// widened (see DiscardPile.tsx's discardedEntries) from Eleveroon-only to
+// every resolved hand's cards, and a busy round can log dozens of entries --
+// a growing, scrolling list of individual cards stopped being "nicely
+// viewable" well before that. Grouping by value also fits how a real player
+// actually uses this: "how many 9s are left to come" reads off a count, not
+// off a list of who held each one.
+function countsByValue(entries: DiscardEntry[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  entries.forEach((entry) => {
+    counts[entry.card.name] = (counts[entry.card.name] ?? 0) + 1;
+  });
+  return counts;
+}
+
 // The pile's expandable review, reachable by tapping the pile itself (see
-// DiscardPile.tsx). Same light card-modal shell as StatsModal -- deliberately
-// NOT reusing CardView here: CardView's Eleveroon treatment is tuned for
-// living inside a hand (it self-removes once its one-shot fly-out finishes,
-// see CardView.tsx), which would just make every Eleveroon row in this list
-// disappear a moment after it renders -- and most entries here now aren't
-// Eleveroon at all, just an ordinary card from a hand that's already
-// resolved and still sitting in its seat (see DiscardPile.tsx's
-// discardedEntries). This draws the same face/grayscale/ring language
-// directly instead, with no hand-lifecycle attached to it.
+// DiscardPile.tsx). Fixed 1-12 grid, always -- every value renders whether
+// or not it's been discarded yet, so the window is exactly the same size
+// every round instead of resizing (or scrolling) as it fills. Which PLAYER
+// discarded which card, and whether a specific one was an Eleveroon save,
+// no longer show here -- that per-instance detail is what made the old list
+// grow unbounded in the first place; the seat itself (still showing every
+// resolved hand's cards in place, see DiscardPile.tsx) is where that detail
+// still lives.
 export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
+  const counts = countsByValue(entries);
   return (
     <StageOverlay>
       <div
@@ -28,7 +48,7 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
         onClick={onClose}
       >
         <div
-          className="relative w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
+          className="relative w-full max-w-xs rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between">
@@ -41,30 +61,30 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
             </button>
           </div>
 
-          <div className="border border-slate-200 rounded-lg divide-y divide-slate-200 overflow-hidden">
-            {entries.length === 0 && <div className="p-3 text-xs text-slate-500">No cards discarded yet.</div>}
-            {entries.map((entry) => (
-              <div key={entry.key} className="p-3 flex items-center gap-3 text-sm">
-                <span className="relative inline-flex w-10 h-14 flex-none">
+          <div className="grid grid-cols-4 gap-x-2 gap-y-3">
+            {CARD_VALUES.map((value) => {
+              const count = counts[value] ?? 0;
+              return (
+                <div key={value} className="relative flex justify-center">
                   <img
-                    src={cardImages[entry.card.name] ?? cardImages.blank}
-                    alt={`Card ${entry.card.name}`}
-                    className="w-full h-full object-contain opacity-70 grayscale"
+                    src={cardImages[value]}
+                    alt={`Card ${value}`}
+                    // count === 0 stays visibly duller than a discarded one --
+                    // the grid is fixed either way, this is the only signal
+                    // left for "hasn't come up yet" vs. "has."
+                    className={clsx("w-full h-auto object-contain", count === 0 ? "opacity-30 grayscale" : "opacity-90")}
                   />
-                </span>
-                <div className="flex flex-col">
-                  <span className="text-slate-700 font-medium">{entry.card.name}</span>
-                  <span className="text-xs text-slate-500">
-                    {entry.playerName}
-                    {entry.isBanker ? " (bank)" : ""}
-                    {/* Only the Eleveroon case gets a reason -- every other
-                        entry is just an ordinary card from a hand that's
-                        done, nothing to explain. */}
-                    {entry.card.attributes?.eleveroonIgnored ? " -- saved by Eleveroon" : ""}
-                  </span>
+                  {count > 0 && (
+                    <span
+                      className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-600 text-white text-[11px] font-semibold flex items-center justify-center leading-none"
+                      aria-label={`${count} discarded`}
+                    >
+                      {count}
+                    </span>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

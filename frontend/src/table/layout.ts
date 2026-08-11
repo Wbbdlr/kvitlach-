@@ -221,22 +221,34 @@ export function orderSeatsForViewer<T>(items: T[], isViewer: (item: T) => boolea
   return [...items.slice(shift), ...items.slice(0, shift)];
 }
 
+// How far the shoe/discard pile sit from center, mirrored either side of the
+// dealer. Widened from 110 (2026-08-11): the dealer's own hand can grow past
+// SEAT_WIDTH/2 (84) once it's carrying several cards -- .k-hand centers via
+// flex (justify-content: center), so a long hand grows outward symmetrically
+// in BOTH directions -- and a user report ("the discard pile overlaps with
+// the dealer's cards") confirmed 110 wasn't clear of that. Moved both sides
+// out together, not just the reported one: they're a deliberate mirror pair
+// (see the two functions below, and their CSS counterparts) and the same
+// hand-width risk is symmetric, even though only the discard side got
+// reported.
+const SIDE_OFFSET = 145;
+
 // Where the shoe sits, in the same nominal stage-px used by seatPositions()
-// -- mirrors .k-shoe's own CSS (index.css: `left: calc(50% + 110px)`,
+// -- mirrors .k-shoe's own CSS (index.css: `left: calc(50% + 145px)`,
 // `top: calc(var(--play-top) + 116px * var(--vf))`). Seat.tsx/Dealer.tsx use
 // this as the ORIGIN for the card-deal-in animation, so a card visibly
 // travels from the shoe to its resting seat rather than just popping in
 // place -- if the shoe's own CSS position ever changes, this needs to change
 // with it, and vice versa.
 export function shoePosition(playTop: number, vf: number): { x: number; y: number } {
-  return { x: STAGE_WIDTH / 2 + 110, y: playTop + 116 * vf };
+  return { x: STAGE_WIDTH / 2 + SIDE_OFFSET, y: playTop + 116 * vf };
 }
 
 // Where the discard pile sits -- the shoe's mirror image on the dealer's
-// OTHER side (index.css: `left: calc(50% - 110px)`, same top as the shoe).
+// OTHER side (index.css: `left: calc(50% - 145px)`, same top as the shoe).
 // Seat.tsx/Dealer.tsx use this as the DESTINATION for a rejected card's
 // fly-out (see CardView.tsx's cardDiscardFly), the reverse of the shoe's own
 // role as the deal-in's origin.
 export function discardPilePosition(playTop: number, vf: number): { x: number; y: number } {
-  return { x: STAGE_WIDTH / 2 - 110, y: playTop + 116 * vf };
+  return { x: STAGE_WIDTH / 2 - SIDE_OFFSET, y: playTop + 116 * vf };
 }

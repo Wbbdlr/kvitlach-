@@ -936,11 +936,12 @@ body:has(.k-fit) {
   border-radius: 999px;
 }
 
-/* The shoe/deck beside the dealer. */
+/* The shoe/deck beside the dealer. Offset mirrors layout.ts's SIDE_OFFSET --
+   see that comment for why it's 145, not the original 110. */
 .k-shoe {
   position: absolute;
   top: calc(var(--play-top, 0px) + 116px * var(--vf, 1));
-  left: calc(50% + 110px);
+  left: calc(50% + 145px);
   width: 30px;
   z-index: 11;
   display: flex;
@@ -2032,16 +2033,19 @@ body:has(.k-fit) {
 }
 
 /* The discard pile -- the shoe's mirror image on the dealer's other side
-   (left: 50% - 110px vs. the shoe's 50% + 110px; see layout.ts's
+   (left: 50% - 145px vs. the shoe's 50% + 145px; see layout.ts's
    discardPilePosition, which an Eleveroon reject's fly-out above travels
    toward -- every other entry here logs in place, still sitting in its own
    hand, see DiscardPile.tsx's discardedEntries). Only ever rendered once the
    round has its first entry (DiscardPile.tsx) -- a permanently-empty pile
-   promising a tap that does nothing is worse than not drawing it. */
+   promising a tap that does nothing is worse than not drawing it. Offset
+   widened from 110 (2026-08-11, see layout.ts's SIDE_OFFSET): a several-card
+   dealer hand grows past the old gap since .k-hand centers via flex, and a
+   user report confirmed it was overlapping. */
 .k-discard {
   position: absolute;
   top: calc(var(--play-top, 0px) + 116px * var(--vf, 1));
-  left: calc(50% - 110px);
+  left: calc(50% - 145px);
   width: 30px;
   z-index: 11;
   display: flex;

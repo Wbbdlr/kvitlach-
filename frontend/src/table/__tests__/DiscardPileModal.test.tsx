@@ -6,29 +6,32 @@ import { DiscardEntry } from "../DiscardPile";
 const entries: DiscardEntry[] = [
   { key: "p1-1", playerName: "Alice Smith", isBanker: false, card: { name: "11", attributes: { values: [11], eleveroonIgnored: true } } },
   { key: "bk-0", playerName: "Bank", isBanker: true, card: { name: "11", attributes: { values: [11], eleveroonIgnored: true } } },
+  { key: "p2-0", playerName: "Bob Jones", isBanker: false, card: { name: "7", attributes: { values: [7] } } },
 ];
 
 describe("DiscardPileModal", () => {
-  it("lists every discarded card with who it happened to", () => {
+  it("always shows the full 1-12 grid, tallying counts by face value rather than one row per card", () => {
     render(<DiscardPileModal entries={entries} onClose={vi.fn()} />);
     expect(screen.getByText("Discarded this round")).toBeInTheDocument();
-    expect(screen.getByText(/Alice Smith/)).toBeInTheDocument();
-    expect(screen.getByText(/Bank \(bank\)/)).toBeInTheDocument();
+    // Every value renders regardless of whether it's been discarded.
+    for (let v = 1; v <= 12; v += 1) {
+      expect(screen.getByAltText(`Card ${v}`)).toBeInTheDocument();
+    }
+    // Two 11s and one 7 in the fixture -- tallied, not listed.
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    // No per-player attribution or Eleveroon explanation any more -- that
+    // detail still lives at the seat itself, not in this tally.
+    expect(screen.queryByText(/Alice/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Eleveroon/)).not.toBeInTheDocument();
   });
 
-  it("only explains itself for an Eleveroon reject, not an ordinary resolved-hand card", () => {
-    const mixed: DiscardEntry[] = [
-      { key: "p1-0", playerName: "Alice Smith", isBanker: false, card: { name: "11", attributes: { values: [11], eleveroonIgnored: true } } },
-      { key: "p2-0", playerName: "Bob Jones", isBanker: false, card: { name: "7", attributes: { values: [7] } } },
-    ];
-    render(<DiscardPileModal entries={mixed} onClose={vi.fn()} />);
-    expect(screen.getByText(/Alice Smith -- saved by Eleveroon/)).toBeInTheDocument();
-    expect(screen.getByText("Bob Jones")).toBeInTheDocument();
-  });
-
-  it("shows a placeholder when nothing's been discarded", () => {
+  it("keeps the exact same grid, just with nothing tallied, when nothing's been discarded", () => {
     render(<DiscardPileModal entries={[]} onClose={vi.fn()} />);
-    expect(screen.getByText("No cards discarded yet.")).toBeInTheDocument();
+    for (let v = 1; v <= 12; v += 1) {
+      expect(screen.getByAltText(`Card ${v}`)).toBeInTheDocument();
+    }
+    expect(screen.queryByLabelText(/discarded$/)).not.toBeInTheDocument();
   });
 
   it("calls onClose from the close button and the backdrop, not the card itself", () => {

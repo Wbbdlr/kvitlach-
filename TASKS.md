@@ -34,6 +34,27 @@ for how to work in this repo.
       someone's on an actual phone in landscape; don't act on it without one.
 ## Done
 
+- [x] Discard pile moved clear of the dealer's cards, and its review
+      redesigned as a fixed 1-12 grid (2026-08-11) -- user report: the pile
+      overlapped the dealer's cards, and per-card scrolling rows in the
+      modal didn't stay "nicely viewable" once a round logged more than a
+      few. Root cause of the overlap: `.k-hand` centers via flex, so a
+      dealer hand of several cards grows outward symmetrically past the old
+      110px offset either side of centre -- widened both the shoe's and the
+      discard pile's offset to 145px (`layout.ts`'s new `SIDE_OFFSET`,
+      mirrored in `index.css`'s `.k-shoe`/`.k-discard`; moved both sides
+      together, not just the reported one, since they're a deliberate mirror
+      pair and the risk is symmetric). `DiscardPileModal.tsx` rewritten to
+      always show all 12 face values with a small count badge per value
+      (tallied from the same `discardedEntries` the pile's own "N out" count
+      already used) instead of one row per card instance -- fixed grid size
+      regardless of how many cards a round has logged, no more per-player
+      attribution or Eleveroon explanation in this view (that detail still
+      lives at the seat itself). Verified live: dealer hand of 5 cards
+      cleared the relocated pile by 118px (was ~83px); modal opened on a
+      12-card round showed all 12 values with 8 correctly-tallied badges
+      summing to 12. 210 frontend tests (net -1: two per-entry tests
+      replaced by two grid-shaped ones), `vite build` clean.
 - [x] Green sliver above the header, take two (2026-08-11) -- the 2026-08-10
       fix (`body:has(.k-fit) { background: #060d09; }`) was real and stayed
       correctly deployed (re-verified live on kvitlach.us: body/`.k-fit` both
