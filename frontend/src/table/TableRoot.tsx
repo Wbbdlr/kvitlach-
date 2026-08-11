@@ -684,6 +684,25 @@ export function TableRoot({
             Manage
           </button>
         )}
+        {/* Real bankers reach reshuffle through Manage -> Deck. A practice
+            room's banker is a bot with no session (see store.ts's
+            reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
+            gated and out of reach -- this gives the one human at a practice
+            table the same direct, no-confirmation access onPracticeTopUp
+            already gets, rather than exposing the entire admin drawer
+            (kick/rename/close-room) just to reach one control. */}
+        {room.practice && (
+          <button
+            type="button"
+            className="k-chip-btn"
+            onClick={onReshuffleDeck}
+            title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
+            aria-label="Reshuffle deck"
+          >
+            <Icon name="shuffle" size={13} />
+            Reshuffle
+          </button>
+        )}
         {bankIsEmpty && (
           <button
             type="button"

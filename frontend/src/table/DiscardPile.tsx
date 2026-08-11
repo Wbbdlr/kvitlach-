@@ -74,7 +74,11 @@ export function DiscardPile({ entries, onOpen }: { entries: DiscardEntry[]; onOp
       type="button"
       className="k-discard"
       onClick={onOpen}
-      title={`${count} card${count === 1 ? "" : "s"} discarded this shoe -- tap to review`}
+      // "Discarded" read as if a player had thrown these away -- these are
+      // just every card that's already come out of the shoe and resolved,
+      // across every round played since the last actual reshuffle. "Used"
+      // says that without the poker-jargon detour.
+      title={`${count} card${count === 1 ? "" : "s"} used this shoe -- tap to see what's left`}
     >
       <span className="k-discard-stack">
         <span className="k-cardback" />

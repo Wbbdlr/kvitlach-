@@ -763,7 +763,14 @@ export class GameStore {
   reshuffleDeck(roomId: string, adminId: string): RoundContext | undefined {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");
-    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    // Mirrors startRound's own isAdmin || (practice && player) allowance --
+    // a practice room's banker is a bot with no session to authenticate as,
+    // so its one human needs the same carve-out to bring in a fresh shoe
+    // themselves instead of being stuck with whatever the bot dealt them.
+    const actor = roomRec.room.players.find((p) => p.id === adminId);
+    if (!actor) throw new Error("forbidden");
+    const allowed = !actor.isBot && (actor.type === "admin" || (roomRec.room.practice === true && actor.type === "player"));
+    if (!allowed) throw new Error("forbidden");
 
     if (roomRec.room.roundId) {
       const round = this.rounds.get(roomRec.room.roundId);

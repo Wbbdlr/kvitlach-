@@ -544,10 +544,10 @@ export default function App() {
       )}
       <SiteHeader />
         {!room && (
-          <section className="rounded-xl shadow-md bg-amber-50/70 border border-amber-200 p-4 flex flex-col gap-2">
+          <section className="rounded-xl shadow-md bg-blue-50/70 border border-blue-200 p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
-                <h1 className="text-xl font-bold text-amber-800">Welcome to Kvitlach</h1>
+                <h1 className="text-xl font-bold text-blue-800">Welcome to Kvitlach</h1>
                 <div className="text-xs text-slate-600">
                   Join an existing table with the room code your Banker shared, or host one if you are running the game.
                 </div>
@@ -572,13 +572,13 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  className="group inline-flex items-center gap-2 rounded-full border border-amber-300 text-amber-700 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-amber-600 hover:text-white"
+                  className="group inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-700 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-blue-600 hover:text-white"
                   onClick={() => {
                     setShowHowTo(false);
                     setShowWhatIs(true);
                   }}
                 >
-                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-amber-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-amber-600 p-[1px]">
+                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-blue-600 p-[1px]">
                     <img
                       src="/blank.png"
                       alt=""
@@ -602,7 +602,7 @@ export default function App() {
                 Join Game
                 <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
                   <svg
-                    className="h-3 w-3 text-amber-500"
+                    className="h-3 w-3 text-blue-500"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                     aria-hidden="true"
@@ -672,7 +672,7 @@ export default function App() {
               aria-controls="banker-create-fields"
             >
               <span className="inline-flex items-center gap-2">
-                <svg className="h-4 w-4 text-amber-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <svg className="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
                 </svg>
                 <span>Banker: Host the table, set wagers, etc.</span>
@@ -747,7 +747,7 @@ export default function App() {
                 {bankerBankrollManuallySet && (
                   <button
                     type="button"
-                    className="text-amber-700 font-semibold"
+                    className="text-blue-700 font-semibold"
                     onClick={() => {
                       setBankerBankroll(buyIn);
                       setBankerBankrollManuallySet(false);
@@ -777,12 +777,12 @@ export default function App() {
         {/* Deliberately its own card, not a row in the grid above: this is a
             solo sandbox (no other humans, no real stakes), and burying it
             inside the Join form made it easy to miss and easy to confuse
-            with actually joining someone's table. Dashed border + amber
+            with actually joining someone's table. Dashed border + a blue
             tint reads as "not a real table" without leaving the app's
             existing color language. */}
         {!room && (
-          <section className="card-surface p-4 flex flex-col gap-3 border-2 border-dashed border-amber-300 bg-amber-50/60">
-            <header className="flex flex-col gap-1 pb-3 border-b border-amber-200">
+          <section className="card-surface p-4 flex flex-col gap-3 border-2 border-dashed border-blue-300 bg-blue-50/60">
+            <header className="flex flex-col gap-1 pb-3 border-b border-blue-200">
               <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
                 Practice Against the Computer
                 <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
@@ -828,7 +828,7 @@ export default function App() {
 
             <button
               type="button"
-              className="self-start text-xs font-semibold text-amber-700 hover:text-amber-800"
+              className="self-start text-xs font-semibold text-blue-700 hover:text-blue-800"
               onClick={() => setPracticeExpanded((v) => !v)}
               aria-expanded={practiceExpanded}
               aria-controls="practice-settings"
@@ -850,7 +850,7 @@ export default function App() {
                     step={1}
                     value={practiceBotCount}
                     onChange={(e) => setPracticeBotCount(Number(e.target.value))}
-                    className="w-full accent-amber-600"
+                    className="w-full accent-blue-600"
                     aria-label="Number of computer players"
                   />
                 </label>
@@ -867,7 +867,7 @@ export default function App() {
                     step={1}
                     value={practiceDecks}
                     onChange={(e) => setPracticeDecks(Number(e.target.value))}
-                    className="w-full accent-amber-600"
+                    className="w-full accent-blue-600"
                     aria-label="Number of decks"
                   />
                 </label>
@@ -897,7 +897,7 @@ export default function App() {
                         setPracticeBankBuyIn((prev) => Math.min(Math.max(prev, next), next * 10));
                       }
                     }}
-                    className="w-full accent-amber-600"
+                    className="w-full accent-blue-600"
                     aria-label="Your starting money"
                   />
                 </label>
@@ -919,7 +919,7 @@ export default function App() {
                         setPracticeBankBuyIn(next);
                         setPracticeBankBuyInManuallySet(next !== practiceBuyIn * 4);
                       }}
-                      className="w-full accent-amber-600"
+                      className="w-full accent-blue-600"
                       aria-label="Bank's starting money"
                     />
                   </label>
@@ -928,7 +928,7 @@ export default function App() {
                     {practiceBankBuyInManuallySet && (
                       <button
                         type="button"
-                        className="text-amber-700 font-semibold"
+                        className="text-blue-700 font-semibold"
                         onClick={() => {
                           setPracticeBankBuyIn(practiceBuyIn * 4);
                           setPracticeBankBuyInManuallySet(false);
@@ -954,7 +954,7 @@ export default function App() {
               status === "connected"
                 ? "border-green-200 bg-green-50 text-green-700"
                 : status === "connecting"
-                ? "border-amber-200 bg-amber-50 text-amber-700"
+                ? "border-blue-200 bg-blue-50 text-blue-700"
                 : "border-slate-200 bg-slate-50 text-slate-700"
             )}
             title={`WebSocket: ${status} (${wsUrl})`}
@@ -971,7 +971,7 @@ export default function App() {
           <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               checked={musicEnabled}
               onChange={(e) => {
                 const next = e.target.checked;
@@ -985,7 +985,7 @@ export default function App() {
           <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               checked={sfxEnabled}
               onChange={(e) => {
                 const next = e.target.checked;
@@ -999,7 +999,7 @@ export default function App() {
           <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               checked={motionEnabled}
               onChange={(e) => setMotionEnabled(e.target.checked)}
             />

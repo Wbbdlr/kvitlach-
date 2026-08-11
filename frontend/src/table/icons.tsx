@@ -40,7 +40,8 @@ export type IconName =
   | "cpu"
   | "close"
   | "motion"
-  | "rotate";
+  | "rotate"
+  | "shuffle";
 
 // Inner <svg> markup for each icon, static and developer-authored (no user
 // data ever flows through this map) — safe to inject verbatim.
@@ -94,6 +95,10 @@ const ICON_PATHS: Record<IconName, string> = {
   // .k-rotate-hint), so it never needed to survive at chrome-top's ~13px.
   rotate:
     '<rect x="6.5" y="3" width="9" height="15" rx="1.8"/><path d="M17.5 7.5a6.5 6.5 0 0 1-5.8 10.4"/><path d="M19.3 4.8l-.7 3.2-3.2-.9"/>',
+  // Classic crossed-strands shuffle glyph -- used only by the practice-mode
+  // reshuffle chip (TableRoot.tsx).
+  shuffle:
+    '<path d="M3 7h4l12 10h2"/><path d="M15 4l4 3-4 3"/><path d="M3 17h4l12-10h2"/><path d="M15 20l4-3-4-3"/>',
 };
 
 export function Icon({ name, size = 15, className }: { name: IconName; size?: number; className?: string }) {

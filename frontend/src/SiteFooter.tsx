@@ -17,12 +17,12 @@ export interface SiteFooterProps {
 
 export default function SiteFooter({ active, children }: SiteFooterProps) {
   return (
-    <footer className="mt-8 border-t border-amber-200/70 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <footer className="mt-8 border-t border-blue-200/70 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div className="flex items-center gap-3">
         <span className="font-semibold text-slate-600">Kvitlach.us</span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
           v{APP_VERSION}
-          <span className="text-amber-700">Beta</span>
+          <span className="text-blue-700">Beta</span>
         </span>
       </div>
       {children}

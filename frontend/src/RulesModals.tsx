@@ -18,7 +18,7 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
           onClick={onCloseHowTo}
         >
           <div
-            className="relative w-full max-w-xl max-h-[90vh] card-surface bg-amber-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+            className="relative w-full max-w-xl max-h-[90vh] card-surface bg-blue-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
@@ -104,7 +104,7 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
           onClick={onCloseWhatIs}
         >
           <div
-            className="relative w-full max-w-xl max-h-[85vh] card-surface bg-amber-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+            className="relative w-full max-w-xl max-h-[85vh] card-surface bg-blue-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}

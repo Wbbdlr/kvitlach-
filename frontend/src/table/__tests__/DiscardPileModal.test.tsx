@@ -12,8 +12,8 @@ const entries: DiscardEntry[] = [
 describe("DiscardPileModal", () => {
   it("always shows the full 1-12 grid, tallying counts by face value rather than one row per card", () => {
     render(<DiscardPileModal entries={entries} onClose={vi.fn()} />);
-    expect(screen.getByText("Discarded this shoe")).toBeInTheDocument();
-    // Every value renders regardless of whether it's been discarded.
+    expect(screen.getByText("Used this shoe")).toBeInTheDocument();
+    // Every value renders regardless of whether it's been used yet.
     for (let v = 1; v <= 12; v += 1) {
       expect(screen.getByAltText(`Card ${v}`)).toBeInTheDocument();
     }
@@ -26,12 +26,12 @@ describe("DiscardPileModal", () => {
     expect(screen.queryByText(/Eleveroon/)).not.toBeInTheDocument();
   });
 
-  it("keeps the exact same grid, just with nothing tallied, when nothing's been discarded", () => {
+  it("keeps the exact same grid, just with nothing tallied, when nothing's been used yet", () => {
     render(<DiscardPileModal entries={[]} onClose={vi.fn()} />);
     for (let v = 1; v <= 12; v += 1) {
       expect(screen.getByAltText(`Card ${v}`)).toBeInTheDocument();
     }
-    expect(screen.queryByLabelText(/discarded$/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/used$/)).not.toBeInTheDocument();
   });
 
   it("calls onClose from the close button and the backdrop, not the card itself", () => {

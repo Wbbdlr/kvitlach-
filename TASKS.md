@@ -34,6 +34,48 @@ for how to work in this repo.
       keeping to.
 ## Done
 
+- [x] Three small bug reports (2026-08-11):
+      1. Practice mode couldn't reshuffle the shoe -- `reshuffleDeck` was
+         still plain `isAdmin`-gated in `store.ts`, but a practice room's
+         "banker" is a bot with no session (see `PRACTICE_BANKER_NAME`), so
+         the one human there could never satisfy that check. `startRound`
+         already had the right carve-out (`!actor.isBot && (admin ||
+         (room.practice && player))`); `reshuffleDeck` now mirrors it
+         exactly. Frontend: rather than opening the whole admin `ManageDrawer`
+         to a non-banker (kick/rename/close-room have no business being
+         reachable from a practice seat), added one direct `room.practice`-
+         gated "Reshuffle" chip next to Manage, calling the same
+         `onReshuffleDeck` handler -- mirrors the existing `onPracticeTopUp`
+         pattern (direct, no confirmation step, practice-only). New backend
+         tests in `practice-mode.test.ts` pin: human can reshuffle, the
+         bot banker itself still can't, and a real room's regular player
+         still can't either.
+      2. Discard pile pop-up reworded: "Discarded this shoe" /
+         "N discarded" read as if a player chose to fold those cards.
+         They're just what's already come out of the shoe and resolved
+         (see `advanceShoeDiscards` above) -- reworded to "Used this
+         shoe" / "N used" throughout (`DiscardPile.tsx`,
+         `DiscardPileModal.tsx`) to say that plainly.
+      3. Landing-page color theme: was orange (`accent: #f97316` in
+         `tailwind.config.cjs`, plus scattered raw `amber-*` Tailwind
+         utility classes across `App.tsx`'s lobby, `SiteHeader.tsx`,
+         `SiteFooter.tsx`, and `RulesModals.tsx`). Re-themed to a classy,
+         muted blue: `accent` is now Tailwind's own blue-600 (`#2563eb`,
+         reused verbatim rather than a bespoke hex, so the custom `accent`
+         token and every literal `blue-*` utility class swapped in
+         alongside it land on the exact same ramp), and every `amber-N`
+         utility became `blue-N` at the same shade level (mechanical,
+         preserves the existing tuned contrast/hierarchy, just recolors
+         hue). The cream page background (`bg-sand`, `#f5f1e8`, set on
+         `<body>` in `index.html`) was already there and untouched --
+         only the orange accent moved. Does NOT touch the felt table's own
+         gold/amber accents (`.k-tag.turn`, `.k-readout b`, etc. in
+         index.css) -- that's an established, separate gameplay-UI
+         palette the report wasn't about.
+      154/154 backend + 219/219 frontend tests pass; verified live
+      (computed colors confirmed blue-600/700/800 + cream body, zero
+      remaining `rgb(249, 115, 22)` orange anywhere on the page; practice
+      Reshuffle clicked with no console/WS error).
 - [x] Legible on-felt text at any phone size / any table size, "especially
       older players" (2026-08-11). `.k-readout` (hand totals), `.k-plate-name`,
       `.k-plate-sub`, `.k-tag` (status labels), and `.k-banktotal` all lived

@@ -57,7 +57,10 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-base font-semibold text-slate-800">
               <Icon name="list" size={16} className="text-amber-700" />
-              Discarded this shoe
+              {/* "Discarded" reads like a player chose to fold these -- this
+                  is just what's already come out of the shoe (every round
+                  since the last reshuffle), so "used" is the honest word. */}
+              Used this shoe
             </div>
             <button type="button" className="text-slate-400 hover:text-slate-600" onClick={onClose} aria-label="Close">
               ✕
@@ -80,7 +83,7 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
                   {count > 0 && (
                     <span
                       className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-600 text-white text-[11px] font-semibold flex items-center justify-center leading-none"
-                      aria-label={`${count} discarded`}
+                      aria-label={`${count} used`}
                     >
                       {count}
                     </span>

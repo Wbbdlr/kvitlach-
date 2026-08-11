@@ -220,6 +220,38 @@ describe("selfTopUpWallet", () => {
   });
 });
 
+describe("reshuffleDeck (practice carve-out)", () => {
+  it("lets the human player reshuffle in a practice room -- its banker is a bot with no session", () => {
+    const store = new GameStore();
+    const { room, player } = store.createPracticeRoom({ firstName: "Alice" });
+
+    // createPracticeRoom already dealt the opening round -- reshuffleDeck's
+    // live branch (swap the active round's own deck) is the one this exercises.
+    const updated = store.reshuffleDeck(room.roomId, player.id);
+
+    expect(updated).toBeDefined();
+    expect(updated!.deckReshuffledAt).toBeDefined();
+  });
+
+  it("still refuses a bot's own id, even in practice -- only the human gets the carve-out", () => {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({ firstName: "Alice" });
+    const bankerBot = room.players.find((p) => p.type === "admin")!;
+
+    expect(() => store.reshuffleDeck(room.roomId, bankerBot.id)).toThrow("forbidden");
+  });
+
+  it("does not extend to a real (non-practice) room -- a regular player still can't reshuffle", () => {
+    const store = new GameStore();
+    const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });
+    const { player: alice } = store.joinRoom(room.roomId, { firstName: "Alice" });
+
+    expect(() => store.reshuffleDeck(room.roomId, alice.id)).toThrow("forbidden");
+    // The real banker is unaffected by this change.
+    expect(() => store.reshuffleDeck(room.roomId, bankerPlayer.id)).not.toThrow();
+  });
+});
+
 describe("createPracticeRoom bot count selection", () => {
   it("defaults to 2 bots when no count is given (pre-existing behavior)", () => {
     const store = new GameStore();

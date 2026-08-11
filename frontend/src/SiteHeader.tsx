@@ -14,7 +14,7 @@ export interface SiteHeaderProps {
 
 export default function SiteHeader({ showNav = false, active }: SiteHeaderProps) {
   return (
-    <header className="flex items-center gap-3 flex-wrap border-b border-amber-200/70 pb-4">
+    <header className="flex items-center gap-3 flex-wrap border-b border-blue-200/70 pb-4">
       <a
         href="/"
         className="flex items-center gap-2 text-2xl sm:text-3xl font-bold leading-none text-ink hover:opacity-80 transition-opacity"
@@ -35,12 +35,12 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
             loading="lazy"
           />
         </span>
-        <span className="text-amber-600">Kvitlach</span>
+        <span className="text-blue-600">Kvitlach</span>
       </a>
-      <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-amber-700/80 leading-tight">
+      <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-blue-700/80 leading-tight">
         Ah Heimishe Chanukah Shpil
       </span>
-      <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 shadow-sm">
+      <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700 shadow-sm">
         Beta
       </span>
       {showNav && (
@@ -51,7 +51,7 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
               href={link.href}
               className={
                 active === link.href
-                  ? "font-semibold text-ink underline underline-offset-4 decoration-amber-400"
+                  ? "font-semibold text-ink underline underline-offset-4 decoration-blue-400"
                   : "text-slate-500 hover:text-ink hover:underline underline-offset-4"
               }
             >
