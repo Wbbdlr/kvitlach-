@@ -182,11 +182,19 @@ export function RoomInfoDrawer({
                           value={renameFirst}
                           onChange={(e) => setRenameFirst(e.target.value)}
                           required
+                          autoComplete="given-name"
+                          autoCapitalize="words"
                         />
                       </label>
                       <label className="text-xs">
                         Last name (optional)
-                        <input className="mt-1 w-full rounded border px-3 py-2" value={renameLast} onChange={(e) => setRenameLast(e.target.value)} />
+                        <input
+                          className="mt-1 w-full rounded border px-3 py-2"
+                          value={renameLast}
+                          onChange={(e) => setRenameLast(e.target.value)}
+                          autoComplete="family-name"
+                          autoCapitalize="words"
+                        />
                       </label>
                     </div>
                     <button type="submit" className="bg-accent text-white rounded px-3 py-2 text-sm font-semibold">

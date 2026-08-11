@@ -615,22 +615,52 @@ export default function App() {
               <p className="text-xs text-slate-500">Enter the code you received from the Banker to take a seat.</p>
             </header>
             <label className="text-sm">Game ID
-                <input required className="mt-1 w-full rounded border px-3 py-2" value={roomIdInput} onChange={(e) => setRoomId(e.target.value)} />
+                {/* Room IDs are server-normalized to uppercase either way (store.ts
+                    trims + uppercases on join) -- mirroring that as you type, same
+                    as the Custom Game ID field below already does, means what's on
+                    screen matches what a banker actually shared, and autoCorrect/
+                    spellCheck off stops a phone "fixing" a code into a dictionary
+                    word or flagging it as a typo. */}
+                <input
+                  required
+                  className="mt-1 w-full rounded border px-3 py-2 uppercase"
+                  value={roomIdInput}
+                  onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
             </label>
               <label className="text-sm">First name (required)
-                <input required className="mt-1 w-full rounded border px-3 py-2" value={joinFirstName} onChange={(e) => setJoinFirst(e.target.value)} />
+                <input
+                  required
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={joinFirstName}
+                  onChange={(e) => setJoinFirst(e.target.value)}
+                  autoComplete="given-name"
+                  autoCapitalize="words"
+                />
             </label>
               <label className="text-sm">Last name (optional)
-                <input className="mt-1 w-full rounded border px-3 py-2" value={joinLastName} onChange={(e) => setJoinLast(e.target.value)} />
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={joinLastName}
+                  onChange={(e) => setJoinLast(e.target.value)}
+                  autoComplete="family-name"
+                  autoCapitalize="words"
+                />
             </label>
             <label className="text-sm">Password (if required)
               <input
+                type="password"
                 className={clsx(
                   "mt-1 w-full rounded border px-3 py-2",
                   formErrors.join ? "border-red-300 focus:border-red-400 focus:ring-red-200" : ""
                 )}
                 value={joinPassword}
                 onChange={(e) => setJoinPassword(e.target.value)}
+                autoComplete="current-password"
               />
             </label>
             {formErrors.join && (
@@ -699,6 +729,7 @@ export default function App() {
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={roomName}
                   onChange={(e) => setRoomName(e.target.value)}
+                  autoCapitalize="words"
                 />
               </label>
               <label className="text-sm">Custom Game ID (optional)
@@ -708,17 +739,40 @@ export default function App() {
                   onChange={(e) => setCustomRoomId(e.target.value.toUpperCase())}
                   placeholder="e.g. CHOLENT-613"
                   maxLength={20}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
                 <span className="text-xs text-slate-500">Use 4-20 characters with letters, numbers, or hyphen.</span>
               </label>
               <label className="text-sm">First name (required)
-                <input required className="mt-1 w-full rounded border px-3 py-2" value={bankerFirstName} onChange={(e) => setBankerFirst(e.target.value)} />
+                <input
+                  required
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={bankerFirstName}
+                  onChange={(e) => setBankerFirst(e.target.value)}
+                  autoComplete="given-name"
+                  autoCapitalize="words"
+                />
               </label>
               <label className="text-sm">Last name (optional)
-                <input className="mt-1 w-full rounded border px-3 py-2" value={bankerLastName} onChange={(e) => setBankerLast(e.target.value)} />
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={bankerLastName}
+                  onChange={(e) => setBankerLast(e.target.value)}
+                  autoComplete="family-name"
+                  autoCapitalize="words"
+                />
               </label>
               <label className="text-sm">Password (optional for joining)
-                <input className="mt-1 w-full rounded border px-3 py-2" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
+                <input
+                  type="password"
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={roomPassword}
+                  onChange={(e) => setRoomPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
               </label>
               <label className="text-sm">Buy-in per player
                 <input className="mt-1 w-full rounded border px-3 py-2" type="number" min={1} value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} />
@@ -801,6 +855,8 @@ export default function App() {
                 value={practiceFirstName}
                 onChange={(e) => setPracticeFirst(e.target.value)}
                 placeholder="Guest"
+                autoComplete="given-name"
+                autoCapitalize="words"
               />
             </label>
 

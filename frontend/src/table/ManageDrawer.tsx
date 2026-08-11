@@ -210,6 +210,10 @@ export function ManageDrawer({
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Table label (faint, on the felt)</label>
           <div className="flex gap-2">
+            {/* This app's own default watermark is Hebrew (see TableRoot.tsx's
+                DEFAULT_WATERMARK) and most real values here are family
+                surnames -- an English spellchecker has nothing useful to say
+                about either, just a distracting red squiggle, so it's off. */}
             <input
               type="text"
               value={watermarkInput}
@@ -217,6 +221,8 @@ export function ManageDrawer({
               placeholder="e.g. the Schlesinger family's table"
               className="min-w-0 flex-1 rounded border px-2 py-1 text-sm"
               maxLength={60}
+              autoCapitalize="words"
+              spellCheck={false}
             />
             <button
               type="button"
@@ -286,8 +292,19 @@ export function ManageDrawer({
               </div>
               {adjustTarget === p.id && (
                 <div className="mt-2 flex flex-col gap-1.5 border-t border-slate-100 pt-2">
+                  {/* type="text" + inputMode, not type="number": iOS Safari's
+                      number-pad keyboard for type="number" doesn't reliably
+                      expose a "-" key at all, which would make "negative
+                      removes chips" untypable on an iPhone. Mirrors
+                      PlayerDock.tsx's own bet-amount input, just with the
+                      pattern loosened to allow a leading minus. applyAdjust
+                      already parses this via plain Number(), so the value
+                      shape is identical either way -- this only changes
+                      which on-screen keyboard mobile shows. */}
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="-?[0-9]*"
                     autoFocus
                     placeholder="Amount (negative removes chips)"
                     value={adjustAmount}

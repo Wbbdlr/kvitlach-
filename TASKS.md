@@ -34,6 +34,47 @@ for how to work in this repo.
       keeping to.
 ## Done
 
+- [x] Mobile input hygiene pass (2026-08-11), continuing the expert-mobile
+      pass from earlier the same day. All lobby/drawer text inputs (Join,
+      Create, Practice, RoomInfoDrawer's rename, ManageDrawer's watermark)
+      got the mobile-keyboard/autofill attributes PlayerDock.tsx's bet-amount
+      field already had but nothing else did:
+      - Name fields: `autoComplete="given-name"/"family-name"`,
+        `autoCapitalize="words"` -- lets a phone's contact-autofill offer
+        real suggestions instead of a blank keyboard.
+      - Game ID / Custom Game ID: `autoCapitalize="characters"`,
+        `autoCorrect="off"`, `spellCheck={false}`, and the Join field now
+        uppercases as you type (mirroring the Create form's Custom Game ID
+        field, which already did) -- purely cosmetic (store.ts already
+        normalizes to uppercase server-side), but stops a phone "correcting"
+        a code into a dictionary word or flagging it as a typo.
+      - Password fields (join + create): were plain `<input>` with no
+        `type`, so both typed in full plain view -- genuine bug, not a
+        deliberate choice (no comment justified it). Now `type="password"`
+        (`current-password`/`new-password` autocomplete) so a password
+        manager can offer to fill/save it on mobile the way it would for a
+        real login.
+      - `ManageDrawer`'s watermark field: `spellCheck={false}` -- the
+        default watermark is Hebrew (`DEFAULT_WATERMARK`, TableRoot.tsx) and
+        most real values are family surnames; an English spellchecker has
+        nothing useful to say about either.
+      - `ManageDrawer`'s "Adjust chips" amount field: was `type="number"`
+        with placeholder "Amount (negative removes chips)" -- iOS Safari's
+        number-pad keyboard for `type="number"` doesn't reliably expose a
+        "-" key, which could make removing chips untypable on an iPhone.
+        Switched to `type="text" inputMode="numeric" pattern="-?[0-9]*"`,
+        mirroring PlayerDock's own bet-amount input with the pattern
+        loosened for the leading minus. `applyAdjust` already parses this
+        with plain `Number()`, so the value shape is unchanged -- this only
+        changes which on-screen keyboard mobile shows.
+      Deliberately left `type="number"` alone on the plain positive-only
+      amount fields (buy-in, bankroll, deck count, top-up amount) -- no
+      known bug there, and rewriting every number input to match would be
+      a much bigger, lower-value diff than this pass's actual finding.
+      219/219 frontend tests pass; verified live (uppercase-as-typed, both
+      password fields render masked with the right autocomplete token,
+      watermark spellcheck off, no console errors).
+
 - [x] Three small bug reports (2026-08-11):
       1. Practice mode couldn't reshuffle the shoe -- `reshuffleDeck` was
          still plain `isAdmin`-gated in `store.ts`, but a practice room's
