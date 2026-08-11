@@ -17,6 +17,32 @@ const DOCK_GUTTER_PX = 10;
 // now that the stage reaches the viewport's top edge, the play area has to
 // clear it deliberately or the felt switcher lands on the dealer's plate.
 const TOP_CHROME_PX = 44;
+// The dealer's own seat overhangs ABOVE its center (Dealer.tsx: `top: play-
+// top + 160px*vf`, then translate(-50%,-50%)) the same way the viewer's own
+// seat overhangs below its center (see VIEWER_SEAT_OVERHANG_PX below) -- and
+// this constant's own comment predicted exactly this failure ("or the felt
+// switcher lands on the dealer's plate") without actually budgeting for it:
+// TOP_CHROME_PX alone only clears the dealer's CENTER, not the plate sitting
+// above it. Confirmed live on an 11-player table at 812x375 (2026-08-11,
+// following up the still-open landscape-clipping item): the dealer's plate
+// (real y 37.8-61.9) sat 10px inside .k-chrome-top's own real span (8-48),
+// under it in z-index (10 vs chrome-top's 40) so the buttons visibly painted
+// over the bank badge.
+//
+// NOT half of SEAT_HEIGHT the way VIEWER_SEAT_OVERHANG_PX is -- that fix
+// lives in dockBand, a term with no other job, but this one has to live in
+// playTop (the dealer's seat is anchored off playTop directly, unlike the
+// viewer's, which is anchored off vf alone), and playTop feeds the viewer's
+// own position too (cy = CY*vf + playTop). At the exact viewport/dock-state
+// this was found on, vf was already pinned at MIN_VF -- no self-correcting
+// slack left -- so growing playTop here costs the viewer's dock margin
+// (established above) real px 1-for-1, not just a diluted share of it. A
+// measured 10px gap plus a buffer, not a full extra half-seat, is what the
+// dealer actually needs; the full amount would have bought the dealer far
+// more than the ~10px it was short by, at the viewer's direct expense
+// (confirmed: SEAT_HEIGHT/2 flipped the dock-clearance regression test
+// negative on the same profile that started this).
+const DEALER_SEAT_OVERHANG_PX = 40;
 
 // How far the viewer's own seat -- always bottom-centre, layout.ts's
 // bottomSeatCenterY -- extends below its own CENTER once translate(-50%,
@@ -133,7 +159,9 @@ export function computeFit(
   // comment), unlike the rest of this sum, which starts as real px and
   // needs the /scale conversion -- added after, not inside, the division.
   const dockBand = (Math.max(nominalDock, dockHeight) + DOCK_GUTTER_PX) / scale + VIEWER_SEAT_OVERHANG_PX;
-  const playTop = TOP_CHROME_PX / scale;
+  // Same split as dockBand above: TOP_CHROME_PX is real px (needs /scale),
+  // DEALER_SEAT_OVERHANG_PX is already stage-design px (added after).
+  const playTop = TOP_CHROME_PX / scale + DEALER_SEAT_OVERHANG_PX;
 
   // Whatever vertical room is left between the two bands decides how flat the
   // table gets. Quantized to 2dp so a drag-resize doesn't mint a new seat-arc

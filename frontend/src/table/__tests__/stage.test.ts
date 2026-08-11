@@ -82,6 +82,35 @@ describe("stage fit", () => {
     }
   });
 
+  it("keeps the dealer's own plate clear of .k-chrome-top, on a crowded landscape table", () => {
+    // Regression, the mirror image of the dock/viewer-seat one above: found
+    // live on an 11-player table at 812x375 (2026-08-11), following up the
+    // "possible top-of-table clipping" item this file used to carry as
+    // unverified. Same mechanism, opposite end -- the dealer's own seat
+    // (Dealer.tsx: `top: play-top + 160px*vf`, then translate(-50%,-50%))
+    // overhangs ABOVE its center by roughly half its own height, and
+    // TOP_CHROME_PX alone only ever cleared the center, not the plate
+    // sitting above it. .k-chrome-top lives outside the scaled stage (real
+    // top:8px, and its buttons are the compact breakpoint's 40px-tall
+    // version on every profile here), so its own real bottom edge doesn't
+    // move with playTop/vf the way the dealer's plate does.
+    const CHROME_TOP_BOTTOM = 8 + 40; // .k-chrome-top's top:8px + its compact button height
+    // The seat height actually measured live in the reproducing case (151px,
+    // shorter than SEAT_HEIGHT's 200 -- the dealer's cards render at 72px,
+    // not the viewer's 92px) -- not stage.ts's own (deliberately smaller,
+    // see DEALER_SEAT_OVERHANG_PX's comment on why) reservation, so this
+    // pins the real-world gap the fix has to cover, not just however much
+    // of it the fix happens to claim.
+    const DEALER_OVERHANG = 151 / 2;
+    for (const p of PROFILES.filter((x) => x.compact)) {
+      const fit = computeFit(p.w, p.h, p.compact);
+      const feltRealY = (p.h - fit.stageHeight * fit.scale) / 2;
+      const dealerCenterYDesign = fit.playTop + 160 * fit.vf;
+      const dealerPlateRealTop = feltRealY + fit.scale * (dealerCenterYDesign - DEALER_OVERHANG);
+      expect(dealerPlateRealTop - CHROME_TOP_BOTTOM, `${p.name}`).toBeGreaterThan(0);
+    }
+  });
+
   it("never upscales past the cap, so a huge monitor doesn't bet on image resolution", () => {
     // 3840 (4K) is exactly the cap's own break-even width (3840/1280 = 3.0),
     // not past it -- 7680 (8K) actually exceeds it, so this is the one that

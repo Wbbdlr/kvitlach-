@@ -19,21 +19,37 @@ for how to work in this repo.
       full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
-- [ ] Unverified: possible top-of-table clipping on landscape phones (e.g.
-      812x375, the orientation the app itself recommends) -- specifically
-      whether `.k-chrome-top` (help/music/SFX/motion/fullscreen/Leave) and
-      the topmost seat stay fully reachable. A Browser-pane geometry check
-      during the 2026-08-10 mobile audit returned a physically-impossible
-      reading (an element's resolved `top: 8px` painted 108px higher than
-      that allows) right after a synthetic resize; the SAME reading recurred
-      on 2026-08-11 while investigating the (real, now-fixed -- see Done
-      below) bottom-seat/dock overlap, confirmed via cross-checking with
-      `offsetTop`/`offsetParent` chains (unaffected by whatever's wrong with
-      `getBoundingClientRect` in this non-compositing pane) instead of
-      trusting either reading blind. Still worth a real check next time
-      someone's on an actual phone in landscape; don't act on it without one.
 ## Done
 
+- [x] Top-of-table clipping on a crowded landscape table (2026-08-11) --
+      resolves the item this section used to carry as unverified. Followed
+      up with the `offsetTop`/`translate`-aware measurement technique
+      developed fixing the dock/viewer-seat overlap (see below): on an
+      11-player table at 812x375, the dealer's own plate (real y 37.8-61.9)
+      sat 10px inside `.k-chrome-top`'s real span (8-48) -- under it in
+      z-index (10 vs. chrome-top's 40), so the felt-switcher/help/music/SFX/
+      motion/fullscreen/Leave row visibly painted over the bank badge.
+      Same root cause as the dock one, mirrored: the dealer's seat overhangs
+      ABOVE its own center (`top: play-top + 160px*vf`, then Seat.tsx's
+      translate(-50%,-50%)) by roughly half its own height, and
+      `TOP_CHROME_PX` only ever budgeted for the CENTER clearing the chrome
+      row, not the plate above it -- `stage.ts`'s own comment on that
+      constant even predicted this exact failure ("or the felt switcher
+      lands on the dealer's plate") without actually reserving for it.
+      Fixed with a new `DEALER_SEAT_OVERHANG_PX`, added to `playTop` --
+      deliberately NOT the full half-seat-height the viewer-side fix uses
+      (`SEAT_HEIGHT / 2`): unlike that one (which lives in `dockBand`, a
+      term with no other job), the dealer's fix has to live in `playTop`
+      itself, which also anchors the viewer's OWN position (`cy = CY*vf +
+      playTop`) -- and at the exact viewport this was found on, `vf` was
+      already pinned at `MIN_VF` with no self-correcting slack left, so the
+      full reservation cost the viewer's dock margin real px 1-for-1 and
+      flipped that regression test negative. Landed on 40 (just past the
+      measured 10px gap, checked against both regression tests together --
+      dealer clears by 13.9px, viewer still clears the dock by 34.7px, both
+      live on the same 11-player table that reproduced the original report).
+      New pinned regression test in `stage.test.ts`, mirroring the dock
+      one's structure. 211 frontend tests, `vite build` clean.
 - [x] Discard pile moved clear of the dealer's cards, and its review
       redesigned as a fixed 1-12 grid (2026-08-11) -- user report: the pile
       overlapped the dealer's cards, and per-card scrolling rows in the
