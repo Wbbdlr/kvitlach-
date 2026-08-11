@@ -39,7 +39,8 @@ export type IconName =
   | "compress"
   | "cpu"
   | "close"
-  | "motion";
+  | "motion"
+  | "rotate";
 
 // Inner <svg> markup for each icon, static and developer-authored (no user
 // data ever flows through this map) — safe to inject verbatim.
@@ -88,6 +89,11 @@ const ICON_PATHS: Record<IconName, string> = {
   // editing tools), so it doesn't need to read as a trajectory or a gust of
   // wind at a glance, just as "something here is animated."
   motion: '<path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z"/><path d="M19 15l.7 2.1L22 18l-2.3.9L19 21l-.7-2.1L16 18l2.3-.9z"/>',
+  // A portrait phone outline plus a curved arrow sweeping it toward
+  // landscape -- used only by the rotate-hint banner (see index.css's
+  // .k-rotate-hint), so it never needed to survive at chrome-top's ~13px.
+  rotate:
+    '<rect x="6.5" y="3" width="9" height="15" rx="1.8"/><path d="M17.5 7.5a6.5 6.5 0 0 1-5.8 10.4"/><path d="M19.3 4.8l-.7 3.2-3.2-.9"/>',
 };
 
 export function Icon({ name, size = 15, className }: { name: IconName; size?: number; className?: string }) {

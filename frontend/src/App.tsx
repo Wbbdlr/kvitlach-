@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { useGameStore } from "./state";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
+import { buzz } from "./table/haptics";
 
 import { bestTotal, isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
@@ -59,6 +60,7 @@ export default function App() {
   const [userInteracted, setUserInteracted] = useState(false);
   const audioManager = useMemo(() => new AudioManager(), []);
   const prevRoundRef = useRef<RoundState | undefined>(undefined);
+  const prevActiveTurnIdRef = useRef<string | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
   const formErrors = store.formErrors ?? {};
   const dismissNotification = store.dismissNotification;
@@ -195,11 +197,18 @@ export default function App() {
     round.turns.forEach((turn) => {
       const prevTurn = prev.turns.find((t) => t.player.id === turn.player.id);
       if (!prevTurn) return;
+      // Sound is ambient (the whole table hears every bet/deal/win), but a
+      // buzz is felt by one person -- vibrating everyone's phone because
+      // someone else two seats over placed a bet would be obnoxious, so
+      // haptics.ts's cues are scoped to the local player's own turn only.
+      const isMine = turn.player.id === playerId;
       if ((turn.bet ?? 0) > (prevTurn.bet ?? 0)) {
         audioManager.playSfx("chip");
+        if (isMine) buzz("chip");
       }
       if ((turn.cards?.length ?? 0) > (prevTurn.cards?.length ?? 0)) {
         audioManager.playSfx("deal");
+        if (isMine) buzz("deal");
         if (turn.cards[turn.cards.length - 1]?.attributes?.eleveroonIgnored) {
           audioManager.playSfx("eleveroon");
         }
@@ -225,6 +234,7 @@ export default function App() {
           } else {
             audioManager.playSfx("win");
           }
+          if (isMine) buzz("win");
         }
         // The futch horn is for going over 21, not for losing. Keying it off
         // state === "lost" got this backwards at both ends: the BANKER's state
@@ -235,12 +245,25 @@ export default function App() {
         if (turn.state === "lost") {
           const busted = statusDisplay(turn).label === "FUTCHED!";
           audioManager.playSfx(busted ? "bust" : "lose");
+          if (isMine) buzz(busted ? "bust" : "lose");
         }
       }
     });
 
     prevRoundRef.current = round;
-  }, [audioManager, round]);
+  }, [audioManager, round, playerId]);
+
+  // "It's your turn" -- the one haptic cue that isn't a round-diff echo of an
+  // existing sound. Keyed off activeTurnId (useTableData's own notion of
+  // whose turn is live, including turn-timer/skip edge cases) rather than
+  // re-deriving it here, and only fires on the OFF->this-player edge so
+  // reconnecting mid-turn or the timer just ticking doesn't re-buzz.
+  useEffect(() => {
+    if (activeTurnId === playerId && prevActiveTurnIdRef.current !== playerId) {
+      buzz("turn");
+    }
+    prevActiveTurnIdRef.current = activeTurnId;
+  }, [activeTurnId, playerId]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNowTs(Date.now()), 100);

@@ -19,8 +19,72 @@ for how to work in this repo.
       full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
+- [ ] Theming beyond felt colour + watermark (2026-08-11). Two per-scope
+      customization patterns already exist and both work well: `FeltSwitcher`
+      (per-USER, unsynced -- felt colour, retints the dock buttons too) and
+      `ManageDrawer`'s table watermark (per-TABLE, banker-set, synced to
+      everyone). Chips (`.k-chip-btn`/bet chip art) and possibly card backs
+      are the obvious next candidates for the same two patterns -- a banker
+      picking a "house" chip style for the whole table the way they already
+      pick the watermark, and/or a player picking their own chip colour the
+      way they already pick their own felt. Scope this as extending the two
+      existing mechanisms, not a general theme-editor -- a free-color-picker
+      or many-knobs settings panel is the wrong shape for a family game and
+      would fight the "no needless fluff" goal these mobile passes have been
+      keeping to.
 ## Done
 
+- [x] Legible on-felt text at any phone size / any table size, "especially
+      older players" (2026-08-11). `.k-readout` (hand totals), `.k-plate-name`,
+      `.k-plate-sub`, `.k-tag` (status labels), and `.k-banktotal` all lived
+      inside the scaled stage with flat design-px font-sizes -- readable at
+      `--stage-scale` 1 (desktop), but a typical phone in the game's own
+      intended landscape orientation runs 0.45-0.65, so a player's own hand
+      total (14px design) was rendering as small as ~6-9px actual. Applied
+      the same counter-scale `clamp()` pattern `.k-resv-amt` already used
+      (2026-08-10ish) -- `clamp(FLOOR, calc(TARGETpx / var(--stage-scale, 1)),
+      CEILING)`, FLOOR pinned to today's existing flat size so desktop is
+      byte-for-byte unchanged, CEILING capping runaway growth at very low
+      scale. Live-measured at 667x375 (stage-scale 0.521): total pill glyph
+      size went from ~7.3px to ~10.4px actual (+43%), player names ~6.3px to
+      ~8.9px (+42%), status tags ~5px to ~7.3px (+47%). `.k-banktotal` got
+      the same base-rule treatment, but its existing `(max-width: 520px),
+      (max-height: 440px)` compact override -- a real, measured seat-plate
+      collision fix, not an oversight -- deliberately still wins on the
+      shortest phones and was left untouched; growing that pill there would
+      reopen the collision it exists to prevent. Doesn't counter-scale
+      against `seatScale()` (the separate crowded-table shrink) -- that
+      would need exposing seatScale as a CSS var and re-tuning the crowding
+      padding fix above, out of scope for a text-legibility pass; the fix
+      here is a strict, monotonic improvement at every seatScale value
+      regardless (floor = old size, so it can only grow, never shrink).
+      219/219 tests pass (CSS-only change; no JS geometry touched).
+- [x] Three small native-feeling mobile touches, expert-mobile-gamer pass
+      (2026-08-11), each scoped to avoid adding any new settings surface:
+      (1) Haptic feedback (`table/haptics.ts`, `navigator.vibrate`,
+      feature-detected/no-op on iOS Safari which never shipped it) on
+      your-turn, chip/deal, win, lose, and bust -- scoped to the LOCAL
+      player's own turn only (unlike the ambient SFX these mirror, which
+      everyone at the table hears, vibrating a stranger's phone because
+      someone else two seats over bet would be wrong). Deliberately NOT
+      tied to the sfxEnabled toggle: vibration already respects a phone's
+      own silent/vibrate switch, so it's the one channel that still reaches
+      a player whose phone is muted for the room's sake. (2) `.k-fit` gets
+      `overscroll-behavior: none` -- nothing previously stopped an accidental
+      downward drag near the top of the felt from triggering Android's
+      pull-to-refresh or iOS's rubber-band bounce mid-round. (3) A
+      `.k-rotate-hint` banner (pure CSS, `@media (orientation: portrait) and
+      (max-width: 540px)`, no JS state, no dismiss button) nudges phones
+      opened in portrait to rotate -- distinct from the existing one-time,
+      forever-dismissible `.k-fs-hint` tooltip on the fullscreen button
+      (that one nudges toward a specific action once; this one is an
+      ongoing "you're in a cramped orientation right now" signal that
+      reappears any time it's actually true, same as an offline banner
+      would). All three verified live (dev server + practice table):
+      overscroll-behavior computed as "none", rotate hint measured visible
+      in portrait (390x844) and `display: none` in landscape (844x390),
+      pointer-events: none confirmed so it can never block a real tap.
+      219/219 tests pass.
 - [x] Crowded-table desktop padding ("the table view can be so much bigger",
       2026-08-11) -- root-caused, not just eyeballed off a screenshot: an
       11-player practice table live-measured at 1920x1000 had `seatScale()`

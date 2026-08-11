@@ -23,6 +23,7 @@ import { BankSummaryModal } from "./BankSummaryModal";
 import { CompletedRoundSummary } from "../state";
 import { StatsData } from "./useTableData";
 import { Icon } from "./icons";
+import { StageOverlay } from "./StageOverlay";
 import { useFullscreen } from "./fullscreen";
 import { useWakeLock } from "./wakeLock";
 import { isIOS, isStandaloneDisplay } from "./platform";
@@ -419,6 +420,16 @@ export function TableRoot({
         } as React.CSSProperties
       }
     >
+      {/* Pure-CSS (see .k-rotate-hint) -- only .k-fit's own presence gates
+          this to the table view; orientation/width gate it to a portrait
+          phone. No JS orientation state to keep in sync, no dismiss button
+          to wire up. */}
+      <StageOverlay>
+        <div className="k-rotate-hint">
+          <Icon name="rotate" size={16} />
+          Turn your phone sideways for the full table
+        </div>
+      </StageOverlay>
       <div
         className="felt-table"
         // Whether the in-felt reservation chips are legible depends on how far

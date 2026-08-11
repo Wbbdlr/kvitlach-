@@ -129,6 +129,13 @@ body {
   overflow: hidden;
   background: #060d09;
   -webkit-tap-highlight-color: transparent;
+  /* Without this, dragging down from the very top of the felt (an easy
+     mis-swipe reaching for a card near the top of a crowded table) triggers
+     Android Chrome's pull-to-refresh or iOS's elastic rubber-band bounce --
+     mid-round, either one is a shock at best and a lost connection at worst.
+     Scoped to the table view only; the lobby/About/Disclaimer pages keep
+     normal page-scroll behavior. */
+  overscroll-behavior: none;
   /* The felt's ACTUAL rendered size, mirroring .felt-table's own scale
      transform (TableRoot sets --stage-scale and --stage-h-px). Chrome that
      has to line up with the felt's edges rather than the window's reads
@@ -535,14 +542,19 @@ body:has(.k-fit) {
   }
 }
 .k-plate-name {
-  font-size: 12px;
+  /* Counter-scaled like .k-resv-amt below -- a name that's shrunk along with
+     everything else on a crowded or small-phone table is exactly the kind
+     of detail an older player asked to have stay legible. Floor matches the
+     original flat 12px (desktop is unchanged); ceiling keeps it from
+     ballooning past the plate on a very small stage-scale. */
+  font-size: clamp(12px, calc(9.5px / var(--stage-scale, 1)), 17px);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .k-plate-sub {
-  font-size: 10px;
+  font-size: clamp(10px, calc(8px / var(--stage-scale, 1)), 14px);
   font-weight: 600;
   color: #7a6a4a;
   white-space: nowrap;
@@ -670,7 +682,10 @@ body:has(.k-fit) {
 
 /* Status pills -- translucent tint + matching border, per state. */
 .k-tag {
-  font-size: 9.5px;
+  /* Same counter-scale treatment as .k-plate-name/.k-readout -- FUTCHED/WON/
+     STAND is exactly the glance-and-know status text that must survive a
+     crowded or small-screen table. */
+  font-size: clamp(9.5px, calc(8px / var(--stage-scale, 1)), 14px);
   letter-spacing: 0.6px;
   text-transform: uppercase;
   padding: 2px 9px;
@@ -753,7 +768,10 @@ body:has(.k-fit) {
 
 /* On-felt readouts (totals, bet lines) -- dark pills, not white boxes. */
 .k-readout {
-  font-size: 14px;
+  /* The single most important number on the felt -- a player's own total --
+     gets the tightest floor of any counter-scaled element here (11px actual
+     target, vs. ~8-9.5px for names/tags). See .k-resv-amt for the pattern. */
+  font-size: clamp(14px, calc(11px / var(--stage-scale, 1)), 20px);
   color: #e7ede6;
   background: rgba(10, 20, 14, 0.6);
   padding: 3px 11px;
@@ -926,7 +944,15 @@ body:has(.k-fit) {
 
 /* Centered bank total. */
 .k-banktotal {
-  font-size: 15px;
+  /* The bank's own total -- watched as closely as any player's own hand --
+     gets the same counter-scale treatment as .k-readout. NOT the last word
+     on its size, though: the compact override below (max-width: 520px,
+     max-height: 440px) still wins on the shortest phones, and deliberately
+     stays a flat, un-counter-scaled 12px there -- that breakpoint exists to
+     stop this pill colliding with the dealer/viewer plates above and below
+     it in a genuinely tight vertical slot (see that rule's own comment),
+     and growing the font there would reopen exactly that collision. */
+  font-size: clamp(15px, calc(12px / var(--stage-scale, 1)), 21px);
   font-weight: 800;
   color: #f0c579;
   letter-spacing: 1px;
@@ -1038,6 +1064,49 @@ body:has(.k-fit) {
   letter-spacing: 0.4px;
   cursor: pointer;
   padding: 0;
+}
+
+/* Rotate-to-landscape nudge. Table is landscape-first by design (see
+   fullscreen.ts's screen.orientation.lock("landscape")), but that lock only
+   ever fires once someone taps the fullscreen button -- .k-fs-hint points at
+   that button once, ever, and gets dismissed forever the moment it's tapped
+   OR closed. This is a different, ongoing signal ("you're in a cramped
+   orientation right now"), so it's plain CSS with no dismiss state of its
+   own: it reappears any time the device is actually portrait and disappears
+   the instant it isn't, same as an offline banner would. Rendered via
+   StageOverlay (TableRoot.tsx) so it sits at true viewport scale, not
+   shrunk by --stage-scale. pointer-events: none -- purely informational,
+   must never be able to sit on top of and block a real tap.
+   max-width caps this to phones; a portrait iPad (768px+) plays the table
+   fine at that size and shouldn't be told to rotate. */
+.k-rotate-hint {
+  display: none;
+}
+@media (orientation: portrait) and (max-width: 540px) {
+  .k-rotate-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: fixed;
+    top: max(10px, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 42;
+    max-width: calc(100vw - 24px);
+    background: rgba(10, 20, 14, 0.92);
+    border: 1px solid rgba(230, 164, 75, 0.35);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #eef2ea;
+    text-align: center;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+  }
+}
+.k-rotate-hint svg {
+  flex: none;
 }
 
 /* Toast stack -- round outcomes (won/lost/futched/push), deck reshuffles,
