@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
-import { useFelt } from "../theme";
+import { useChip, useFelt } from "../theme";
 import { discardPilePosition, orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
@@ -13,6 +13,7 @@ import { BankPanel } from "./BankPanel";
 import { BankReservations } from "./BankReservations";
 import { ReactionLayer } from "./ReactionLayer";
 import { FeltSwitcher } from "./FeltSwitcher";
+import { ChipSwitcher } from "./ChipSwitcher";
 import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
 import { WaitingListDrawer, WaitingListEntry } from "./WaitingListDrawer";
@@ -184,6 +185,7 @@ export function TableRoot({
   wsStatus,
 }: TableRootProps) {
   const [felt, setFelt] = useFelt(); // applies the viewer's felt color + matching button accents on mount
+  const [chip, setChip] = useChip(); // applies the viewer's .k-chip-btn accent color on mount
   const [manageOpen, setManageOpen] = useState(false);
   const [roomInfoOpen, setRoomInfoOpen] = useState(false);
   const [waitingListOpen, setWaitingListOpen] = useState(false);
@@ -601,6 +603,7 @@ export function TableRoot({
       )}
       <div className="k-chrome-top">
         <FeltSwitcher felt={felt} onChange={setFelt} />
+        <ChipSwitcher chip={chip} onChange={setChip} />
         <button
           type="button"
           className="k-chip-btn"

@@ -77,3 +77,78 @@ export function useFelt(): [FeltName, (name: FeltName) => void] {
 
   return [felt, setFelt];
 }
+
+// Chip theme system -- same shape and same per-user/unsynced/localStorage
+// pattern as felt above (TASKS.md's "theming beyond felt colour + watermark"
+// backlog item), deliberately scoped narrow: this recolors ONLY .k-chip-btn,
+// the floating pill-button chrome (Reshuffle, Leave, Skip, React, felt/chip
+// swatches themselves, etc.), not the felt's separate gold accent language
+// (card highlights, active-turn glow, Eleveroon star, natural-21 flash, the
+// brand wordmark) -- that gold is a fixed identity mark, not a themeable
+// preference, and unpicking it everywhere it's hardcoded across index.css
+// would be a much bigger, riskier refactor than this pass is meant to be.
+export type ChipName = "gold" | "ruby" | "sapphire" | "silver";
+
+export interface Chip {
+  border: string;    // .k-chip-btn's border (kept at the same alpha as the original fixed gold)
+  ink: string;        // resting text color
+  inkHover: string;   // text color on hover (brighter, same hue)
+  swatch: string;      // solid color for the picker's own preview circle
+  label: string;
+}
+
+// "gold" reproduces .k-chip-btn's ORIGINAL fixed values exactly (border
+// rgba(230,164,75,.35), ink #e6d3ab) -- so a player who never touches this
+// switcher sees the identical chrome they always have; this is purely an
+// added choice, not a default-behavior change.
+export const CHIPS: Record<ChipName, Chip> = {
+  gold: { border: "rgba(230, 164, 75, 0.35)", ink: "#e6d3ab", inkHover: "#f3e6c8", swatch: "#e6a44b", label: "Gold" },
+  ruby: { border: "rgba(212, 92, 92, 0.4)", ink: "#e0b8b4", inkHover: "#f2d2ce", swatch: "#b5453f", label: "Ruby" },
+  sapphire: { border: "rgba(92, 138, 212, 0.4)", ink: "#b9c8e0", inkHover: "#d3e0f2", swatch: "#2f5fa8", label: "Sapphire" },
+  silver: { border: "rgba(180, 190, 200, 0.4)", ink: "#d2d8dd", inkHover: "#e8ecf0", swatch: "#9aa5ad", label: "Silver" },
+};
+
+export const DEFAULT_CHIP: ChipName = "gold";
+
+const CHIP_STORAGE_KEY = "kvitlach.chip";
+
+export function loadChip(): ChipName {
+  try {
+    const saved = window.localStorage.getItem(CHIP_STORAGE_KEY);
+    if (saved && saved in CHIPS) return saved as ChipName;
+  } catch {
+    /* localStorage unavailable (private mode, etc.) -- fall back to default */
+  }
+  return DEFAULT_CHIP;
+}
+
+export function saveChip(name: ChipName): void {
+  try {
+    window.localStorage.setItem(CHIP_STORAGE_KEY, name);
+  } catch {
+    /* ignore persistence failures */
+  }
+}
+
+export function applyChip(name: ChipName): void {
+  const chip = CHIPS[name] ?? CHIPS[DEFAULT_CHIP];
+  const root = document.documentElement;
+  root.style.setProperty("--chip-border", chip.border);
+  root.style.setProperty("--chip-ink", chip.ink);
+  root.style.setProperty("--chip-ink-hover", chip.inkHover);
+}
+
+export function useChip(): [ChipName, (name: ChipName) => void] {
+  const [chip, setChipState] = useState<ChipName>(loadChip);
+
+  useEffect(() => {
+    applyChip(chip);
+  }, [chip]);
+
+  const setChip = useCallback((name: ChipName) => {
+    setChipState(name);
+    saveChip(name);
+  }, []);
+
+  return [chip, setChip];
+}

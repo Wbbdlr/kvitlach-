@@ -9,4 +9,4 @@
 // others were bumped to v2.5. SiteHeader/SiteFooter fixed the duplication;
 // this constant is what keeps the number itself from drifting the same way
 // again now that there's only ever one place to bump it.
-export const APP_VERSION = "5.6";
+export const APP_VERSION = "5.7";

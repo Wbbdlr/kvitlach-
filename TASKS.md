@@ -19,20 +19,37 @@ for how to work in this repo.
       full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
-- [ ] Theming beyond felt colour + watermark (2026-08-11). Two per-scope
-      customization patterns already exist and both work well: `FeltSwitcher`
-      (per-USER, unsynced -- felt colour, retints the dock buttons too) and
-      `ManageDrawer`'s table watermark (per-TABLE, banker-set, synced to
-      everyone). Chips (`.k-chip-btn`/bet chip art) and possibly card backs
-      are the obvious next candidates for the same two patterns -- a banker
-      picking a "house" chip style for the whole table the way they already
-      pick the watermark, and/or a player picking their own chip colour the
-      way they already pick their own felt. Scope this as extending the two
-      existing mechanisms, not a general theme-editor -- a free-color-picker
-      or many-knobs settings panel is the wrong shape for a family game and
-      would fight the "no needless fluff" goal these mobile passes have been
-      keeping to.
+- [ ] Theming beyond felt colour + watermark, remainder after the chip
+      switcher below: card backs as a third `FeltSwitcher`-style per-player
+      pattern, and/or a banker-set "house style" (chips and/or felt) mirroring
+      the table watermark's synced/banker-only mechanism instead. Scope
+      either the same way the chip pass was scoped -- extending an existing
+      mechanism, not a general theme-editor or free-color-picker.
+
 ## Done
+
+- [x] Chip color switcher (2026-08-11), the first half of the "theming
+      beyond felt colour + watermark" item below. Scoped deliberately small
+      after checking with the user on two open forks: (1) small -- just
+      `.k-chip-btn` (the floating pill chrome: Reshuffle, Leave, Skip,
+      React, felt/chip swatches themselves), NOT the felt's separate gold
+      accent language (card highlights, active-turn glow, Eleveroon star,
+      natural-21 flash, brand wordmark) -- unpicking THAT everywhere it's
+      hardcoded across index.css would be a much bigger refactor; (2)
+      per-player, not banker-set -- mirrors `FeltSwitcher` exactly (same
+      component shape, same localStorage pattern, same topbar placement),
+      not the watermark's synced/banker-only mechanism, so zero backend/WS
+      changes. New `ChipSwitcher.tsx` + `theme.ts`'s `useChip`/`applyChip`/
+      `CHIPS` (gold/ruby/sapphire/silver, gold reproducing the ORIGINAL
+      fixed values exactly so nobody's chrome changes until they opt in).
+      `.k-chip-btn`'s border/ink now read `var(--chip-border, ...)`/
+      `var(--chip-ink, ...)` with the original hardcoded values as the
+      fallback. Verified live: default renders pixel-identical to before,
+      switching to Sapphire recolors all 8 `.k-chip-btn` instances on the
+      felt together, persists across reload. Card backs (the other
+      "possibly" from the original note) and a banker-set house style are
+      still open -- see "Open" above.
+      220/220 frontend tests pass, clean build.
 
 - [x] Lobby "Kvitlach" wordmark's gold didn't actually match the felt's
       (2026-08-11). The previous restore-to-gold pass reached for

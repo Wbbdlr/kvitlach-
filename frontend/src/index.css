@@ -1772,15 +1772,20 @@ body:has(.k-fit) {
   }
 }
 
-/* Floating chrome buttons (felt switcher, fullscreen, reactions). */
+/* Floating chrome buttons (felt switcher, fullscreen, reactions). Border/text
+   read from --chip-* (theme.ts's applyChip, ChipSwitcher.tsx) rather than a
+   flat value -- the fallbacks after each comma reproduce the original fixed
+   gold exactly, so a client that hasn't run applyChip yet (first paint,
+   before its mount effect fires) still renders identically to before this
+   became a per-user preference. */
 .k-chip-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   background: rgba(10, 20, 14, 0.6);
-  border: 1px solid rgba(230, 164, 75, 0.35);
-  color: #e6d3ab;
+  border: 1px solid var(--chip-border, rgba(230, 164, 75, 0.35));
+  color: var(--chip-ink, #e6d3ab);
   border-radius: 999px;
   padding: 6px 10px;
   font-size: 11px;
@@ -1789,7 +1794,7 @@ body:has(.k-fit) {
 }
 .k-chip-btn:hover {
   background: rgba(16, 30, 21, 0.85);
-  color: #f3e6c8;
+  color: var(--chip-ink-hover, #f3e6c8);
 }
 
 /* Reaction floating above a seat -- shaped as a speech bubble so it reads as
