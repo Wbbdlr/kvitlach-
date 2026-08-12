@@ -41,9 +41,9 @@ export default function Disclaimer() {
       </section>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
-        <h2 className="text-lg font-semibold text-amber-700">Beta notice</h2>
+        <h2 className="text-lg font-semibold text-amber-700">Still in development</h2>
         <ul className="list-disc list-inside space-y-1">
-          <li>This is a beta release. Features may change, and outages or resets may occur.</li>
+          <li>This app is still in active development. Features may change, and outages or resets may occur.</li>
           <li>Report issues or feedback so we can improve stability and clarity.</li>
         </ul>
       </section>

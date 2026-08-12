@@ -65,10 +65,10 @@ export default function About() {
       </section>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
-        <h2 className="text-lg font-semibold text-amber-700">Beta notes</h2>
+        <h2 className="text-lg font-semibold text-amber-700">Still in development</h2>
         <p>
-          This is a live beta. Expect occasional reconnects as we tune performance. Feedback on flow, visibility, and banker tools is
-          welcome so we can refine before the next release.
+          This app is still being actively developed. Expect occasional reconnects as we tune performance. Feedback on flow, visibility, and banker tools is
+          welcome so we can keep improving it.
         </p>
       </section>
 
