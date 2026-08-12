@@ -25,20 +25,54 @@ for how to work in this repo.
       the table watermark's synced/banker-only mechanism instead. Scope
       either the same way the chip pass was scoped -- extending an existing
       mechanism, not a general theme-editor or free-color-picker.
-- [ ] "Kvitlach" wordmark overlaps the felt-color swatches on an ordinary
-      portrait phone (measured 360x780) and at narrow/short landscape
-      widths -- found and root-caused 2026-08-11 (see the ChipSwitcher
-      entry under "Done" for the full writeup and exact numbers).
-      `.k-topbar` (branding) and `.k-chrome-top` (controls) are
-      independently positioned and don't know each other's real width;
-      chrome-top's row-1 content has grown past whatever margin the last
-      tuning pass measured. Needs a proper live-measurement pass across
-      the realistic device range (like TOP_CHROME_PX/DEALER_SEAT_OVERHANG_PX
-      got) before touching chrome-top's positioning -- growing its
-      wrapped-row count carelessly risks reopening one of those
-      already-fixed collisions.
-
 ## Done
+
+- [x] "Kvitlach" wordmark overlapping the felt-color swatches (2026-08-11,
+      root-caused earlier the same day -- see the ChipSwitcher entry
+      below). `.k-topbar` and `.k-chrome-top` are two independently
+      absolutely-positioned rows that never knew each other's real width;
+      gave `.k-chrome-top` a real `left` boundary instead of leaving it
+      unconstrained. Not a guessed flat number -- derived from live
+      measurement: `.k-topbar > *`'s `getBoundingClientRect()` reports its
+      size after BOTH its own counter-scale transform AND the felt's outer
+      scale (transforms compound for a descendant), so dividing both back
+      out of two live samples (137px at 915x420, 85px at 568x320) landed
+      on the same ~166.6px pre-transform layout width either way,
+      confirming that's the cluster's real constant (icon + gap-3 +
+      "Kvitlach" at 32px Playfair Display). Reassembled as a `calc()` using
+      that constant plus the same `24px` padding-left and
+      `clamp(1, 1/scale, 1.15)` this breakpoint's OWN wordmark-scaling rule
+      already uses, so `.k-chrome-top`'s boundary tracks the wordmark's
+      actual rendered edge at any width in this breakpoint's range rather
+      than a single-point guess (verified the naive "flat number" approach
+      would have been wrong at one end or the other -- the wordmark's
+      real edge measured 61px at 360px portrait width vs 155px at 915px
+      landscape width, not a constant).
+      Verified live across every scenario the earlier investigation
+      flagged, all clean, zero overlap, no new collisions: 568x320
+      landscape (chrome-top now starts x108, first swatch x142, clear of
+      wordmark's x96), 915x420 wide landscape (single row, was 2 before),
+      360x780 portrait with a dealt round (chrome-top bottom 144 vs the
+      dealer's plate at 160 -- 16px clear), and a stress case this class of
+      bug has broken before -- a full 11-seat table at 780x380 landscape
+      (single row, chrome-top starts x143 past wordmark's x132, dealer
+      plate unaffected). Confirmed zero effect outside the breakpoint
+      (1280x800 desktop: chip switcher still shows, chrome-top's implicit
+      position unchanged -- the `left` rule lives inside the same media
+      query as the rest of this breakpoint's fixes). Portrait's row count
+      did grow (2 rows to 3, chrome-top 96px to 136px tall) since its
+      available width shrank along with everything else -- checked this
+      specifically against the dealer-plate-collision history
+      (DEALER_SEAT_OVERHANG_PX's own comment) and confirmed safe: that
+      collision class bites when HEIGHT is scarce (flattened landscape),
+      and portrait has abundant height budget (780px), which the live
+      16px-clear measurement above confirms directly rather than just
+      reasoning about it.
+      Frontend build clean; 220/220 frontend tests pass (18/18 files,
+      including a clean 34/34 on `state.test.ts` -- a prior full-suite run
+      during this same investigation had thrown 15 failures there, re-confirmed
+      as the pre-existing flake documented in the "Open" section above, not
+      caused by this change).
 
 - [x] ChipSwitcher regression + a bigger pre-existing bug it exposed
       (2026-08-11), found while sweeping for "any bugs across the

@@ -1510,6 +1510,41 @@ body:has(.k-fit) {
   .k-topbar > * {
     transform: scale(clamp(1, calc(1 / var(--stage-scale, 1)), 1.15));
   }
+  /* The actual fix for the overlap this breakpoint was meant to prevent but
+     didn't fully: .k-topbar's icon+wordmark cluster and .k-chrome-top's
+     button row are still two independent absolutely-positioned elements
+     (see the comment atop this block) -- hiding the tagline and capping the
+     wordmark's own scale narrowed the gap but never gave chrome-top a
+     boundary it can't cross, so on a genuinely tight viewport (measured
+     live: 568x320 landscape, and plain PORTRAIT on an ordinary phone at
+     360x780 -- not just the landscape edge case the rest of this block
+     targets) the felt-colour swatches still packed in right on top of
+     "Kvitlach".
+     This gives chrome-top a real `left`, computed to track the wordmark
+     cluster's own actual on-screen right edge rather than a flat guessed
+     number (which would be wrong at one end of this breakpoint's width
+     range or the other -- verified live the cluster's rendered width does
+     NOT track a single measured px value across it, e.g. it does not stay
+     ~155px at 915px width the way it might look from one sample point).
+     Derived, not guessed: getBoundingClientRect() on `.k-topbar > *`
+     reports its size after BOTH transforms (its own counter-scale, and the
+     felt's own outer scale, since transforms compound for a descendant),
+     so its true pre-transform layout width divides them both out:
+     137px / (1.15 * 0.714844) at 915x420, and 85px / (1.15 * 0.44375) at
+     568x320, both land on the same ~166.6px -- confirming that's the
+     cluster's real constant (icon + gap-3 + "Kvitlach" at 32px Playfair
+     Display), independent of viewport. Reassembled below with the same
+     24px padding-left and the same clamp(1, 1/scale, 1.15) this breakpoint
+     already uses, so it's exactly the formula that produces the wordmark's
+     own real edge, not an approximation of it -- plus a flat 12px so
+     chrome-top's own first button doesn't start flush against the
+     wordmark's last pixel. */
+  .k-chrome-top {
+    left: calc(
+      var(--stage-scale, 1) * 24px + var(--stage-scale, 1) * 166.6px * clamp(1, calc(1 / var(--stage-scale, 1)), 1.15) +
+        12px
+    );
+  }
 }
 
 /* The bank busting is THE big moment -- every player still in reads it as a
