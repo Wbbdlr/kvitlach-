@@ -65,6 +65,23 @@ describe("discardedEntries", () => {
     expect(discardedEntries([skipped])).toEqual([]);
   });
 
+  it("logs the banker's cards on a 'standby' finish too, not just won/lost", () => {
+    // Unlike a player, calculateEndState (round.ts) resolves the banker to
+    // "standby" -- not won/lost -- whenever the bank finishes the round
+    // even or ahead without busting or hitting a natural 21: the MOST
+    // common banker outcome, not an edge case. selectors.ts's totalDisplay
+    // already treats that as fully resolved/revealed for the banker (its
+    // own bankerResolved check), so the discard pile must too.
+    const banker = makeTurn({
+      player: makePlayer({ id: "bk", type: "admin", firstName: "Bank" }),
+      state: "standby",
+      cards: [normalCard, normalCard],
+    });
+    const entries = discardedEntries([banker]);
+    expect(entries).toHaveLength(2);
+    expect(entries.every((e) => e.isBanker)).toBe(true);
+  });
+
   it("still logs an Eleveroon reject immediately, before the rest of that hand resolves", () => {
     const midHand = makeTurn({ state: "pending", cards: [normalCard, ignoredCard] });
     const entries = discardedEntries([midHand]);

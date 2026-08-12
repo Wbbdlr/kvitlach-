@@ -30,24 +30,38 @@ export interface DiscardEntry {
 export function discardedEntries(turns: Turn[]): DiscardEntry[] {
   const out: DiscardEntry[] = [];
   turns.forEach((turn) => {
-    // Mirrors selectors.ts's totalDisplay/canRevealTotal exactly -- won/lost
-    // is the same threshold that already makes a hand's total publicly
-    // readable. A "standby" (stood, but the banker hasn't played yet) or
-    // "skipped" hand's cards stay OUT even though the player is done acting:
-    // their total is deliberately still hidden from everyone else at that
-    // point (see totalDisplay's own comment on why), and logging every card
-    // here the instant a hand stops being "pending" would leak exactly what
-    // that hiding is protecting. An Eleveroon-rejected card is the one
-    // exception that's always in, resolved or not -- that specific card was
-    // already made public the moment it happened (the eleveroonNotification
-    // toast), well before this list existed.
-    const resolved = turn.state === "won" || turn.state === "lost";
+    const isBanker = turn.player.type === "admin";
+    // Mirrors selectors.ts's totalDisplay/canRevealTotal exactly for a
+    // PLAYER -- won/lost is the same threshold that already makes a hand's
+    // total publicly readable. A player's "standby" (stood, but the banker
+    // hasn't played yet) or "skipped" hand's cards stay OUT even though the
+    // player is done acting: their total is deliberately still hidden from
+    // everyone else at that point (see totalDisplay's own comment on why),
+    // and logging every card here the instant a hand stops being "pending"
+    // would leak exactly what that hiding is protecting. An
+    // Eleveroon-rejected card is the one exception that's always in,
+    // resolved or not -- that specific card was already made public the
+    // moment it happened (the eleveroonNotification toast), well before
+    // this list existed.
+    //
+    // The banker is a genuine exception to the won/lost threshold above:
+    // calculateEndState (round.ts) resolves a banker who neither busts nor
+    // hits a natural 21 to "standby", not won/lost, whenever the bank
+    // finishes the round even or ahead -- the MOST common outcome, not an
+    // edge case. That's not "still playing" the way a player's standby is;
+    // it's the banker's own final state for the round (selectors.ts's
+    // totalDisplay already treats it as fully resolved/revealed via its own
+    // bankerResolved check). Excluding it here meant the banker's cards
+    // silently never joined the discard pile most rounds.
+    const resolved = isBanker
+      ? turn.state === "won" || turn.state === "lost" || turn.state === "standby"
+      : turn.state === "won" || turn.state === "lost";
     turn.cards.forEach((card, idx) => {
       if (!resolved && !card.attributes?.eleveroonIgnored) return;
       out.push({
         key: `${turn.player.id}-${idx}`,
         playerName: fullName(turn.player) || turn.player.firstName,
-        isBanker: turn.player.type === "admin",
+        isBanker,
         card,
       });
     });

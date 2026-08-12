@@ -34,6 +34,31 @@ for how to work in this repo.
       keeping to.
 ## Done
 
+- [x] Discard pile silently excluded the banker's cards most rounds
+      (2026-08-11). Root cause: `discardedEntries` (DiscardPile.tsx) treated
+      a turn as resolved only at `won`/`lost`, mirroring
+      selectors.ts's totalDisplay/canRevealTotal -- correct for a PLAYER,
+      but calculateEndState (round.ts) actually resolves the BANKER to
+      `standby` (not won/lost) whenever the bank finishes the round even or
+      ahead without busting or hitting a natural 21. That's the single most
+      common banker outcome, not an edge case, and selectors.ts's own
+      totalDisplay already treats banker `standby` as fully
+      resolved/revealed (its bankerResolved check) -- discardedEntries just
+      hadn't been taught the same exception. Added an isBanker branch that
+      also accepts `standby`. Traced the "is it actually safe to reveal at
+      standby" question all the way through `settleBankOutcome`
+      (store.ts) -- confirmed a broadcast `round.turns` entry never shows
+      the banker's admin turn as `standby` while that same hand could still
+      receive more cards later in the round (the mid-round BANK!-lock
+      redeal path overwrites the turn back to a fresh `pending` hand before
+      anything is returned/broadcast), so there's no premature-reveal
+      window. Added a unit test (`DiscardPile.test.tsx`) for the banker
+      standby case; verified live in a practice round -- shoe tally went
+      10 -> 21 on a round where the bank finished "BEAT 2" (no bust, no
+      natural), exactly 10 + every seat's resolved cards including the
+      bank's own 4 (pre-fix this would have stopped at 17). 12/12 discard
+      tests pass, full frontend suite green, clean build.
+
 - [x] Mobile input hygiene pass (2026-08-11), continuing the expert-mobile
       pass from earlier the same day. All lobby/drawer text inputs (Join,
       Create, Practice, RoomInfoDrawer's rename, ManageDrawer's watermark)
