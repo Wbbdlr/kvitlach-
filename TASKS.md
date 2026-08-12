@@ -34,6 +34,21 @@ for how to work in this repo.
       keeping to.
 ## Done
 
+- [x] Removed the lobby footer's permanent "WS ok/wait/down" pill
+      (2026-08-11). It was raw connection-status jargon, always visible
+      even when perfectly healthy, on the public landing page -- and
+      `status` didn't gate Join/Create or drive any inline error, so the
+      badge wasn't load-bearing for anything. TableRoot.tsx already solves
+      the same underlying problem better, inside an active game: its own
+      connection tag only renders when `wsStatus !== "connected"`, silent
+      while healthy, a plain-English "Connection lost — reconnecting…"
+      only when something's actually wrong -- that's the pattern to follow
+      if a lobby-side warning is ever wanted back, not a permanent status
+      pill. Also dropped the now-unused `wsUrl` destructure from App.tsx
+      (it was only ever read by this badge's tooltip). Verified live --
+      footer now reads straight from the version badge to Sound, no gap.
+      Full frontend suite green, clean build.
+
 - [x] Discard pile silently excluded the banker's cards most rounds
       (2026-08-11). Root cause: `discardedEntries` (DiscardPile.tsx) treated
       a turn as resolved only at `won`/`lost`, mirroring

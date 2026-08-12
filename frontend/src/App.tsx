@@ -21,7 +21,6 @@ export default function App() {
     playerId,
     message,
     status,
-    wsUrl,
     roundHistory,
     notifications,
     bankerSummaryAt,
@@ -1004,25 +1003,15 @@ export default function App() {
 
       <SiteFooter>
         <div className="flex items-center gap-3">
-          <span
-            className={clsx(
-              "inline-flex items-center gap-1 rounded-full px-2 py-1 border text-[11px]",
-              status === "connected"
-                ? "border-green-200 bg-green-50 text-green-700"
-                : status === "connecting"
-                ? "border-blue-200 bg-blue-50 text-blue-700"
-                : "border-slate-200 bg-slate-50 text-slate-700"
-            )}
-            title={`WebSocket: ${status} (${wsUrl})`}
-          >
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: status === "connected" ? "#16a34a" : status === "connecting" ? "#f59e0b" : "#94a3b8" }}
-              aria-hidden="true"
-            />
-            <span className="uppercase tracking-wide">WS</span>
-            <span className="text-[10px]">{status === "connected" ? "ok" : status === "connecting" ? "wait" : "down"}</span>
-          </span>
+          {/* The raw "WS ok/wait/down" pill used to live here, permanently
+              visible even when perfectly healthy -- pure engineering jargon
+              on the public lobby, and it didn't gate Join/Create or drive
+              any inline error, so it wasn't load-bearing. Removed rather
+              than kept as always-on chrome; TableRoot.tsx's own connection
+              tag (`wsStatus !== "connected"`) is the pattern worth
+              following if this needs to come back -- silent while healthy,
+              a plain-English warning only when something's actually
+              wrong. */}
           <span className="text-[11px] uppercase tracking-wide text-slate-500">Sound</span>
           <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
             <input
