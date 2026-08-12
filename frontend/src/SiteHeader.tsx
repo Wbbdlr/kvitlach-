@@ -36,12 +36,14 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
           />
         </span>
         {/* Gold, not the lobby's blue accent -- this is the game's own brand
-            mark (matches the felt's --gold and the in-table .k-logo-word),
-            not a themeable UI element, so it doesn't follow the blue reskin
-            below it. amber-600 exactly, restoring what this span carried
-            before an unrelated theme pass swept it up in a blanket
-            amber->blue rename. */}
-        <span className="text-amber-600">Kvitlach</span>
+            mark, not a themeable UI element, so it doesn't follow the blue
+            reskin below it. `var(--gold)` (index.css :root), the exact same
+            custom value the in-table wordmark (.k-logo-word) uses -- an
+            earlier pass here reached for Tailwind's amber-600 as a "close
+            enough" gold, but side by side the two don't actually match
+            (amber-600 reads noticeably more orange/yellow); this is the
+            real one, not an approximation. */}
+        <span style={{ color: "var(--gold)" }}>Kvitlach</span>
       </a>
       <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-blue-700/80 leading-tight">
         Ah Heimishe Chanukah Shpil

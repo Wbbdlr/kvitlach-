@@ -34,6 +34,19 @@ for how to work in this repo.
       keeping to.
 ## Done
 
+- [x] Lobby "Kvitlach" wordmark's gold didn't actually match the felt's
+      (2026-08-11). The previous restore-to-gold pass reached for
+      Tailwind's `amber-600` as a "close enough" gold, reasoning it was
+      what this span carried before an unrelated blue reskin swept it up
+      -- true, but that old amber-600 never actually matched the felt's
+      own `--gold` (#e6a44b, used by the in-table `.k-logo-word`) either;
+      nobody had compared them side by side. Reported as "ugly yellow
+      orange" vs. the table's "nice gold." Switched to `var(--gold)`
+      directly (index.css :root, globally scoped, not felt-only) so both
+      wordmarks are pixel-identical and share one source of truth going
+      forward. Verified live: computed color rgb(230, 164, 75) = #e6a44b
+      exactly. Clean build.
+
 - [x] Removed the lobby footer's permanent "WS ok/wait/down" pill
       (2026-08-11). It was raw connection-status jargon, always visible
       even when perfectly healthy, on the public landing page -- and
