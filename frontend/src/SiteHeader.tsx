@@ -46,9 +46,6 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
       <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-blue-700/80 leading-tight">
         Ah Heimishe Chanukah Shpil
       </span>
-      <span className="self-end -translate-y-[2px] inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700 shadow-sm">
-        Beta
-      </span>
       {showNav && (
         <nav className="ml-auto flex items-center gap-4 text-xs">
           {NAV_LINKS.map((link) => (

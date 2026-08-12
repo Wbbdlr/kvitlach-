@@ -75,6 +75,20 @@ for how to work in this repo.
       password fields render masked with the right autocomplete token,
       watermark spellcheck off, no console errors).
 
+- [x] Removed the "Beta" badge from both top-of-page spots (2026-08-11) --
+      `SiteHeader.tsx` (lobby/info pages) and `TableRoot.tsx`'s `.k-topbar`
+      (in-table branding row). Footer's own "Beta" pill next to the version
+      number (`SiteFooter.tsx`) and the unrelated "Beta notes"/"Beta notice"
+      section headings on About/Disclaimer were left alone -- not asked, and
+      a different thing (build-status footer badge / page content, not a
+      top-of-page label). Also dropped `.k-beta` from index.css: its shared
+      base-style selector (`.k-beta, .k-room`) and its narrow-landscape
+      `display: none` breakpoint, both now dead with no JSX using the class.
+      219/219 frontend tests pass (1 unrelated full-suite timing flake in
+      `state.test.ts`, passed clean in isolation -- see the flake entry
+      above); clean build; verified live in both the lobby and a practice
+      table.
+
 - [x] Theme/mobile follow-up on the same-day blue reskin (2026-08-11):
       1. The new blue read as too vivid/saturated for "classy" next to the
          cream background. Rather than hand-tune the ~50 literal `blue-*`

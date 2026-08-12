@@ -415,7 +415,6 @@ body:has(.k-fit) {
   color: #c8923f;
   padding-bottom: 4px;
 }
-.k-beta,
 .k-room {
   font-size: 10px;
   font-weight: 700;
@@ -1473,12 +1472,12 @@ body:has(.k-fit) {
      the wide end (~915px, a big-screen Android in landscape) there's room
      to spare; by ~800px the felt-colour swatches and the "?" button
      already overlap the tagline, and it only gets worse going narrower.
-     The tagline and Beta badge are decorative -- neither is needed to
-     identify or play the game -- so they're the first thing to give at
-     this breakpoint, same principle as k-futch-flash's own explanatory
-     half above. */
-  .k-logo-tag,
-  .k-beta {
+     The tagline is decorative -- not needed to identify or play the game --
+     so it's the first thing to give at this breakpoint, same principle as
+     k-futch-flash's own explanatory half above. (The Beta badge used to be
+     dropped here too; removed outright in TableRoot.tsx, not just hidden
+     at this breakpoint, so this rule no longer needs to mention it.) */
+  .k-logo-tag {
     display: none;
   }
   /* The wordmark's own counter-scale (see .k-topbar > * above) targets a

@@ -475,7 +475,6 @@ export function TableRoot({
             </span>
             <span className="k-logo-word">Kvitlach</span>
             <span className="k-logo-tag">Ah Heimishe Chanukah Shpil</span>
-            <span className="k-beta">Beta</span>
           </div>
         </div>
 
