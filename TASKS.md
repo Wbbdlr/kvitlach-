@@ -25,8 +25,56 @@ for how to work in this repo.
       the table watermark's synced/banker-only mechanism instead. Scope
       either the same way the chip pass was scoped -- extending an existing
       mechanism, not a general theme-editor or free-color-picker.
+- [ ] "Kvitlach" wordmark overlaps the felt-color swatches on an ordinary
+      portrait phone (measured 360x780) and at narrow/short landscape
+      widths -- found and root-caused 2026-08-11 (see the ChipSwitcher
+      entry under "Done" for the full writeup and exact numbers).
+      `.k-topbar` (branding) and `.k-chrome-top` (controls) are
+      independently positioned and don't know each other's real width;
+      chrome-top's row-1 content has grown past whatever margin the last
+      tuning pass measured. Needs a proper live-measurement pass across
+      the realistic device range (like TOP_CHROME_PX/DEALER_SEAT_OVERHANG_PX
+      got) before touching chrome-top's positioning -- growing its
+      wrapped-row count carelessly risks reopening one of those
+      already-fixed collisions.
 
 ## Done
+
+- [x] ChipSwitcher regression + a bigger pre-existing bug it exposed
+      (2026-08-11), found while sweeping for "any bugs across the
+      platform" after the switcher shipped. Adding ChipSwitcher's 124px
+      cluster to `.k-chrome-top` ate into an already razor-thin margin --
+      the surrounding CSS's own comment documents only ~2px of spare room
+      at 568px, the narrowest width this file tunes against. Fixed the
+      part that's mine to fix: `.k-chip-switcher` now hides at the same
+      narrow-landscape/short-viewport breakpoint that already drops the
+      decorative tagline (`.k-logo-tag`), same reasoning -- chip color is
+      a preference, not needed to identify or play the game.
+      While confirming the fix (A/B toggling the switcher's `display` live)
+      found the underlying overlap is NOT new or mine: with
+      `.k-chip-switcher` fully hidden, the felt-color swatches still sit
+      almost entirely on top of the "Kvitlach" wordmark, both at narrow
+      landscape widths (measured 568x320: feltLeft 15 vs wordmark's own
+      right edge 96) AND in plain PORTRAIT mode on an ordinary phone
+      (measured 360x780: feltLeft 33 vs wordmark right edge 61) -- the
+      single most common way this page loads, not an edge case. Root
+      cause: `.k-topbar` (branding, scaled, grows from the left) and
+      `.k-chrome-top` (controls, unscaled, packs from the right) are two
+      independent absolutely-positioned rows that were never made aware of
+      each other's real width (own comment, right above the fix), and
+      chrome-top's row-1 content has grown over several past additions
+      (the practice-mode Reshuffle chip, RoomInfoDrawer's "Table info"
+      button) past whatever margin the last live-measured tuning pass
+      accounted for. NOT fixed here -- a real fix needs the same kind of
+      dedicated live-measurement pass across the realistic device range
+      this file's other constants (TOP_CHROME_PX, DEALER_SEAT_OVERHANG_PX)
+      already got, and touching chrome-top's positioning risks growing its
+      wrapped-row count in a way that could reopen one of THOSE
+      already-fixed collisions if rushed. Flagged for a dedicated pass, not
+      guessed at.
+      220/220 frontend tests pass (one unrelated full-suite-only flake in
+      state.test.ts, 34/34 clean in isolation), 154/154 backend tests
+      pass, clean build.
 
 - [x] Chip color switcher (2026-08-11), the first half of the "theming
       beyond felt colour + watermark" item below. Scoped deliberately small

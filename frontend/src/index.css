@@ -1480,6 +1480,20 @@ body:has(.k-fit) {
   .k-logo-tag {
     display: none;
   }
+  /* ChipSwitcher (2026-08-11) added a whole new persistent 124px-wide
+     cluster to .k-chrome-top's row -- on top of an already razor-thin
+     budget (the comment right below measured only ~2px of spare margin at
+     568px, the narrowest width this file tunes against). Confirmed live:
+     at 568x320 that pushed row 1's packed content clean past the wordmark's
+     own footprint, landing the felt swatches almost entirely on top of
+     "Kvitlach" (measured feltLeft 10 vs wordmark's own x 37-96). Same fix
+     as the tagline above -- chip color is a decorative preference, not
+     needed to identify or play the game, so it's the next thing to give at
+     this breakpoint. FeltSwitcher stays: it already fit within the
+     original tuned margin on its own, this is only about the newcomer. */
+  .k-chip-switcher {
+    display: none;
+  }
   /* The wordmark's own counter-scale (see .k-topbar > * above) targets a
      constant ~32px regardless of stage scale, which is exactly right on a
      normal phone -- but on the narrowest real Android widths even that

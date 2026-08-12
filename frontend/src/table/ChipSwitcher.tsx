@@ -18,7 +18,11 @@ export interface ChipSwitcherProps {
 // escapes the scaled stage's transform.
 export function ChipSwitcher({ chip, onChange }: ChipSwitcherProps) {
   return (
-    <div className="flex items-center gap-1">
+    // k-chip-switcher: a hook for index.css's narrow-landscape breakpoint
+    // (same one that already hides .k-logo-tag) to hide this too -- see that
+    // rule's own comment. FeltSwitcher has no equivalent class (nothing
+    // needed to target it before), so this can't reuse a shared selector.
+    <div className="k-chip-switcher flex items-center gap-1">
       {CHIP_ORDER.map((name) => (
         // Same 20px swatch / 28px tap-target split as FeltSwitcher, for the
         // same reason: three 20px targets 4px apart is a mis-tap waiting to
