@@ -23,7 +23,7 @@ const PRACTICE_BANKER_NAME = "The Gabbai";
 const PRACTICE_BOT_NAME_POOL = [
   "Sruly",
   "Shimmy",
-  "Shmuel",
+  "Shmuely",
   "Nati",
   "Josh",
   "Binyomin",

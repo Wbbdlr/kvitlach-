@@ -30,7 +30,7 @@ for how to work in this repo.
 - [x] Practice-mode bot name pool swapped for a different set (2026-08-27,
       user request) -- `PRACTICE_BOT_NAME_POOL` in `store.ts`: Yanky, Shmuli,
       Mendy, Berel, Zalmy, Duvid, Chaim, Avrumi, Moishy, Shloimy replaced with
-      Sruly, Shimmy, Shmuel, Nati, Josh, Binyomin, Shlomo, Moshe, Chaim,
+      Sruly, Shimmy, Shmuely, Nati, Josh, Binyomin, Shlomo, Moshe, Chaim,
       Meshulam (Chaim carried over). The banker persona ("The Gabbai") was
       explicitly left alone -- scoped to bots only per the user's own ask.
       Confirmed via AskUserQuestion this was meant as a straight content swap,
