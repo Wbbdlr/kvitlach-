@@ -198,7 +198,18 @@ export function totalDisplay(
   // round actually terminates (round.ts), so the reveal below still lands at
   // exactly the right moment -- this only holds the total back while the
   // outcome is genuinely still undecided.
-  if (!isOwnerView && isBlattPhase) {
+  // `!isBanker` matters here and didn't used to be checked: isBlattPhase reads
+  // turn.bet === 0, which means "no wager" for a PLAYER, but calculateEndState
+  // (round.ts) repurposes the admin turn's own `bet` to hold its round-net
+  // balance once resolved -- $0 there means "broke even," not "never bet."
+  // Landing on exactly $0 net is an ordinary outcome (one seat's win offsets
+  // another's loss), not an edge case, and without this guard a busted banker
+  // whose round net happened to net to 0 fell into this branch and had its
+  // displayed total recomputed from `cards.slice(1)` -- silently dropping the
+  // hole card and showing a stale, non-busted number instead of the real
+  // bust total (reported live 2026-08-27: "the banker busted but his tally
+  // didn't reflect the busted total").
+  if (!isOwnerView && !isBanker && isBlattPhase) {
     const visible = turn.cards.slice(1);
     const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
     if (vTotal !== undefined) return { prefix, value: `${vTotal}` };

@@ -21,16 +21,16 @@ const BOT_THINK_DELAY_MAX_MS = 1200;
 // a round number picked on its own.
 const PRACTICE_BANKER_NAME = "The Gabbai";
 const PRACTICE_BOT_NAME_POOL = [
-  "Yanky",
-  "Shmuli",
-  "Mendy",
-  "Berel",
-  "Zalmy",
-  "Duvid",
+  "Sruly",
+  "Shimmy",
+  "Shmuel",
+  "Nati",
+  "Josh",
+  "Binyomin",
+  "Shlomo",
+  "Moshe",
   "Chaim",
-  "Avrumi",
-  "Moishy",
-  "Shloimy",
+  "Meshulam",
 ];
 // A practice room's "banker" is a bot with no session to approve a real
 // buy-in request through -- self-serve top-ups are how a solo learner

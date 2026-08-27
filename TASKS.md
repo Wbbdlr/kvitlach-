@@ -27,6 +27,54 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] Practice-mode bot name pool swapped for a different set (2026-08-27,
+      user request) -- `PRACTICE_BOT_NAME_POOL` in `store.ts`: Yanky, Shmuli,
+      Mendy, Berel, Zalmy, Duvid, Chaim, Avrumi, Moishy, Shloimy replaced with
+      Sruly, Shimmy, Shmuel, Nati, Josh, Binyomin, Shlomo, Moshe, Chaim,
+      Meshulam (Chaim carried over). The banker persona ("The Gabbai") was
+      explicitly left alone -- scoped to bots only per the user's own ask.
+      Confirmed via AskUserQuestion this was meant as a straight content swap,
+      not a rename-bots-in-the-UI feature. 27/27 practice-mode + practice-ws
+      backend tests pass (unaffected -- neither asserts specific pool names,
+      only counts/behavior).
+
+- [x] Banker's displayed total didn't reflect a real bust when the round's
+      net happened to land on exactly $0 (2026-08-27, user report from a
+      practice game: "the banker busted but his tally didn't reflect the
+      busted total"). Root cause: `totalDisplay` (selectors.ts) reads
+      `turn.bet === 0` as "this hand was played as a blatt, no wager" -- true
+      for a PLAYER turn, but `calculateEndState` (round.ts) repurposes the
+      ADMIN turn's own `bet` field to hold the round's net balance once
+      resolved, and $0 there means "broke even" (one seat's win offset
+      another's loss), not "never bet." That's an ordinary outcome, not a
+      rare one -- any round where the point spread nets to zero across
+      players trips it. Once tripped, the banker's resolved hand fell into
+      the blatt-display branch, which recomputes the total from
+      `cards.slice(1)` -- silently dropping the hole card and showing
+      whatever the remaining cards happen to read as instead of the real
+      bust number (traced by hand: a busted [10,9,9] hand reads as a true
+      28, but the blatt branch reported 18, the visible-cards-only total).
+      Fixed by gating that branch on `!isBanker` -- it was never meant to
+      apply to the admin turn at all; the admin's own hole-card-timing
+      branch immediately above it already owns admin visibility pre-
+      resolution, this one only mis-fired once the admin turn was resolved
+      and its `bet` field's meaning had already flipped. New regression
+      test in `selectors.test.ts` pins a busted admin turn at bet: 0 net --
+      fails on the old code (returns "18"), passes on the fix (returns
+      "28"). 28/28 selectors tests pass.
+      Live reproduction of a genuine bank bust (to double-check the fix
+      against a real broadcast, not just the unit trace) was attempted but
+      not completed this pass -- a scripted practice session played 8+
+      rounds without the bot banker (17-hit threshold, `bot.ts`) happening
+      to bust, and a `Reshuffle` click stopped registering partway through
+      (plausibly the WS rate limit from the scripted session's own rapid-
+      fire clicks, per `ws-server.ts`'s rate limiting -- not investigated
+      further, didn't recur outside that stress pattern). The code-level
+      trace above is exact enough (same functions, same real card values,
+      same real Turn shape) that this shipped on that basis rather than
+      waiting on a live repro; flagging here in case the live case ever
+      wants rechecking.
+
 - [x] "Kvitlach" wordmark overlapping the felt-color swatches (2026-08-11,
       root-caused earlier the same day -- see the ChipSwitcher entry
       below). `.k-topbar` and `.k-chrome-top` are two independently

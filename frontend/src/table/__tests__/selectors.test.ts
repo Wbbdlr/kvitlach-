@@ -52,6 +52,27 @@ describe("totalDisplay -- a standing player's total must not leak before resolut
     const revealedInfo = totalDisplay(turn, p1.id, "terminate", { forceBankerReveal: true });
     expect(revealedInfo.value).toBe("16");
   });
+
+  it("shows the banker's real busted total even when their round net happens to land on exactly $0", () => {
+    // calculateEndState (round.ts) repurposes the admin turn's `bet` field to
+    // hold the round's net balance once resolved -- 0 there means "broke
+    // even" (one seat's win offset another's loss), not "never wagered."
+    // Before the isBanker guard, this net-zero bet was misread as blatt
+    // phase and the total got recomputed from cards.slice(1), dropping the
+    // hole card entirely.
+    const turn = makeTurn(banker, {
+      state: "lost",
+      bet: 0,
+      busted: true,
+      cards: [
+        { name: "10", attributes: { values: [10] } },
+        { name: "9", attributes: { values: [9] } },
+        { name: "9", attributes: { values: [9] } },
+      ],
+    });
+    const info = totalDisplay(turn, p1.id, "terminate", { forceBankerReveal: true });
+    expect(info.value).toBe("28");
+  });
 });
 
 // This is the client-side mirror of backend/src/turn.ts's calcSums. The rule
