@@ -368,6 +368,39 @@ export class GameStore {
     this.forceTimeoutStand(roundId, round, playerId);
   };
 
+  // Every DB write in this class used to be a bare `void this.db.save...()`.
+  // Those run on a connection POOL, so two writes to the same row execute on
+  // different connections and complete in whatever order the server gets to
+  // them -- not the order they were issued. `ON CONFLICT DO UPDATE` then
+  // happily lets an older snapshot land on top of a newer one.
+  //
+  // That is not theoretical: it is what the restart-recovery test caught. A
+  // hand settled mid-round (wallets 90/510 in memory, asserted), yet Postgres
+  // still held 100/100/500 afterwards -- an earlier save had overtaken the
+  // settlement save. A restart at that point restores wallets that never
+  // received the money, which is precisely the silent-loss class the
+  // mid-round bumpRoomTimer fix was meant to close. Persisting on every action
+  // is exactly what makes the race easy to hit: the more often we write, the
+  // more overlapping writes there are.
+  //
+  // Chaining per key fixes the ordering and coalesces naturally, since
+  // saveRoom re-reads the live room object when its turn comes and so always
+  // writes the newest state rather than a stale snapshot.
+  private pendingWrites = new Map<string, Promise<unknown>>();
+
+  private serializeWrite(key: string, work: () => Promise<unknown>): void {
+    const prev = this.pendingWrites.get(key) ?? Promise.resolve();
+    // Same handler for both settle paths: one failed write must not wedge
+    // every later write for that row behind a rejected promise.
+    const next = prev.then(work, work).catch((e) => console.error("db write failed", key, e));
+    this.pendingWrites.set(key, next);
+    void next.finally(() => {
+      // Only the tail clears the entry, so a burst keeps chaining and a quiet
+      // row doesn't leak a promise per write.
+      if (this.pendingWrites.get(key) === next) this.pendingWrites.delete(key);
+    });
+  }
+
   private persistRound(roundId: string, next: RoundContext, prev?: RoundContext): RoundContext {
     const previous = prev ?? this.rounds.get(roundId);
     const withTimer = this.syncTurnTimer(roundId, next, previous);
@@ -377,8 +410,10 @@ export class GameStore {
     const isPractice = this.rooms.get(withBotTimer.roomId)?.room.practice === true;
     if (this.db && !isPractice) {
       const { timer, turnTimer, botTimer, ...serializable } = withBotTimer;
-      void this.db.saveRound(roundId, withBotTimer.roomId, serializable as Record<string, unknown>)
-        .catch((e) => console.error("db save round", roundId, e));
+      const db = this.db;
+      this.serializeWrite(`round:${roundId}`, () =>
+        db.saveRound(roundId, withBotTimer.roomId, serializable as Record<string, unknown>)
+      );
     }
     return withBotTimer;
   }
@@ -1584,8 +1619,11 @@ export class GameStore {
     // Postgres write, and expire far sooner than a real game's 3 days.
     const isPractice = roomRec.room.practice === true;
     if (this.db && !isPractice) {
-      void this.db.saveRoom(roomId, roomRec.room)
-        .catch((e) => console.error("db save room", roomId, e));
+      const db = this.db;
+      // Reads roomRec.room when its turn in the chain comes up, not now, so a
+      // burst of writes collapses onto the newest state instead of replaying
+      // stale snapshots over it.
+      this.serializeWrite(`room:${roomId}`, () => db.saveRoom(roomId, roomRec.room));
     }
     roomRec.timer = setTimeout(() => {
       this.rooms.delete(roomId);

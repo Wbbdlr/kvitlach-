@@ -32,7 +32,7 @@ describe("live per-turn wallet settlement", () => {
     expect(wallets[admin.id]).toBe(510);
   });
 
-  it("writes the room to Postgres as it settles, not only when the round ends", () => {
+  it("writes the room to Postgres as it settles, not only when the round ends", async () => {
     // The round and the room are persisted by two different mechanisms:
     // persistRound writes the ROUND on every action, but the room -- which is
     // where wallets actually live -- is only ever written by bumpRoomTimer,
@@ -71,6 +71,12 @@ describe("live per-turn wallet settlement", () => {
 
     expect(updated.state).not.toBe("terminate");
     expect(store.getRoom(room.roomId)!.wallets[p1.id]).toBe(90);
+
+    // Room writes are chained per room (store.ts's serializeWrite) so an older
+    // snapshot can never overwrite a newer one, which means the write starts on
+    // the next microtask rather than synchronously.
+    await Promise.resolve();
+    await Promise.resolve();
     expect(saveRoom).toHaveBeenCalled();
   });
 

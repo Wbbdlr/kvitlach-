@@ -53,10 +53,17 @@ describe("createPracticeRoom", () => {
     expect(db.saveRound).not.toHaveBeenCalled();
   });
 
-  it("still persists a normal room to Postgres when a database is configured (contrast check)", () => {
+  it("still persists a normal room to Postgres when a database is configured (contrast check)", async () => {
     const db = makeDbSpy();
     const store = new GameStore(db);
     store.createRoom({ firstName: "Banker" });
+
+    // Writes are chained per room now (store.ts's serializeWrite) so they can
+    // never land out of order, which means they start on the next microtask
+    // rather than synchronously. Two awaits, not a timer: the chain is built
+    // from promises, and this describe runs on fake timers.
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(db.saveRoom).toHaveBeenCalled();
   });
