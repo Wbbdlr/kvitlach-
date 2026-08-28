@@ -5,6 +5,27 @@ for how to work in this repo.
 
 ## Open
 
+- [ ] `live-play.test.ts:226` failed once in CI (2026-08-28, run #6) with
+      `bankerTurn.busted === false` while the banker's cards were genuinely
+      bust. Could NOT reproduce: 25 isolated runs and 3 full-suite runs all
+      green. Filed rather than dismissed, because it is NOT clearly the known
+      timer flake and deserves a real look if it recurs:
+      * The test's local `bestTotal` prunes sums over 21 as it goes, while the
+        engine's `getSums` does not -- but every card value is positive, so
+        pruning can never drop a partial sum that would later come back under
+        21. The two should agree on "is any total <= 21 reachable", which
+        means the assertion itself looks sound.
+      * `calculateEndState` recomputes `busted` from the cards at terminate,
+        so a stale flag should not survive a normal round end. The paths that
+        DON'T recompute it are `settleBankOutcome`'s auto-redeal (which
+        carries `busted` onto a fresh hand) and `voidAbandonedRound` (which
+        leaves it untouched) -- both worth suspecting first.
+      * Adjacent to a real bug already fixed this month (the banker's busted
+        total not displaying), so treat a recurrence as a genuine lead rather
+        than noise.
+      If it fires again, capture the full CI annotation -- it prints the
+      banker's actual cards -- before re-running anything.
+
 - [ ] PRODUCT DECISION, not a bug: at the stated ~50-person design target, most
       of the room spends most of the night watching. Measured against the real
       store (50 players, 11 seats, rotation advancing by exactly one player per

@@ -80,15 +80,23 @@ async function track(id: string): Promise<string> {
 // The store's DB writes are deliberately fire-and-forget (`void this.db...`),
 // so a test that read straight after an action would race the write. Polling
 // for the expected state is honest about that instead of sleeping and hoping.
-async function waitFor<T>(fn: () => Promise<T | undefined>, timeoutMs = 10_000): Promise<T> {
+// `describe` carries what the poll was actually seeing, because a bare
+// "timed out" tells you nothing you can act on from a CI annotation -- the
+// whole question is whether the row was absent, or present with the wrong
+// contents, and those have completely different causes.
+async function waitFor<T>(
+  fn: () => Promise<T | undefined>,
+  describe: () => Promise<unknown>,
+  timeoutMs = 15_000
+): Promise<T> {
   const deadline = Date.now() + timeoutMs;
-  let last: T | undefined;
   while (Date.now() < deadline) {
-    last = await fn();
-    if (last !== undefined) return last;
+    const got = await fn();
+    if (got !== undefined) return got;
     await new Promise((r) => setTimeout(r, 50));
   }
-  throw new Error("waitFor timed out");
+  const seen = await describe().catch((e) => `<describe threw: ${e}>`);
+  throw new Error(`waitFor timed out; last observed: ${JSON.stringify(seen)}`);
 }
 
 runIf("database integration (real Postgres)", () => {
@@ -118,7 +126,10 @@ runIf("database integration (real Postgres)", () => {
   it("round-trips a room's full state through JSONB without losing shape", async () => {
     const id = await track(roomId("shape"));
     const state = makeRoomState(id, {
-      wallets: { alice: 125, bob: 0, carol: -0 },
+      // No -0 here: JSON has no signed zero, so it round-trips to 0 and
+      // toEqual distinguishes the two. That was a bad test case, not a bug --
+      // a wallet can never legitimately hold -0 anyway.
+      wallets: { alice: 125, bob: 0, carol: 40 },
       players: [{ id: "alice", firstName: "Alice", lastName: "", type: "player", presence: "online" }],
       balances: [{ amount: 25, payer: "bob", payee: "alice" }],
       completedRounds: 7,
@@ -250,11 +261,21 @@ runIf("restart recovery (real Postgres) -- the room and the round must agree", (
 
     // The write is fire-and-forget, so wait for it to actually land rather
     // than assuming it did.
-    await waitFor(async () => {
-      const rows = await liveDb.loadActiveRooms();
-      const row = rows.find((r) => r.roomId === room.roomId);
-      return row && row.roomState.wallets[p1.id] === 90 ? row : undefined;
-    });
+    await waitFor(
+      async () => {
+        const rows = await liveDb.loadActiveRooms();
+        const row = rows.find((r) => r.roomId === room.roomId);
+        return row && row.roomState.wallets[p1.id] === 90 ? row : undefined;
+      },
+      async () => {
+        const rows = await liveDb.loadActiveRooms();
+        return {
+          lookingFor: room.roomId,
+          roomIdsInDb: rows.map((r) => r.roomId),
+          walletsForThisRoom: rows.find((r) => r.roomId === room.roomId)?.roomState.wallets,
+        };
+      }
+    );
 
     // The restart: a brand-new store that knows nothing but what Postgres holds.
     const restored = new GameStore(liveDb);
