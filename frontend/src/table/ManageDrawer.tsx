@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BuyInRequest, Player, RenameRequest } from "../types";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
+import { useEscapeKey } from "../useEscapeKey";
 
 export interface ManageDrawerProps {
   open: boolean;
@@ -70,6 +71,8 @@ export function ManageDrawer({
   const [topUpAmount, setTopUpAmount] = useState("500");
   const [topUpNote, setTopUpNote] = useState("");
   const [watermarkInput, setWatermarkInput] = useState(feltWatermark ?? "");
+
+  useEscapeKey(onClose, open);
 
   if (!open) return null;
 

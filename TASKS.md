@@ -5,6 +5,13 @@ for how to work in this repo.
 
 ## Open
 
+- [ ] Dialogs don't manage focus (2026-08-28). All eight now close on Escape
+      and carry the right ARIA, but none moves focus into itself on open,
+      none restores focus to the trigger on close, and none traps Tab -- so a
+      keyboard user can tab out of an open modal into the page behind it.
+      Wants doing per-dialog rather than as one sweep, since the right first
+      focus target differs (a close button vs. the first field).
+
 - [ ] The WS boundary still validates by hand, 27 `payload as any` casts
       (2026-08-28). Each handler checks the fields it uses and the money paths
       are now normalized, so this is not a known hole -- but it is checked
@@ -82,6 +89,20 @@ for how to work in this repo.
       either the same way the chip pass was scoped -- extending an existing
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
+
+- [x] No dialog closed on Escape (2026-08-28). All eight carried
+      `role="dialog"`, `aria-modal` and a label already -- that work had been
+      done properly -- and every one could be dismissed by clicking the
+      overlay. None answered the Escape key, which is the one dialog
+      behaviour people expect without being told, and the only way out for
+      someone not using a mouse.
+      One `useEscapeKey` hook, wired into all eight. It takes an `enabled`
+      flag because several of these early-return null when closed: hooks
+      can't sit after that return, so they call it above and pass `open`,
+      and without the gate a hidden dialog would still answer Escape.
+      Still open, deliberately not done here: none of these move focus into
+      the dialog on open or restore it on close, and none trap Tab. That is
+      a bigger change than an Escape binding and wants doing per-dialog.
 
 - [x] Money was never required to be whole, or bounded (2026-08-28).
       `Number.isFinite` was the only check on the real-room paths, and it

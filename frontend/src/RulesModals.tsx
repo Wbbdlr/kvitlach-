@@ -1,4 +1,5 @@
 import { Icon } from "./table/icons";
+import { useEscapeKey } from "./useEscapeKey";
 
 export interface RulesModalsProps {
   showHowTo: boolean;
@@ -10,6 +11,8 @@ export interface RulesModalsProps {
 // Rendered from both the pre-join lobby and the felt table, so the rules stay
 // reachable once a player is seated (the felt table's "?" chip opens them).
 export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs }: RulesModalsProps) {
+  useEscapeKey(onCloseHowTo, showHowTo);
+  useEscapeKey(onCloseWhatIs, showWhatIs);
   return (
     <>
       {showHowTo && (

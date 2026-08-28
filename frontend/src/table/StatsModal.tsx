@@ -2,6 +2,7 @@ import { clsx } from "clsx";
 import { StatsData } from "./useTableData";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
+import { useEscapeKey } from "../useEscapeKey";
 
 export interface StatsModalProps {
   data: StatsData;
@@ -14,6 +15,7 @@ export interface StatsModalProps {
 // come straight from selectors.ts's statusDisplay/betDisplay, which are
 // light-theme Tailwind colors already tuned for a white card.
 export function StatsModal({ data, onClose }: StatsModalProps) {
+  useEscapeKey(onClose);
   return (
     <StageOverlay>
       <div

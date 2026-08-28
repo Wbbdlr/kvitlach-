@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Turn } from "../types";
 import { Icon } from "./icons";
+import { useEscapeKey } from "../useEscapeKey";
 
 const DEFAULT_BET = 5;
 const BET_STEP = 1;
@@ -41,6 +42,7 @@ export function PlayerDock({
   const [eleveroonSelected, setEleveroonSelected] = useState(false);
   const [betError, setBetError] = useState<string | undefined>(undefined);
   const [bankConfirmOpen, setBankConfirmOpen] = useState(false);
+  useEscapeKey(() => setBankConfirmOpen(false), bankConfirmOpen);
 
   const hasBet = (turn.bet ?? 0) > 0;
   const drawLabel = hasBet ? "Hit" : "Blatt";

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BuyInRequest, RenameRequest } from "../types";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
+import { useEscapeKey } from "../useEscapeKey";
 
 export interface RoomInfoDrawerProps {
   open: boolean;
@@ -45,6 +46,8 @@ export function RoomInfoDrawer({
   const [buyInNote, setBuyInNote] = useState("");
   const [copied, setCopied] = useState<"id" | "link" | "password" | null>(null);
   const [copyFailed, setCopyFailed] = useState<"id" | "link" | "password" | null>(null);
+
+  useEscapeKey(onClose, open);
 
   if (!open) return null;
 

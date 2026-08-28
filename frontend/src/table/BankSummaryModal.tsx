@@ -3,6 +3,7 @@ import { CompletedRoundSummary } from "../state";
 import { statusDisplay, betDisplay, fullName } from "./selectors";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
+import { useEscapeKey } from "../useEscapeKey";
 
 export interface BankSummaryModalProps {
   summary?: CompletedRoundSummary;
@@ -14,6 +15,7 @@ export interface BankSummaryModalProps {
 // record of -- it stopped early rather than playing out -- so this keeps the
 // print/save escape hatch the old list UI had.
 export function BankSummaryModal({ summary, onClose }: BankSummaryModalProps) {
+  useEscapeKey(onClose);
   return (
     <StageOverlay>
       <div

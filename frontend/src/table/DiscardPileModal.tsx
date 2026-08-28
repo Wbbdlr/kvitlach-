@@ -3,6 +3,7 @@ import { DiscardEntry } from "./DiscardPile";
 import { cardImages } from "./selectors";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
+import { useEscapeKey } from "../useEscapeKey";
 
 export interface DiscardPileModalProps {
   entries: DiscardEntry[];
@@ -41,6 +42,7 @@ function countsByValue(entries: DiscardEntry[]): Record<string, number> {
 // state.ts's advanceShoeDiscards), so the tally keeps growing hand after
 // hand until the banker actually reshuffles.
 export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
+  useEscapeKey(onClose);
   const counts = countsByValue(entries);
   return (
     <StageOverlay>

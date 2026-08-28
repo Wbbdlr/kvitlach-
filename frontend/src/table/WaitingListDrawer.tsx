@@ -3,6 +3,7 @@ import { Icon } from "./icons";
 import { initialsOf } from "./Seat";
 import { StageOverlay } from "./StageOverlay";
 import { fullName } from "./selectors";
+import { useEscapeKey } from "../useEscapeKey";
 
 export interface WaitingListEntry {
   player: Player;
@@ -23,6 +24,7 @@ export interface WaitingListDrawerProps {
 // (one new seat per round), this just gives that a real, readable surface
 // instead of a single tooltip string a big table makes unreadable.
 export function WaitingListDrawer({ open, onClose, players }: WaitingListDrawerProps) {
+  useEscapeKey(onClose, open);
   if (!open) return null;
 
   // The viewer's own row is the one thing worth finding at a glance, so it's
