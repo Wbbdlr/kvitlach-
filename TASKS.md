@@ -50,10 +50,25 @@ for how to work in this repo.
         timeout; `toHaveCount(1)` keeps its teeth through the wait, so a
         duplicated seat would still fail rather than be papered over.
       9/9 green across `--repeat-each=3`.
-      Still not covered end-to-end, needing either 12 clients or real load:
-      seat rotation past the 11-seat cap with its overflow queue (the logic
-      itself is unit-tested in `seat-cap.test.ts`), and the WS rate limiter
-      under a real ~50-person table.
+
+- [x] E2E seat-cap coverage: `seat-cap.spec.ts` (2026-08-28) -- 12 players for
+      11 seats, driving 13 live browser contexts. Covers only what the unit
+      tests can't: that the client HONOURS the cap. The player left out is
+      told they're queued, has no dock to act with, and is genuinely absent
+      from the felt; then rotates in next round while somebody else waits.
+      The cap and rotation themselves stay `seat-cap.test.ts`'s job.
+      Uses the banker's own per-seat Skip control to retire 11 seats rather
+      than playing 11 real hands. Passed first run -- every UI assumption
+      (the dealer sharing `.k-seat`, so the cap reads as 12 not 11; the
+      "1 queued for next round" / "You're queued" badges) held as read.
+      Also capped `workers` to 2 in the config: at the default, this spec's 13
+      contexts ran alongside three other multi-browser specs (~20 at once) and
+      pushed `full-round` from ~12s standalone to 56s, most of the way to the
+      timeout on contention alone. Capping made the whole run FASTER (1.5m vs
+      1.8m) as well as safer. 8/8 green across `--repeat-each=2`.
+      Still not covered, and deliberately: the WS rate limiter under a real
+      ~50-person table. Simulating that would prove little -- better answered
+      by watching `/metrics` on a real game night.
 
 - [x] Mid-round settlements moved real money without ever persisting the room
       (2026-08-27, found by extending the bug hunt to the real-multiplayer

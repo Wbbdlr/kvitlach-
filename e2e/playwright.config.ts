@@ -23,6 +23,14 @@ export default defineConfig({
   // than worked around: the waits are legitimate, not a symptom.
   timeout: 90_000,
   fullyParallel: true,
+  // Capped deliberately, and not just to be tidy: seat-cap.spec.ts drives 13
+  // live browser contexts on its own, and at the default worker count it ran
+  // alongside three other multi-browser specs -- roughly 20 contexts at once.
+  // Nothing failed, but full-round went from ~12s standalone to 56s, which is
+  // most of the way to the timeout above on nothing but contention. Two
+  // workers keeps the heavy spec paired with at most one other, and costs
+  // very little wall clock since seat-cap dominates the run either way.
+  workers: 2,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: "list",
