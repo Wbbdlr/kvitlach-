@@ -90,6 +90,19 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] The admin throttle map wasn't actually capped (2026-08-28). It sweeps
+      on overflow, but the sweep only frees EXPIRED entries -- with every
+      tracked IP still inside its 5-minute window it freed nothing, and the
+      map then grew past MAX_TRACKED_IPS once per new address, unbounded.
+      Small in practice, and not a way past the throttle (rotating addresses
+      already evades a per-IP limit, which the original comment says), so
+      this was only ever memory an attacker could spend on a public endpoint.
+      Now evicts the entry closest to expiry when the sweep frees nothing.
+      Note what the test does and doesn't cover: the map is module-private,
+      so the bound isn't observable from outside. The test pins the thing
+      that actually regresses if the eviction is wrong -- that a fresh
+      address is still throttleable after the map has churned.
+
 - [x] No dialog closed on Escape (2026-08-28). All eight carried
       `role="dialog"`, `aria-modal` and a label already -- that work had been
       done properly -- and every one could be dismissed by clicking the

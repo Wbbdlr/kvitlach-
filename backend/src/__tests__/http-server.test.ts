@@ -117,3 +117,45 @@ describe("/metrics", () => {
     expect(Number(match![1])).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("admin throttle map bounds", () => {
+  it("stays capped when every tracked IP is still inside its window", async () => {
+    // The overflow sweep only frees EXPIRED entries. With every tracked IP
+    // still live it freed nothing, and the map then grew past the cap once
+    // per new address, without limit. Rotating IPs already evades a per-IP
+    // throttle, so this was never what kept an attacker out -- it was just
+    // memory they could spend on a public endpoint.
+    const app = createHttpServer(new GameStore());
+    process.env.ADMIN_TOKEN = "secret-token";
+    try {
+      // Comfortably past MAX_TRACKED_IPS (500), all wrong guesses, all from
+      // distinct addresses inside one 5-minute window.
+      for (let i = 0; i < 700; i += 1) {
+        await app.inject({
+          method: "GET",
+          url: "/admin?token=wrong",
+          headers: { "x-forwarded-for": `10.1.${Math.floor(i / 256)}.${i % 256}` },
+        });
+      }
+      // What this can and cannot show: adminAttempts is module-private, so
+      // the bound itself isn't observable from out here. What IS observable,
+      // and what actually regresses if the eviction is wrong, is whether a
+      // fresh address can still be throttled after the map has churned --
+      // evicting the wrong entry, or quietly refusing to track newcomers,
+      // would be a worse bug than the leak it replaced.
+      const ip = "10.9.9.9";
+      for (let i = 0; i < 25; i += 1) {
+        await app.inject({ method: "GET", url: "/admin?token=wrong", headers: { "x-forwarded-for": ip } });
+      }
+      const afterLimit = await app.inject({
+        method: "GET",
+        url: "/admin?token=secret-token",
+        headers: { "x-forwarded-for": ip },
+      });
+      expect(afterLimit.statusCode).toBe(404);
+    } finally {
+      delete process.env.ADMIN_TOKEN;
+      await app.close();
+    }
+  }, 60_000);
+});

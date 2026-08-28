@@ -54,6 +54,25 @@ function recordFailedAttempt(ip: string): void {
     for (const [key, entry] of adminAttempts) {
       if (now > entry.resetAt) adminAttempts.delete(key);
     }
+    // The sweep only frees ENTRIES THAT EXPIRED, so it frees nothing at all
+    // when every tracked IP is still inside its window -- and the set below
+    // then grew the map past the cap anyway, once per new IP, without limit.
+    // Rotating addresses already evades a per-IP throttle (the comment above
+    // says as much), so this was never the thing keeping an attacker out; it
+    // was just memory they could spend on a public endpoint. Evicting the
+    // entry closest to expiry makes the cap real, and costs the attacker
+    // nothing they weren't already getting.
+    if (adminAttempts.size >= MAX_TRACKED_IPS) {
+      let oldestKey: string | undefined;
+      let oldestAt = Infinity;
+      for (const [key, entry] of adminAttempts) {
+        if (entry.resetAt < oldestAt) {
+          oldestAt = entry.resetAt;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey !== undefined) adminAttempts.delete(oldestKey);
+    }
   }
   const entry = adminAttempts.get(ip);
   if (!entry || now > entry.resetAt) {
