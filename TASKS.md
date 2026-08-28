@@ -5,6 +5,23 @@ for how to work in this repo.
 
 ## Open
 
+- [ ] PRODUCT DECISION, not a bug: at the stated ~50-person design target, most
+      of the room spends most of the night watching. Measured against the real
+      store (50 players, 11 seats, rotation advancing by exactly one player per
+      round as `startRound` does): a player first gets a seat in round 1 at the
+      earliest, round 16 at the median, round 40 at the worst. At ~2 minutes a
+      round that is roughly half an hour before the median guest plays a single
+      hand, and about 1.3 hours for the last of them. Nobody is starved -- all
+      50 were seated within 40 rounds -- so the rotation is working exactly as
+      designed; the question is whether the design matches the evening.
+      Worth deciding BEFORE a big night, because the fixes are different sizes:
+      accept it (people mingle and watch, which is a real answer for a family
+      party), run more than one table, or change the rotation to advance by a
+      full seat-block instead of one player so the queue turns over ~11x
+      faster. Do not "fix" this by raising MAX_SEATED_PLAYERS_PER_ROUND -- that
+      constant comes from `layout.ts` collision math and is pinned by
+      `layout.test.ts`; the felt genuinely cannot render more seats.
+
 - [ ] The backend suite's intermittent full-run flake (found 2026-08-09) is
       now rare but not fully eliminated. Root-caused and fixed 3 confirmed
       instances (`turn-order.test.ts`, `ws-auth.test.ts`,
