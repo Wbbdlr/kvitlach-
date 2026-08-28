@@ -190,3 +190,47 @@ describe("WS load -- the per-socket message rate limit", () => {
     expect(made.room.roomId).toBeTruthy();
   }, 60_000);
 });
+
+describe("WS load -- room bookkeeping under connection churn", () => {
+  it("releases a room's socket set once its last connection goes", async () => {
+    // This server is long-lived: it holds a Map of roomId -> sockets, and for
+    // a while nothing ever removed an entry from it. Sockets were pulled out
+    // of each Set correctly, so the leak was invisible in behaviour -- rooms
+    // just accumulated empty Sets and their id strings until the process
+    // restarted. Practice rooms churn fastest (throwaway single-human
+    // sessions, reaped after 30 minutes), so a public server churns far more
+    // rooms than it ever holds at once.
+    //
+    // Measured as a DELTA, not an absolute: earlier tests in this file
+    // deliberately leave sockets open, so the only stable claim is that
+    // opening and closing N rooms nets out to zero.
+    const baseline = server.trackedRoomCount;
+
+    const churn = 12;
+    const sockets: WebSocket[] = [];
+    for (let i = 0; i < churn; i += 1) {
+      const ws = await connect();
+      await send(ws, "room:create", { firstName: `Churn${i}` });
+      sockets.push(ws);
+    }
+    expect(server.trackedRoomCount).toBe(baseline + churn);
+
+    await Promise.all(
+      sockets.map(
+        (ws) =>
+          new Promise<void>((resolve) => {
+            ws.once("close", () => resolve());
+            ws.close();
+          }),
+      ),
+    );
+
+    // The client's close event can beat the server's own close handler, so
+    // poll rather than asserting on the next tick.
+    const deadline = Date.now() + 10_000;
+    while (server.trackedRoomCount > baseline && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(server.trackedRoomCount).toBe(baseline);
+  }, 60_000);
+});

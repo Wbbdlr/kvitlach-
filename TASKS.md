@@ -74,6 +74,30 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] The WS server never released a room's socket set (2026-08-28) -- a real
+      unbounded leak in a process meant to run for months.
+      Found by pulling on the `inflight@1.0.6` "leaks memory" npm warning in a
+      deploy log. That warning itself is a non-issue (dev-only, reached only
+      via `@vitest/coverage-v8` -> `test-exclude` -> `glob@7`, and it runs in a
+      coverage process that lives seconds), but checking it properly meant
+      auditing what the long-lived server actually retains, which is where the
+      real one was.
+      `onClose` removed the socket from `rooms.get(roomId)` but never removed
+      the Map entry when that Set hit zero, so every roomId that ever had a
+      connection kept an empty Set and its id string for the life of the
+      process. Invisible in behaviour -- nothing malfunctioned, it just grew.
+      The store reaps its own rooms three ways (close, inactivity timer, admin
+      force); nothing propagated that to this map, so the two drifted.
+      Practice rooms dominate the rate: throwaway single-human sessions reaped
+      after 30 minutes, so a public server churns far more rooms than it holds.
+      Small per entry, but bounded only by uptime, and uptime here is the whole
+      point.
+      Checked while in there, all fine: `meta` and `msgCount` are WeakMaps
+      keyed by the socket, `connsByIp` already deleted its empty sets, and
+      `pendingWrites` self-cleans in its `finally`.
+      Regression test verified the honest way -- it fails (15 vs 3) with the
+      one-line fix commented out.
+
 - [x] Dependency advisories, triaged rather than blanket-upgraded (2026-08-28).
       Surfaced by the `npm audit` summary in a deploy build log, not by a scan
       we run on purpose -- see Open below.

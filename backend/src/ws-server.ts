@@ -42,6 +42,14 @@ export class WSServer {
   private connsByIp = new Map<string, Set<WebSocket>>();
   private msgCount = new WeakMap<WebSocket, { count: number; resetAt: number }>();
 
+  // How many rooms this server currently holds socket sets for. Must track
+  // rooms with someone CONNECTED, not rooms ever created -- see onClose. Read
+  // -only and cheap, so the leak regression test can watch it without reaching
+  // into the private map.
+  get trackedRoomCount(): number {
+    return this.rooms.size;
+  }
+
   constructor(store: GameStore, port: number) {
     this.store = store;
     this.store.setRoundUpdateListener((round) => this.handleRoundUpdate(round));
@@ -103,6 +111,18 @@ export class WSServer {
             void this.broadcastConnections(info.roomId);
         }
       }
+      // Drop the room's entry once its last socket goes. Without this, every
+      // roomId that ever had a connection kept a permanent Map entry -- an
+      // empty Set and the id string -- for the life of the process. The STORE
+      // reaps its own rooms (on close, on the inactivity timer, on admin
+      // force), but nothing told this map, so the two drifted apart and this
+      // one only ever grew. Practice rooms make it add up fastest: they are
+      // throwaway single-human sessions reaped after 30 minutes, and each one
+      // still left its entry behind.
+      // Safe to delete rather than keep empty: both broadcast helpers treat a
+      // missing entry exactly like an empty one, and the join path below
+      // recreates the Set on demand.
+      if (roomSockets && roomSockets.size === 0) this.rooms.delete(info.roomId);
     }
   }
 
