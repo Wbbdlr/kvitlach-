@@ -14,6 +14,14 @@ const FRONTEND_PORT = 5273;
 
 export default defineConfig({
   testDir: "./tests",
+  // Playwright's 30s default is not enough here and was already marginal: a
+  // single full-round run takes ~20s on its own, because these tests wait on
+  // real WebSocket round trips between two or three live browsers rather than
+  // on local state. Run several of those specs at once and every one of them
+  // blew the 30s budget on contention alone -- the pre-existing full-round
+  // spec included, which passes comfortably when run by itself. Raised rather
+  // than worked around: the waits are legitimate, not a symptom.
+  timeout: 90_000,
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

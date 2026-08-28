@@ -27,6 +27,34 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] E2E multi-client coverage extended past the single existing spec
+      (2026-08-28) -- `two-players.spec.ts` (turn ORDER across three real
+      clients: the waiting player must have no dock at all while the first is
+      up, and learns the turn advanced only from the server; all three then
+      agree on both outcomes) and `reconnect.spec.ts` (a player reloads
+      mid-round after betting and must return to the same SINGLE seat with the
+      wager intact -- the duplicate-seat case is the real target, since a
+      resume that registered a new player would leave a wager nobody sits
+      behind). Shared helpers in `tests/helpers.ts`; `full-round.spec.ts` kept
+      its own copies rather than being churned to de-duplicate.
+      Two things found while getting them green, both test-infrastructure, not
+      product faults:
+      * `playwright.config.ts` inherited Playwright's 30s default timeout,
+        already marginal at ~20s for one spec alone. Three multi-browser specs
+        in parallel blew it on contention and ALL THREE failed, the
+        pre-existing one included. Raised to 90s.
+      * The reconnect seat assertion failed ~1 run in 3 on the 5s default
+        expect timeout: `room:state` and `round:state` are separate
+        broadcasts, and until the round lands TableRoot renders the pre-round
+        "Table ready" roster instead of any `.k-seat`. Given an explicit
+        timeout; `toHaveCount(1)` keeps its teeth through the wait, so a
+        duplicated seat would still fail rather than be papered over.
+      9/9 green across `--repeat-each=3`.
+      Still not covered end-to-end, needing either 12 clients or real load:
+      seat rotation past the 11-seat cap with its overflow queue (the logic
+      itself is unit-tested in `seat-cap.test.ts`), and the WS rate limiter
+      under a real ~50-person table.
+
 - [x] Mid-round settlements moved real money without ever persisting the room
       (2026-08-27, found by extending the bug hunt to the real-multiplayer
       paths practice mode never exercises -- practice rooms are never written
