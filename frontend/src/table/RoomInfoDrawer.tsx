@@ -44,6 +44,7 @@ export function RoomInfoDrawer({
   const [buyInAmount, setBuyInAmount] = useState("");
   const [buyInNote, setBuyInNote] = useState("");
   const [copied, setCopied] = useState<"id" | "link" | "password" | null>(null);
+  const [copyFailed, setCopyFailed] = useState<"id" | "link" | "password" | null>(null);
 
   if (!open) return null;
 
@@ -52,11 +53,26 @@ export function RoomInfoDrawer({
   const myRenameRequest = playerId ? renameRequests.find((r) => r.playerId === playerId) : undefined;
   const myBuyInRequest = playerId ? buyInRequests.find((r) => r.playerId === playerId) : undefined;
 
-  const copy = (text: string, which: "id" | "link" | "password") => {
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(text);
+  // Only claim success once the write actually resolves. This used to set the
+  // flag first and never look at the promise, so a rejected write still said
+  // "Copied!" over an unchanged clipboard -- and browsers do reject this one
+  // routinely, on an unfocused document or a denied permission. Worse, when
+  // navigator.clipboard was missing altogether the button did nothing at all
+  // and said nothing about it: that is every non-HTTPS origin, which is
+  // exactly how this looks when someone opens it over plain http on the LAN.
+  // Telling the player to copy it themselves beats a button that quietly
+  // does nothing.
+  const copy = async (text: string, which: "id" | "link" | "password") => {
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) throw new Error("unavailable");
+      await navigator.clipboard.writeText(text);
+      setCopyFailed(null);
       setCopied(which);
       setTimeout(() => setCopied((cur) => (cur === which ? null : cur)), 2000);
+    } catch {
+      setCopied(null);
+      setCopyFailed(which);
+      setTimeout(() => setCopyFailed((cur) => (cur === which ? null : cur)), 5000);
     }
   };
 
@@ -89,7 +105,7 @@ export function RoomInfoDrawer({
             <button
               type="button"
               className="inline-flex items-center justify-center rounded-full border border-amber-300 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition-colors hover:bg-amber-100"
-              onClick={() => copy(roomId, "id")}
+              onClick={() => void copy(roomId, "id")}
               title="Copy game ID"
               aria-label="Copy game ID"
             >
@@ -101,10 +117,10 @@ export function RoomInfoDrawer({
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 shadow-sm transition-colors hover:bg-slate-50"
-              onClick={() => copy(inviteLink, "link")}
+              onClick={() => void copy(inviteLink, "link")}
             >
               <Icon name="link" size={13} />
-              {copied === "link" ? "Copied!" : "Copy invite link"}
+              {copied === "link" ? "Copied!" : copyFailed === "link" ? "Copy it manually" : "Copy invite link"}
             </button>
             <a
               className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 shadow-sm transition-colors hover:bg-emerald-100"
@@ -117,6 +133,12 @@ export function RoomInfoDrawer({
             </a>
           </div>
           {copied === "id" && <div className="text-xs text-emerald-700 -mt-2">Game ID copied.</div>}
+          {copyFailed === "id" && (
+            <div className="text-xs text-amber-700 -mt-2">Couldn't copy automatically — select the ID above and copy it.</div>
+          )}
+          {copyFailed === "link" && (
+            <div className="text-xs text-amber-700 -mt-2">Couldn't copy automatically — the invite link is {inviteLink}</div>
+          )}
 
           {typeof buyIn === "number" && (
             <div className="text-xs text-slate-500 -mt-1">
@@ -134,7 +156,7 @@ export function RoomInfoDrawer({
               <button
                 type="button"
                 className="inline-flex items-center justify-center rounded-full border border-rose-300 bg-white p-1.5 text-rose-700 shadow-sm transition-colors hover:bg-rose-100"
-                onClick={() => copy(roomPassword, "password")}
+                onClick={() => void copy(roomPassword, "password")}
                 title="Copy room password"
                 aria-label="Copy room password"
               >
@@ -143,6 +165,9 @@ export function RoomInfoDrawer({
             </div>
           )}
           {copied === "password" && <div className="text-xs text-emerald-700 -mt-2">Password copied.</div>}
+          {copyFailed === "password" && (
+            <div className="text-xs text-amber-700 -mt-2">Couldn't copy automatically — select the password and copy it.</div>
+          )}
 
           {!isAdmin && (
             <>

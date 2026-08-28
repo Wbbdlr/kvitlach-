@@ -74,6 +74,24 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] No React error boundary (2026-08-28). One throw anywhere in render
+      unmounted the whole tree and left a blank white page -- no message, and
+      no way back for a player who doesn't know to refresh. Unnecessary as
+      well as bad: the session is in localStorage and the room is on the
+      server, so a reload really does put them back at the table, which is
+      what the boundary now says. It deliberately does NOT clear the session
+      on the way out, since that is the thing that makes recovery work.
+
+- [x] "Copied!" was shown whether or not anything was copied (2026-08-28).
+      RoomInfoDrawer set the flag before the clipboard write and never looked
+      at the promise, so a rejected write -- an unfocused document, a denied
+      permission, both routine -- still reported success over an unchanged
+      clipboard. And when `navigator.clipboard` was missing entirely the
+      button did nothing whatsoever, silently: that is EVERY non-HTTPS origin,
+      which is exactly how the site looks opened over plain http on the LAN.
+      Now awaits the write, and on failure says to copy it by hand (spelling
+      out the invite link, which is the one a player can't easily select).
+
 - [x] Three ways a public client could kill the whole server (2026-08-28).
       An unhandled rejection terminates the process on Node 20, and compose
       restarts it -- so each of these looked like "everyone got dropped for a
