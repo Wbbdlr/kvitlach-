@@ -22,6 +22,17 @@ export class Database {
   constructor(url = process.env.DATABASE_URL) {
     if (!url) throw new Error("DATABASE_URL is required for database operations");
     this.pool = new Pool({ connectionString: url });
+    // An 'error' event with no listener is an unhandled EventEmitter error,
+    // which terminates the process. The pool emits one when Postgres drops a
+    // client that was sitting IDLE in it -- a db container restart, a network
+    // blip, an idle timeout -- none of which is our query failing, and none of
+    // which should take a room full of players down with it. Every actual
+    // query has its own try/catch at the call site; this only covers clients
+    // dying between queries, so logging and letting the pool replace them is
+    // the whole job.
+    this.pool.on("error", (err) => {
+      console.error("pg pool: idle client error (pool will replace it)", err);
+    });
   }
 
   async init() {

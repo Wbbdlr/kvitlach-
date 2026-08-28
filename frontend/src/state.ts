@@ -1,4 +1,5 @@
 import { create, StateCreator } from "zustand";
+import { errorCopy } from "./errorCopy";
 import { WSClient } from "./ws";
 import { Balance, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 import { ReactionEvent } from "./types";
@@ -902,44 +903,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           return update;
         }
         const pendingType = state.pendingAction?.type;
-        const friendly =
-          errorMessage === "maintenance_mode"
-            ? "New games are temporarily paused for maintenance. Existing games are unaffected. Check back soon."
-            : errorMessage === "room_not_found"
-            ? "Room not found. Check the room ID and try again."
-            : errorMessage === "room_full"
-            ? "This table is full (100 players max). Try a different room."
-            : errorMessage === "invalid_password"
-            ? "Incorrect password."
-            : errorMessage === "insufficient_bank"
-            ? "Cannot remove more chips than the bank holds."
-            : errorMessage === "bank_locked"
-            ? "Bank showdown in progress. Please wait."
-            : errorMessage === "banker_deciding"
-            ? "Banker must decide how to proceed."
-            : errorMessage === "bank_empty"
-            ? "Bank has no chips left."
-            : errorMessage === "turn_not_pending"
-            ? "That action already went through."
-            : errorMessage === "not_your_turn"
-            ? "It's not your turn yet."
-            : errorMessage === "banker_not_absent"
-            ? "The banker is back — the round can carry on."
-            : errorMessage === "banker_not_absent_long_enough"
-            ? "Give the banker another moment to reconnect."
-            : errorMessage === "forbidden"
-            ? "Only the banker can perform that action."
-            : errorMessage === "invalid_bank_amount"
-            ? "Bank wager must equal the remaining bank."
-            : errorMessage === "bank_not_in_decision"
-            ? "No bank decision is pending."
-            : errorMessage === "rate_limited"
-            ? "Too many requests. Please slow down."
-            : errorMessage === "invalid_payload"
-            ? "Something went wrong. Please try again."
-            : errorMessage === "room_capacity"
-            ? "The server is hosting as many tables as it can right now. Existing games are unaffected — try again in a few minutes."
-            : (errorMessage ?? "Something went wrong.").replace(/_/g, " ");
+        const friendly = errorCopy(errorMessage);
         if (pendingType === "bet" || pendingType === "hit" || pendingType === "stand" || pendingType === "skip") {
           update.message = friendly;
           // Both of these can only come from creating a table, so they belong

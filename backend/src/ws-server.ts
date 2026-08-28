@@ -107,8 +107,17 @@ export class WSServer {
         if (!stillConnected) {
           this.store.setPresence(info.roomId, info.playerId, "offline");
           this.broadcastRoom(info.roomId);
-          void this.store.recordDisconnection(info.connectionId);
-            void this.broadcastConnections(info.roomId);
+          // Both of these reach Postgres, and both are fire-and-forget. An
+          // unhandled rejection terminates the process on Node 20, so a db
+          // hiccup while ONE player's socket closed would drop every player
+          // in every room. store.ts already catches on all its own void
+          // writes; these two were the outliers.
+          void this.store
+            .recordDisconnection(info.connectionId)
+            .catch((e) => console.error("record disconnection failed", e));
+          void this.broadcastConnections(info.roomId).catch((e) =>
+            console.error("broadcast connections failed", info.roomId, e),
+          );
         }
       }
       // Drop the room's entry once its last socket goes. Without this, every
@@ -589,10 +598,21 @@ export class WSServer {
           this.send(socket, { type: "error", requestId, error: { message: "unknown_type" } });
       }
     } catch (err: any) {
+      // The protocol's error codes ARE messages here (the client switches on
+      // "room_full", "not_your_turn", ...), so they have to pass through. But
+      // anything else reaching this catch is unexpected -- a pg error naming
+      // tables and columns, a TypeError naming internals -- and forwarding
+      // its text hands a public client a free look inside. Matching on shape
+      // rather than a list of the ~34 codes: every one of them is a bare
+      // snake_case token, and real exception messages carry spaces and
+      // punctuation, so the list can grow without anyone updating this.
+      const raw = err?.message;
+      const isProtocolCode = typeof raw === "string" && /^[a-z][a-z0-9_]*$/.test(raw);
+      if (!isProtocolCode) console.error("unexpected handler error", type, err);
       this.send(socket, {
         type: "error",
         requestId,
-        error: { message: err?.message ?? "error" },
+        error: { message: isProtocolCode ? raw : "server_error" },
       });
     }
   }

@@ -74,6 +74,64 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] Three ways a public client could kill the whole server (2026-08-28).
+      An unhandled rejection terminates the process on Node 20, and compose
+      restarts it -- so each of these looked like "everyone got dropped for a
+      moment" rather than a crash, which is why none had been diagnosed.
+      1. `db.ts` never registered `pool.on("error")`. An 'error' event with no
+         listener is thrown, and pg emits one whenever Postgres drops a client
+         sitting IDLE in the pool -- a db container restart does it, which is
+         part of the normal deploy. This was the likeliest of the three to
+         have already been happening.
+      2. `recordDisconnection` and `broadcastConnections` were fired off with
+         a bare `void` and no `.catch`, both reaching Postgres. A db hiccup
+         while ONE player's socket closed took every room down. store.ts
+         already catches on all four of its own void writes -- these two were
+         simply the outliers, not a different convention.
+      3. No process-level handler at all. Added: `unhandledRejection` logs
+         loudly and does NOT exit (one stray promise should not end the night
+         for 50 people), `uncaughtException` still exits, because by then the
+         process may hold half-applied state and compose will restart it. The
+         backstop is deliberately not the fix -- each site above catches on
+         its own, so anything reaching the backstop is a bug to go fix.
+
+- [x] Internal error text was forwarded to any client (2026-08-28). onMessage's
+      catch-all sent `err.message` straight down the socket, and the client's
+      fallback rendered it with underscores swapped for spaces -- so a pg
+      error naming tables and columns, or a TypeError naming internals, was
+      shown verbatim to whoever triggered it, on a public endpoint.
+      The protocol's own codes have to pass through (the client switches on
+      them), so they are told apart by SHAPE, not by a hardcoded list: every
+      code is a bare snake_case token, and real exception messages carry
+      spaces and punctuation. The ~34 codes can grow without anyone
+      remembering this filter exists. Unexpected errors are logged server-side
+      in full and become `server_error` on the wire.
+
+- [x] Eleven backend error codes had no player-facing copy (2026-08-28),
+      including ones players hit routinely -- `insufficient_funds`,
+      `invalid_bet`, `buyin_blocked`, `rename_blocked`, `round_terminated`.
+      They fell through to a fallback that swapped underscores for spaces, so
+      betting over your wallet said "insufficient funds" in bare lowercase.
+      The 18-branch ternary chain is why: it looked complete, and nothing
+      compared it against what the server actually throws. Now a map in
+      `frontend/src/errorCopy.ts`, and `errorCopy.test.ts` parses the codes
+      out of `backend/src` and fails naming any code with no entry -- with a
+      second test asserting the parse found >25 codes, so the first cannot
+      pass vacuously if the regexes ever stop matching.
+
+- [x] An explicit close() could be undone by a pending reconnect (2026-08-28).
+      `WSClient.close()` nulls the socket's handlers so onclose cannot
+      re-arm, but a reconnect scheduled BEFORE the close was never cancelled
+      -- the timer handle wasn't kept anywhere. Real sequence: the network
+      drops, onclose schedules a retry 1.5-15s out, the player hits Leave
+      inside that window, and the timer still fires -- flipping the UI to
+      "connecting" and opening a socket for a table they had walked away
+      from. state.ts's `teardownRoomSession` calls close() specifically to
+      stop a late resume from re-persisting a session it just cleared, so
+      this defeated the guarantee that function's own comment claims.
+      The existing close() test only covered closing a LIVE socket, which is
+      the other order and the one that already worked.
+
 - [x] The WS server never released a room's socket set (2026-08-28) -- a real
       unbounded leak in a process meant to run for months.
       Found by pulling on the `inflight@1.0.6` "leaks memory" npm warning in a

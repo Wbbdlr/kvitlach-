@@ -31,6 +31,7 @@ export class WSClient {
   private reconnectListeners = new Set<ReconnectListener>();
   private errorListeners = new Set<ErrorListener>();
   private queue: Array<{ type: string; payload?: MessagePayload; requestId: string }> = [];
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
 
   constructor(private url: string) {}
 
@@ -47,10 +48,7 @@ export class WSClient {
     } catch (err) {
       this.connecting = false;
       this.closeListeners.forEach((fn) => fn());
-      setTimeout(() => {
-        this.reconnectListeners.forEach((fn) => fn());
-        this.connect();
-      }, computeReconnectDelay(this.reconnectAttempts++));
+      this.scheduleReconnect();
       return;
     }
     this.socket.onopen = () => {
@@ -83,11 +81,24 @@ export class WSClient {
     this.socket.onclose = () => {
       this.connecting = false;
       this.closeListeners.forEach((fn) => fn());
-      setTimeout(() => {
-        this.reconnectListeners.forEach((fn) => fn());
-        this.connect();
-      }, computeReconnectDelay(this.reconnectAttempts++));
+      this.scheduleReconnect();
     };
+  }
+
+  // Was duplicated inline at both call sites, and neither kept the handle --
+  // so close() could not cancel a reconnect that was already counting down.
+  // That made an explicit close undoable by a timer: drop the connection,
+  // hit Leave during the backoff, and the timer would still fire, flip the UI
+  // to "connecting" and reopen a socket the player had just walked away from.
+  // state.ts's teardownRoomSession leans on close() to stop exactly that kind
+  // of late resume, so the gap defeated the guarantee that comment claims.
+  private scheduleReconnect() {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      this.reconnectListeners.forEach((fn) => fn());
+      this.connect();
+    }, computeReconnectDelay(this.reconnectAttempts++));
   }
 
   onMessage(listener: Listener) {
@@ -141,6 +152,10 @@ export class WSClient {
   // fires -- both of which would otherwise be able to resurrect a session
   // the caller just deliberately cleared.
   close() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
     this.queue = [];
     if (this.socket) {
       this.socket.onopen = null;

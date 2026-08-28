@@ -100,6 +100,32 @@ describe("WSClient", () => {
       vi.useRealTimers();
     });
 
+    it("cancels a reconnect that was ALREADY counting down when close() was called", () => {
+      // The test above proves close() stops a reconnect by nulling onclose on
+      // a live socket. This is the other order, and the one that actually
+      // happens: the network drops first, onclose schedules a retry, and the
+      // player hits Leave somewhere in the 1.5-15s backoff. close() used to
+      // not keep the timer handle at all, so nothing cancelled it -- it fired
+      // afterwards, flipped the UI to "connecting" and opened a socket for a
+      // table the player had already walked away from. state.ts's
+      // teardownRoomSession calls close() specifically to prevent a late
+      // resume from undoing a leave, so this gap defeated that guarantee.
+      vi.useFakeTimers();
+      const client = new WSClient("ws://test");
+      const reconnectSpy = vi.fn();
+      client.connect(reconnectSpy);
+      MockWebSocket.instances[0].triggerOpen();
+
+      MockWebSocket.instances[0].triggerClose(); // the network drops
+      client.close(); // the player leaves, mid-backoff
+
+      // Well past MAX_RECONNECT_DELAY_MS, so a surviving timer has to fire.
+      vi.advanceTimersByTime(30_000);
+      expect(MockWebSocket.instances).toHaveLength(1);
+      expect(reconnectSpy).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
     it("delivers no further messages after close(), even if one was already in flight", () => {
       const client = new WSClient("ws://test");
       const messageSpy = vi.fn();

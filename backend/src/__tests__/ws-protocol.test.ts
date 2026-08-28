@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import WebSocket from "ws";
 import { GameStore } from "../store.js";
 import { WSServer } from "../ws-server.js";
@@ -291,5 +291,30 @@ describe("WS protocol -- kick and close", () => {
     const { bankerWs, roomId } = await makeTable();
     await send(bankerWs, "room:close", { roomId });
     expect(store.getRoom(roomId)).toBeUndefined();
+  });
+});
+
+describe("WS protocol -- what an unexpected failure tells the client", () => {
+  it("replaces internal error text with server_error, and lets protocol codes through", async () => {
+    // The catch-all in onMessage forwards err.message to the client, which is
+    // correct for the protocol's own codes (the client switches on
+    // "room_full", "not_your_turn", ...) and wrong for anything else: a pg
+    // error names tables and columns, a TypeError names internals, and this
+    // is a public endpoint. Told apart by shape rather than by a list of the
+    // ~34 codes, so the list can grow without anyone remembering to update
+    // the filter.
+    const ws = await connect();
+    const created = await send(ws, "room:create", { firstName: "Host" });
+    const roomId = created.room.roomId;
+
+    const spy = vi.spyOn(store, "getRound").mockImplementation(() => {
+      throw new Error('relation "rounds" does not exist');
+    });
+    await expect(send(ws, "round:get", { roundId: "r-1" })).rejects.toThrow("server_error");
+    spy.mockRestore();
+
+    // Same path, a real protocol code: this one has to survive intact or the
+    // client cannot tell the player what actually went wrong.
+    await expect(send(ws, "room:join", { roomId, firstName: "" })).rejects.toThrow("invalid_payload");
   });
 });
