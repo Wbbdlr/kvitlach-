@@ -8,7 +8,10 @@ COPY package*.json tsconfig.json vite.config.ts tailwind.config.cjs postcss.conf
 COPY src ./src
 COPY index.html ./
 COPY public ./public
-RUN npm install && npm run build
+# ci, not install -- see backend/Dockerfile. Nothing from node_modules ships
+# here (the runtime stage is nginx serving dist/), but the build still has to
+# be reproducible.
+RUN npm ci && npm run build
 
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html

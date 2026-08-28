@@ -5,6 +5,15 @@ for how to work in this repo.
 
 ## Open
 
+- [ ] Nobody watches base-image or OS-level advisories (2026-08-28). CI now
+      reports `npm audit` for the npm layer, but `node:20-alpine` and
+      `nginx:alpine` are pinned to a floating tag and only get rebuilt when a
+      deploy happens to rebuild them -- a quiet gap on a public box. Node 20
+      also leaves Maintenance LTS in 2026-04. Cheapest useful step is probably
+      moving to `node:22-alpine` (CI already tests on 22, so the runtime and
+      the tested version currently disagree) and rebuilding on a schedule
+      rather than only on deploy.
+
 - [ ] `live-play.test.ts:226` failed once in CI (2026-08-28, run #6) with
       `bankerTurn.busted === false` while the banker's cards were genuinely
       bust. Could NOT reproduce: 25 isolated runs and 3 full-suite runs all
@@ -64,6 +73,50 @@ for how to work in this repo.
       either the same way the chip pass was scoped -- extending an existing
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
+
+- [x] Dependency advisories, triaged rather than blanket-upgraded (2026-08-28).
+      Surfaced by the `npm audit` summary in a deploy build log, not by a scan
+      we run on purpose -- see Open below.
+      Patched (all non-breaking, within the existing `^` ranges):
+      - `ws` 8.18.3 -> 8.21.3. The one that actually mattered: it is the
+        internet-facing WebSocket server. Uninitialized memory disclosure leaks
+        Node heap bytes to any connected client, and memory exhaustion from
+        tiny fragments is a DoS on a box that also serves other people's sites.
+        `maxPayload: 32KB` caps the assembled message but not the per-fragment
+        allocation overhead, so it blunted this without closing it.
+      - `react-router-dom` 6.30.2 -> 6.30.6 (open redirect -> XSS), plus
+        `nanoid`/`ajv`/`fast-uri` transitives.
+      Deliberately NOT upgraded, because the advisory does not reach this code
+      -- recheck these if the calling code changes:
+      - `fastify` 4.x (fix is a 4->5 major). X-Forwarded-Proto/Host spoofing
+        reaches only `request.hostname` in the log serializer
+        (http-server.ts:140); nothing routes or authenticates on it. Auth reads
+        `x-forwarded-for` directly. sendWebStream is unused, HTTP/2 is off.
+      - `uuid` 9 (fix is a major). Advisory needs v3/v5/v6 with a `buf`
+        argument; we only ever call `v4()`.
+      - `nanoid` 4 in the frontend. Advisories need a non-integer, negative or
+        zero size; `ws.ts:119` calls `nanoid(8)` for a request-correlation id,
+        not a secret.
+      - residual `react-router` backslash open-redirect. Both `navigate()` call
+        sites build a literal prefix + `encodeURIComponent(...)`, which escapes
+        the backslash the bypass needs.
+
+- [x] Backend runtime image shipped its devDependencies (2026-08-28). The
+      Dockerfile's runtime stage did `COPY --from=build /app/node_modules`,
+      which is the whole tree -- vitest, vite and esbuild included, carrying
+      the two critical advisories that dominated the container's audit output.
+      Nothing in prod ever executes them, so this was image bloat and scan
+      noise rather than a live hole, but neither belongs in a public container.
+      Runtime stage now does its own `npm ci --omit=dev`.
+      Both Dockerfiles also moved `npm install` -> `npm ci`: `install`
+      re-resolves the `^` ranges at build time, so the container could quietly
+      get versions the test suite never ran against -- which for a security
+      patch defeats the point of applying it.
+
+- [x] `frontend`'s `npm test` ran vitest in WATCH mode (2026-08-28) and hung
+      until killed. CI was unaffected (it calls `npx vitest run` explicitly),
+      so this only ever bit someone running it by hand. Now matches backend:
+      `test` = `vitest run`, `test:watch` = `vitest`.
 
 - [x] A stale snapshot could overwrite a newer one in Postgres (2026-08-28) --
       real bug, found by the restart-recovery test written the same day, which

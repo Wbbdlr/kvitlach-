@@ -76,6 +76,21 @@ jobs:
           # game server should have that happen by accident.
           TEST_DATABASE_URL: postgres://kvitlach:kvitlach@localhost:5432/kvitlach_test
 
+      # Runtime dependencies only -- devDependencies do not ship (the runtime
+      # image builds its own tree with `npm ci --omit=dev`), so gating on them
+      # would just train everyone to ignore this step.
+      #
+      # Deliberately non-blocking. npm audit has no way to acknowledge a
+      # specific advisory, and some of what it reports here is triaged and
+      # accepted in TASKS.md (fastify 4.x, uuid 9) because the vulnerable code
+      # path is not reachable from ours. A hard gate would sit permanently red
+      # and stop being read, which is worse than no gate. The point is that a
+      # NEW advisory shows up in the log of every run -- these were found
+      # scrolling past in a deploy build, which is not a control.
+      - name: Dependency audit (advisory)
+        run: npm audit --omit=dev
+        continue-on-error: true
+
       # NOTE for whoever sees this job red with exactly one failing file:
       # the suite has a known, characterised intermittent flake (~1 run in 63)
       # in the real-WebSocket/real-timer tests -- see TASKS.md's "Open"
@@ -103,6 +118,13 @@ jobs:
 
       - name: Tests
         run: npx vitest run
+
+      # See the backend job's audit step for why this reports without gating.
+      # Runtime deps matter more here than there: these get bundled into the JS
+      # every visitor's browser executes.
+      - name: Dependency audit (advisory)
+        run: npm audit --omit=dev
+        continue-on-error: true
 
       # `vite build` is the real frontend typecheck -- `tsc --noEmit` reports
       # a pile of pre-existing unrelated ambient-type errors here (CLAUDE.md),
