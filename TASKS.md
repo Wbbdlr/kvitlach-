@@ -65,6 +65,32 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] A stale snapshot could overwrite a newer one in Postgres (2026-08-28) --
+      real bug, found by the restart-recovery test written the same day, which
+      is exactly what it was written to catch.
+      Symptom: a hand settled mid-round with wallets 90/510 in memory (asserted
+      and passing), while Postgres still held the pre-round 100/100/500.
+      Cause: every write was a bare `void this.db.save...()` against a
+      connection POOL. Two writes to the same row execute on different
+      connections and complete in whatever order the server reaches them, not
+      the order issued -- and `ON CONFLICT DO UPDATE` then lets the older
+      snapshot land on top of the newer one. Persisting on every action is what
+      makes it easy to hit: the more often we write, the more overlapping
+      writes there are. Note this is the SAME silent-loss class the mid-round
+      `bumpRoomTimer` fix was meant to close -- that fix made the room get
+      written at the right moments, but did nothing about those writes racing
+      each other.
+      Fix: `serializeWrite` chains writes per row key. `saveRoom` reads the live
+      room object when its turn arrives, so a burst collapses onto the newest
+      state instead of replaying stale snapshots over it. A failed write does
+      not wedge the chain behind it.
+      Only visible behaviour change: writes start on the next microtask rather
+      than synchronously, so two tests that asserted immediately after an
+      action now await a tick.
+      Worth remembering how this was caught: the first CI failure said only
+      "waitFor timed out", which was useless. Making the helper report what it
+      last observed turned one more CI round-trip into the actual diagnosis.
+
 - [x] Security hardening pass for public exposure (2026-08-28). Context that
       raises the stakes: this is a public endpoint on a box that also hosts
       computerrabbis.com, ITFlow, InvoiceNinja and n8n, so a resource
