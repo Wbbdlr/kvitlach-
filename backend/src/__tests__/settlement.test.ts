@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GameStore } from "../store.js";
+import type { Database } from "../db.js";
 
 const TWELVE = { name: "12", attributes: { values: [12, 9, 10] } };
 const TEN = { name: "10", attributes: { values: [10] } };
@@ -29,6 +30,48 @@ describe("live per-turn wallet settlement", () => {
     const wallets = store.getRoom(room.roomId)!.wallets;
     expect(wallets[p1.id]).toBe(90);
     expect(wallets[admin.id]).toBe(510);
+  });
+
+  it("writes the room to Postgres as it settles, not only when the round ends", () => {
+    // The round and the room are persisted by two different mechanisms:
+    // persistRound writes the ROUND on every action, but the room -- which is
+    // where wallets actually live -- is only ever written by bumpRoomTimer,
+    // and nothing in applyBet/applyHit/applyStand called it. A restart in the
+    // gap restored a round whose turns were already marked settled against a
+    // room that never got the money, and calculateBalances skips settled
+    // turns, so it was never paid at all.
+    const saveRoom = vi.fn().mockResolvedValue(undefined);
+    const db = {
+      saveRoom,
+      saveRound: vi.fn().mockResolvedValue(undefined),
+      deleteRoom: vi.fn().mockResolvedValue(undefined),
+      deleteRound: vi.fn().mockResolvedValue(undefined),
+      logConnection: vi.fn().mockResolvedValue(1),
+      logDisconnection: vi.fn().mockResolvedValue(undefined),
+      getRoomConnectionSummaries: vi.fn().mockResolvedValue([]),
+      loadActiveRooms: vi.fn().mockResolvedValue([]),
+    } as unknown as Database;
+
+    const store = new GameStore(db);
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
+    const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
+    // A second seat keeps the round live past p1's bust, so this exercises the
+    // mid-round path rather than falling through to finalizeRound (which does
+    // bump, and is why the ordinary end-of-round payout was never affected).
+    store.joinRoom(room.roomId, { firstName: "P2" });
+    const round = store.startRound(room.roomId, admin.id);
+
+    const p1Turn = round.turns.find((t) => t.player.id === p1.id)!;
+    p1Turn.cards = [TWELVE, TWELVE];
+    p1Turn.bet = 10;
+    round.deck = [TEN, ...round.deck];
+
+    saveRoom.mockClear();
+    const updated = store.applyHit(round.roundId, p1.id);
+
+    expect(updated.state).not.toBe("terminate");
+    expect(store.getRoom(room.roomId)!.wallets[p1.id]).toBe(90);
+    expect(saveRoom).toHaveBeenCalled();
   });
 
   it("settles a natural-21 (rosier pair) immediately on the completing bet", () => {

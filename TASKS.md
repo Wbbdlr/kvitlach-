@@ -27,6 +27,29 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] Mid-round settlements moved real money without ever persisting the room
+      (2026-08-27, found by extending the bug hunt to the real-multiplayer
+      paths practice mode never exercises -- practice rooms are never written
+      to Postgres, so this is a real-games-only fault). The round and the room
+      are persisted by two different mechanisms with different triggers:
+      `persistRound` writes the round on every action, but the room (wallets,
+      `bankerBuyIn`, `balances`) is only ever written by `bumpRoomTimer`.
+      Nothing in `applyBet`/`applyHit`/`applyStand` calls it, so a whole round
+      can play out with no room write at all.
+      That's fine for the normal end-of-round payout, which runs inside
+      `finalizeRound` (it bumps) -- and `voidAbandonedRound` is covered too,
+      since ws-server funnels every round reaching "terminate" through
+      `finalizeRound`. Checked both before concluding; neither is a bug.
+      The two that are: `settleImmediateTurn` and `settleBankOutcome` both pay
+      out MID-round and leave the round live, so no bump followed. A restart
+      in that window restored a round whose turns were already marked
+      `settled` against a room whose wallets never received the money -- and
+      `calculateBalances` deliberately skips settled turns, so the payment was
+      gone rather than merely late. Narrow (needs a BANK! settlement plus a
+      restart before that round ends) but it is silent money loss, and a
+      mid-game deploy is exactly how it would happen. Both now bump, only when
+      money actually moved.
+
 - [x] A practice table was unrecoverable once its shoe ran out (2026-08-27,
       found by bug hunt -- this is the real cause of the "Reshuffle button
       stopped registering" note in the banker-bust entry below, which guessed
@@ -42,9 +65,15 @@ for how to work in this repo.
         rounds map instead of going through `persistRound`. When the shoe ran
         dry on a BOT's turn, `playBotTurn` caught the `deck_empty` and only
         logged it -- no broadcast, so `syncBotTurn` never re-ran and that
-        seat's one-shot `botTimer` stayed spent. The bot sat pending forever
-        and nothing retried it, so even a successful reshuffle brought cards
-        back to a table that was still frozen.
+        seat's one-shot `botTimer` stayed spent, so even a successful reshuffle
+        brought cards back to a table that was still frozen. Precision on how
+        long "frozen" is, corrected after the fact: for a bot PLAYER,
+        `syncTurnTimer` also armed a 90s `turnTimer` (it skips only
+        `type === "admin"`, not bots), so that seat self-rescues via
+        `forceTimeoutStand` after a 90-second dead stretch. For the bot
+        BANKER -- which is the seat that draws last and most, and the one the
+        live repro actually froze on -- `syncTurnTimer` skips it entirely, so
+        there is no rescue at all and it really does sit forever.
       Also fixed the copy that pointed nowhere: `deck_empty` told the practice
       human "Waiting for the banker to reshuffle" (a bot that never will), and
       `deck_low` sent them to Manage table, which is admin-gated and out of

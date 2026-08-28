@@ -815,6 +815,12 @@ export class GameStore {
     if (amount > 0) {
       roomRec.room.balances = [balance, ...roomRec.room.balances];
       round.ledger = [...(round.ledger ?? []), balance];
+      // Same mid-round persistence gap settleBankOutcome guards against: this
+      // pays a turn out while the round plays on, so finalizeRound's own bump
+      // (which only fires at "terminate") hasn't happened yet and nothing else
+      // in a bet/hit/stand writes the room. Only when money actually moved --
+      // an amount of 0 leaves the wallets exactly as they were.
+      this.bumpRoomTimer(roomRec.room.roomId);
     }
     round.turns[turnIndex] = { ...turn, settled: true, settledBet: turn.bet };
   }
@@ -1427,6 +1433,17 @@ export class GameStore {
       roomRec.room.balances = [...balances, ...roomRec.room.balances];
       round.ledger = [...(round.ledger ?? []), ...balances];
     }
+    // Money just moved MID-round, which is the case finalizeRound's own
+    // bumpRoomTimer doesn't cover: that only runs once a round reaches
+    // "terminate", and this settlement leaves the round live. persistRound
+    // (via the caller) writes the ROUND, but the room -- wallets, bankerBuyIn,
+    // balances -- is only ever written by bumpRoomTimer. Without this, a
+    // restart between here and the round's end restores a round whose turns
+    // are already marked settled against a room whose wallets never got the
+    // money, and calculateBalances deliberately skips settled turns, so the
+    // payment is gone rather than merely late. Deliberately after the balances
+    // append above, so the room object handed to saveRoom is already whole.
+    this.bumpRoomTimer(roomRec.room.roomId);
 
     round.turns = round.turns.map((turn, index) => {
       if (turn.player.type === "admin") {
