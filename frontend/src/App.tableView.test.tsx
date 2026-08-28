@@ -417,4 +417,50 @@ describe("the felt table is the only in-room view", () => {
       expect(playSfxMock).not.toHaveBeenCalledWith("natural21");
     });
   });
+
+  // calculateEndState (round.ts) overwrites the admin turn's `bet` with the
+  // round's net balance once it resolves, so every read of `bet` on a banker
+  // turn means something different than it does on a player's. Both sounds
+  // below were driven off that field without checking whose turn it was.
+  describe("the banker's repurposed bet field must not drive bet sounds", () => {
+    beforeEach(() => {
+      playSfxMock.mockClear();
+    });
+
+    it("does not clink a chip when the banker's resolved net goes up", () => {
+      const settledAdminTurn: Turn = { ...adminTurn, state: "standby", bet: 40 };
+
+      mockState.round = { ...round, roundId: "R-banker-net", turns: [playerTurn, adminTurn] };
+      const { rerender } = render(<App />);
+      playSfxMock.mockClear();
+
+      mockState.round = { ...mockState.round, turns: [playerTurn, settledAdminTurn] };
+      rerender(<App />);
+
+      expect(playSfxMock).not.toHaveBeenCalledWith("chip");
+    });
+
+    it("still plays natural21 for a banker 21 on a round that nets exactly $0", () => {
+      // bet: 0 here is the resolved net ("broke even"), not a missing wager --
+      // the bank never wagers. isPushTurn read it as a push and swallowed this.
+      const bankerNatural21: Turn = {
+        ...adminTurn,
+        state: "won",
+        bet: 0,
+        cards: [
+          { name: "9", attributes: { values: [9] } },
+          { name: "12", attributes: { values: [12, 9, 10] } },
+        ],
+      };
+
+      mockState.round = { ...round, roundId: "R-bank21", turns: [playerTurn, adminTurn] };
+      const { rerender } = render(<App />);
+      playSfxMock.mockClear();
+
+      mockState.round = { ...mockState.round, turns: [playerTurn, bankerNatural21] };
+      rerender(<App />);
+
+      expect(playSfxMock).toHaveBeenCalledWith("natural21");
+    });
+  });
 });

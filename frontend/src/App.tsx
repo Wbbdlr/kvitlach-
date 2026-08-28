@@ -201,7 +201,13 @@ export default function App() {
       // someone else two seats over placed a bet would be obnoxious, so
       // haptics.ts's cues are scoped to the local player's own turn only.
       const isMine = turn.player.id === playerId;
-      if ((turn.bet ?? 0) > (prevTurn.bet ?? 0)) {
+      // The banker is excluded because they never place a wager: calculateEndState
+      // (round.ts) repurposes the admin turn's `bet` to carry the round's net
+      // balance once resolved, so a bank that finished ahead read here as
+      // 0 -> +N and clinked a chip for a bet nobody made -- on every round the
+      // bank came out ahead. Same field-overload that hid a busted bank's
+      // total (see selectors.ts's totalDisplay).
+      if (turn.player.type !== "admin" && (turn.bet ?? 0) > (prevTurn.bet ?? 0)) {
         audioManager.playSfx("chip");
         if (isMine) buzz("chip");
       }
@@ -214,7 +220,13 @@ export default function App() {
       }
       if (turn.state !== prevTurn.state) {
         // A push returns the wager, not a win -- it shouldn't sound like one.
-        if (turn.state === "won" && !isPushTurn(turn)) {
+        // The banker is exempt from that check rather than subject to it: a
+        // push is a returned wager, and the bank never wagers. isPushTurn reads
+        // bet === 0, which for a resolved admin turn means "broke even on the
+        // round" -- so a bank that hit 21 on a round it happened to net $0 on
+        // had its fanfare silently swallowed. The bank's state only ever reads
+        // "won" for a real 21 (calculateEndState), so nothing else slips in.
+        if (turn.state === "won" && (turn.player.type === "admin" || !isPushTurn(turn))) {
           // calcState (backend/src/turn.ts) flips a hand straight to "won" the
           // instant 21 becomes reachable -- during the player's OWN turn, well
           // before the banker resolves anything. A showdown win (the banker's

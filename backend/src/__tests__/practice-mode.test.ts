@@ -241,6 +241,30 @@ describe("reshuffleDeck (practice carve-out)", () => {
     expect(() => store.reshuffleDeck(room.roomId, bankerBot.id)).toThrow("forbidden");
   });
 
+  it("re-arms the active bot's turn, so a table frozen by an empty shoe actually restarts", () => {
+    const store = new GameStore();
+    const { room, player } = store.createPracticeRoom({ firstName: "Alice" });
+    const roundId = store.getRoom(room.roomId)!.roundId!;
+
+    // The human is seated first (players: [bankerBot, human, ...bots]), so
+    // standing hands the turn to a bot and puts it on its one-shot botTimer.
+    store.applyStand(roundId, player.id);
+    const frozenTimer = store.getRound(roundId)!.botTimer;
+    expect(frozenTimer).toBeDefined();
+
+    const updated = store.reshuffleDeck(room.roomId, player.id);
+
+    // The real sequence this stands in for: the shoe runs dry on that bot's
+    // turn, playBotTurn catches the deck_empty and only logs it, so nothing
+    // re-broadcasts and syncBotTurn never re-runs -- the seat stays pending
+    // with a timer that has already fired. Reshuffling used to write the deck
+    // straight into the map, which brought cards back to a table that was
+    // still frozen. It has to go through persistRound to arm a fresh timer.
+    expect(updated!.botTimer).toBeDefined();
+    expect(updated!.botTimer).not.toBe(frozenTimer);
+    expect(store.getRound(roundId)!.botTimer).toBe(updated!.botTimer);
+  });
+
   it("does not extend to a real (non-practice) room -- a regular player still can't reshuffle", () => {
     const store = new GameStore();
     const { room, player: bankerPlayer } = store.createRoom({ firstName: "Banker" });

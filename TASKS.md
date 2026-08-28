@@ -27,6 +27,52 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] A practice table was unrecoverable once its shoe ran out (2026-08-27,
+      found by bug hunt -- this is the real cause of the "Reshuffle button
+      stopped registering" note in the banker-bust entry below, which guessed
+      at WS rate limiting. It was not rate limiting). Two independent faults
+      stacked on the same path:
+      * `state.ts`'s `reshuffleDeck` guarded on a bare `type === "admin"`,
+        so the felt's practice-only Reshuffle button (`TableRoot.tsx`, added
+        for exactly this human) never got its message off the client. The
+        backend carve-out (`store.ts`'s `reshuffleDeck`) and its test have
+        always allowed the practice human -- a `type: "player"`, because that
+        room's banker is a BOT with no session. Only the client disagreed.
+      * `reshuffleDeck`'s live branch wrote the fresh deck straight into the
+        rounds map instead of going through `persistRound`. When the shoe ran
+        dry on a BOT's turn, `playBotTurn` caught the `deck_empty` and only
+        logged it -- no broadcast, so `syncBotTurn` never re-ran and that
+        seat's one-shot `botTimer` stayed spent. The bot sat pending forever
+        and nothing retried it, so even a successful reshuffle brought cards
+        back to a table that was still frozen.
+      Also fixed the copy that pointed nowhere: `deck_empty` told the practice
+      human "Waiting for the banker to reshuffle" (a bot that never will), and
+      `deck_low` sent them to Manage table, which is admin-gated and out of
+      reach. Both now name the felt's Reshuffle button.
+      Shoe exhaustion is routine, not an edge case -- `TARGET_ROUNDS_PER_SHOE`
+      is 8 -- so any tester playing a solo session past ~8 rounds hit a dead
+      table. Practice mode is the no-friction entry point, so this was
+      first-session-visible. 26/26 practice-mode, 36/36 state tests; the new
+      backend test was confirmed to fail against the old bare `rounds.set`
+      before being kept.
+
+- [x] Two more instances of the banker `bet`-field overload behind the bust
+      bug below (2026-08-27, found by auditing every `turn.bet` read after
+      that fix rather than waiting for the next report):
+      * `App.tsx` played the chip/bet sound off `turn.bet > prevTurn.bet`
+        with no player-type check, so settlement's `0 -> +N` on the admin turn
+        clinked a chip for a wager nobody placed -- on every round the bank
+        finished ahead.
+      * `statusDisplay`'s "BANK 21!" branch sat below `isPushTurn`, which
+        reads `bet === 0` as "no wager." The bank never wagers, so a banker 21
+        matched the push check first and rendered "PUSH" instead, with the
+        `natural21` fanfare swallowed by the same test in `App.tsx`. Hit both
+        after a BANK! auto-redeal and on any normal round the bank netted
+        exactly $0. The existing "BANK 21!" tests all passed because they
+        inherit `makeTurn`'s `bet: 5` default -- a value no real banker turn
+        ever holds. Fixture richer than reality; the new test pins `bet: 0`.
+      53/53 selectors + tableView tests.
+
 - [x] Practice-mode bot name pool swapped for a different set (2026-08-27,
       user request) -- `PRACTICE_BOT_NAME_POOL` in `store.ts`: Yanky, Shmuli,
       Mendy, Berel, Zalmy, Duvid, Chaim, Avrumi, Moishy, Shloimy replaced with

@@ -519,6 +519,69 @@ describe("deck reshuffle notification", () => {
   });
 });
 
+// 2026-08-27: a practice table was unrecoverable once its shoe ran out. The
+// backend has always allowed the one human in a practice room to reshuffle
+// (store.ts's reshuffleDeck, covered by practice-mode.test.ts) because that
+// room's banker is a BOT with no session -- but this client guard was a bare
+// admin check, so the felt's practice-only Reshuffle button never got its
+// message off the browser.
+describe("reshuffleDeck -- a practice room's human is its deck authority", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub
+    global.WebSocket = MockWebSocket;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function seatHuman(practice: boolean) {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "ack",
+        requestId: "r1",
+        payload: {
+          room: {
+            roomId: "PRAC1",
+            practice,
+            // type "player", not "admin" -- in a practice room the admin seat
+            // is held by a bot, which is the whole reason this case exists.
+            players: [{ id: "human", firstName: "H", lastName: "", type: "player", presence: "online" }],
+            renameRequests: [],
+            buyInRequests: [],
+          },
+          session: { roomId: "PRAC1", playerId: "human", token: "t1" },
+        },
+      }),
+    });
+    return { useGameStore, socket };
+  }
+
+  it("sends room:reshuffle-deck for the human player seated at a practice table", async () => {
+    const { useGameStore, socket } = await seatHuman(true);
+
+    useGameStore.getState().reshuffleDeck();
+
+    expect(socket.sent.some((m) => m.type === "room:reshuffle-deck")).toBe(true);
+  });
+
+  it("still refuses an ordinary player at a real table", async () => {
+    const { useGameStore, socket } = await seatHuman(false);
+
+    useGameStore.getState().reshuffleDeck();
+
+    expect(socket.sent.some((m) => m.type === "room:reshuffle-deck")).toBe(false);
+    expect(useGameStore.getState().message).toBe("Only the banker can reshuffle the deck.");
+  });
+});
+
 // 2026-08-11: "the discard pile should last until the deck is reshuffled" --
 // advanceShoeDiscards (state.ts) is what makes that true; DiscardPile/
 // DiscardPileModal themselves just render whatever list they're handed (see

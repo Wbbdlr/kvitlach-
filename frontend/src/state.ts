@@ -799,7 +799,12 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         // "start round" flow, which is the only caller of this action.
         const friendly =
           errorMessage === "deck_low"
-            ? "Not enough cards left in the shoe for everyone this round. Open Manage table → Reshuffle deck, then deal again."
+            ? get().room?.practice === true
+              // Manage table is admin-gated, so a practice room's human can't
+              // reach it -- they have the felt's own Reshuffle button instead
+              // (see the deck_empty branch below for the same split).
+              ? "Not enough cards left in the shoe for everyone this round. Hit Reshuffle on the table, then deal again."
+              : "Not enough cards left in the shoe for everyone this round. Open Manage table → Reshuffle deck, then deal again."
             : errorMessage === "not_enough_players"
             ? "Need at least one seated player before dealing."
             : "Something went wrong. Please try again.";
@@ -836,7 +841,18 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         // instead, and tailors it to whether the viewer can act on it.
         const viewerId = get().playerId;
         const isBanker = get().room?.players.find((p) => p.id === viewerId)?.type === "admin";
-        const friendly = isBanker
+        // The practice case is neither of the other two and has to be called
+        // out separately: that human is a type: "player", so they used to get
+        // the "waiting for the banker" line -- advice that never comes true,
+        // because a practice room's banker is a BOT that will never reshuffle.
+        // They're the one who has to do it, via the felt's own Reshuffle
+        // button (TableRoot.tsx), and Manage table is admin-gated and out of
+        // reach for them, so neither existing string was pointing anywhere
+        // they could actually go.
+        const isPractice = get().room?.practice === true;
+        const friendly = isPractice
+          ? "The shoe just ran out of cards. Hit Reshuffle on the table to bring in a fresh one, then try again."
+          : isBanker
           ? "The shoe just ran out of cards. Open Manage table → Reshuffle deck to bring in a fresh one, then try again."
           : "The shoe just ran out of cards. Waiting for the banker to reshuffle.";
         set((state: UIState) => {
@@ -1366,7 +1382,19 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       const actor = get().room?.players.find((p) => p.id === actorId);
-      if (actor?.type !== "admin") {
+      // Mirrors the server's own carve-out (store.ts's reshuffleDeck) rather
+      // than being stricter than it: a practice room's banker is a BOT with no
+      // session, so the one human there is a type: "player" and is who has to
+      // bring in a fresh shoe. This guard used to be a bare admin check, which
+      // meant the practice-only Reshuffle button (TableRoot.tsx, added for
+      // exactly this human) never got its message off the client -- it set
+      // this error instead. A practice table was then unrecoverable the moment
+      // its shoe ran out, which is every ~8 rounds by design
+      // (TARGET_ROUNDS_PER_SHOE): can't deal, can't reshuffle, nothing to do
+      // but leave. The backend carve-out and its test were both already right;
+      // only this line disagreed with them.
+      const isPractice = get().room?.practice === true;
+      if (!(actor?.type === "admin" || (isPractice && actor?.type === "player"))) {
         set({ message: "Only the banker can reshuffle the deck." });
         return;
       }

@@ -777,10 +777,19 @@ export class GameStore {
       if (!round) throw new Error("round_not_found");
       round.deck = buildShoe(round.deckCount ?? recommendedDeckCount(roomRec.room.players.length));
       round.deckReshuffledAt = Date.now();
-      this.rounds.set(round.roundId, round);
+      // persistRound rather than a bare rounds.set, because bringing cards
+      // back is only half of what a stuck table needs. If the shoe ran dry on
+      // a BOT's turn, playBotTurn caught the deck_empty and logged it -- no
+      // round update was broadcast, so syncBotTurn never re-ran, and that
+      // seat's one-shot botTimer was already spent. The bot sat pending
+      // forever and nothing retried it: the fresh shoe arrived and the table
+      // was still dead. Only syncBotTurn (via here) arms a new one.
+      // syncTurnTimer carries the active player's own remaining time across
+      // on turnTimerExpiresAt, so this doesn't hand a human a fresh clock.
+      const persisted = this.persistRound(round.roundId, round);
       this.audit("reshuffle-deck-live", roomId, adminId, {});
       this.bumpRoomTimer(roomId);
-      return round;
+      return persisted;
     }
 
     roomRec.deck = buildShoe(roomRec.lastDeckCount ?? recommendedDeckCount(roomRec.room.players.length));

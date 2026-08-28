@@ -243,4 +243,29 @@ describe("statusDisplay -- the bank hitting exactly 21 outright", () => {
     });
     expect(statusDisplay(redealtSecondHand).label).toBe("BANK 21!");
   });
+
+  it("still fires on a banker turn carrying bet: 0 -- the bank never wagers", () => {
+    // Every other case in this block inherits makeTurn's bet: 5 default, which
+    // no real banker turn ever has: the bank places no wager, so its `bet` is
+    // 0 for the whole live window and only becomes anything else when
+    // calculateEndState overwrites it with the round's net. That made this
+    // check unreachable behind isPushTurn (bet === 0 + state "won" reads as a
+    // returned wager) and the tag rendered "PUSH" -- caught only because the
+    // fixtures here were richer than the real thing.
+    const turn = makeTurn(banker, {
+      state: "won",
+      bet: 0,
+      cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
+    });
+    expect(statusDisplay(turn).label).toBe("BANK 21!");
+  });
+
+  it("still calls a real player blatt win a PUSH -- bet: 0 keeps its meaning there", () => {
+    const turn = makeTurn(p1, {
+      state: "won",
+      bet: 0,
+      cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
+    });
+    expect(statusDisplay(turn).label).toBe("PUSH");
+  });
 });
