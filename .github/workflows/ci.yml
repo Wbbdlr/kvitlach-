@@ -26,6 +26,31 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    # db.ts is the one module a mock cannot honestly cover: JSONB round-tripping,
+    # ON CONFLICT upserts and DISTINCT ON are exactly what a fake gets right for
+    # free and a real database does not. src/__tests__/db.test.ts skips itself
+    # when TEST_DATABASE_URL is unset (most people have no Postgres running
+    # locally) but FAILS LOUDLY if that happens in CI -- a suite that silently
+    # skips here would report green while covering nothing.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kvitlach
+          POSTGRES_PASSWORD: kvitlach
+          POSTGRES_DB: kvitlach_test
+        ports:
+          - 5432:5432
+        # Without the healthcheck the job races the container: Postgres accepts
+        # a TCP connection before it is ready to answer queries, so the first
+        # test would fail with a connection error roughly at random.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -45,6 +70,11 @@ jobs:
       # rather than being noticed months later.
       - name: Tests + coverage
         run: npx vitest run --coverage
+        env:
+          # Its own variable, not DATABASE_URL: these tests write and delete
+          # rows, and nobody running the suite on a machine pointed at a live
+          # game server should have that happen by accident.
+          TEST_DATABASE_URL: postgres://kvitlach:kvitlach@localhost:5432/kvitlach_test
 
       # NOTE for whoever sees this job red with exactly one failing file:
       # the suite has a known, characterised intermittent flake (~1 run in 63)
