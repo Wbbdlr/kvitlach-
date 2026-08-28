@@ -42,6 +42,7 @@ export const ERROR_COPY: Record<string, string> = {
   insufficient_funds: "You don't have enough chips for that.",
   invalid_bet: "That bet isn't valid for this hand.",
   invalid_bankroll: "Enter a valid starting amount for the bank.",
+  invalid_buyin: "Enter a valid buy-in — whole chips, at least 1.",
   invalid_bank_amount: "Bank wager must equal the remaining bank.",
   bank_empty: "The bank has no chips left.",
   bank_locked: "Bank showdown in progress. Please wait.",

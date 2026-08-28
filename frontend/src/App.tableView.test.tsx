@@ -48,6 +48,11 @@ const mockState: { room?: RoomState; round?: RoundState; playerId: string } = {
 vi.mock("./state", () => {
   const noop = () => {};
   return {
+    // App reads the remembered room id through state.ts's own guarded helper
+    // rather than touching localStorage itself. This mock replaces the whole
+    // module, so every export App imports has to be listed here or the render
+    // throws at the call site.
+    loadLastRoomId: () => undefined,
     useGameStore: () => ({
       get room() {
         return mockState.room;

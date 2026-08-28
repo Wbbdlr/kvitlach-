@@ -41,6 +41,30 @@ const PRACTICE_TOPUP_AMOUNT = 100;
 // stop a crafted request from parking a silly number in a solo, throwaway
 // room, not to model a real limit anyone would want in practice.
 const PRACTICE_MAX_BUYIN = 100_000;
+// Chips are whole and bounded. Nothing enforced either on the real-room paths
+// (only practice did), and the gap showed up two ways:
+//   - Number.isFinite passes 10.5 and 1e-7, and wallets are plain JS numbers,
+//     so fractional stakes accumulate IEEE-754 error round after round until
+//     someone's chips read 99.99999999999999.
+//   - createRoom validated bankerBankroll but never buyIn, and buyIn becomes
+//     the starting wallet of EVERY player who joins (see joinRoom). A table
+//     made with buyIn: -50 handed every arrival a negative stack; 1e308
+//     handed them one that turns into Infinity on the first addition and
+//     silently breaks every comparison downstream.
+// A billion chips is far past any real game while still leaving arithmetic
+// nowhere near Number.MAX_SAFE_INTEGER.
+const MAX_MONEY = 1_000_000_000;
+
+// Returns undefined when the value can't be a legitimate chip amount, so
+// callers decide between a fallback and an error rather than getting a
+// silently coerced number.
+function normalizeMoney(raw: unknown): number | undefined {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  const floored = Math.floor(n);
+  if (floored <= 0) return undefined;
+  return Math.min(floored, MAX_MONEY);
+}
 // Practice rooms are throwaway but not free -- each seats up to 11 bots (the
 // fixed banker plus up to 10 players) that all run their own think-delay
 // timers (syncBotTurn). Capped generously
@@ -432,9 +456,12 @@ export class GameStore {
       presence: "online",
     };
 
-    const buyIn = admin.buyIn ?? 100;
-    const bankerBuyIn = admin.bankerBankroll ?? buyIn;
-    if (!Number.isFinite(bankerBuyIn) || bankerBuyIn <= 0) {
+    // Both go through normalizeMoney now. buyIn defaulted silently and was
+    // never checked at all, even though it becomes every joiner's wallet.
+    const buyIn = admin.buyIn === undefined ? 100 : normalizeMoney(admin.buyIn);
+    if (buyIn === undefined) throw new Error("invalid_buyin");
+    const bankerBuyIn = admin.bankerBankroll === undefined ? buyIn : normalizeMoney(admin.bankerBankroll);
+    if (bankerBuyIn === undefined) {
       throw new Error("invalid_bankroll");
     }
     const trimmedRoomName = this.sanitizeName(admin.roomName, MAX_ROOM_NAME_LEN);
@@ -889,7 +916,9 @@ export class GameStore {
     if (!round) throw new Error("round_not_found");
     const roomRec = this.rooms.get(round.roomId);
     if (!roomRec) throw new Error("room_not_found");
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error("invalid_bet");
+    // Whole chips only -- see MAX_MONEY. A fractional wager was accepted here
+    // and went straight into a wallet.
+    if (normalizeMoney(amount) !== amount) throw new Error("invalid_bet");
     const playerTurn = round.turns.find((t) => t.player.id === playerId);
     if (!playerTurn) throw new Error("turn_not_found");
 

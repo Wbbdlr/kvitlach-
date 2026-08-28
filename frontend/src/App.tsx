@@ -1,6 +1,6 @@
 ﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
-import { useGameStore } from "./state";
+import { useGameStore, loadLastRoomId } from "./state";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
@@ -99,7 +99,7 @@ export default function App() {
       prefilledRoomIdRef.current = true;
       return;
     }
-    const lastRoom = window.localStorage.getItem("kvitlach.lastRoomId");
+    const lastRoom = loadLastRoomId();
     if (lastRoom) {
       setRoomId(lastRoom);
       prefilledRoomIdRef.current = true;

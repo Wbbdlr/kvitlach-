@@ -215,7 +215,13 @@ const getUrlRoomId = (): string | undefined => {
   }
 };
 
-const loadLastRoomId = (): string | undefined => {
+// Exported because App.tsx's lobby needs the same read to prefill the room
+// field, and was doing it inline instead -- hardcoding the key string a second
+// time, and without the guard or try/catch below. localStorage getItem THROWS
+// when site data is blocked (a strict privacy setting, some corporate
+// policies), so that inline copy took the whole lobby down for those users
+// rather than just not prefilling a field.
+export const loadLastRoomId = (): string | undefined => {
   if (typeof window === "undefined" || !window.localStorage) return undefined;
   try {
     const raw = window.localStorage.getItem(LAST_ROOM_STORAGE_KEY);

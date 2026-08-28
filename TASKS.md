@@ -5,6 +5,15 @@ for how to work in this repo.
 
 ## Open
 
+- [ ] The WS boundary still validates by hand, 27 `payload as any` casts
+      (2026-08-28). Each handler checks the fields it uses and the money paths
+      are now normalized, so this is not a known hole -- but it is checked
+      per-handler, which is how `buyIn` went unvalidated while
+      `bankerBankroll` right beside it was checked. A schema per message type
+      would make that structural rather than remembered. `zod` was already a
+      dependency for this and was never used; it has been removed, so this
+      would start by adding it back deliberately.
+
 - [ ] Nobody watches base-image or OS-level advisories (2026-08-28). CI now
       reports `npm audit` for the npm layer, but `node:20-alpine` and
       `nginx:alpine` are pinned to a floating tag and only get rebuilt when a
@@ -73,6 +82,47 @@ for how to work in this repo.
       either the same way the chip pass was scoped -- extending an existing
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
+
+- [x] Money was never required to be whole, or bounded (2026-08-28).
+      `Number.isFinite` was the only check on the real-room paths, and it
+      passes 10.5, 1e-7 and 1e308. Two consequences, both real:
+      - Wallets are plain JS numbers, so fractional stakes compound IEEE-754
+        error round after round until someone's chips read
+        99.99999999999999. In a game that tracks money, that is the whole
+        ballgame.
+      - `createRoom` validated `bankerBankroll` but never `buyIn` -- and
+        `buyIn` becomes the starting wallet of EVERY player who joins
+        (store.ts, joinRoom). A table created with a valid bankroll and
+        `buyIn: -50` handed every arrival a negative stack; `1e308` handed
+        them one that becomes Infinity on the first addition, after which
+        every comparison downstream silently stops meaning anything.
+      Note the asymmetry: `createPracticeRoom` had floored, bounded and
+      clamped all of this from the start. The real-room path it was modelled
+      on never got the same treatment -- the same shape as the other finds
+      here, where the careful version exists and the older sibling missed it.
+      Now one `normalizeMoney` helper, a `MAX_MONEY` ceiling, and
+      `invalid_buyin` as its own code so the banker is told which field is
+      wrong instead of a generic "something went wrong". 5 of the 8 new tests
+      fail without the fix.
+
+- [x] App.tsx read localStorage itself, unguarded (2026-08-28). state.ts
+      already had `loadLastRoomId()` doing exactly this read with a
+      `typeof window` guard and a try/catch; App.tsx reimplemented it inline
+      instead, hardcoding the storage key a second time. `getItem` THROWS
+      when site data is blocked -- strict privacy settings, some corporate
+      policies -- so the inline copy took down the entire lobby for those
+      users instead of just not prefilling a field. Now imports the helper,
+      which removes the duplicated key at the same time.
+      Worth noting for next time: both App test files hand-write a full
+      `vi.mock("./state")`, so importing one more symbol from that module
+      broke 24 tests that had nothing to do with the change.
+
+- [x] `zod` was a production dependency and was never imported (2026-08-28).
+      Presumably added for the 27 `payload as any` casts at the WS boundary
+      and never wired up. Removed rather than adopted: the handlers do
+      validate what they use, and the money paths above were the actual gap
+      -- retrofitting schema validation across 27 handlers is a real project,
+      not a polish item. Left as an Open note instead.
 
 - [x] No React error boundary (2026-08-28). One throw anywhere in render
       unmounted the whole tree and left a blank white page -- no message, and
