@@ -1,0 +1,123 @@
+name: CI
+
+# Deploys are RDP-driven and manual (see CLAUDE.md), so nothing here ships
+# anything. The single job of this workflow is to make sure the tests actually
+# run on every change rather than only when someone remembers -- which was the
+# real gap: a regression could reach the deploy tarball with nothing having
+# executed a single test first.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run irrelevant. Without
+# this, the slow e2e job below queues up behind itself during a run of small
+# commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (tests, coverage, typecheck)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      # `tsc -p tsconfig.json` IS the backend typecheck (CLAUDE.md) -- it is
+      # clean here, unlike the frontend's, so a type error fails the build.
+      - name: Typecheck
+        run: npm run build
+
+      # Thresholds live in vitest.config.ts, so a drop in coverage fails here
+      # rather than being noticed months later.
+      - name: Tests + coverage
+        run: npx vitest run --coverage
+
+      # NOTE for whoever sees this job red with exactly one failing file:
+      # the suite has a known, characterised intermittent flake (~1 run in 63)
+      # in the real-WebSocket/real-timer tests -- see TASKS.md's "Open"
+      # section. Deliberately NOT retried away: a retry would also hide the
+      # flake getting worse. Re-run that one file in isolation
+      # (`npx vitest run src/__tests__/<file>.test.ts`) before assuming the
+      # change under test broke it.
+
+  frontend:
+    name: Frontend (tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Tests
+        run: npx vitest run
+
+      # `vite build` is the real frontend typecheck -- `tsc --noEmit` reports
+      # a pile of pre-existing unrelated ambient-type errors here (CLAUDE.md),
+      # so it is deliberately not used.
+      - name: Build (also the typecheck)
+        run: npx vite build
+
+  e2e:
+    name: E2E (real browsers, real WebSockets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Playwright boots its own backend and frontend dev servers (see
+      # e2e/playwright.config.ts), so both need their dependencies present
+      # even though this job runs no test of its own in either directory.
+      - name: Install backend deps
+        run: npm ci
+        working-directory: backend
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: frontend
+      - name: Install e2e deps
+        run: npm ci
+        working-directory: e2e
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: e2e
+
+      - name: Run E2E
+        run: npx playwright test
+        working-directory: e2e
+
+      # The trace is the fastest way to see what a failed assertion actually
+      # saw (config sets trace: retain-on-failure), and it is worthless if it
+      # only ever exists on the runner that already got torn down.
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: e2e/test-results/
+          retention-days: 7

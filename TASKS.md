@@ -27,6 +27,37 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] CI, coverage tooling, and a protocol/load test pass (2026-08-28), driven
+      by measurement rather than guesswork -- a first v8 coverage run put
+      `ws-server.ts` at 57.8% statements / 37.7% BRANCH, with one unbroken
+      uncovered block covering essentially every admin and money handler
+      (rename, buy-in, kick, close, bank-adjust, banker-topup, watermark,
+      reshuffle). That block is where untrusted client payloads land.
+      * `ws-protocol.test.ts` (13 tests): every admin-gated handler refuses an
+        ordinary player AND leaves the table unmutated; a room id in the
+        payload can't borrow authority from another room (room ids are the
+        codes people read aloud, so this mattered -- what stops it is the
+        store scoping `isAdmin` to that room's roster, which nothing at the
+        boundary was proving); money handlers move exactly what they say;
+        non-finite/absurd amounts are refused rather than poisoning a wallet.
+        All passed first run -- the code was already correct, it just wasn't
+        pinned.
+      * `ws-load.test.ts` (2 tests): 50 clients on ONE IP seat, deal and stay
+        live. That is deliberately the Cloudflare-shared-IP worst case -- if
+        `X-Forwarded-For` ever stopped arriving, every player collapses into
+        one bucket against `MAX_CONNS_PER_IP`. Also pins that a flooding
+        socket is closed with 1008 while a bystander socket is untouched.
+      * Coverage floors in `backend/vitest.config.ts` (stmts 84 / branch 70 /
+        funcs 90) as a ratchet, and `.github/workflows/ci.yml` running
+        backend + frontend + e2e on every push and PR.
+      Result: `ws-server.ts` 57.8% -> 86.6% statements, `store.ts` 82.1% ->
+      88.6%, backend overall 77.1% -> 86.6%. 171/171 backend tests.
+      Deliberately NOT retried away in CI: the known ~1-in-63 real-timer flake
+      stays visible, because a retry would also hide it getting worse.
+      Still at 0%: `db.ts`. It needs a real Postgres to exercise honestly, and
+      it is the layer the mid-round money bug lived next to -- the best next
+      testing investment, probably via a Postgres service container in CI.
+
 - [x] E2E multi-client coverage extended past the single existing spec
       (2026-08-28) -- `two-players.spec.ts` (turn ORDER across three real
       clients: the waiting player must have no dock at all while the first is

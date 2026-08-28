@@ -150,7 +150,20 @@ Run the **narrowest** relevant check; full suites only for cross-cutting work.
 cd backend  && npx vitest run                    # backend suite (~25s)
 cd frontend && npx vitest run                    # frontend suite (~23s)
 cd frontend && npx vitest run src/path/to.test.ts  # single file
+cd backend  && npx vitest run --coverage         # + coverage, enforces thresholds
 ```
+
+- **CI runs all three suites on every push and PR** (`.github/workflows/ci.yml`):
+  backend (tests + coverage thresholds + `tsc`), frontend (tests + `vite build`),
+  and the Playwright e2e package. It does not deploy anything — deploys stay
+  RDP-driven and manual.
+- **Backend coverage has floors** (`backend/vitest.config.ts`): statements 84,
+  branches 70, functions 90. They are a ratchet against backsliding, not a
+  target to chase. Raise them when real coverage rises; never lower one to turn
+  a build green without saying why in the same commit.
+- **Every WS test file binds its own port.** They run in parallel, so a reused
+  port fails as a bare `EADDRINUSE` blamed on whichever file lost the race.
+  Check what's taken before adding one: `grep -rho '39[0-9]\{3\}' src/__tests__`
 
 - **`npm test` in `frontend/` starts watch mode and will hang.** Use
   `npx vitest run`.
