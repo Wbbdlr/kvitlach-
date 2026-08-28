@@ -48,6 +48,25 @@ const PRACTICE_MAX_BUYIN = 100_000;
 // family-night server, so it bounds the worst case without ever being the
 // thing a real user runs into.
 const MAX_CONCURRENT_PRACTICE_ROOMS = 25;
+// Practice rooms have been capped since they existed; real ones were not, and
+// on a public endpoint that was the bigger hole of the two. Nothing about
+// room:create requires an existing room, a password, or any prior state, so a
+// single IP could open sockets up to MAX_CONNS_PER_IP and create rooms at the
+// message rate limit -- hundreds per second, each one holding an in-memory
+// record, a three-DAY expiry timer, and a Postgres row. This box hosts more
+// than Kvitlach, so "fills memory and disk slowly" is not a Kvitlach-only
+// outage.
+//
+// Set far above any real use (the design target is ~50 people on ONE table)
+// so a legitimate host never meets it. It is deliberately a ceiling on damage
+// rather than a real defence: someone determined can still fill it and lock
+// out new tables. That trade is taken knowingly -- a full table list recovers
+// on its own as rooms expire, and the banker can clear one from /admin,
+// whereas an out-of-memory box does not recover on its own. The narrower fix
+// (a per-IP creation quota, which bounds one actor without letting them
+// exhaust the shared ceiling) needs the client IP down here in the store and
+// is worth doing if this ever gets abused in practice.
+const MAX_CONCURRENT_ROOMS = 150;
 const MAX_PLAYERS_PER_ROOM = 100;
 // How many non-banker players get an active seat in a single round. The felt
 // table's oval seating (frontend/src/table/layout.ts) can only fit players
@@ -365,6 +384,11 @@ export class GameStore {
   }
 
     createRoom(admin: { firstName: string; lastName?: string; roomName?: string; password?: string; buyIn?: number; roomId?: string; bankerBankroll?: number }) {
+    // Checked before anything is allocated or any id is claimed, so a refusal
+    // leaves no trace behind (mirrors createPracticeRoom's own capacity gate).
+    if (this.rooms.size >= MAX_CONCURRENT_ROOMS) {
+      throw new Error("room_capacity");
+    }
     const player: Player = {
       id: uuid(),
       firstName: this.sanitizeName(admin.firstName),

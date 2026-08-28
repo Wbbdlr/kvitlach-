@@ -937,10 +937,17 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             ? "Too many requests. Please slow down."
             : errorMessage === "invalid_payload"
             ? "Something went wrong. Please try again."
+            : errorMessage === "room_capacity"
+            ? "The server is hosting as many tables as it can right now. Existing games are unaffected — try again in a few minutes."
             : (errorMessage ?? "Something went wrong.").replace(/_/g, " ");
         if (pendingType === "bet" || pendingType === "hit" || pendingType === "stand" || pendingType === "skip") {
           update.message = friendly;
-        } else if (errorMessage === "maintenance_mode") {
+          // Both of these can only come from creating a table, so they belong
+          // on the create form. Without the room_capacity case they fell to
+          // the join branch below and surfaced on a form the banker isn't
+          // even looking at -- the same misrouting the round:start handler
+          // above documents.
+        } else if (errorMessage === "maintenance_mode" || errorMessage === "room_capacity") {
           update.formErrors = { ...state.formErrors, create: friendly };
         } else {
           const nextErrors = { ...state.formErrors, join: friendly };

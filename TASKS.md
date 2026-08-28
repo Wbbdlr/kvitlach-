@@ -44,6 +44,46 @@ for how to work in this repo.
       mechanism, not a general theme-editor or free-color-picker.
 ## Done
 
+- [x] Security hardening pass for public exposure (2026-08-28). Context that
+      raises the stakes: this is a public endpoint on a box that also hosts
+      computerrabbis.com, ITFlow, InvoiceNinja and n8n, so a resource
+      exhaustion here is not a Kvitlach-only outage.
+      Checked and found clean, worth recording so nobody re-audits them:
+      * `db.ts` -- every query parameterised (`$1`/`$2`), zero string
+        interpolation. No SQL injection surface.
+      * `http-server.ts` admin auth -- `timingSafeEqual` with a length
+        pre-check, per-IP brute-force throttle over a bounded map, 404 rather
+        than 401/403 so a probe can't confirm the route exists, and the token
+        redacted from access logs. Genuinely well built already.
+      * Room ids are validated `^[A-Z0-9-]{4,20}$`, so the admin page's
+        interpolation of one was not exploitable.
+      Fixed:
+      * `MAX_MESSAGE_BYTES` (32 KiB) on the WebSocketServer. `ws` defaults
+        maxPayload to 100 MiB and our rate limiter counts MESSAGES not bytes,
+        so one socket could push ~30 x 100 MiB per window through
+        `JSON.parse`. Oversized frames now close with 1009 before any handler
+        runs.
+      * `MAX_CONCURRENT_ROOMS` (150). Practice rooms were capped; real ones
+        were not, and `room:create` needs no prior state, so it was the
+        cheapest thing on the service to spam -- each room costing an
+        in-memory record, a three-DAY timer and a Postgres row. Knowingly a
+        damage ceiling rather than a real defence (see the constant's comment);
+        the narrower per-IP quota needs the client IP down in the store.
+      * Admin page no longer interpolates a room id into an inline
+        `onsubmit` JS string -- it goes through a data- attribute now. The
+        HTML parser decodes entities in an attribute BEFORE JS sees them, so
+        `escapeHtml` is not sufficient at that sink, and the payoff would have
+        been the ADMIN_TOKEN sitting in that same page's URL. Only the
+        room-id regex (in another file) was preventing it.
+      * `room_capacity` given real copy and routed to the CREATE form -- the
+        generic fallback would have shown a banker the bare string "room
+        capacity" on the JOIN form they weren't looking at.
+      Not done, deliberate: no WebSocket Origin allowlist. Sessions live in
+      localStorage and are sent explicitly in the payload rather than as
+      cookies, so cross-site WebSocket hijacking gains an attacker nothing
+      they can't already do by opening their own socket. Worth revisiting only
+      if auth ever moves to cookies.
+
 - [x] CI, coverage tooling, and a protocol/load test pass (2026-08-28), driven
       by measurement rather than guesswork -- a first v8 coverage run put
       `ws-server.ts` at 57.8% statements / 37.7% BRANCH, with one unbroken

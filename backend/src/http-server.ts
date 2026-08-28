@@ -3,6 +3,16 @@ import Fastify, { FastifyRequest } from "fastify";
 import type { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
 
+// HTML-text and attribute contexts only. Deliberately NOT sufficient for
+// interpolating into a <script> or an inline event handler: the HTML parser
+// decodes character references in an attribute value BEFORE the JS engine sees
+// it, so an escaped `'` arrives at JS as a real quote and closes the string.
+// That is why the delete form below passes the room id through a data-
+// attribute and reads it via this.dataset rather than pasting it into the
+// confirm() call. Today the room-id regex in store.ts (`^[A-Z0-9-]{4,20}$`)
+// makes the difference academic -- but that regex lives in another file, and
+// if it were ever loosened this page would hand an attacker the ADMIN_TOKEN
+// sitting in its own URL. Don't reintroduce the nesting.
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }
@@ -76,7 +86,8 @@ function renderAdminPage(store: GameStore, token: string): string {
         <td>${formatIdle(idleMs)}</td>
         <td>
           <form method="post" action="/admin/rooms/${encodeURIComponent(r.roomId)}/delete?token=${encodeURIComponent(token)}"
-                onsubmit="return confirm('Delete room ${escapeHtml(r.roomId)}? This frees the Game ID immediately and cannot be undone.');">
+                data-room="${escapeHtml(r.roomId)}"
+                onsubmit="return confirm('Delete room ' + this.dataset.room + '? This frees the Game ID immediately and cannot be undone.');">
             <button type="submit">Delete</button>
           </form>
         </td>

@@ -120,6 +120,51 @@ describe("WS load -- a full ~50-person table on a single shared IP", () => {
   }, 120_000);
 });
 
+describe("WS load -- resource-exhaustion limits", () => {
+  it("closes a socket that sends an oversized frame instead of parsing it", async () => {
+    // `ws` defaults maxPayload to 100 MiB and the rate limiter counts messages
+    // rather than bytes, so without an explicit cap a single socket could push
+    // gigabytes through JSON.parse inside one rate-limit window. 1009 is the
+    // "message too big" close code, and `ws` sends it before any handler runs.
+    const ws = await connect();
+    const closed = new Promise<number>((resolve) => ws.once("close", (code) => resolve(code)));
+
+    ws.send(JSON.stringify({ type: "room:create", payload: { firstName: "x".repeat(64 * 1024) } }));
+
+    await expect(closed).resolves.toBe(1009);
+  }, 30_000);
+
+  it("refuses to create rooms without limit", () => {
+    // Nothing about room:create needs an existing room, a password, or any
+    // prior state, so on a public endpoint this is the cheapest thing to spam
+    // -- and every room holds a three-day timer and a database row.
+    //
+    // Its OWN store, deliberately: filling the shared one to the cap is the
+    // whole point of the test, and doing that to the module-level store left
+    // every later test in this file failing with room_capacity on its first
+    // room:create. Nothing here needs a socket either -- the per-socket
+    // message rate limit would cut in at 30 long before the 150th room, so
+    // driving this over the wire would test the wrong limit.
+    const isolated = new GameStore();
+    let created = 0;
+    let refused = false;
+
+    for (let i = 0; i < 400; i += 1) {
+      try {
+        isolated.createRoom({ firstName: `Spam${i}` });
+        created += 1;
+      } catch (err) {
+        expect((err as Error).message).toBe("room_capacity");
+        refused = true;
+        break;
+      }
+    }
+
+    expect(refused).toBe(true);
+    expect(created).toBe(150);
+  });
+});
+
 describe("WS load -- the per-socket message rate limit", () => {
   it("cuts off a flooding socket without disturbing a normal one", async () => {
     // MAX_MSGS_PER_WINDOW is 30 per 10s per socket. A human playing a hand

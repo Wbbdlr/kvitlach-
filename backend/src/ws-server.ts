@@ -23,6 +23,16 @@ interface ConnectionMeta {
 const MAX_CONNS_PER_IP = 80;
 const MAX_MSGS_PER_WINDOW = 30;
 const MSG_WINDOW_MS = 10_000;
+// `ws` defaults maxPayload to 100 MiB. The rate limiter below counts MESSAGES,
+// not bytes, so at the default one socket could push ~30 x 100 MiB per window
+// through data.toString() + JSON.parse before it ever tripped -- an easy
+// memory-exhaustion DoS on a public endpoint, and this box also hosts other
+// services that would go down with it. Real traffic is nowhere near this: the
+// largest legitimate message is a room:create carrying a few short strings,
+// and set-watermark is capped at 60 chars server-side. 32 KiB is enormous
+// headroom for that while making the attack pointless. Oversized frames are
+// closed by `ws` itself with 1009 before any of our code sees them.
+const MAX_MESSAGE_BYTES = 32 * 1024;
 
 export class WSServer {
   private wss: WebSocketServer;
@@ -35,7 +45,7 @@ export class WSServer {
   constructor(store: GameStore, port: number) {
     this.store = store;
     this.store.setRoundUpdateListener((round) => this.handleRoundUpdate(round));
-    this.wss = new WebSocketServer({ port });
+    this.wss = new WebSocketServer({ port, maxPayload: MAX_MESSAGE_BYTES });
     this.wss.on("connection", (socket: WebSocket, request: IncomingMessage) => this.onConnection(socket, request));
     console.log(`WebSocket listening on ws://0.0.0.0:${port}`);
   }
