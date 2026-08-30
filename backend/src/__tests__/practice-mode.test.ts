@@ -380,3 +380,113 @@ describe("createPracticeRoom concurrency cap", () => {
     expect(() => store.createPracticeRoom({ firstName: "OneTooMany" })).toThrow("practice_capacity");
   });
 });
+
+describe("bot banker deciding after the bank goes broke", () => {
+  // playBotBankDecision (store.ts) had zero coverage before this: nothing
+  // exercised the practice bank actually going broke. That is not a rare
+  // corner -- it is the ONLY way a practice round with a bot banker can end
+  // once the bank hits $0, since there is no human banker to click anything.
+  // If this path were broken, the round -- and the whole 30-minute practice
+  // room behind it -- would simply sit stuck until the inactivity reaper
+  // eventually cleared it, which is exactly the shape of bug this session
+  // already found and fixed once in the real-room equivalent.
+  //
+  // Own beforeEach/afterEach: this describe is a SIBLING of the top-level
+  // "createPracticeRoom" block above, not nested inside it, so its fake-timer
+  // setup does not reach here -- vitest scopes beforeEach to a describe and
+  // its children only.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const C = (n: number) => ({ name: String(n), attributes: { values: [n] } });
+
+  // Shared by both tests below: bets the bank's entire remaining wallet
+  // (which is what makes a bet a BANK! wager -- computeBankWindow / applyBet,
+  // store.ts, no explicit flag needed) and drives the banker to a guaranteed
+  // bust, landing the round in bankLock stage "decision" with the bank at $0.
+  //
+  // The active seat's cards are pinned rather than left to the random deal,
+  // and deliberately land mid-range -- neither a bust nor a natural, either
+  // of which would settle the hand immediately inside applyBet itself
+  // (settleImmediateTurn) and skip the explicit stand below. That would
+  // (non-deterministically, depending on what the unseeded deck happened to
+  // deal that run) walk straight to "banker" stage without ever passing
+  // through "player" stage -- exactly the flake this had on its first draft.
+  // Mirrors bank-frames.test.ts's own setup for the same reason.
+  function setUpBrokenBank() {
+    const store = new GameStore();
+    const { room } = store.createPracticeRoom({
+      firstName: "Alice",
+      botCount: 2,
+      buyIn: 300,
+      bankBuyIn: 10, // small enough that one BANK! wager exhausts it in one frame
+    });
+    const banker = room.players.find((p) => p.type === "admin")!;
+    expect(banker.isBot).toBe(true);
+
+    let round = store.getRound(room.roundId!)!;
+    const activeIndex = round.turns.findIndex((t) => t.state === "pending" && t.player.type !== "admin");
+    const activeId = round.turns[activeIndex].player.id;
+    round.turns[activeIndex].cards = [C(5)];
+    round.deck = [C(4), ...round.deck]; // bet's own draw -> [5,4] = 9, no auto-settle
+
+    round = store.applyBet(round.roundId, activeId, 10);
+    expect(round.bankLock?.stage).toBe("player");
+    round = store.applyStand(round.roundId, activeId);
+    expect(round.bankLock?.stage).toBe("banker");
+
+    // applyStand does not draw an extra card for the banker here -- their
+    // hand IS whatever cards are already on the turn, exactly like
+    // bank-frames.test.ts's own banker setup. [10,10] would have been 20 (a
+    // WIN against the player's 9, not a bust) -- three cards for a definite
+    // bust instead.
+    const bankerIndex = round.turns.findIndex((t) => t.player.type === "admin");
+    round.turns[bankerIndex].cards = [C(10), C(10), C(3)]; // 23, a bust
+    round = store.applyStand(round.roundId, banker.id);
+
+    // Confirms the setup actually reached the state under test before
+    // trusting anything downstream of it.
+    expect(round.bankLock?.stage).toBe("decision");
+    expect(store.getRoom(room.roomId)!.wallets[banker.id]).toBe(0);
+
+    return { store, room, banker, round };
+  }
+
+  it("resolves the round on its own once the bank is broke, rather than staying stuck forever", () => {
+    const { store, room, banker, round } = setUpBrokenBank();
+
+    const listener = vi.fn();
+    store.setRoundUpdateListener(listener);
+
+    // botThinkDelay is 500-1200ms (BOT_THINK_DELAY_MIN/MAX_MS) -- past the
+    // top of that range with room to spare.
+    vi.advanceTimersByTime(1500);
+
+    const resolved = store.getRound(round.roundId)!;
+    expect(resolved.state).toBe("terminate");
+    expect(resolved.bankLock).toBeUndefined();
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ state: "terminate" }));
+  });
+
+  it("does nothing if the decision was already resolved before the timer fires", () => {
+    // Guards the staleness check at the top of playBotBankDecision: if the
+    // round already moved on by the time the timer fires -- resolved some
+    // other way -- it must not blindly re-run endRoundAfterBankDecision
+    // against state that no longer matches.
+    const { store, room, banker, round } = setUpBrokenBank();
+
+    // Resolve it by hand before the scheduled timer ever fires -- the same
+    // call the bot's own timer would have made.
+    store.endRoundAfterBankDecision(room.roomId, banker.id);
+    expect(store.getRound(round.roundId)!.state).toBe("terminate");
+
+    // The pending timer firing now must be a no-op, not a throw and not a
+    // second (incorrect) resolution of an already-terminated round.
+    expect(() => vi.advanceTimersByTime(1500)).not.toThrow();
+    expect(store.getRound(round.roundId)!.state).toBe("terminate");
+  });
+});

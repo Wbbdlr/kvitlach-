@@ -5,6 +5,40 @@ for how to work in this repo.
 
 ## Open
 
+- [x] Two production safety nets had zero test coverage (2026-08-29). Found by
+      reading the v8 coverage report line-by-line rather than trusting the
+      pass/fail summary -- both sit at the exact "runs 90 seconds after
+      everything already looked fine" distance from normal play that makes a
+      bug here the slowest kind to notice.
+      1. `playBotBankDecision` -- the ONLY way a practice round ends once its
+         bot banker's wallet hits $0 (there's no human banker to click
+         anything). Fully unexercised. New tests in practice-mode.test.ts
+         drive a real bank-broke frame (pinned cards, not a random deal --
+         see the comment there about why that matters) and confirm the round
+         actually terminates once the bot's think-delay timer fires, plus
+         that an already-resolved decision doesn't get re-run when a stale
+         timer fires late. Verified by disabling the fix: the round is stuck
+         at `state: "playing"` forever without it.
+      2. `forceTimeoutStand` / `handleTurnTimeout` -- the 90s auto-stand that
+         is the only thing keeping one AFK player from wedging the whole
+         table (strict turn order means nobody else can act around them).
+         Fully unexercised. New file turn-timeout.test.ts: a stalled player
+         gets auto-stood and the table frees up, a real action inside the
+         window is NOT preempted, an entire round resolves through nothing
+         but timeouts end to end, and a timer armed just before a round ends
+         normally does not fire late against the finished round. 2 of the 4
+         fail with the scheduling disabled (the other two pin different
+         invariants that hold either way, which is correct, not weaker
+         coverage).
+      Both were caught non-deterministic on the first draft -- an unpinned
+      hand meant the setup sometimes skipped the exact bank-lock stage the
+      test existed to exercise, depending on what the unseeded deck dealt
+      that run. It passed by luck often enough to look done. Re-verifying a
+      test actually fails without its fix (not just assuming a green run
+      means the test is doing its job) is what caught it here.
+      store.ts coverage: 88.3% -> 91.4% statements, 86.95% -> 92.75%
+      functions.
+
 - [ ] Dialogs don't manage focus (2026-08-28). All eight now close on Escape
       and carry the right ARIA, but none moves focus into itself on open,
       none restores focus to the trigger on close, and none traps Tab -- so a
