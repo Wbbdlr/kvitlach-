@@ -48,9 +48,21 @@ Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   mutations. **~1500 lines; grep before reading whole.**
 - `round.ts` / `turn.ts` — pure game logic (hit/stand/bet, totals, end-state).
 - `deck.ts` — deck composition. `bot.ts` — computer-player decisions.
-- `ws-server.ts` — WS protocol, auth, rate limits. `http-server.ts` — health/admin/metrics.
+- `ws-server.ts` — WS protocol, auth, rate limits. Every per-room `Map` entry
+  here (`rooms`, and any new one like it) must be deleted once its last
+  socket closes, not just have the socket removed from its `Set` — an empty
+  Set left behind is a permanent leak in a process meant to run for months.
+  `http-server.ts` — health/admin/metrics.
 - `metrics.ts` — in-process counters/gauges, rendered as Prometheus text by `/metrics`.
 - `simulate.ts` — Monte Carlo fairness/odds harness (`npm run simulate`).
+- `index.ts` — process-level `unhandledRejection`/`uncaughtException`
+  handlers live here as a **backstop, not a fix**: every real fire-and-forget
+  call (DB writes, `ws-server.ts`'s post-close cleanup) should already catch
+  at its own call site. If something reaches the backstop log line, that's a
+  bug to go fix at its source, not evidence the backstop is doing its job.
+  Node 20 kills the whole process on an unhandled rejection by default —
+  before this existed, a single dropped socket's failed DB write during
+  cleanup could take down every room on the server.
 
 **Frontend** (`frontend/src/`)
 - `state.ts` — Zustand store, WS message handling, session/localStorage. The
@@ -61,6 +73,17 @@ Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   logic in components).
 - `App.tsx` — lobby (join / host / practice) plus in-room chrome and sound.
   ~1000 lines.
+- `errorCopy.ts` — the **only** place backend error codes (`throw new
+  Error("some_code")` in `store.ts`/`ws-server.ts`) get turned into player-
+  facing text. Don't inline a new `errorMessage === "..."` ternary anywhere
+  else. `errorCopy.test.ts` parses every code straight out of `backend/src`
+  and fails naming any with no entry here — it caught eleven codes silently
+  falling through to a raw `code.replace(/_/g, " ")` before this existed,
+  including ones players hit routinely (`insufficient_funds`, `invalid_bet`).
+  Add a new backend error code and this test is what tells you to add its
+  copy, not a manual audit.
+- `useEscapeKey.ts` — shared hook so every modal closes on Escape. New
+  dialogs should use it rather than a bespoke `keydown` listener.
 - `router.tsx` — a deliberate single catch-all `*` route to `App`, not
   separate `/` and `/table/:roomId` entries. **Don't "clean this up" into
   proper per-path routes** — two route objects rendering the same element
@@ -123,6 +146,13 @@ Non-negotiable invariants — breaking these is a security bug, not a style issu
    `sanitizeRound` decide who may see what; don't route around them.
 4. Banker-only actions go through `isAdmin` checks in `store.ts`.
 5. Validate anything off a WS payload (finite, in range, sane) before use.
+   For money specifically, use `normalizeMoney` (`store.ts`) — whole chips,
+   bounded by `MAX_MONEY`, returns `undefined` on anything else. Plain
+   `Number.isFinite` is not enough by itself: it passes `10.5` (wallets are
+   floats forever after) and `1e308` (turns `Infinity` on the first
+   addition). Found because `createRoom` validated `bankerBankroll` this way
+   but never validated `buyIn` at all, even though `buyIn` becomes every
+   joining player's starting wallet.
 6. Bots must never authenticate as actors (`!actor.isBot` guards).
 
 ## Development rules
@@ -165,8 +195,8 @@ cd backend  && npx vitest run --coverage         # + coverage, enforces threshol
   port fails as a bare `EADDRINUSE` blamed on whichever file lost the race.
   Check what's taken before adding one: `grep -rho '39[0-9]\{3\}' src/__tests__`
 
-- **`npm test` in `frontend/` starts watch mode and will hang.** Use
-  `npx vitest run`.
+- `frontend/`'s `npm test` runs once (`vitest run`); use `npm run test:watch`
+  for watch mode.
 - **Do not use `npx tsc --noEmit` in `frontend/`** — it reports many
   pre-existing, unrelated errors (vite/vitest ambient types). The real
   typecheck is `npx vite build`. Backend `npm run build` is clean and is the
@@ -236,7 +266,4 @@ no runtime-code diff); nothing running needs to change for those.
 - Use `DOCKER_BUILDKIT=0` when building on the server (BuildKit has failed there).
 - Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 before building a
   deploy tarball, so testers can confirm which build they're on.
-- `backend/src/__tests__/ws-auth.test.ts` currently carries an uncommitted local
-  `console.log("DEBUG_DUMP", ...)` line and is excluded from commits by standing
-  convention. Leave it alone unless asked.
 - Don't commit or push unless asked.
