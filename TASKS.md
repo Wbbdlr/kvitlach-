@@ -5,6 +5,36 @@ for how to work in this repo.
 
 ## Open
 
+- [x] Table color/chip swatches overlapped the Kvitlach logo and tagline on
+      an ordinary desktop-width browser window (2026-08-30, reported with a
+      screenshot). `.k-topbar` (branding) and `.k-chrome-top` (controls) are
+      two independently absolutely-positioned rows that were never made
+      aware of each other's real width -- a gap already diagnosed and fixed
+      for narrow phones (`max-width:520px` / `max-height:440px`), but that
+      fix's own media query meant literally nothing outside it defended
+      against the same collision. Measured live: at 600px wide (an ordinary
+      tablet-portrait or small-laptop width, nowhere near "narrow phone"),
+      chrome-top's left edge landed at real screen x=0 -- the entire control
+      row overlapping the header, unprotected across roughly every width
+      from ~521px to ~1250px.
+      Root cause of *why* `flex-wrap: wrap` (already present on
+      `.k-chrome-top`) never saved it: an absolutely-positioned flex box
+      with only `right` set has no width ceiling, so wrapping never
+      triggers -- the row just keeps growing left into the header instead.
+      Fix extends the exact technique the narrow-phone rule already proved:
+      give `.k-chrome-top` a real `left`, derived algebraically from the
+      topbar cluster's true on-screen right edge (not a flat guessed
+      number -- confirmed against 5 live-measured points from 900px to
+      1400px, matching to sub-pixel accuracy) so the box has bounded width
+      and wrap can do its job. The narrow rule's own formula still wins
+      inside its media query (source order), since it uses a smaller,
+      more accurate constant once the tagline is already hidden there.
+      Caught mid-verification that the emulated viewport resize used to
+      test this doesn't reliably fire a real `resize` event on its own --
+      produced a stale `--stage-scale` and wrong numbers on the first pass.
+      Full reasoning and the derivation live as a comment on `.k-chrome-top`
+      in index.css.
+
 - [x] Two production safety nets had zero test coverage (2026-08-29). Found by
       reading the v8 coverage report line-by-line rather than trusting the
       pass/fail summary -- both sit at the exact "runs 90 seconds after

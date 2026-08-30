@@ -1015,6 +1015,60 @@ body:has(.k-fit) {
      Falls back to the plain 8px above on browsers without env() support. */
   top: max(8px, env(safe-area-inset-top));
   right: max(8px, env(safe-area-inset-right));
+  /* This row and .k-topbar's branding cluster are two independently
+     absolutely-positioned elements with no natural awareness of each
+     other's width -- exactly the situation the narrow-breakpoint fix
+     further down this file already diagnosed and solved for its own range
+     (max-width:520px / max-height:440px). It turns out that range was not
+     the only gap: reported 2026-08-30 with a screenshot at a plain
+     maximized-window desktop size, with the felt colour swatches sitting
+     directly on top of the tagline. Measured live (dispatching a real
+     resize event and reading getBoundingClientRect -- the emulated
+     viewport resize used to test this does NOT reliably fire one on its
+     own, which produced a stale --stage-scale on the first pass and
+     wrong numbers): at viewport 600px wide, .k-chrome-top's left edge
+     landed at real screen x=0, meaning the WHOLE control row overlapped
+     the header -- not a narrow escape, a wide-open one, and it covers
+     every ordinary tablet-portrait and small-laptop width up to roughly
+     1200-1250px, entirely unprotected.
+     Left undefined (as before), an absolutely-positioned flex box with
+     only `right` set sizes to its own content's natural width with no
+     ceiling -- so `flex-wrap: wrap` above never actually triggers; the row
+     just keeps growing left, straight into the header. Giving it a real
+     `left` turns "right" into a bounded box, which is what lets wrap do
+     its actual job: content that no longer fits drops to a second row
+     instead of extending sideways over anything.
+     The formula below is not a guess -- it's the topbar cluster's real
+     on-screen right edge, algebraically reconstructed and independently
+     confirmed against 5 measured points from 900px to 1400px wide,
+     matching to well under 1px every time:
+       - 24px * scale is .k-topbar's own left padding (a single transform
+         layer -- padding lives on .k-topbar itself, only ITS CHILD carries
+         the counter-scale below).
+       - 436px is icon + gap-3 + "Kvitlach" + the tagline together, as
+         currently laid out (the narrow breakpoint's own already-verified
+         166.6px excludes the tagline because THAT rule only ever applies
+         once .k-logo-tag is already display:none -- this one runs where
+         the tag is still visible, so it has to reserve room for it too).
+       - clamp(1.05, 1/scale, 2.6) is .k-topbar > *'s own counter-scale
+         (see that rule for why) -- below its 1.05 floor (scale > ~0.952)
+         436px * scale * clamp(...) grows linearly with scale instead of
+         holding constant, which is exactly why a flat px number could
+         never have worked across this whole range.
+       - the outer max(0px, ...) term is normally 0 (scale is always
+         width-bound below MAX_SCALE=3 -- stage.ts's own comment says as
+         much -- so the felt fills .k-fit edge to edge with no letterbox
+         margin) and only starts mattering on an ultrawide monitor wide
+         enough to hit that cap, where the felt stops growing and centers
+         with real margins either side of it.
+     Recompute this if 436px stops being true -- i.e. if the topbar
+     cluster's own content changes (a new icon, more/less text) -- the same
+     way the 166.6px constant below already has its own paper trail for
+     that whenever ITS row gained a new persistent element. */
+  left: calc(
+    max(0px, (100vw - 1280px * var(--stage-scale, 1)) / 2) + 24px * var(--stage-scale, 1) +
+      436px * var(--stage-scale, 1) * clamp(1.05, calc(1 / var(--stage-scale, 1)), 2.6) + 16px
+  );
   z-index: 40;
   display: flex;
   align-items: center;
