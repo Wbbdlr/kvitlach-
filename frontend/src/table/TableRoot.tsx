@@ -243,6 +243,31 @@ export function TableRoot({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullscreen]);
 
+  // The felt/chip swatches are the only chrome-top controls that carry no
+  // shape-based icon of their own -- everything else there (music note,
+  // speaker, expand arrows) suggests its function at a glance; a bare color
+  // dot doesn't. Button titles cover desktop hover, but there's no hover on
+  // a touchscreen at all, so give mobile visitors the same one-time nudge
+  // pattern as the fullscreen hint below instead of leaving them to guess.
+  const THEME_HINT_KEY = "kvitlach.themeHintSeen";
+  const [showThemeHint, setShowThemeHint] = useState(() => {
+    if (typeof window === "undefined" || !window.localStorage) return false;
+    try {
+      return window.localStorage.getItem(THEME_HINT_KEY) !== "1";
+    } catch {
+      return false;
+    }
+  });
+  const dismissThemeHint = () => {
+    setShowThemeHint(false);
+    if (typeof window === "undefined" || !window.localStorage) return;
+    try {
+      window.localStorage.setItem(THEME_HINT_KEY, "1");
+    } catch {
+      /* ignore -- the hint just reappears next visit, not worth failing over */
+    }
+  };
+
   // iOS Safari can't enter fullscreen at all (fullscreenSupported is always
   // false there) -- the only real chrome-free path on an iPhone is adding the
   // page to the home screen, so give those visitors a different, one-time
@@ -602,8 +627,30 @@ export function TableRoot({
         </div>
       )}
       <div className="k-chrome-top">
-        <FeltSwitcher felt={felt} onChange={setFelt} />
-        <ChipSwitcher chip={chip} onChange={setChip} />
+        <span className="relative inline-flex items-center gap-1">
+          <FeltSwitcher
+            felt={felt}
+            onChange={(name) => {
+              setFelt(name);
+              dismissThemeHint();
+            }}
+          />
+          <ChipSwitcher
+            chip={chip}
+            onChange={(name) => {
+              setChip(name);
+              dismissThemeHint();
+            }}
+          />
+          {showThemeHint && (
+            <div className="k-fs-hint k-fs-hint--left">
+              Tap a swatch to change your table felt or chip color -- just for your view.
+              <button type="button" onClick={dismissThemeHint}>
+                Got it
+              </button>
+            </div>
+          )}
+        </span>
         <button
           type="button"
           className="k-chip-btn"

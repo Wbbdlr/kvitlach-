@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { CHIPS, ChipName } from "../theme";
+import { Icon } from "./icons";
 
 const CHIP_ORDER: ChipName[] = ["gold", "ruby", "sapphire", "silver"];
 
@@ -22,7 +23,10 @@ export function ChipSwitcher({ chip, onChange }: ChipSwitcherProps) {
     // (same one that already hides .k-logo-tag) to hide this too -- see that
     // rule's own comment. FeltSwitcher has no equivalent class (nothing
     // needed to target it before), so this can't reuse a shared selector.
-    <div className="k-chip-switcher flex items-center gap-1">
+    <div className="k-chip-switcher flex items-center gap-1" role="group" aria-label="Chip color">
+      {/* "coins" (not "swatch") on purpose -- this cluster recolors chips
+          specifically, and the icon set already had a shape for that. */}
+      <Icon name="coins" size={12} className="shrink-0 opacity-50" />
       {CHIP_ORDER.map((name) => (
         // Same 20px swatch / 28px tap-target split as FeltSwitcher, for the
         // same reason: three 20px targets 4px apart is a mis-tap waiting to

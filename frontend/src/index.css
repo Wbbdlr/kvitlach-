@@ -1119,6 +1119,16 @@ body:has(.k-fit) {
   padding: 0;
 }
 
+/* Felt/chip swatch nudge reuses .k-fs-hint's box wholesale but hangs off the
+   LEFT edge -- that cluster sits at the far left of .k-chrome-top, and the
+   base rule's right:0 would push it off the left edge of a narrow phone
+   instead of under its anchor. */
+.k-fs-hint--left {
+  right: auto;
+  left: 0;
+  align-items: flex-start;
+}
+
 /* Rotate-to-landscape nudge. Table is landscape-first by design (see
    fullscreen.ts's screen.orientation.lock("landscape")), but that lock only
    ever fires once someone taps the fullscreen button -- .k-fs-hint points at

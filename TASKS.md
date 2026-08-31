@@ -5,6 +5,30 @@ for how to work in this repo.
 
 ## Open
 
+- [x] Table felt/chip color swatches had no shape-based affordance, unlike
+      every other chrome-top control (2026-08-30, follow-up to the overlap
+      fix above). `FeltSwitcher`/`ChipSwitcher` were the only two controls in
+      that row rendering as bare color dots -- everything else (music note,
+      speaker, expand arrows) suggests its function via icon shape, with the
+      `title`/`aria-label` tooltips only covering desktop hover. On a
+      touchscreen there's no hover at all, so a first-time mobile visitor had
+      zero way to learn what those dots did short of trial and error.
+      Fix: gave each cluster a leading icon (new "swatch" glyph -- two
+      overlapping outlined tiles, deliberately NOT another filled color dot,
+      so it reads as a label rather than a fifth option -- for felt; the
+      existing "coins" icon for chips), `role="group"`/`aria-label` for
+      screen readers, and a one-time dismissible nudge ("Tap a swatch to
+      change your table felt or chip color -- just for your view.") that
+      mirrors the existing fullscreen-hint pattern exactly
+      (`kvitlach.themeHintSeen` in localStorage, dismissed on tap-to-choose or
+      on "Got it", never shown again). Verified live at 1280px (single row,
+      hint fits inside chrome-top's own bounds) and 375px portrait (hint
+      re-appears for a fresh visitor, stays inside the viewport, no overflow).
+      New `.k-fs-hint--left` CSS modifier reuses `.k-fs-hint`'s box but hangs
+      it off the left edge, since this cluster sits at the left of
+      chrome-top (the existing rule was right-anchored for the fullscreen
+      button at the row's right end).
+
 - [x] Table color/chip swatches overlapped the Kvitlach logo and tagline on
       an ordinary desktop-width browser window (2026-08-30, reported with a
       screenshot). `.k-topbar` (branding) and `.k-chrome-top` (controls) are

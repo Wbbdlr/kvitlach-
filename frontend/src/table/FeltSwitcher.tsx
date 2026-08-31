@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { FELTS, FeltName } from "../theme";
+import { Icon } from "./icons";
 
 const FELT_ORDER: FeltName[] = ["green", "burgundy", "navy"];
 
@@ -14,7 +15,12 @@ export interface FeltSwitcherProps {
 // positioned, since anything fixed escapes the scaled stage's transform.
 export function FeltSwitcher({ felt, onChange }: FeltSwitcherProps) {
   return (
-    <div className="flex items-center gap-1">
+    // role/aria-label give this cluster a name for screen readers; the
+    // leading icon gives it one for sighted mobile users too, who never get
+    // the button titles below (no hover on a touchscreen) -- see icons.tsx's
+    // own comment on why it's an outlined tile, not another color dot.
+    <div className="flex items-center gap-1" role="group" aria-label="Table felt color">
+      <Icon name="swatch" size={12} className="shrink-0 opacity-50" />
       {FELT_ORDER.map((name) => (
         // The swatch stays 20px -- three big circles would dominate a row of
         // otherwise-subtle chrome -- but the button around it is 28px, because

@@ -41,7 +41,8 @@ export type IconName =
   | "close"
   | "motion"
   | "rotate"
-  | "shuffle";
+  | "shuffle"
+  | "swatch";
 
 // Inner <svg> markup for each icon, static and developer-authored (no user
 // data ever flows through this map) — safe to inject verbatim.
@@ -99,6 +100,13 @@ const ICON_PATHS: Record<IconName, string> = {
   // reshuffle chip (TableRoot.tsx).
   shuffle:
     '<path d="M3 7h4l12 10h2"/><path d="M15 4l4 3-4 3"/><path d="M3 17h4l12-10h2"/><path d="M15 20l4-3-4-3"/>',
+  // Leading marker for FeltSwitcher/ChipSwitcher -- two overlapping outlined
+  // tiles, the common "appearance/theme" idiom, chosen specifically because
+  // it does NOT look like a color swatch itself: the switchers already show
+  // real color dots, so a filled circle here would read as a fourth/fifth
+  // option rather than a label for the row. Outlined + empty reads as "these
+  // are theme choices" instead.
+  swatch: '<rect x="4" y="7" width="12" height="12" rx="2.5"/><rect x="8" y="3" width="12" height="12" rx="2.5"/>',
 };
 
 export function Icon({ name, size = 15, className }: { name: IconName; size?: number; className?: string }) {
