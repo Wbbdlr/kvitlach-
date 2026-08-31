@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Kvitlach — offline</title>
+    <meta name="theme-color" content="#12271c" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <!-- Served by sw.js when a navigation fails. Everything it needs is inline
+         or precached: no bundle, no webfont, no reload script (the site's CSP
+         is script-src 'self', so a retry has to be a plain link). -->
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        background: #f5f1e8;
+        color: #0f172a;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      main { max-width: 26rem; text-align: center; }
+      img { width: 96px; height: 96px; }
+      h1 { font-size: 1.5rem; margin: 1.25rem 0 0.5rem; }
+      p { margin: 0 0 1.5rem; line-height: 1.6; color: #384c60; }
+      a {
+        display: inline-block;
+        padding: 0.65rem 1.4rem;
+        border-radius: 0.5rem;
+        background: #445d75;
+        color: #f5f1e8;
+        text-decoration: none;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icon-192.png" alt="" />
+      <h1>You're offline</h1>
+      <p>
+        Kvitlach tables are dealt on the server, so a hand can't be played
+        without a connection. Your seat at the table is kept — reconnect and
+        you'll rejoin it, though a turn left waiting too long is passed on.
+      </p>
+      <a href="/">Try again</a>
+    </main>
+  </body>
+</html>

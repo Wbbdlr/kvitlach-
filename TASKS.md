@@ -5,6 +5,42 @@ for how to work in this repo.
 
 ## Open
 
+- [x] Site was not installable as an app (2026-08-31). index.html already
+      linked a manifest and carried the iOS meta tags -- its own comment
+      explains why ("installing as a home-screen web app is the only way an
+      iPhone player gets a chrome-free table") -- but no browser ever offered
+      the install, because two of the three requirements were missing: there
+      was no service worker at all, and the manifest's only icon was the
+      1024px source where Chrome wants 192 and 512, plus a maskable variant
+      for Android's icon cropping.
+      New `public/sw.js`, registered from `registerServiceWorker.ts` in PROD
+      only (a worker registered from `npm run dev` outlives the dev server on
+      the same origin and then serves stale bundles into later sessions).
+      Network-first for navigations, cache-first for Vite's content-hashed
+      `/assets/`, stale-while-revalidate for the unhashed public/ files.
+      Navigations are network-first on purpose: index.html is unhashed, so a
+      cache-first shell would pin players to whatever build their phone
+      installed. Registered with `updateViaCache: "none"` because nginx sets
+      no Cache-Control on /sw.js and a heuristically cached worker script is
+      the classic way to strand users on an old one.
+      Deliberately NOT an offline-play cache -- every hand is decided in
+      `store.ts` over the WS, practice rooms included, so there is nothing to
+      fall back to. `offline.html` says that plainly instead of implying a
+      table is playable with no connection.
+      The icon work turned up a real bug: the source PNG's "transparent"
+      background was a checkerboard *drawn into the image* as opaque pixels
+      (the file has no alpha channel at all), so the favicon, the OG preview,
+      and every future home-screen icon were a grey checkerboard. Flattened to
+      white -- `icon-1024.png` is the master now -- and derived the 192/512,
+      a maskable 512 inset to the 80% safe zone over the theme colour, and a
+      180px apple-touch-icon flattened onto the theme colour (iOS composites a
+      transparent icon onto black, which would have put black card outlines on
+      a black square).
+      `manifest.test.ts` pins all of it. The install prompt is all-or-nothing
+      and fails silently: one missing field or one renamed icon file means no
+      phone ever offers to install, with no console error and nothing visibly
+      wrong on the site -- there is no way to notice by looking.
+
 - [x] Dialogs had no focus management (2026-08-31). Every one already carried
       `role="dialog"` + `aria-modal="true"` -- which TELLS a screen reader the
       rest of the page is inert -- but nothing made it inert, so Tab walked

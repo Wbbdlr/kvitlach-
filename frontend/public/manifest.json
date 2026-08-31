@@ -1,16 +1,33 @@
 {
+  "id": "/",
   "name": "Kvitlach",
   "short_name": "Kvitlach",
+  "description": "Play Kvitlach, the family card game, online -- host a live table, invite players with a room code, or practice solo against computer players.",
+  "lang": "en",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#060d09",
   "theme_color": "#12271c",
   "icons": [
     {
-      "src": "/ChatGPT%20Image%20Jan%2011,%202026,%2001_49_49%20PM.png",
-      "sizes": "1024x1024",
-      "type": "image/png"
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
