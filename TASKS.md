@@ -5,6 +5,103 @@ for how to work in this repo.
 
 ## Open
 
+- [x] Dialogs had no focus management (2026-08-31). Every one already carried
+      `role="dialog"` + `aria-modal="true"` -- which TELLS a screen reader the
+      rest of the page is inert -- but nothing made it inert, so Tab walked
+      straight out into the felt underneath while the dialog sat open on top.
+      Focus never entered the dialog either: it stayed on whatever button
+      opened it, so there was no announcement and the first Tab landed in the
+      page rather than in the thing that had just appeared. `useEscapeKey`'s
+      own comment had been flagging this ("none of these move focus into the
+      dialog on open") since it was written.
+      New `useDialogFocus` hook, deliberately shaped as useEscapeKey's
+      companion (same `enabled` argument, for the same reason: several of
+      these components early-return null when closed, so hooks must sit above
+      that return). Moves focus in on open, wraps Tab/Shift+Tab at both ends,
+      pulls focus back if it escapes, and restores it to the opener on close.
+      Wired into all nine dialogs (RulesModals x2, BankSummaryModal,
+      DiscardPileModal, ManageDrawer, PlayerDock's BANK! confirm,
+      RoomInfoDrawer, StatsModal, WaitingListDrawer).
+      Two things the obvious implementation gets wrong, both found by test:
+      * Filtering focusables on `offsetParent !== null` (the standard
+        visibility check) disables the trap entirely under jsdom, which has
+        no layout -- it would have silently passed every component test while
+        doing nothing. Dropped: these dialogs mount/unmount controls rather
+        than hiding them, so there is nothing for it to filter anyway.
+      * Restoring focus only when the dialog still contains it never fires on
+        unmount -- by cleanup time the focused node is gone and focus has
+        already fallen to <body>. Restore now also covers that case.
+
+- [x] WS payloads were destructured straight out of `payload as any` at 27
+      sites with no type validation (2026-08-31). Handler guards were either
+      bare truthiness (`if (!firstName)`) or a one-off `typeof amount !==
+      "number"`. Truthiness does not catch type confusion: `firstName: {}` is
+      truthy, passed the guard, reached `store.ts`'s `sanitizeName`, and threw
+      a TypeError on `.trim()` -- surfacing to the client as an opaque
+      `server_error` rather than a rejection. Confirmed exploitable over a
+      real socket before fixing, and confirmed clean after.
+      Fixed at the boundary instead of at 27 call sites: `payload.ts`
+      validates every field of every message once, before the switch. ONE
+      universal rule (scalars only, finite numbers only, bounded length)
+      rather than a per-message-type schema table -- there are 30-odd message
+      types and a table would drift out of sync with the handlers the first
+      time a field was added. Per-field meaning (is this amount positive? is
+      this name too long?) deliberately stays in `store.ts` where
+      `normalizeMoney`/`sanitizeName` already own it. The `payload as any`
+      casts remain, but are now backed by a real check, so the truthiness
+      guards the handlers already do are actually sufficient.
+      Note this is also why `zod` is still absent: re-adding it to express
+      "must be a scalar" would be a lot of dependency for one rule.
+
+- [x] Base images had no advisory monitoring (2026-08-31). `ci.yml`'s `npm
+      audit` covers our own dependency tree; nothing looked at the OS layer
+      under it. Both Dockerfiles sit on FLOATING tags (`node:20-alpine`,
+      `nginx:alpine`), so what actually gets built on the server drifts
+      upstream on its own -- and since deploys are manual and only happen when
+      there is code to ship, a base image can sit unrebuilt for months with a
+      patched CVE already available and nobody with a reason to look.
+      New scheduled `base-image-audit.yml`: builds both images weekly and
+      Trivy-scans them (the deployed image, not just the base tag, so the OS
+      layer and installed node_modules are covered in one pass). Reports
+      HIGH+, fails only on a FIXABLE CRITICAL -- gating on HIGH would leave it
+      permanently red and unread, which is the same trade-off ci.yml's audit
+      step already documents. Records the FROM line in the job summary so
+      "the tag moved and we are behind" can be told apart from "the tag is
+      current and upstream has not patched this yet", which want different
+      responses. Deploys stay RDP-driven; this only tells a human to rebuild.
+
+- [x] The banker's redealt hand carried the finished frame's result
+      (2026-08-31). `settleBankOutcome`'s auto-redeal spreads the old banker
+      turn and overrides cards/state/bet/bankRequest/settledNet -- but not
+      `busted`/`beat`/`lostTo`, so a fresh, live, one-card hand wore the
+      PREVIOUS frame's settled outcome. `selectors.ts`'s `bankerOutcome`
+      treats `beat`/`lostTo` being present as the signal that there is a final
+      result to show at all, so the felt tagged a still-pending banker
+      "BEAT 2" or "FUTCHED!" mid-hand -- and `TableRoot`'s `bankBusted`, which
+      gates the every-player-wins celebration on exactly that FUTCHED! label
+      with `bankLock` now cleared, could fire the whole moment off a bust that
+      happened in the previous frame. Cleared on redeal; the real numbers stay
+      recoverable on `lastBankFrame`, which already holds them in full.
+      This was TASKS.md's own suspect #1 for the `live-play.test.ts:226`
+      flake below. It is a real bug on its own merits and is fixed as one --
+      but it is NOT proven to be that flake, and the flake entry stays open:
+      the observed failure was `busted === false` with genuinely bust cards,
+      and this carry-over produces the opposite (a stale `true` on a fresh
+      hand). Do not close that entry on the strength of this fix.
+
+- [x] The banker got two toasts for one mid-round reshuffle (2026-08-31).
+      `deckReshuffleNotification` fires for the whole table off the
+      `round:state` broadcast ("Fresh deck shuffled in -- the shoe ran low.")
+      and the ack handler fired a second, near-identical one ("Fresh shoe
+      shuffled in.") for the banker who requested it. The ack toast could not
+      simply be deleted: a BETWEEN-ROUNDS reshuffle has no live round to
+      broadcast, so it is the only feedback the banker gets there. The two
+      cases also cannot be told apart on the client -- the broadcast lands
+      BEFORE the ack, so by ack time state already carries the new
+      `deckReshuffledAt` either way. Fixed by having the server say which it
+      did: the ack now carries `broadcastRound`, and the client only toasts
+      when it is false.
+
 - [x] A lost reply could silently lock a player out of the rest of the round
       (2026-08-31, found while fixing BANK! above -- same silent-drop
       mechanism, different trigger). `pendingAction` gates every gameplay

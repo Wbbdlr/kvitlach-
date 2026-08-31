@@ -1,0 +1,81 @@
+name: Base image audit
+
+# The gap this fills: ci.yml's `npm audit` covers our own dependency tree, but
+# nothing looked at the OS layer underneath it. Both Dockerfiles sit on
+# FLOATING tags (node:20-alpine, nginx:alpine), so the image that gets built
+# on the server drifts upstream on its own -- and because deploys are manual
+# and only happen when there's a code change to ship, a base image can sit
+# unrebuilt for months with a patched CVE already available upstream and
+# nobody with any reason to notice.
+#
+# This does not deploy or rebuild anything (deploys stay RDP-driven, see
+# CLAUDE.md). It exists to turn "our base image is quietly months stale" into
+# something that shows up on a schedule and says what to do about it.
+on:
+  schedule:
+    # Mondays, 06:00 UTC. Weekly rather than daily on purpose: the action is
+    # always the same manual rebuild, and a daily nag for a CVE that can only
+    # be cleared on the next deploy would train everyone to ignore it -- the
+    # same reasoning that made ci.yml's npm audit non-blocking.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  scan:
+    name: Scan deployed images for OS-level advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false # one bad image shouldn't hide the other's result
+      matrix:
+        include:
+          - name: backend
+            context: backend
+          - name: frontend
+            context: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Scans the image we actually deploy, not just the base tag -- that way
+      # the OS layer AND the installed node_modules are covered in one pass,
+      # which is the thing the server is really running.
+      - name: Build ${{ matrix.name }} image
+        run: docker build -t kvitlach-${{ matrix.name }}:audit ${{ matrix.context }}
+
+      # Recorded so a human can tell "the tag moved and we're behind" from
+      # "the tag is current and upstream simply hasn't patched this yet" --
+      # those two want completely different responses, and without the digest
+      # the report can't distinguish them.
+      - name: Record base image digest
+        run: |
+          {
+            echo "### ${{ matrix.name }} base image"
+            echo '```'
+            grep '^FROM' ${{ matrix.context }}/Dockerfile
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Two passes on purpose. trivy-action's `exit-code` applies to whatever
+      # `severity` is set to, so reporting HIGH+ and failing only on CRITICAL
+      # cannot be expressed in a single step.
+      - name: Report HIGH and CRITICAL advisories
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: kvitlach-${{ matrix.name }}:audit
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true # nothing to act on until upstream ships a fix
+          exit-code: "0" # visibility only -- the gate is the next step
+
+      # CRITICAL only. A HIGH in a base image is common enough that gating on
+      # it would leave this permanently red and unread (ci.yml's audit step
+      # documents the same trade-off); a CRITICAL with a fix already available
+      # upstream is rare and worth the failure email a scheduled run sends.
+      - name: Fail on fixable CRITICAL advisories
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: kvitlach-${{ matrix.name }}:audit
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

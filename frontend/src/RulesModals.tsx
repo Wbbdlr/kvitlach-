@@ -1,5 +1,6 @@
 import { Icon } from "./table/icons";
 import { useEscapeKey } from "./useEscapeKey";
+import { useDialogFocus } from "./useDialogFocus";
 
 export interface RulesModalsProps {
   showHowTo: boolean;
@@ -13,6 +14,10 @@ export interface RulesModalsProps {
 export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs }: RulesModalsProps) {
   useEscapeKey(onCloseHowTo, showHowTo);
   useEscapeKey(onCloseWhatIs, showWhatIs);
+  // Two independent dialogs in one component, so two independent traps --
+  // each gated on its own visibility, never both live at once.
+  const howToRef = useDialogFocus<HTMLDivElement>(showHowTo);
+  const whatIsRef = useDialogFocus<HTMLDivElement>(showWhatIs);
   return (
     <>
       {showHowTo && (
@@ -22,6 +27,7 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
         >
           <div
             className="relative w-full max-w-xl max-h-[90vh] card-surface bg-blue-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+            ref={howToRef}
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
@@ -108,6 +114,7 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
         >
           <div
             className="relative w-full max-w-xl max-h-[85vh] card-surface bg-blue-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+            ref={whatIsRef}
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}

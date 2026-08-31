@@ -427,6 +427,50 @@ describe("deck reshuffle notification", () => {
     roundNumber: 1,
   };
 
+  // The banker used to get two near-identical toasts for one mid-round
+  // reshuffle: the round:state broadcast (which the whole table sees) plus
+  // the ack for their own request. Between rounds there is no broadcast, so
+  // the ack toast is the only feedback there and must survive.
+  it("does not double-toast the banker when the reshuffle was also broadcast", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({
+      room: { roomId: "ROOM1", practice: true, wallets: {}, players: [{ id: "p1", firstName: "A", lastName: "", type: "player", presence: "online" }] } as any,
+      playerId: "p1",
+    });
+
+    useGameStore.getState().reshuffleDeck();
+    const req = socket.sent.find((m) => m.type === "room:reshuffle-deck")!;
+
+    // Broadcast lands first (ws-server broadcasts before it acks)...
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: { ...baseRound, deckReshuffledAt: 4242 } }) });
+    // ...then the ack, flagged as already-broadcast.
+    socket.onmessage?.({ data: JSON.stringify({ type: "ack", requestId: req.requestId, payload: { broadcastRound: true } }) });
+
+    const texts = useGameStore.getState().notifications.map((n: any) => n.message);
+    expect(texts.filter((t: string) => /shuffled in/i.test(t))).toHaveLength(1);
+  });
+
+  it("still toasts the banker for a between-rounds reshuffle, which is never broadcast", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({
+      room: { roomId: "ROOM1", practice: true, wallets: {}, players: [{ id: "p1", firstName: "A", lastName: "", type: "player", presence: "online" }] } as any,
+      playerId: "p1",
+    });
+
+    useGameStore.getState().reshuffleDeck();
+    const req = socket.sent.find((m) => m.type === "room:reshuffle-deck")!;
+    socket.onmessage?.({ data: JSON.stringify({ type: "ack", requestId: req.requestId, payload: { broadcastRound: false } }) });
+
+    const texts = useGameStore.getState().notifications.map((n: any) => n.message);
+    expect(texts.some((t: string) => t === "Fresh shoe shuffled in.")).toBe(true);
+  });
+
   it("shows a notification the first time deckReshuffledAt appears on a round:state broadcast", async () => {
     const useGameStore = await freshState();
     useGameStore.getState().init();

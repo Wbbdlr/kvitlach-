@@ -4,6 +4,7 @@ import { statusDisplay, betDisplay, fullName } from "./selectors";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
+import { useDialogFocus } from "../useDialogFocus";
 
 export interface BankSummaryModalProps {
   summary?: CompletedRoundSummary;
@@ -16,10 +17,12 @@ export interface BankSummaryModalProps {
 // print/save escape hatch the old list UI had.
 export function BankSummaryModal({ summary, onClose }: BankSummaryModalProps) {
   useEscapeKey(onClose);
+  const dialogRef = useDialogFocus<HTMLDivElement>();
   return (
     <StageOverlay>
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         onClick={onClose}

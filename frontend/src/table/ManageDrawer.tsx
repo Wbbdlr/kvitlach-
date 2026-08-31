@@ -3,6 +3,7 @@ import { BuyInRequest, Player, RenameRequest } from "../types";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
+import { useDialogFocus } from "../useDialogFocus";
 
 export interface ManageDrawerProps {
   open: boolean;
@@ -73,6 +74,7 @@ export function ManageDrawer({
   const [watermarkInput, setWatermarkInput] = useState(feltWatermark ?? "");
 
   useEscapeKey(onClose, open);
+  const dialogRef = useDialogFocus<HTMLDivElement>(open);
 
   if (!open) return null;
 
@@ -106,6 +108,7 @@ export function ManageDrawer({
     <StageOverlay>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       onClick={onClose}

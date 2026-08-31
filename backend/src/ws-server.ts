@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import type { IncomingMessage } from "http";
+import { validatePayload } from "./payload.js";
 import { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
 import { ClientEnvelope, PublicRoundState, RoomState, RoundState, ServerEnvelope, ReactionEvent } from "./types.js";
@@ -157,8 +158,15 @@ export class WSServer {
       return;
     }
 
-    const { type, payload, requestId } = msg;
+    const { type, requestId } = msg;
     try {
+      // Every field on every message type goes through this before any
+      // handler sees it -- see payload.ts for why it's one universal rule
+      // rather than a per-type schema. Handlers below still destructure with
+      // `payload as any`, but that cast is now backed by a real check: the
+      // values are guaranteed scalars, so the truthiness guards they already
+      // do are actually sufficient.
+      const payload = validatePayload(msg.payload);
       switch (type) {
         case "room:create": {
           if (process.env.MAINTENANCE_MODE === "true") throw new Error("maintenance_mode");
@@ -551,7 +559,13 @@ export class WSServer {
           // pattern of ack + conditional round broadcast).
           const updatedRound = this.store.reshuffleDeck(roomId, actorId);
           if (updatedRound) this.broadcastRound(updatedRound);
-          this.sendAck(socket, requestId, {});
+          // `broadcastRound` is what tells the client whether the round:state
+          // it just received (broadcast goes out BEFORE this ack) already
+          // announced this reshuffle to the whole table. Without it the
+          // banker toasted twice mid-round -- once off the broadcast, once
+          // off this ack -- and the client had no race-free way to tell the
+          // two cases apart on its own.
+          this.sendAck(socket, requestId, { broadcastRound: Boolean(updatedRound) });
           break;
         }
         case "player:react": {

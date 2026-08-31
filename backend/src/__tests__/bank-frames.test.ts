@@ -67,6 +67,25 @@ describe("BANK! two-frames redeal", () => {
     expect(r.lastBankFrame!.settledAt).toBeGreaterThan(0);
   });
 
+  // The redeal spreads the old banker turn, so anything it does not
+  // explicitly clear rides along onto the fresh hand. busted/beat/lostTo
+  // describe the frame that just ENDED (and are kept in full on
+  // lastBankFrame, asserted above) -- leaving them on a live one-card hand
+  // makes selectors.ts's bankerOutcome show a settled result for a banker
+  // who is still playing, and can fire TableRoot's bank-busted celebration
+  // off the previous frame's bust.
+  it("clears the finished frame's result off the redealt hand", () => {
+    const { roundAfterFrame1: r, admin } = setUpFrame1();
+    const bankerTurn = r.turns.find((t) => t.player.id === admin.id)!;
+
+    expect(bankerTurn.state).toBe("pending"); // genuinely live again
+    expect(bankerTurn.busted).toBeUndefined();
+    expect(bankerTurn.beat).toBeUndefined();
+    expect(bankerTurn.lostTo).toBeUndefined();
+    // and the frame's real numbers are still recoverable, just not on the turn
+    expect(r.lastBankFrame!.beat).toBe(2);
+  });
+
   it("never sets lastBankFrame for an ordinary BANK! that terminates the round (nothing to redeal)", () => {
     // A single-seat BANK! with no one left pending afterward -- the banker's
     // outcome reaches the client through the turn's own state/cards as

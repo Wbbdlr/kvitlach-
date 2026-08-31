@@ -4,6 +4,7 @@ import { initialsOf } from "./Seat";
 import { StageOverlay } from "./StageOverlay";
 import { fullName } from "./selectors";
 import { useEscapeKey } from "../useEscapeKey";
+import { useDialogFocus } from "../useDialogFocus";
 
 export interface WaitingListEntry {
   player: Player;
@@ -25,6 +26,7 @@ export interface WaitingListDrawerProps {
 // instead of a single tooltip string a big table makes unreadable.
 export function WaitingListDrawer({ open, onClose, players }: WaitingListDrawerProps) {
   useEscapeKey(onClose, open);
+  const dialogRef = useDialogFocus<HTMLDivElement>(open);
   if (!open) return null;
 
   // The viewer's own row is the one thing worth finding at a glance, so it's
@@ -37,6 +39,7 @@ export function WaitingListDrawer({ open, onClose, players }: WaitingListDrawerP
     <StageOverlay>
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         onClick={onClose}

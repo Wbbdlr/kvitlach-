@@ -266,4 +266,12 @@ no runtime-code diff); nothing running needs to change for those.
 - Use `DOCKER_BUILDKIT=0` when building on the server (BuildKit has failed there).
 - Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 before building a
   deploy tarball, so testers can confirm which build they're on.
+- **Run `npx vite build` AFTER the version bump, not just before it.** The
+  bump is a code edit like any other and can break the build on its own -- a
+  scripted bump once truncated `version.ts` to zero bytes (the write handle
+  was opened before the read ran), which passed every test that had already
+  run and then failed the frontend image build on the server with
+  `"APP_VERSION" is not exported`. Never edit a file by opening it for
+  writing in the same expression that reads it; read into a variable first,
+  or use `sed`.
 - Don't commit or push unless asked.

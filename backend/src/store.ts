@@ -1596,6 +1596,19 @@ export class GameStore {
       bet: 0,
       bankRequest: false,
       settledNet: undefined,
+      // These three describe the frame that just ENDED, and it is already
+      // preserved in full on lastBankFrame directly above. Spreading the old
+      // turn without clearing them left a fresh, live, one-card hand wearing
+      // the previous frame's settled result: selectors.ts's bankerOutcome
+      // treats `beat`/`lostTo` being present as the signal that there is a
+      // final outcome to show at all, so the felt tagged a pending banker
+      // "BEAT 2" or "FUTCHED!" mid-hand -- and TableRoot's bankBusted (which
+      // gates the bank-busted celebration on exactly that FUTCHED! label,
+      // with bankLock now cleared) could fire the whole every-player-wins
+      // moment for a bust that happened in the previous frame.
+      busted: undefined,
+      beat: undefined,
+      lostTo: undefined,
     };
     round.bankLock = undefined;
     return round;

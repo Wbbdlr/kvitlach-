@@ -1007,12 +1007,24 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
       if (msg.requestId && msg.requestId === pendingReshuffleRequestId) {
         pendingReshuffleRequestId = undefined;
-        // Generic on purpose -- this fires for both the between-round and
-        // the mid-round path now, and "ready for the next round" would read
-        // oddly for the latter (a hand is still actually in progress).
-        set((state: UIState) => ({
-          notifications: [...state.notifications, makeNotification("Fresh shoe shuffled in.", "success")].slice(-5),
-        }));
+        // Only when the server did NOT broadcast a round for this reshuffle.
+        // A mid-round reshuffle goes out to the whole table as round:state
+        // (which lands BEFORE this ack) and deckReshuffleNotification already
+        // toasted it -- the banker was getting that plus this one, two
+        // near-identical messages back to back for one action. Between
+        // rounds there's no live round to broadcast, so this stays the only
+        // feedback the banker gets, and has to keep firing.
+        // The flag comes from the server rather than being inferred from
+        // deckReshuffledAt: by ack time the broadcast has already been
+        // applied to state, so the two cases are indistinguishable here.
+        const broadcastRound = Boolean((msg.payload as any)?.broadcastRound);
+        if (!broadcastRound) {
+          // Generic on purpose -- "ready for the next round" would read
+          // oddly if this ever fires with a hand still in progress.
+          set((state: UIState) => ({
+            notifications: [...state.notifications, makeNotification("Fresh shoe shuffled in.", "success")].slice(-5),
+          }));
+        }
       }
       set((state: UIState) => {
         const update: Partial<UIState> = { message: undefined };

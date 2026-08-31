@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Turn } from "../types";
 import { Icon } from "./icons";
 import { useEscapeKey } from "../useEscapeKey";
+import { useDialogFocus } from "../useDialogFocus";
 
 const DEFAULT_BET = 5;
 const BET_STEP = 1;
@@ -43,6 +44,7 @@ export function PlayerDock({
   const [betError, setBetError] = useState<string | undefined>(undefined);
   const [bankConfirmOpen, setBankConfirmOpen] = useState(false);
   useEscapeKey(() => setBankConfirmOpen(false), bankConfirmOpen);
+  const dialogRef = useDialogFocus<HTMLDivElement>(bankConfirmOpen);
 
   const hasBet = (turn.bet ?? 0) > 0;
   const drawLabel = hasBet ? "Hit" : "Blatt";
@@ -187,7 +189,13 @@ export function PlayerDock({
       {!canBank && bankDisabledReason && <span className="k-tag muted">{bankDisabledReason}</span>}
 
       {bankConfirmOpen && (
-        <div className="k-modal-overlay" role="dialog" aria-modal="true" onClick={() => setBankConfirmOpen(false)}>
+        <div
+          className="k-modal-overlay"
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setBankConfirmOpen(false)}
+        >
           <div className="k-bank-confirm" onClick={(e) => e.stopPropagation()}>
             {bankShortfall ? (
               <>

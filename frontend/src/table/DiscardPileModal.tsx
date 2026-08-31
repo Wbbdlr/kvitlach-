@@ -4,6 +4,7 @@ import { cardImages } from "./selectors";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
+import { useDialogFocus } from "../useDialogFocus";
 
 export interface DiscardPileModalProps {
   entries: DiscardEntry[];
@@ -43,11 +44,13 @@ function countsByValue(entries: DiscardEntry[]): Record<string, number> {
 // hand until the banker actually reshuffles.
 export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
   useEscapeKey(onClose);
+  const dialogRef = useDialogFocus<HTMLDivElement>();
   const counts = countsByValue(entries);
   return (
     <StageOverlay>
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         onClick={onClose}
