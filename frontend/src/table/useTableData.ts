@@ -140,12 +140,23 @@ export function useTableData({
     if (!bankInfo) return 0;
     return Math.max(bankInfo.available - currentBetAmount, 0);
   }, [bankInfo, currentBetAmount]);
+  // Your own chips are as much a gate on BANK! as the bank's window is.
+  // Without this the button sat fully enabled advertising the bank's whole
+  // window (a practice table opens at bank $400 vs. your $100, so it was
+  // enabled and unaffordable on literally every fresh solo game), and the
+  // only thing behind it was a dead-end "Not enough chips" dialog whose one
+  // button is Close. Pressing BANK!, reading that, and pressing the only
+  // button there looks exactly like confirming a wager that then silently
+  // does nothing -- no reservation, no card, nothing broadcast to the table.
+  const myWallet = myPlayerTurn ? room?.wallets?.[myPlayerTurn.player.id] ?? 0 : 0;
+  const bankAffordable = Boolean(bankInfo && currentBetAmount + bankIncrement <= myWallet);
   const bankDisabledReason = useMemo(() => {
     if (!bankInfo) return "Bank unavailable.";
     if (bankInfo.available <= 0) return "Bank is empty.";
     if (bankIncrement <= 0) return "Current wager already matches the bank.";
+    if (!bankAffordable) return `BANK! needs $${bankInfo.available.toLocaleString()} -- more than your chips cover.`;
     return undefined;
-  }, [bankInfo, bankIncrement]);
+  }, [bankInfo, bankIncrement, bankAffordable]);
 
   const totalStakes = useMemo(
     () =>
@@ -232,6 +243,7 @@ export function useTableData({
     bankerPlayer,
     bankInfo,
     bankIncrement,
+    bankAffordable,
     bankDisabledReason,
     totalStakes,
     statsData,

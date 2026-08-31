@@ -5,6 +5,44 @@ for how to work in this repo.
 
 ## Open
 
+- [x] BANK! was effectively unusable, in three stacked ways (2026-08-31,
+      reported as "it didn't reserve the bank, didn't give me a card, and
+      didn't notify other players"). The server side turned out to be
+      correct in all of it -- confirmed by driving GameStore directly: the
+      wager reserves the full window, sets bankRequest, sets bankLock to
+      stage "player", and sanitizeRound passes bankLock through to every
+      client, which is what draws the banner. All three symptoms were client
+      side.
+      1. THE ONE THE REPORT ACTUALLY HIT: `canBank` never considered the
+         player's own wallet, only the bank's window. A practice table opens
+         at bank $400 vs. your $100, so BANK! was enabled and advertising
+         "BANK! $400" on every fresh solo game while being unaffordable by
+         construction -- and the only thing behind it was a dead-end "Not
+         enough chips" dialog whose single button is Close. Press BANK!,
+         read it, press the only button there, and it looks exactly like
+         confirming a wager that then silently does nothing: no reservation,
+         no card, nothing broadcast. Verified live in practice mode before
+         and after. Now disabled with a real reason, like the other gates.
+      2. The follow-up card after a confirmed BANK! was driven by PlayerDock
+         watching `turn.bet` go non-zero. ws-server.ts broadcasts round:state
+         BEFORE it sends the ack, and every action getter in state.ts starts
+         with `if (get().pendingAction) return` -- so the re-render that
+         watcher keys on ALWAYS landed while the bet's own pendingAction was
+         still set, and the hit was silently swallowed every single time.
+      3. That same watcher keyed on a `bet > 0` boolean, which does not
+         change at all when a seat that had ALREADY bet raises to BANK! --
+         so on that (very ordinary) path it never even fired.
+      (2) and (3) are fixed together by moving the auto-hit into state.ts,
+      driven off the BANK! bet's own ack (so pendingAction is already
+      cleared) and keyed by requestId (so a stale flag can't attach to a
+      later unrelated bet). It carries the eleveroon flag through, and skips
+      the hit when the wager already resolved the hand -- the bet deals a
+      card of its own, so a BANK! can bust outright, and hitting there would
+      be a turn_not_pending error toast on a hand the player watched settle.
+      Each of the three was reproduced by a failing test before being fixed;
+      the auto-hit test replays ws-server's real broadcast-then-ack ordering
+      rather than assuming it.
+
 - [x] Table felt/chip color swatches had no shape-based affordance, unlike
       every other chrome-top control (2026-08-30, follow-up to the overlap
       fix above). `FeltSwitcher`/`ChipSwitcher` were the only two controls in

@@ -273,4 +273,41 @@ describe("useTableData", () => {
       expect(result.current.statsData?.name).toBe("P1");
     });
   });
+
+  // A practice table opens at bank $400 vs. your $100, so BANK! was enabled
+  // and unaffordable on every fresh solo game -- and the only thing behind
+  // it was a dead-end "Not enough chips" dialog whose one button is Close.
+  describe("BANK! affordability", () => {
+    function bankState(bankerWallet: number, myWallet: number, myBet = 0) {
+      const myTurn = makeTurn(p1, { state: "pending", bet: myBet });
+      const round: RoundState = {
+        roundId: "R1", roomId: "ROOM1", deckRemaining: 20,
+        turns: [myTurn, makeTurn(banker)], state: "playing", roundNumber: 1,
+      };
+      const room = makeRoom({ wallets: { [banker.id]: bankerWallet, [p1.id]: myWallet, [p2.id]: 100 } });
+      return renderHook(() =>
+        useTableData({ room, round, playerId: p1.id, reactions: [], nowTs: Date.now(), roundHistory: [] })
+      );
+    }
+
+    it("blocks BANK! when the bank's window exceeds your chips, and says why", () => {
+      const { result } = bankState(400, 100);
+      expect(result.current.bankAffordable).toBe(false);
+      expect(result.current.bankDisabledReason).toBe("BANK! needs $400 -- more than your chips cover.");
+    });
+
+    it("allows BANK! when your chips cover the window exactly", () => {
+      const { result } = bankState(100, 100);
+      expect(result.current.bankAffordable).toBe(true);
+      expect(result.current.bankDisabledReason).toBeUndefined();
+    });
+
+    it("counts chips already wagered this turn toward covering it", () => {
+      // window 100, already bet 40 -> only 60 more needed, and 60 <= 60 left.
+      const { result } = bankState(100, 100, 40);
+      expect(result.current.bankIncrement).toBe(60);
+      expect(result.current.bankAffordable).toBe(true);
+    });
+  });
+
 });

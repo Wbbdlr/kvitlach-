@@ -76,6 +76,7 @@ export default function App() {
     bankerPlayer,
     bankInfo,
     bankIncrement,
+    bankAffordable,
     bankDisabledReason,
     statsData,
     waitingInfo,
@@ -303,7 +304,7 @@ export default function App() {
   const bankLock = round?.bankLock;
   const primaryBankerTurn = bankerTurns[0];
   const turnTimerDurationMs = round?.turnTimerDurationMs ?? 90_000;
-  const canBank = Boolean(bankInfo && bankInfo.available > 0 && bankIncrement > 0);
+  const canBank = Boolean(bankInfo && bankInfo.available > 0 && bankIncrement > 0 && bankAffordable);
 
   const waitingPlayerIds = room?.waitingPlayerIds ?? [];
   const origin = typeof window !== "undefined" ? window.location.origin : "";

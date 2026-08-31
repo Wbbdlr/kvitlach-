@@ -146,7 +146,14 @@ describe("PlayerDock BANK! confirmation", () => {
     expect(onBet).not.toHaveBeenCalled();
   });
 
-  it("automatically draws a card once the confirmed bank bet lands", () => {
+  // The BANK! follow-up card is NOT this component's job any more -- it is
+  // issued by state.ts off the bet's own ack (see bankAutoHit.test.ts).
+  // Watching turn.bet from here, which is what this test used to pin, could
+  // not actually work: the re-render it keyed on always lands while
+  // pendingAction still blocks every action, and a seat that had already bet
+  // never flips the boolean at all. Both were confirmed by test before the
+  // behaviour moved.
+  it("does not itself draw a card when the confirmed bank bet lands", () => {
     const onHit = vi.fn();
     const onBet = vi.fn();
     const { rerender } = render(
@@ -154,7 +161,7 @@ describe("PlayerDock BANK! confirmation", () => {
     );
     fireEvent.click(screen.getByText("BANK!"));
     fireEvent.click(screen.getByText("Yes, bet BANK!"));
-    expect(onHit).not.toHaveBeenCalled(); // not until the bet actually lands
+    expect(onBet).toHaveBeenCalledWith(80, { bank: true, eleveroon: false });
 
     rerender(
       <PlayerDock
@@ -167,7 +174,7 @@ describe("PlayerDock BANK! confirmation", () => {
         onStand={vi.fn()}
       />
     );
-    expect(onHit).toHaveBeenCalledWith({ eleveroon: false });
+    expect(onHit).not.toHaveBeenCalled();
   });
 
   it("does not auto-hit after a plain (non-bank) bet lands", () => {

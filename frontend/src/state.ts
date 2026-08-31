@@ -395,6 +395,25 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   let pendingWatermarkRequestId: string | undefined;
   let pendingReshuffleRequestId: string | undefined;
   let pendingRoundStartRequestId: string | undefined;
+  // A confirmed BANK! wagers the bank's whole remaining window, so the seat
+  // is fully committed -- their next card follows automatically rather than
+  // making them tap Hit again for a decision they've already made.
+  //
+  // This has to be driven off the BANK! bet's own ACK, not off watching
+  // turn.bet change in the dock. Two separate bugs came from trying the
+  // latter (both confirmed by test before this moved here):
+  //   1. ws-server.ts broadcasts round:state BEFORE it sends the ack, so the
+  //      re-render that a bet-watcher keys on always lands while
+  //      pendingAction is still set -- and every action getter starts with
+  //      `if (get().pendingAction) return`, so the follow-up hit was
+  //      silently swallowed every single time.
+  //   2. the watcher keyed on a `bet > 0` boolean, which does not change at
+  //      all when a seat that had ALREADY bet raises to BANK! -- so for that
+  //      (very ordinary) path it never even fired.
+  // Keyed by requestId so a stale flag can't attach itself to some later
+  // unrelated bet; carries eleveroon so the auto-drawn card is protected the
+  // same way the wager itself was.
+  let pendingBankAutoHit: { requestId: string; eleveroon: boolean } | undefined;
   // Practice mode now has its own lobby card, separate from the Join Game
   // form (see App.tsx) -- routing its errors through the generic join/create
   // fallback below would risk surfacing them under the wrong card, so this
@@ -1000,6 +1019,20 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         update.formErrors = nextErrors;
         return update;
       });
+
+      // Strictly after the set() above: that is what clears pendingAction,
+      // and hit() refuses to send while it is still set.
+      if (msg.requestId && msg.requestId === pendingBankAutoHit?.requestId) {
+        const { eleveroon } = pendingBankAutoHit;
+        pendingBankAutoHit = undefined;
+        // Only if the wager left the seat with something still to play. The
+        // bet deals a card of its own, so a BANK! can bust or otherwise
+        // resolve the hand outright -- hitting again there is not "finish
+        // your hand", it is a turn_not_pending error toast on a hand the
+        // player already saw settle.
+        const myTurn = get().round?.turns.find((t) => t.player.id === get().playerId);
+        if (myTurn?.state === "pending") get().hit({ eleveroon });
+      }
     }
   };
 
@@ -1165,6 +1198,9 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         bank: Boolean(options?.bank),
         eleveroon: Boolean(options?.eleveroon),
       });
+      pendingBankAutoHit = options?.bank
+        ? { requestId, eleveroon: Boolean(options?.eleveroon) }
+        : undefined;
       set({ pendingAction: { requestId, type: "bet" } });
     },
     hit: (options?: { eleveroon?: boolean }) => {

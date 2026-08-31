@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Turn } from "../types";
 import { Icon } from "./icons";
 import { useEscapeKey } from "../useEscapeKey";
@@ -47,19 +47,11 @@ export function PlayerDock({
   const hasBet = (turn.bet ?? 0) > 0;
   const drawLabel = hasBet ? "Hit" : "Blatt";
 
-  // Set right before a confirmed BANK! bet is sent, cleared the instant it
-  // lands (turn.bet reflects it) so the player's card comes automatically --
-  // betting the whole bank is a full commitment, not a "wait and see" bet.
-  // Also cleared defensively by the plain Bet path below so a stale flag can
-  // never fire an unwanted auto-hit after an unrelated bet.
-  const pendingBankAutoHitRef = useRef(false);
-  useEffect(() => {
-    if (pendingBankAutoHitRef.current && hasBet) {
-      pendingBankAutoHitRef.current = false;
-      onHit({ eleveroon: eleveroonSelected });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasBet]);
+  // The card that follows a confirmed BANK! is issued by state.ts off that
+  // bet's own ack -- see its pendingBankAutoHit comment for why watching
+  // turn.bet from here could not work (it fired inside the window where
+  // pendingAction still blocks every action, and never fired at all for a
+  // seat that had already bet).
 
   const adjustBet = (delta: number) => {
     setBetAmount((prev) => String(Math.max(1, Math.floor(Number(prev) || 0) + delta)));
@@ -94,7 +86,6 @@ export function PlayerDock({
   };
 
   const handleBet = () => {
-    pendingBankAutoHitRef.current = false;
     const amount = Math.floor(Number(betAmount) || 0);
     if (amount < 1) {
       setBetError("Enter a bet amount of at least $1.");
@@ -118,7 +109,6 @@ export function PlayerDock({
 
   const confirmBank = () => {
     onBet(bankBetAmount, { bank: true, eleveroon: eleveroonSelected });
-    pendingBankAutoHitRef.current = true;
     setBankConfirmOpen(false);
     setBetError(undefined);
   };
