@@ -140,14 +140,14 @@ export function useTableData({
     if (!bankInfo) return 0;
     return Math.max(bankInfo.available - currentBetAmount, 0);
   }, [bankInfo, currentBetAmount]);
-  // Your own chips are as much a gate on BANK! as the bank's window is.
-  // Without this the button sat fully enabled advertising the bank's whole
-  // window (a practice table opens at bank $400 vs. your $100, so it was
-  // enabled and unaffordable on literally every fresh solo game), and the
-  // only thing behind it was a dead-end "Not enough chips" dialog whose one
-  // button is Close. Pressing BANK!, reading that, and pressing the only
-  // button there looks exactly like confirming a wager that then silently
-  // does nothing -- no reservation, no card, nothing broadcast to the table.
+  // Your own chips are as much a gate on BANK! as the bank's window is --
+  // a practice table opens at bank $400 vs. your $100, so BANK! is
+  // unaffordable on literally every fresh solo game. That is a fact about
+  // one button, though, not a standing notice: it belongs in the confirm
+  // dialog you get when you reach for BANK!, not pinned under the dock
+  // where it competes with the controls for room on a phone. So this stays
+  // as the reason string (the button's tooltip, and the dialog's shortfall
+  // branch) without disabling the button -- see App.tsx's canBank.
   const myWallet = myPlayerTurn ? room?.wallets?.[myPlayerTurn.player.id] ?? 0 : 0;
   const bankAffordable = Boolean(bankInfo && currentBetAmount + bankIncrement <= myWallet);
   const bankDisabledReason = useMemo(() => {

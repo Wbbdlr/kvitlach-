@@ -76,7 +76,6 @@ export default function App() {
     bankerPlayer,
     bankInfo,
     bankIncrement,
-    bankAffordable,
     bankDisabledReason,
     statsData,
     waitingInfo,
@@ -304,7 +303,14 @@ export default function App() {
   const bankLock = round?.bankLock;
   const primaryBankerTurn = bankerTurns[0];
   const turnTimerDurationMs = round?.turnTimerDurationMs ?? 90_000;
-  const canBank = Boolean(bankInfo && bankInfo.available > 0 && bankIncrement > 0 && bankAffordable);
+  // Deliberately NOT gated on bankAffordable: a seat that can't cover the
+  // bank's window should still be able to press BANK! and be told so by the
+  // confirm dialog's shortfall branch, which is the moment the number is
+  // worth reading. Gating it here instead meant the only way to explain a
+  // permanently greyed-out button was a permanent line of text under the
+  // dock. The three conditions left are ones where there is nothing to
+  // wager at all.
+  const canBank = Boolean(bankInfo && bankInfo.available > 0 && bankIncrement > 0);
 
   const waitingPlayerIds = room?.waitingPlayerIds ?? [];
   const origin = typeof window !== "undefined" ? window.location.origin : "";

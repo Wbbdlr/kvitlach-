@@ -6,6 +6,7 @@ import { useChip, useFelt } from "../theme";
 import { discardPilePosition, orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
+import { useMediaQuery } from "../useMediaQuery";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
 import { PlayerDock } from "./PlayerDock";
@@ -242,6 +243,16 @@ export function TableRoot({
     if (isFullscreen) dismissFullscreenHint();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullscreen]);
+
+  // Must stay identical to index.css's own .k-rotate-hint rule. That banner
+  // is position:fixed at the top-centre of the screen, and both one-time
+  // nudges below hang off chrome-top in the very same strip -- on a fresh
+  // portrait-phone visit all three rendered at once, overlapping each other
+  // and the controls row (measured: 62x33px and 185x30px of overlap at
+  // 375x812). Someone holding a phone upright should be told to turn it
+  // before being offered anything cosmetic, so the rotate banner wins the
+  // space outright and the other two wait until it's gone.
+  const rotateHintShowing = useMediaQuery("(orientation: portrait) and (max-width: 540px)");
 
   // The felt/chip swatches are the only chrome-top controls that carry no
   // shape-based icon of their own -- everything else there (music note,
@@ -642,7 +653,7 @@ export function TableRoot({
               dismissThemeHint();
             }}
           />
-          {showThemeHint && (
+          {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
             <div className="k-fs-hint k-fs-hint--left">
               Tap a swatch to change your table felt or chip color -- just for your view.
               <button type="button" onClick={dismissThemeHint}>
@@ -704,7 +715,7 @@ export function TableRoot({
             >
               <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
             </button>
-            {showFullscreenHint && !isFullscreen && (
+            {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
               <div className="k-fs-hint">
                 Tap for fullscreen -- best in landscape.
                 <button type="button" onClick={dismissFullscreenHint}>

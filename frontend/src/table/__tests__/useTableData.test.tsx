@@ -274,9 +274,10 @@ describe("useTableData", () => {
     });
   });
 
-  // A practice table opens at bank $400 vs. your $100, so BANK! was enabled
-  // and unaffordable on every fresh solo game -- and the only thing behind
-  // it was a dead-end "Not enough chips" dialog whose one button is Close.
+  // A practice table opens at bank $400 vs. your $100, so BANK! is
+  // unaffordable on every fresh solo game. The button stays pressable (see
+  // App.tsx's canBank) -- this hook only owns the numbers behind the reason
+  // string that the button's tooltip and the confirm dialog show.
   describe("BANK! affordability", () => {
     function bankState(bankerWallet: number, myWallet: number, myBet = 0) {
       const myTurn = makeTurn(p1, { state: "pending", bet: myBet });
@@ -290,7 +291,7 @@ describe("useTableData", () => {
       );
     }
 
-    it("blocks BANK! when the bank's window exceeds your chips, and says why", () => {
+    it("reports a shortfall, and says why, when the bank's window exceeds your chips", () => {
       const { result } = bankState(400, 100);
       expect(result.current.bankAffordable).toBe(false);
       expect(result.current.bankDisabledReason).toBe("BANK! needs $400 -- more than your chips cover.");

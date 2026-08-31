@@ -146,6 +146,27 @@ describe("PlayerDock BANK! confirmation", () => {
     expect(onBet).not.toHaveBeenCalled();
   });
 
+  // The shortfall message used to ALSO sit permanently under the dock as a
+  // k-tag, which on a phone is a whole extra row of controls-crowding text
+  // stating a condition that holds for the entire game. It belongs to the
+  // moment you reach for BANK!, not to the dock.
+  it("keeps the BANK! reason off the dock and on the button instead", () => {
+    render(
+      <PlayerDock
+        turn={baseTurn}
+        wallet={50}
+        bankIncrement={0}
+        canBank={false}
+        bankDisabledReason="Bank is empty."
+        onBet={vi.fn()}
+        onHit={vi.fn()}
+        onStand={vi.fn()}
+      />
+    );
+    expect(screen.queryByText("Bank is empty.")).not.toBeInTheDocument();
+    expect(screen.getByText("BANK!").closest("button")).toHaveAttribute("title", "Bank is empty.");
+  });
+
   // The BANK! follow-up card is NOT this component's job any more -- it is
   // issued by state.ts off the bet's own ack (see bankAutoHit.test.ts).
   // Watching turn.bet from here, which is what this test used to pin, could

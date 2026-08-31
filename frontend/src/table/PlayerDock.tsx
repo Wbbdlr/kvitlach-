@@ -165,7 +165,11 @@ export function PlayerDock({
         disabled={!canBank}
         style={!canBank ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
         onClick={() => setBankConfirmOpen(true)}
-        title="BANK! wagers the remaining available bank for your seat; the banker must resolve it immediately."
+        title={
+          !canBank && bankDisabledReason
+            ? bankDisabledReason
+            : "BANK! wagers the remaining available bank for your seat; the banker must resolve it immediately."
+        }
       >
         BANK!
         {/* Hidden at the compact mobile breakpoint alongside the Eleveroon
@@ -185,8 +189,15 @@ export function PlayerDock({
         <span className="k-toggle-label">Eleveroon</span>
       </label>
 
+      {/* betError is transient -- it appears because you just pressed Bet with
+          a bad amount, and clears on the next keystroke. The BANK! reason used
+          to sit here beside it, but that one is a standing condition (a fresh
+          practice table is unaffordable from the first hand to the last), so it
+          held a permanent row under the controls on the screen with the least
+          room for one. It now reaches the player where they actually ask the
+          question: the button's tooltip, and the confirm dialog's shortfall
+          branch when they press BANK! anyway. */}
       {betError && <span className="k-tag bust">{betError}</span>}
-      {!canBank && bankDisabledReason && <span className="k-tag muted">{bankDisabledReason}</span>}
 
       {bankConfirmOpen && (
         <div

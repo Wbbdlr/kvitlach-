@@ -1129,6 +1129,30 @@ body:has(.k-fit) {
   align-items: flex-start;
 }
 
+/* Both nudges anchor to a ~39px-wide chip inside .k-chrome-top, so a 200px
+   box hanging off it has nowhere to go on a narrow phone: measured at
+   375x812 the fullscreen hint's left edge landed at x=-59, i.e. a third of
+   it off the screen. (Pre-existing -- reproduced with the felt/chip nudge
+   and its icons removed from the DOM entirely, identical result.) Anchoring
+   to the chip cannot work at this width, so stop trying: pin them to the
+   viewport instead, under the controls row, where there is actually room.
+   position:fixed rather than absolute because .k-chrome-top is not the
+   containing block for the felt's scaled stage and an absolute box would
+   still be measured against the chip. */
+@media (max-width: 540px) {
+  .k-fs-hint,
+  .k-fs-hint--left {
+    position: fixed;
+    top: auto;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    align-items: flex-end;
+  }
+}
+
 /* Rotate-to-landscape nudge. Table is landscape-first by design (see
    fullscreen.ts's screen.orientation.lock("landscape")), but that lock only
    ever fires once someone taps the fullscreen button -- .k-fs-hint points at
@@ -1608,6 +1632,26 @@ body:has(.k-fit) {
       var(--stage-scale, 1) * 24px + var(--stage-scale, 1) * 166.6px * clamp(1, calc(1 / var(--stage-scale, 1)), 1.15) +
         12px
     );
+  }
+}
+
+/* .k-rotate-hint is position:fixed at the top-centre of the SCREEN, while
+   .k-chrome-top is absolutely positioned at the top of the stage -- two more
+   elements with no awareness of each other, the same class of bug as the
+   topbar/chrome-top collision above. On a portrait phone chrome-top wraps to
+   three rows (measured 136px tall at 375x812) and the rotate banner landed
+   squarely on the first two of them: 187x70px of overlap. It has
+   pointer-events:none so it never blocked a tap, but it covered the controls
+   it was sitting on.
+   Pushing chrome-top below the banner rather than moving the banner: the
+   banner is the more important message (the table is genuinely cramped in
+   portrait and rotating fixes it properly), and this only costs vertical
+   room in the one orientation we are actively asking the player to leave --
+   rotate, the query stops matching, and the row returns to its normal spot.
+   88px = the banner's own 70px box at top:10px, plus 8px of air. */
+@media (orientation: portrait) and (max-width: 540px) {
+  .k-chrome-top {
+    top: calc(max(8px, env(safe-area-inset-top)) + 88px);
   }
 }
 
