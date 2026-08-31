@@ -5,6 +5,31 @@ for how to work in this repo.
 
 ## Open
 
+- [x] A lost reply could silently lock a player out of the rest of the round
+      (2026-08-31, found while fixing BANK! above -- same silent-drop
+      mechanism, different trigger). `pendingAction` gates every gameplay
+      action (each of bet/hit/stand/skip opens with `if
+      (get().pendingAction) return`) so a double-tap can't fire the same
+      move twice, but nothing except a matching ack or error ever lifted it,
+      and neither is guaranteed to arrive. Socket-level drops were already
+      covered -- onClose/onError clear it -- so the gap was specifically a
+      reply that never comes back on a socket that stayed UP: one dropped
+      frame on a flaky phone connection and that player cannot bet, hit,
+      stand or skip again for the whole round. Silently, since the guard
+      returns without a word, and with no way back short of a reload they
+      have no reason to think would help.
+      Fix: `beginPendingAction` arms a 10s timer alongside the lock -- far
+      longer than any real round trip here, well inside the server's own 90s
+      turn timer, so the hatch opens while the player still has time to
+      retry. It re-checks the requestId before firing, so a late-but-arrived
+      ack that already cleared the lock (with a newer action now in flight)
+      can't have that newer one cleared out from under it -- that would
+      reintroduce the exact double-fire the guard exists to prevent. Also
+      drops a pending BANK! auto-hit for the timed-out wager, so a very late
+      ack can't deal a card for a bet the player was already told didn't
+      land. Verified live that ordinary play (bet -> hit -> hit -> stand,
+      then idling past the timeout) never trips it.
+
 - [x] BANK! was effectively unusable, in three stacked ways (2026-08-31,
       reported as "it didn't reserve the bank, didn't give me a card, and
       didn't notify other players"). The server side turned out to be

@@ -414,6 +414,39 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // unrelated bet; carries eleveroon so the auto-drawn card is protected the
   // same way the wager itself was.
   let pendingBankAutoHit: { requestId: string; eleveroon: boolean } | undefined;
+  // pendingAction gates every gameplay action (each of bet/hit/stand/skip
+  // opens with `if (get().pendingAction) return`) so a double-tap can't fire
+  // the same move twice. Nothing but a matching ack or error ever cleared
+  // it, and neither is guaranteed to arrive: one dropped frame on a flaky
+  // phone connection that keeps the socket itself open leaves that player
+  // unable to bet, hit, stand OR skip for the rest of the round -- silently,
+  // since the guard returns without a word, and with no way back short of a
+  // reload they have no reason to think would help. (Socket-level drops are
+  // already covered: onClose/onError clear it. This is specifically the
+  // reply that never comes back on a socket that stayed up.)
+  //
+  // 10s is far longer than any real round trip here but well inside the
+  // server's own 90s turn timer, so the escape hatch lands while the player
+  // still has time to actually retry the move.
+  const PENDING_ACTION_TIMEOUT_MS = 10_000;
+  let pendingActionTimer: ReturnType<typeof setTimeout> | undefined;
+  const beginPendingAction = (requestId: string, type: "bet" | "hit" | "stand" | "skip") => {
+    if (pendingActionTimer) clearTimeout(pendingActionTimer);
+    pendingActionTimer = setTimeout(() => {
+      pendingActionTimer = undefined;
+      // Only lift the lock if THIS request is still the one being waited on.
+      // A late-but-arrived ack may already have cleared it and a newer
+      // action taken its place -- clearing that one would reintroduce the
+      // double-fire this guard exists to prevent.
+      if (get().pendingAction?.requestId !== requestId) return;
+      if (pendingBankAutoHit?.requestId === requestId) pendingBankAutoHit = undefined;
+      set({
+        pendingAction: undefined,
+        message: "That didn't reach the table -- try again.",
+      });
+    }, PENDING_ACTION_TIMEOUT_MS);
+    set({ pendingAction: { requestId, type } });
+  };
   // Practice mode now has its own lobby card, separate from the Join Game
   // form (see App.tsx) -- routing its errors through the generic join/create
   // fallback below would risk surfacing them under the wrong card, so this
@@ -1201,7 +1234,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       pendingBankAutoHit = options?.bank
         ? { requestId, eleveroon: Boolean(options?.eleveroon) }
         : undefined;
-      set({ pendingAction: { requestId, type: "bet" } });
+      beginPendingAction(requestId, "bet");
     },
     hit: (options?: { eleveroon?: boolean }) => {
       const roundId = get().round?.roundId;
@@ -1216,7 +1249,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       const requestId = client.send("turn:hit", { roundId, playerId, eleveroon: Boolean(options?.eleveroon) });
-      set({ pendingAction: { requestId, type: "hit" } });
+      beginPendingAction(requestId, "hit");
     },
     stand: () => {
       const roundId = get().round?.roundId;
@@ -1224,7 +1257,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (get().pendingAction) return;
       if (!roundId || !playerId) return;
       const requestId = client.send("turn:stand", { roundId, playerId });
-      set({ pendingAction: { requestId, type: "stand" } });
+      beginPendingAction(requestId, "stand");
     },
     sendReaction: (emoji: string) => {
       if (!emoji) return;
@@ -1236,7 +1269,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (!roundId || !actorId) return;
       if (get().pendingAction) return;
       const requestId = client.send("turn:skip", { roundId, playerId, actorId });
-      set({ pendingAction: { requestId, type: "skip" } });
+      beginPendingAction(requestId, "skip");
     },
     requestRename: (firstName: string, lastName?: string) => {
       const roomId = get().room?.roomId;
