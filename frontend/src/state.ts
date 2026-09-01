@@ -62,6 +62,13 @@ interface UIState {
   dismissNotification: (id: string) => void;
   setFormError: (form: "join" | "create" | "round" | "global" | "practice", message?: string) => void;
   formErrors: Partial<Record<"join" | "create" | "round" | "global" | "practice", string>>;
+  // Whether the server has told us a code is needed, and what the player has
+  // typed. Kept at the top level rather than per-form: one code covers
+  // creating, joining and practice, so three copies would just be three
+  // places to forget to fill in.
+  accessCode: string;
+  accessCodeRequired: boolean;
+  setAccessCode: (code: string) => void;
   startRound: (deckCount?: number) => void;
   bet: (amount: number, options?: { bank?: boolean; eleveroon?: boolean }) => void;
   hit: (options?: { eleveroon?: boolean }) => void;
@@ -221,6 +228,35 @@ const getUrlRoomId = (): string | undefined => {
 // when site data is blocked (a strict privacy setting, some corporate
 // policies), so that inline copy took the whole lobby down for those users
 // rather than just not prefilling a field.
+// The platform can be put into invite-only mode from the admin page (see
+// backend/src/access.ts). The client cannot know that before it tries -- the
+// mode is not published anywhere unauthenticated, deliberately -- so the flow
+// is: try, get told `invite_required`, show the field, retry. The code is
+// remembered so a household types it once rather than once per person per
+// visit, and it is stored next to the room id rather than in the session blob
+// because it outlives any one table.
+const ACCESS_CODE_STORAGE_KEY = "kvitlach.accessCode";
+
+export const loadAccessCode = (): string => {
+  if (typeof window === "undefined" || !window.localStorage) return "";
+  try {
+    return window.localStorage.getItem(ACCESS_CODE_STORAGE_KEY) ?? "";
+  } catch (err) {
+    console.warn("Failed to load access code", err);
+    return "";
+  }
+};
+
+const persistAccessCode = (code: string) => {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    if (code) window.localStorage.setItem(ACCESS_CODE_STORAGE_KEY, code);
+    else window.localStorage.removeItem(ACCESS_CODE_STORAGE_KEY);
+  } catch (err) {
+    console.warn("Failed to persist access code", err);
+  }
+};
+
 export const loadLastRoomId = (): string | undefined => {
   if (typeof window === "undefined" || !window.localStorage) return undefined;
   try {
@@ -969,6 +1005,22 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           // the join branch below and surfaced on a form the banker isn't
           // even looking at -- the same misrouting the round:start handler
           // above documents.
+        } else if (errorMessage === "invite_required" || errorMessage === "invalid_invite") {
+          // Unlike every other code here, these three can arrive from ANY of
+          // the lobby's three forms (create, join, practice), and nothing in
+          // the error envelope says which one the player was using. Rather
+          // than guess a form and risk showing the message on one they are
+          // not looking at -- the exact misrouting the room_capacity branch
+          // below was added to fix -- this raises the shared access-code
+          // banner, which sits above all three.
+          update.accessCodeRequired = true;
+          update.formErrors = { ...state.formErrors, create: friendly, join: friendly, practice: friendly };
+        } else if (errorMessage === "locked_down") {
+          // Reaches all three forms like the invite codes above (closed mode
+          // gates creating, joining and practice alike), but raises no code
+          // banner -- in closed mode a code would not help, and offering a
+          // field that cannot work is worse than no field.
+          update.formErrors = { ...state.formErrors, create: friendly, join: friendly, practice: friendly };
         } else if (errorMessage === "maintenance_mode" || errorMessage === "room_capacity") {
           update.formErrors = { ...state.formErrors, create: friendly };
         } else {
@@ -1166,6 +1218,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     wsUrl: WS_URL,
     pendingAction: undefined,
     formErrors: {},
+    accessCode: loadAccessCode(),
+    accessCodeRequired: false,
+    setAccessCode: (code: string) => {
+      const trimmed = code.trim();
+      persistAccessCode(trimmed);
+      set({ accessCode: trimmed });
+    },
     notifications: [],
     bankerSummaryAt: undefined,
     session: initialSession,
@@ -1183,7 +1242,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
         const trimmedRoomId = roomId?.trim() || undefined;
-        client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll });
+        client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll, accessCode: get().accessCode || undefined });
     },
     // An options object rather than createRoom's positional style: four
     // same-typed optional numbers in a row would be an easy mix-up
@@ -1193,7 +1252,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set((s) => ({ formErrors: { ...s.formErrors, practice: "Enter a first name to start a practice game." } }));
         return;
       }
-      pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options });
+      pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options, accessCode: get().accessCode || undefined });
     },
     joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => {
       if (!roomId) {
@@ -1204,7 +1263,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set((s) => ({ formErrors: { ...s.formErrors, join: "Enter a first name to join." } }));
         return;
       }
-      client.send("room:join", { roomId, firstName, lastName, password, spectator: Boolean(spectator) });
+      client.send("room:join", { roomId, firstName, lastName, password, spectator: Boolean(spectator), accessCode: get().accessCode || undefined });
     },
     startRound: (deckCount?: number) => {
       const roomId = get().room?.roomId;

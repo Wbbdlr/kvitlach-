@@ -32,6 +32,8 @@ export class Metrics {
   // too) -- recordRoundEnd relies on that by incrementing every bucket a
   // duration qualifies for, so this can be emitted as-is in render().
   private roundDurationBucketCounts = new Array(ROUND_DURATION_BUCKETS_SECONDS.length).fill(0);
+  private loopLagMs = 0;
+  private gauges = { rooms: 0, practiceRooms: 0, players: 0, activeRounds: 0 };
 
   recordHttpRequest(): void {
     this.httpRequestsTotal += 1;
@@ -48,6 +50,44 @@ export class Metrics {
 
   wsMessageReceived(): void {
     this.wsMessagesTotal += 1;
+  }
+
+  // Read by /health/detail, which has to answer "is it drowning" in JSON
+  // rather than in the Prometheus text render() produces.
+  get currentWsConnections(): number {
+    return this.wsConnectionsCurrent;
+  }
+
+  // Event-loop lag is the single most useful "is this box actually coping"
+  // number for a server like this one: every room's timers, every WS frame
+  // and every broadcast runs on the one loop, so when it climbs, players are
+  // ALREADY seeing turns land late -- well before CPU or memory look alarming.
+  // A setInterval sampled against its own scheduled time costs nothing and
+  // needs no native module.
+  get eventLoopLagMs(): number {
+    return this.loopLagMs;
+  }
+
+  // unref()'d so this timer alone can never hold the process open -- a server
+  // that will not exit on SIGTERM because of a metrics ticker is a deploy
+  // that hangs for its full stop-timeout on every restart.
+  startEventLoopSampler(intervalMs = 500): () => void {
+    let expected = Date.now() + intervalMs;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      this.loopLagMs = Math.max(0, now - expected);
+      expected = now + intervalMs;
+    }, intervalMs);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }
+
+  // Set from GameStore on each /metrics or /health/detail read rather than
+  // pushed on every mutation -- these are derived counts, and sampling them
+  // at read time cannot drift out of sync with the store the way a
+  // separately-incremented copy can.
+  setRoomGauges(g: { rooms: number; practiceRooms: number; players: number; activeRounds: number }): void {
+    this.gauges = g;
   }
 
   // Called once from GameStore.startRound, right after createRound succeeds.
@@ -93,6 +133,26 @@ export class Metrics {
     lines.push("# HELP kvitlach_ws_messages_total Total WebSocket messages received.");
     lines.push("# TYPE kvitlach_ws_messages_total counter");
     lines.push(`kvitlach_ws_messages_total ${this.wsMessagesTotal}`);
+
+    lines.push("# HELP kvitlach_event_loop_lag_ms How late the event loop is running its own timer.");
+    lines.push("# TYPE kvitlach_event_loop_lag_ms gauge");
+    lines.push(`kvitlach_event_loop_lag_ms ${Math.round(this.loopLagMs)}`);
+
+    lines.push("# HELP kvitlach_rooms_current Rooms currently held in memory.");
+    lines.push("# TYPE kvitlach_rooms_current gauge");
+    lines.push(`kvitlach_rooms_current ${this.gauges.rooms}`);
+
+    lines.push("# HELP kvitlach_practice_rooms_current Practice rooms currently held in memory.");
+    lines.push("# TYPE kvitlach_practice_rooms_current gauge");
+    lines.push(`kvitlach_practice_rooms_current ${this.gauges.practiceRooms}`);
+
+    lines.push("# HELP kvitlach_players_current Players seated across all rooms.");
+    lines.push("# TYPE kvitlach_players_current gauge");
+    lines.push(`kvitlach_players_current ${this.gauges.players}`);
+
+    lines.push("# HELP kvitlach_active_rounds_current Rounds currently in play.");
+    lines.push("# TYPE kvitlach_active_rounds_current gauge");
+    lines.push(`kvitlach_active_rounds_current ${this.gauges.activeRounds}`);
 
     lines.push("# HELP kvitlach_rounds_completed_total Total rounds finalized (won/lost/voided).");
     lines.push("# TYPE kvitlach_rounds_completed_total counter");

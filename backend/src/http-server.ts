@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import Fastify, { FastifyRequest } from "fastify";
 import type { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
+import { AccessControl, isAccessMode, parseCodeList } from "./access.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
 // interpolating into a <script> or an inline event handler: the HTML parser
@@ -91,7 +92,7 @@ function formatIdle(ms: number): string {
   return `${days}d ${hours % 24}h`;
 }
 
-function renderAdminPage(store: GameStore, token: string): string {
+function renderAdminPage(store: GameStore, access: AccessControl, token: string): string {
   const rooms = store.listRoomsForAdmin().sort((a, b) => a.lastActivityAt - b.lastActivityAt);
   const rows = rooms
     .map((r) => {
@@ -114,6 +115,14 @@ function renderAdminPage(store: GameStore, token: string): string {
     })
     .join("\n");
 
+  const snap = access.snapshot();
+  const modeButton = (mode: string, label: string, hint: string) => `
+    <form method="post" action="/admin/access?token=${encodeURIComponent(token)}" class="mode">
+      <input type="hidden" name="mode" value="${mode}" />
+      <button type="submit" class="${snap.mode === mode ? "on" : ""}" ${snap.mode === mode ? "disabled" : ""}>${escapeHtml(label)}</button>
+      <span class="meta">${escapeHtml(hint)}</span>
+    </form>`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -129,9 +138,33 @@ function renderAdminPage(store: GameStore, token: string): string {
   button:hover { background: #b91c1c; }
   .empty { color: #6b7280; margin-top: 1rem; }
   .meta { color: #6b7280; font-size: 0.85rem; }
+  fieldset { border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem 1rem 1rem; margin: 0 0 1.5rem; }
+  legend { font-size: 0.75rem; text-transform: uppercase; color: #6b7280; font-weight: 600; }
+  .mode { display: flex; align-items: center; gap: 0.75rem; margin: 0.4rem 0; }
+  .mode button { background: #374151; min-width: 7rem; }
+  .mode button:hover { background: #111827; }
+  .mode button.on { background: #047857; cursor: default; opacity: 1; }
+  textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.4rem; }
+  .save { background: #1d4ed8; margin-top: 0.5rem; }
+  .save:hover { background: #1e40af; }
 </style>
 </head>
 <body>
+  <fieldset>
+    <legend>Access &mdash; currently <b>${snap.mode}</b></legend>
+    <p class="meta">Takes effect immediately, no restart, and survives one. Never affects a game already
+    in progress: reconnecting to a table you are already seated at is not gated.</p>
+    ${modeButton("open", "Open", "Anyone can create, join and practise.")}
+    ${modeButton("invite", "Invite only", `A code is required to create, join or practise. ${snap.codeCount} code(s) set.`)}
+    ${modeButton("closed", "Closed", "No new games at all. Use this when the box is struggling.")}
+    <form method="post" action="/admin/access?token=${encodeURIComponent(token)}">
+      <label class="meta" for="codes">Access codes &mdash; one per line. Case-insensitive.</label>
+      <textarea id="codes" name="codes" rows="4" placeholder="one code per line"></textarea>
+      <button type="submit" class="save">Replace codes</button>
+      <span class="meta">Existing codes are not shown. Saving replaces the whole list.</span>
+    </form>
+  </fieldset>
+
   <h1>Active rooms (${rooms.length})</h1>
   <p class="meta">Rooms auto-expire after 3 days of inactivity. Deleting one here frees its Game ID immediately.</p>
   ${rooms.length === 0 ? '<p class="empty">No active rooms.</p>' : `
@@ -145,7 +178,7 @@ function renderAdminPage(store: GameStore, token: string): string {
 </html>`;
 }
 
-export function createHttpServer(store: GameStore) {
+export function createHttpServer(store: GameStore, access: AccessControl = new AccessControl()) {
   const app = Fastify({
     logger: {
       // The admin routes carry ADMIN_TOKEN as a query param (the plain-HTML
@@ -170,7 +203,54 @@ export function createHttpServer(store: GameStore) {
     metrics.recordHttpRequest();
   });
 
+  // Fastify parses JSON and text out of the box but NOT form encoding, and
+  // the admin page is deliberately plain HTML with no JS (see escapeHtml's
+  // comment), so its forms post urlencoded bodies. Six lines of
+  // URLSearchParams rather than pulling in @fastify/formbody -- same call
+  // this project already made in metrics.ts about prom-client.
+  //
+  // The 1 KiB cap is well clear of the largest real body (a code list) and
+  // keeps an unauthenticated POST from being a place to push bulk at us; the
+  // token check still runs afterwards either way.
+  app.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string", bodyLimit: 1024 },
+    (_req, body, done) => {
+      try {
+        done(null, Object.fromEntries(new URLSearchParams(body as string)));
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    }
+  );
+
   app.get("/health", async () => ({ status: "ok" }));
+
+  // Uptime Kuma's Json Query monitor type reads ONE JSON document and
+  // compares a JSONPath expression against an expected value, so "is it up"
+  // and "is it drowning" have to be answerable from the same response. Hence
+  // a flat object of plain numbers rather than the Prometheus text /metrics
+  // serves (Kuma cannot threshold on that).
+  //
+  // Unauthenticated for the same reason /metrics is: aggregate counts only,
+  // no room IDs or player data, and the backend HTTP port is not exposed
+  // publicly (see deploy/docker-compose.yml). `accessMode` is here so a
+  // monitor can alert on the site having been left locked down.
+  app.get("/health/detail", async () => {
+    const load = store.loadSnapshot();
+    return {
+      status: "ok",
+      uptimeSeconds: Math.round(process.uptime()),
+      rooms: load.rooms,
+      practiceRooms: load.practiceRooms,
+      players: load.players,
+      activeRounds: load.activeRounds,
+      wsConnections: metrics.currentWsConnections,
+      eventLoopLagMs: Math.round(metrics.eventLoopLagMs),
+      rssMb: Math.round(process.memoryUsage().rss / 1048576),
+      accessMode: access.getMode(),
+    };
+  });
 
   // Unauthenticated, like /health: this only ever exposes aggregate counts
   // (no room IDs, no player data), and a Prometheus scraper expects to hit
@@ -178,6 +258,7 @@ export function createHttpServer(store: GameStore) {
   // localhost/the Docker network anyway (see deploy/docker-compose.yml),
   // not the public internet.
   app.get("/metrics", async (request, reply) => {
+    metrics.setRoomGauges(store.loadSnapshot());
     reply.type("text/plain; version=0.0.4; charset=utf-8").send(metrics.render());
   });
 
@@ -194,7 +275,7 @@ export function createHttpServer(store: GameStore) {
       recordFailedAttempt(ip);
       return reply.code(404).send("Not found");
     }
-    reply.type("text/html").send(renderAdminPage(store, token as string));
+    reply.type("text/html").send(renderAdminPage(store, access, token as string));
   });
 
   app.post<{ Params: { roomId: string } }>("/admin/rooms/:roomId/delete", async (request, reply) => {
@@ -206,6 +287,24 @@ export function createHttpServer(store: GameStore) {
       return reply.code(404).send("Not found");
     }
     store.forceDeleteRoom(request.params.roomId);
+    reply.redirect(`/admin?token=${encodeURIComponent(token as string)}`);
+  });
+
+  // One route for both controls on the panel: the mode buttons post `mode`,
+  // the textarea posts `codes`, and neither form carries the other's field.
+  // Sending only what changed means saving codes cannot silently reset the
+  // mode, and vice versa.
+  app.post("/admin/access", async (request, reply) => {
+    const ip = getClientIp(request);
+    if (isRateLimited(ip)) return reply.code(404).send("Not found");
+    const token = (request.query as Record<string, unknown>)?.token;
+    if (!isValidToken(token)) {
+      recordFailedAttempt(ip);
+      return reply.code(404).send("Not found");
+    }
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    if (isAccessMode(body.mode)) access.setMode(body.mode);
+    if (typeof body.codes === "string") access.setCodes(parseCodeList(body.codes));
     reply.redirect(`/admin?token=${encodeURIComponent(token as string)}`);
   });
 

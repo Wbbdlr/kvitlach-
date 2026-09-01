@@ -2,9 +2,12 @@ import { createHttpServer } from "./http-server.js";
 import { GameStore } from "./store.js";
 import { WSServer } from "./ws-server.js";
 import { Database } from "./db.js";
+import { AccessControl, accessFromEnv, type AccessRecord } from "./access.js";
+import { metrics } from "./metrics.js";
 
 const PORT_WS = Number(process.env.WS_PORT || 3001);
 const PORT_HTTP = Number(process.env.PORT || 3000);
+const ACCESS_SETTING_KEY = "access";
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL;
@@ -13,9 +16,32 @@ async function main() {
   if (db) await db.init();
   const store = new GameStore(db);
   await store.loadFromDB();
-  new WSServer(store, PORT_WS);
 
-  const app = createHttpServer(store);
+  // ONE AccessControl, shared by the HTTP admin page that mutates it and the
+  // WS server that enforces it. Two instances would mean an operator
+  // flipping the lockdown switch and gameplay never hearing about it.
+  const access = new AccessControl((record) => {
+    void db
+      ?.putSetting(ACCESS_SETTING_KEY, record)
+      .catch((e) => console.error("db putSetting(access)", e));
+  });
+  access.hydrate(accessFromEnv());
+  // Storage wins over env: env is the boot default, but a lockdown flipped at
+  // 2am from the admin page is the more recent decision and the one that has
+  // to survive the restart that follows.
+  if (db) {
+    try {
+      access.hydrate(await db.getSetting<AccessRecord>(ACCESS_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(access); falling back to env defaults", e);
+    }
+  }
+  console.log(`access mode: ${access.getMode()} (${access.snapshot().codeCount} code(s))`);
+
+  metrics.startEventLoopSampler();
+  new WSServer(store, PORT_WS, access);
+
+  const app = createHttpServer(store, access);
   await app.listen({ port: PORT_HTTP, host: "0.0.0.0" });
   console.log(`HTTP listening on http://0.0.0.0:${PORT_HTTP}`);
 }

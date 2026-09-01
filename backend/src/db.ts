@@ -65,7 +65,32 @@ export class Database {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
       CREATE INDEX IF NOT EXISTS idx_rounds_room ON rounds (room_id);
+
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
     `);
+  }
+
+  // Operator settings that must outlive a restart -- currently just the
+  // access mode and its codes (see access.ts). A key/value row rather than a
+  // typed table because there is one consumer and no query pattern beyond
+  // "read it at boot, write it when it changes"; a column per setting would
+  // mean a migration for the next one, and this project has no migration
+  // tool by design (see db.ts's CREATE TABLE IF NOT EXISTS approach).
+  async getSetting<T>(key: string): Promise<T | undefined> {
+    const result = await this.pool.query(`SELECT value FROM settings WHERE key = $1`, [key]);
+    return result.rows[0]?.value as T | undefined;
+  }
+
+  async putSetting(key: string, value: unknown): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, now())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [key, JSON.stringify(value)]
+    );
   }
 
   async logConnection(params: { roomId: string; playerId: string; ip?: string; userAgent?: string }) {

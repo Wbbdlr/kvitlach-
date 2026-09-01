@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import type { IncomingMessage } from "http";
+import { AccessControl } from "./access.js";
 import { validatePayload } from "./payload.js";
 import { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
@@ -51,7 +52,12 @@ export class WSServer {
     return this.rooms.size;
   }
 
-  constructor(store: GameStore, port: number) {
+  // Injected rather than constructed here so index.ts owns the one instance
+  // the HTTP admin page also mutates -- two AccessControls would mean the
+  // admin page toggling a lockdown that gameplay never sees. Optional so the
+  // many tests that construct a bare WSServer keep working; absent means an
+  // always-open gate, which is the pre-existing behaviour.
+  constructor(store: GameStore, port: number, private readonly access: AccessControl = new AccessControl()) {
     this.store = store;
     this.store.setRoundUpdateListener((round) => this.handleRoundUpdate(round));
     this.wss = new WebSocketServer({ port, maxPayload: MAX_MESSAGE_BYTES });
@@ -169,8 +175,8 @@ export class WSServer {
       const payload = validatePayload(msg.payload);
       switch (type) {
         case "room:create": {
-          if (process.env.MAINTENANCE_MODE === "true") throw new Error("maintenance_mode");
-          const { firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll } = (payload as any) || {};
+          const { firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll, accessCode } = (payload as any) || {};
+          this.access.assertAllowed("create", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll });
           await this.attach(socket, room.roomId, player.id);
@@ -184,8 +190,8 @@ export class WSServer {
           break;
         }
         case "room:create-practice": {
-          if (process.env.MAINTENANCE_MODE === "true") throw new Error("maintenance_mode");
-          const { firstName, botCount, buyIn, bankBuyIn, deckCount } = (payload as any) || {};
+          const { firstName, botCount, buyIn, bankBuyIn, deckCount, accessCode } = (payload as any) || {};
+          this.access.assertAllowed("practice", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount, buyIn, bankBuyIn, deckCount });
           await this.attach(socket, room.roomId, player.id);
@@ -206,7 +212,8 @@ export class WSServer {
           break;
         }
         case "room:join": {
-          const { roomId, firstName, lastName, password, spectator } = (payload as any) || {};
+          const { roomId, firstName, lastName, password, spectator, accessCode } = (payload as any) || {};
+          this.access.assertAllowed("join", accessCode);
           if (!roomId || !firstName) throw new Error("invalid_payload");
           const { room, player, sessionToken } = this.store.joinRoom(roomId, { firstName, lastName, password, spectator: Boolean(spectator) });
           await this.attach(socket, room.roomId, player.id);
@@ -219,6 +226,10 @@ export class WSServer {
           await this.broadcastConnections(room.roomId);
           break;
         }
+        // Deliberately NOT gated by this.access -- see assertAllowed's comment
+        // in access.ts. Resume is how someone already seated at a live table
+        // gets back after their connection blinks; gating it would turn a
+        // lockdown into a mass ejection mid-hand.
         case "room:resume": {
           const { roomId, playerId, token } = (payload as any) || {};
           if (!roomId || !playerId || !token) throw new Error("invalid_payload");

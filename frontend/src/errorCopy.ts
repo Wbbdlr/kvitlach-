@@ -25,6 +25,14 @@ export const ERROR_COPY: Record<string, string> = {
   unknown_type: "Something went wrong. Please try again.",
   maintenance_mode:
     "New games are temporarily paused for maintenance. Existing games are unaffected. Check back soon.",
+  // The three access-control refusals (backend/src/access.ts). All three say
+  // "existing games are unaffected" because that is literally true -- resume
+  // is never gated -- and it is the first thing someone mid-game will want
+  // to know when a friend tells them the site turned them away.
+  locked_down:
+    "The tables are closed to new games right now. Games already in progress are unaffected.",
+  invite_required: "This table is invite-only right now. Enter your access code to play.",
+  invalid_invite: "That access code isn't right. Check it and try again.",
   room_capacity:
     "The server is hosting as many tables as it can right now. Existing games are unaffected — try again in a few minutes.",
   practice_capacity:

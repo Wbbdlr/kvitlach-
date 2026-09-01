@@ -27,7 +27,15 @@ services:
       - PORT=25000
       - WS_PORT=25001
       - DATABASE_URL=postgres://kvitlach:kvitlach@db:5432/kvitlach
+      # Boot DEFAULTS only. Whatever was last set from /admin is stored in
+      # Postgres and wins over these on startup -- deliberately, so a lockdown
+      # flipped because the box was struggling is not undone by the restart
+      # that usually follows. MAINTENANCE_MODE is still honoured (it maps to
+      # ACCESS_MODE=closed) so an existing deploy that has it set does not
+      # quietly reopen. See backend/src/access.ts.
       - MAINTENANCE_MODE=${MAINTENANCE_MODE:-}
+      - ACCESS_MODE=${ACCESS_MODE:-}
+      - ACCESS_CODES=${ACCESS_CODES:-}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
     restart: unless-stopped
     ports:

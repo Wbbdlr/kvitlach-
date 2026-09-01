@@ -1689,6 +1689,23 @@ export class GameStore {
     }));
   }
 
+  // The load picture, for /health/detail and /metrics. Separate from
+  // listRoomsForAdmin because that one is per-room detail for a human
+  // reading a table, and this is four totals a monitor thresholds on -- a
+  // scraper hitting it every 60s should not be walking every room to build
+  // objects it then throws away.
+  loadSnapshot(): { rooms: number; practiceRooms: number; players: number; activeRounds: number } {
+    let practiceRooms = 0;
+    let players = 0;
+    let activeRounds = 0;
+    for (const rec of this.rooms.values()) {
+      if (rec.room.practice === true) practiceRooms += 1;
+      players += rec.room.players.length;
+      if (rec.room.roundId) activeRounds += 1;
+    }
+    return { rooms: this.rooms.size, practiceRooms, players, activeRounds };
+  }
+
   forceDeleteRoom(roomId: string): boolean {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return false;
