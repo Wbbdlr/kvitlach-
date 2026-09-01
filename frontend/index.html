@@ -6,14 +6,15 @@
     <title>Kvitlach</title>
     <meta name="description" content="Play Kvitlach, the family card game, online -- host a live table, invite players with a room code, or practice solo against computer players." />
     <link rel="canonical" href="https://kvitlach.us/" />
-    <link rel="icon" type="image/png" href="/ChatGPT%20Image%20Jan%2011,%202026,%2001_49_49%20PM.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/kvitlach-icon-512.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/kvitlach-icon-192.png" />
     <link rel="preload" href="/DidoneRoomNumbers.otf" as="font" type="font/otf" crossorigin>
     <!-- iOS Safari has no Fullscreen API for ordinary elements (see
          table/fullscreen.ts) -- installing as a home-screen web app is the
          only way an iPhone player gets a chrome-free table, so this needs to
          be a real, valid "app". -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/ChatGPT%20Image%20Jan%2011,%202026,%2001_49_49%20PM.png" />
+    <link rel="apple-touch-icon" href="/kvitlach-icon-512.png" />
     <meta name="theme-color" content="#12271c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -22,11 +23,22 @@
     <meta property="og:url" content="https://kvitlach.us/" />
     <meta property="og:title" content="Kvitlach" />
     <meta property="og:description" content="Play Kvitlach, the family card game, online -- host a live table, invite players with a room code, or practice solo against computer players." />
-    <meta property="og:image" content="https://kvitlach.us/ChatGPT%20Image%20Jan%2011,%202026,%2001_49_49%20PM.png" />
-    <meta name="twitter:card" content="summary" />
+    <!-- A dedicated 1200x630 card on solid felt green, NOT the transparent
+         icon. Every scraper flattens a transparent PNG onto its own
+         background, and which one varies by app and by the viewer's theme --
+         so black-on-transparent art is a coin flip between legible and
+         invisible. The absolute URL and the explicit dimensions are both
+         required: several scrapers will not fetch a relative path, and
+         Facebook renders a smaller placeholder until it has measured the
+         image itself once. -->
+    <meta property="og:image" content="https://kvitlach.us/kvitlach-og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The Kvitlach 11 and 12 cards" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Kvitlach" />
     <meta name="twitter:description" content="Play Kvitlach, the family card game, online -- host a live table, invite players with a room code, or practice solo against computer players." />
-    <meta name="twitter:image" content="https://kvitlach.us/ChatGPT%20Image%20Jan%2011,%202026,%2001_49_49%20PM.png" />
+    <meta name="twitter:image" content="https://kvitlach.us/kvitlach-og.png" />
   </head>
   <body class="bg-sand text-ink">
     <div id="root"></div>
