@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import React from "react";
 import App from "./App";
 
@@ -65,5 +67,26 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByText(/Welcome to Kvitlach/i)).toBeInTheDocument();
     expect(screen.getByText(/Join Game/i)).toBeInTheDocument();
+  });
+});
+
+// Source-level, in the same spirit as errorCopy.test.ts: this is a wiring bug
+// that no type and no component test can see. RoomInfoDrawer's own test proves
+// it calls onExportHistory(playerId), and it passed the whole time App was
+// handing it `() => exportRoundHistoryTxt()` -- a wrapper that type-checks
+// (`() => void` IS assignable to `(id?: string) => void`) and silently drops
+// the argument. Result: "My results" produced the whole-table sheet, byte for
+// byte, for every player, in every release that had the feature.
+describe("export wiring", () => {
+  const source = readFileSync(join(__dirname, "App.tsx"), "utf8");
+
+  it("passes the export handler by reference, not through an arg-dropping wrapper", () => {
+    const handoff = source.match(/onExportHistory=\{([^}]*)\}/);
+    expect(handoff, "App no longer passes onExportHistory at all").not.toBeNull();
+    expect(handoff![1].trim()).toBe("exportRoundHistoryTxt");
+  });
+
+  it("still takes a focus player, so there is something to drop", () => {
+    expect(source).toMatch(/const exportRoundHistoryTxt = \(focusPlayerId\?: string\)/);
   });
 });

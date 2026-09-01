@@ -457,7 +457,12 @@ export default function App() {
         onVoidAbandonedRound={() => store.voidAbandonedRound()}
         onAdjustChips={(id, amount, note) => store.adjustPlayerBankroll(id, amount, note)}
         onKick={(id) => store.kickPlayer(id)}
-        onExportHistory={() => exportRoundHistoryTxt()}
+        // Passed by reference, NOT wrapped in `() => exportRoundHistoryTxt()`.
+        // That wrapper type-checks fine -- `() => void` is assignable to
+        // `(id?: string) => void` -- and silently ate focusPlayerId, so the
+        // drawer's "My results" button produced the whole-table sheet, byte
+        // for byte, for every player.
+        onExportHistory={exportRoundHistoryTxt}
         onCloseRoom={() => store.closeRoom()}
         onLeave={() => store.leaveGame()}
         onReshuffleDeck={() => store.reshuffleDeck()}
