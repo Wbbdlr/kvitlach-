@@ -88,6 +88,7 @@ describe("buildHistoryHtml", () => {
     expect(html).toContain("Round 1");
     expect(html).toContain("Round 2");
     expect(html).toContain("Final standings");
+    expect(html).toContain("Ah freilichin Chanuka");
   });
 
   it("leads with the player's own number when one is named", () => {

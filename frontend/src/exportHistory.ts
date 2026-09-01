@@ -259,7 +259,7 @@ export function buildHistoryHtml({ rounds, roomId, roomName, focusPlayerId, now 
   </table></div>
   <h2>Round by round</h2>
   ${roundBlocks || '<div class="round"><div class="hand">No completed rounds.</div></div>'}
-  <div class="foot">A gut yontif · kvitlach.us</div>
+  <div class="foot">Ah freilichin Chanuka · kvitlach.us</div>
 </div></body></html>`;
 }
 
