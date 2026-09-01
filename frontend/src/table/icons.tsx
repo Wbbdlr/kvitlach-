@@ -37,7 +37,7 @@ export type IconName =
   | "chevron-down"
   | "expand"
   | "compress"
-  | "cpu"
+  | "bot"
   | "close"
   | "motion"
   | "rotate"
@@ -80,7 +80,13 @@ const ICON_PATHS: Record<IconName, string> = {
   "chevron-down": '<path d="M5 9l7 7 7-7"/>',
   expand: '<path d="M9 4H4v5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M15 20h5v-5"/>',
   compress: '<path d="M4 9h5V4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M20 15h-5v5"/>',
-  cpu: '<rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M9.5 7V3.5M14.5 7V3.5M9.5 21v-3.5M14.5 21v-3.5M7 9.5H3.5M7 14.5H3.5M21 9.5h-3.5M21 14.5h-3.5"/>',
+  // An old-fashioned CRT computer -- boxy monitor, stalk, base -- marking the
+  // bots at a practice table. Replaces a CPU-chip glyph (square + 8 pins) that
+  // was unreadable at the 9px it rendered at: the pins merged into the body and
+  // it read as a circle or a star, which is how it was reported. A monitor
+  // silhouette survives the size because it is one solid shape, not eight thin
+  // ticks -- the same reasoning as the `motion` icon's own three attempts.
+  bot: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9.5 16v2.5M14.5 16v2.5"/><path d="M7 18.5h10"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   // Third icon tried here. Straight equal-length lines (v1) read as a menu
   // button; a comet -- dot on a curved trail (v2) -- and wind lines (v3)

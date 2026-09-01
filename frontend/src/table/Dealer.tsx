@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
 import { totalDisplay, statusDisplay, fullName, tagVariant } from "./selectors";
 import { CardView } from "./CardView";
+import { BankPanel } from "./BankPanel";
 import { Icon } from "./icons";
 import { initialsOf } from "./Seat";
 import { useHandFan } from "./handFan";
@@ -29,6 +30,12 @@ export interface DealerProps {
   // own hand for cardDiscardFly.
   discardDx?: number;
   discardDy?: number;
+  /** Landscape-phone layout -- see StageFit.compact. */
+  compact?: boolean;
+  // The bank's own money, rendered on the banker's own seat -- see the
+  // BankPanel call below.
+  bankerWallet?: number;
+  reserved?: number;
 }
 
 // The Bank's own seat, fixed at the top of the oval, with the shoe sitting
@@ -51,6 +58,9 @@ export function Dealer({
   dealDy = 0,
   discardDx = 0,
   discardDy = 0,
+  compact = false,
+  bankerWallet,
+  reserved = 0,
 }: DealerProps) {
   // NOTE: round.state === "final" means the banker's turn has just BEGUN
   // (all other players are resolved), not that the banker is done -- see
@@ -80,6 +90,23 @@ export function Dealer({
         className={clsx("k-seat", canFan && fanned && "hand-fanned")}
         style={{ left: "640px", top: "calc(var(--play-top, 0px) + 160px * var(--vf, 1))", transform: "translate(-50%, -50%)" }}
       >
+        {/* The bank's money, on the banker's own seat -- FIRST child, so it
+            sits directly above the plate it belongs to.
+
+            It spent one step in the top chrome row, which was right about
+            leaving the felt's centre column and wrong about where it landed:
+            reported as making no sense off in a corner, and fairly. This is
+            what docs/mobile-ui.md Part 2 rule 3 actually asks for -- per-entity
+            state rides ON its entity. The bank IS the banker.
+
+            Positioned by FLOW, not arithmetic: .k-seat is a flex column with a
+            gap, so this is simply its first item and nothing measures anything.
+            It costs the dealer's box ~24 stage px of height, budgeted for in
+            stage.ts's DEALER_SEAT_OVERHANG_PX rather than absorbed silently --
+            and step 2 hands ~39px straight back when the status row below folds
+            into the plate. */}
+        {bankerWallet !== undefined && <BankPanel bankerWallet={bankerWallet} reserved={reserved} />}
+
         <button
           type="button"
           className={clsx("k-plate", isActive && "is-active", isOffline && "is-offline")}
@@ -97,8 +124,8 @@ export function Dealer({
             <span className="k-plate-name">
               {name}
               {bankerPlayer?.isBot && (
-                <span className="inline-block ml-1 align-middle opacity-70" title="Computer player">
-                  <Icon name="cpu" size={9} />
+                <span className="inline-block ml-1 align-middle" title="Computer player">
+                  <Icon name="bot" size={11} />
                 </span>
               )}
               {isViewerBanker && <span className="k-plate-sub"> (you)</span>}
@@ -168,7 +195,17 @@ export function Dealer({
             to fix, silently undoing it. .k-seat has no overflow:hidden, so a
             wider row just overflows its column and stays centred on the
             dealer's own anchor point instead of clipping. */}
-        <div className="flex items-center justify-center gap-1.5 flex-nowrap w-max max-w-none">
+        <div
+          className={clsx(
+            "k-dealer-status flex items-center justify-center gap-1.5 flex-nowrap w-max max-w-none",
+            // On a landscape phone this row leaves the centre column entirely
+            // and flanks the cards instead -- see .k-dealer-status.is-flanking
+            // in index.css for the measurements, and BankPanel's own
+            // DEALER_STATUS_ROW_H, which is the other half of the same change:
+            // the bank pill reclaims exactly the space this row gives up.
+            compact && "is-flanking"
+          )}
+        >
           <div className={clsx("k-readout", !/^\d/.test(totalInfo.value) && "is-muted")}>
             {totalInfo.prefix} <b>{totalInfo.value}</b>
           </div>

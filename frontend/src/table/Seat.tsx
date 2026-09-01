@@ -46,6 +46,22 @@ export interface SeatProps {
   // rejected card out to the pile's actual on-screen position.
   discardDx?: number;
   discardDy?: number;
+  /**
+   * Anchor this seat's reaction bubble to its SIDE rather than above it.
+   *
+   * Set for the seats in the table's centre column, where the space above a
+   * seat belongs to somebody else: the viewer sits at bottom-centre, directly
+   * under the dealer's own row, so its bubble rose straight onto the banker's
+   * total and sat there for the ten seconds a reaction lives.
+   */
+  sideReaction?: boolean;
+  /**
+   * Suppress this seat's plate, total and status tag -- they are being rendered
+   * in the bottom-left HUD instead (ViewerHud.tsx). Set for the viewer's own
+   * seat only; their cards stay here on the felt, because only the cards are
+   * play. See docs/mobile-ui.md Part 1.
+   */
+  identityInHud?: boolean;
 }
 
 export function initialsOf(player: { firstName?: string; lastName?: string }): string {
@@ -81,6 +97,8 @@ export function Seat({
   dealDy = 0,
   discardDx = 0,
   discardDy = 0,
+  sideReaction = false,
+  identityInHud = false,
 }: SeatProps) {
   const isMe = viewerId === turn.player.id;
   const isBanker = turn.player.type === "admin";
@@ -151,11 +169,18 @@ export function Seat({
       }}
     >
       {reactionEmoji && (
-        <div className="k-reaction" aria-label="Reaction">
+        <div className={clsx("k-reaction", sideReaction && "is-side")} aria-label="Reaction">
           {reactionEmoji}
         </div>
       )}
 
+      {/* The viewer's own identity is not rendered here -- it lives in the
+          bottom-left HUD instead (ViewerHud.tsx, rendered by TableRoot). Only
+          their CARDS stay on the felt, because only the cards are play.
+          This is what finally makes the centre column solvable: this plate was
+          the bottom wall of the corridor everything else was trying to fit
+          inside. See docs/mobile-ui.md Part 1. */}
+      {!identityInHud && (
       <button
         type="button"
         className={clsx("k-plate", isCurrentTurn && "is-active", isOffline && "is-offline", isBankActor && "is-bank-actor")}
@@ -179,8 +204,10 @@ export function Seat({
           <span className="k-plate-name">
             {displayName}
             {turn.player.isBot && (
-              <span className="inline-block ml-1 align-middle opacity-70" title="Computer player">
-                <Icon name="cpu" size={9} />
+              // 11px and undimmed. At the old 9px/70% this was reported as an
+              // unidentifiable "circle star" -- see the `bot` icon's own note.
+              <span className="inline-block ml-1 align-middle" title="Computer player">
+                <Icon name="bot" size={11} />
               </span>
             )}
             {isMe && <span className="k-plate-sub"> (you)</span>}
@@ -204,6 +231,7 @@ export function Seat({
           title={isOffline ? "Offline" : "Online"}
         />
       </button>
+      )}
 
       {showTurnTimer && (
         <div className={clsx("turn-bar-track w-[110px] h-[3px]", timerTone === "urgent" && "is-urgent")}>
@@ -274,11 +302,13 @@ export function Seat({
         })}
       </div>
 
-      <div className={clsx("k-readout", totalIsConcealed && "is-muted", totalIsBust && "is-bust")}>
-        {totalInfo.prefix} <b>{totalInfo.value}</b>
-      </div>
+      {!identityInHud && (
+        <div className={clsx("k-readout", totalIsConcealed && "is-muted", totalIsBust && "is-bust")}>
+          {totalInfo.prefix} <b>{totalInfo.value}</b>
+        </div>
+      )}
 
-      {label && <div className={clsx("k-tag", variant)}>{label}</div>}
+      {!identityInHud && label && <div className={clsx("k-tag", variant)}>{label}</div>}
 
       {canAdminSkip && (
         <button type="button" className="k-chip-btn" onClick={() => onSkipOther?.(turn.player.id)}>

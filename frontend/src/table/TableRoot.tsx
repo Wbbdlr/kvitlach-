@@ -13,6 +13,7 @@ import { Dealer } from "./Dealer";
 import { PlayerDock } from "./PlayerDock";
 import { BankPanel } from "./BankPanel";
 import { BankReservations } from "./BankReservations";
+import { ViewerHud } from "./ViewerHud";
 import { ReactionLayer } from "./ReactionLayer";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { ManageDrawer } from "./ManageDrawer";
@@ -202,7 +203,7 @@ export function TableRoot({
   // feeds seatPositions()/seatScale() below (the dealer never shrinks, see
   // dealDeltaFor's own comment), so computeFit's crowding correction shrinks
   // its reservation by the same amount the seats themselves actually shrink.
-  const { wrapRef, dockRef, scale, stageHeight, vf, playTop } = useStageScale(playerTurns.length);
+  const { wrapRef, dockRef, scale, stageHeight, vf, playTop, compact } = useStageScale(playerTurns.length);
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
   // Shoe-scoped discard tally: earlier rounds' resolved cards (shoeDiscards,
@@ -258,6 +259,18 @@ export function TableRoot({
   // 375x812). Someone holding a phone upright should be told to turn it
   // before being offered anything cosmetic, so the rotate banner wins the
   // space outright and the other two wait until it's gone.
+  // PREDICATE 2 OF 3. Owns exactly one question: "is this viewport too small to
+  // render the table in portrait at all?" Measures the rendered VIEWPORT (in
+  // portrait, width IS the short edge), not the device -- that's isHandheld()
+  // in immersive.ts, predicate 1, which matches a 768px portrait tablet and so
+  // must never be substituted here. 540 is the number that keeps that tablet
+  // playing; it must not become 820. See docs/mobile-ui.md Part 4.
+  //
+  // This string is duplicated in index.css's .k-rotate-hint rule with nothing
+  // enforcing the match -- the same silent-drift failure mode as the measured
+  // constants in BankPanel.tsx. Step 4 of the refactor moves it to
+  // table/breakpoints.ts as GATE_QUERY and deletes the CSS rule outright, so
+  // there is nothing left to drift from.
   const rotateHintShowing = useMediaQuery("(orientation: portrait) and (max-width: 540px)");
 
   // The felt/chip swatches are the only chrome-top controls that carry no
@@ -376,6 +389,10 @@ export function TableRoot({
   // each other (crowding, binds on a full table) and seats against the dealer
   // (binds on a short viewport, where vf has already bottomed out). The
   // second was missing entirely and is what made phone landscape unplayable.
+  // The lowest point any seat is placed at -- layout.ts puts the viewer's
+  // own seat exactly there (angle 180). Compared with a tolerance because the
+  // ellipse yields floats.
+  const bottomSeatY = Math.max(...positions.map((p) => p.y), 0) - 1;
   const seatShrink = Math.min(
     seatScale(positions),
     dealerClearanceScale(positions, playTop + 160 * vf)
@@ -541,6 +558,7 @@ export function TableRoot({
             isViewerBanker={isAdmin}
             roundState={round?.state}
             canAct={canBankerAct}
+            compact={compact}
             onHit={() => onHit({ eleveroon: true })}
             onStand={onStand}
             deckCount={round?.deckRemaining ?? 0}
@@ -551,6 +569,8 @@ export function TableRoot({
             dealDy={dealerDealDelta.dy}
             discardDx={dealerDiscardDelta.dx}
             discardDy={dealerDiscardDelta.dy}
+            bankerWallet={bankerWallet}
+            reserved={roundOver ? 0 : totalReserved}
           />
         )}
 
@@ -583,14 +603,23 @@ export function TableRoot({
               dealDy={seatDelta.dy}
               discardDx={seatDiscardDelta.dx}
               discardDy={seatDiscardDelta.dy}
+              // Only the bottom-centre seat -- the viewer's own -- has the
+              // dealer's row directly above it. Derived from the rendered
+              // position rather than "is this me", because it is a fact about
+              // WHERE the seat sits, and an 11-player arc puts other seats low
+              // too; those still have empty felt above them.
+              sideReaction={compact && positions[idx]?.y >= bottomSeatY}
+              // "Is this me", not "is this the bottom seat": this is about whose
+              // information it is, not where the seat sits. The viewer's plate,
+              // total and status render in the bottom-left HUD instead; their
+              // cards stay on the felt.
+              identityInHud={turn.player.id === playerId}
             />
           );
         })}
 
-        {!roundOver && <BankReservations reservations={reservations} scale={seatShrink} playTop={playTop} vf={vf} />}
-
-        {bankerPlayer && (
-          <BankPanel bankerWallet={bankerWallet} reserved={roundOver ? 0 : totalReserved} playTop={playTop} vf={vf} />
+        {!roundOver && (
+          <BankReservations reservations={reservations} scale={seatShrink} playTop={playTop} vf={vf} />
         )}
 
         {round && <DiscardPile entries={discardEntries} onOpen={() => setDiscardPileOpen(true)} />}
@@ -852,18 +881,34 @@ export function TableRoot({
         </button>
       </div>
 
-      {notifications.length > 0 && (
-        <div className="k-toast-stack">
-          {notifications.map((note) => (
-            <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
-              <span>{note.message}</span>
-              <button type="button" onClick={() => onDismissNotification(note.id)}>
-                Dismiss
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Bottom-left HUD column: transient toasts stacked above the viewer's own
+          persistent readout. ONE container, flow-laid, so neither element has to
+          know the other's height -- the toast stack used to hard-code an 84px
+          `--controls-band` to clear the dock, and adding a second element below
+          it by measurement would have been exactly the pattern this refactor
+          exists to delete. See docs/mobile-ui.md Part 2 rule 2. */}
+      <div className="k-hud-bottom-left">
+        {notifications.length > 0 && (
+          <div className="k-toast-stack">
+            {notifications.map((note) => (
+              <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
+                <span>{note.message}</span>
+                <button type="button" onClick={() => onDismissNotification(note.id)}>
+                  Dismiss
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {myPlayerTurn && (
+          <ViewerHud
+            turn={myPlayerTurn}
+            viewerId={playerId}
+            roundState={round?.state}
+            walletAmount={myWallet}
+          />
+        )}
+      </div>
 
       <div className="k-controls" ref={dockRef}>
       {/* The banker has dropped and the table is waiting on them. Nothing else

@@ -262,24 +262,30 @@ describe("the felt table is the only in-room view", () => {
   });
 
   // The real-table "I'm calling Eleveroon!" moment (Seat.tsx's
-  // showEleveroonCall) -- a gold star on the avatar, independent of whether
-  // the player's actual bet/hit cards are still hidden from the rest of the
-  // table at this point in the hand.
-  describe("Eleveroon 'calling it out' seat indicator", () => {
+  // showEleveroonCall) -- a gold star, independent of whether the player's
+  // actual bet/hit cards are still hidden from the rest of the table at this
+  // point in the hand.
+  //
+  // The VIEWER's own copy is asserted against the whole container, not their
+  // seat: their identity block moved off the felt into the bottom-left HUD
+  // (ViewerHud.tsx), so their seat renders only cards now. These two cases are
+  // deliberately location-agnostic -- what matters is that the player can see
+  // their own call somewhere, which is exactly what regressed when the plate
+  // moved and these tests caught. Other players' marks are still asserted on
+  // their seats below, where they still live.
+  describe("Eleveroon 'calling it out' indicator", () => {
     const callingTurn: Turn = { ...playerTurn, state: "pending", eleveroonCalled: true };
 
-    it("shows a gold star mark on the player's own seat while their turn is live", () => {
+    it("shows a gold star mark to the player themselves while their turn is live", () => {
       mockState.round = { ...round, turns: [callingTurn, adminTurn] };
       const { container } = render(<App />);
-      const playerSeat = [...container.querySelectorAll(".k-seat")].find((s) => s.textContent?.includes("Alice"))!;
-      expect(playerSeat.querySelector(".k-elev-mark")).not.toBeNull();
+      expect(container.querySelector(".k-elev-mark")).not.toBeNull();
     });
 
     it("does not show it once the turn is no longer pending -- the card's own badge takes over from there", () => {
       mockState.round = { ...round, turns: [{ ...callingTurn, state: "won" }, adminTurn] };
       const { container } = render(<App />);
-      const playerSeat = [...container.querySelectorAll(".k-seat")].find((s) => s.textContent?.includes("Alice"))!;
-      expect(playerSeat.querySelector(".k-elev-mark")).toBeNull();
+      expect(container.querySelector(".k-elev-mark")).toBeNull();
     });
 
     it("never shows for the banker, even if the field were somehow set on their turn", () => {

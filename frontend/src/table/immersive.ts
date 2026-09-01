@@ -28,6 +28,19 @@ function orientationApi(): LockableOrientation | undefined {
   return screen.orientation as LockableOrientation | undefined;
 }
 
+// PREDICATE 1 OF 3. Owns exactly one question: "may we take over this DEVICE's
+// orientation and fullscreen when it enters a table?" It is not "is this a
+// phone", and it is emphatically not "must this viewport be landscape" -- see
+// docs/mobile-ui.md Part 4 for the other two and the question each owns.
+//
+// Reusing this one for the rotate gate would gate a 768x1024 portrait tablet
+// (768 <= 820), which is a fully supported surface. The gate keeps its own
+// 540px bound for that reason.
+//
+// Deliberately generous: every call below is best-effort and a refusal is a
+// no-op, so over-matching costs nothing here, where it would cost a supported
+// device its table in the gate.
+//
 // Only phones. Rotating a desktop browser is meaningless, and yanking someone
 // on a laptop into fullscreen because they clicked Join would be obnoxious.
 //

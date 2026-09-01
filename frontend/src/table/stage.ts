@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { STAGE_HEIGHT, STAGE_WIDTH, SEAT_HEIGHT, seatPositions, seatScale } from "./layout";
 
+// PREDICATE 3 OF 3. Owns exactly one question: "is the RENDERED TABLE cramped
+// enough to need compact chrome and dock styling?" Not "is this a phone"
+// (that's isHandheld(), immersive.ts) and not "is this viewport too small to
+// render the table in portrait" (that's the rotate gate's own 540px bound).
+// See docs/mobile-ui.md Part 4 -- reusing one of these for another's question
+// is a bug, and has been twice.
+//
+// Note the comma: this is an OR across BOTH axes, and the height arm is the
+// one that matters most, because a landscape phone is wide (854) but short
+// (384). Bug #9 in the ledger was a width-only test used for exactly this
+// question, which is why it missed every landscape phone it was written for.
+//
 // Matches index.css's compact PlayerDock breakpoint exactly -- the dock is
 // shorter there, so it needs a smaller band reserved for it below.
 const COMPACT_MEDIA_QUERY = "(max-width: 520px), (max-height: 440px)";
@@ -42,7 +54,22 @@ const TOP_CHROME_PX = 44;
 // more than the ~10px it was short by, at the viewer's direct expense
 // (confirmed: SEAT_HEIGHT/2 flipped the dock-clearance regression test
 // negative on the same profile that started this).
-const DEALER_SEAT_OVERHANG_PX = 40;
+//
+// Grown from 40 to 52 when the bank's readout moved onto the banker's own seat
+// (Dealer.tsx renders BankPanel as .k-seat's first child). That adds ~24px to
+// the box -- ~18px for the pill plus .k-seat's own 6px gap -- but only HALF of
+// that lands above the anchor: the seat is centred with translate(-50%, -50%),
+// so a box that grows by 24 raises its own top edge by 12 and lowers its bottom
+// by 12. +12 here, not +24.
+//
+// Checked, not reasoned: +24 was tried first and the dock-clearance regression
+// test below went 0.91px negative on the Galaxy S21 landscape profile, which is
+// this constant's own comment above coming true -- once vf is pinned at MIN_VF
+// there is no self-correcting slack, and every px added here comes straight out
+// of the viewer's dock margin.
+// Step 2 of the refactor hands this back and more -- folding the dealer's status
+// row into its plate removes ~39px from the same column.
+const DEALER_SEAT_OVERHANG_PX = 52;
 
 // How far the viewer's own seat -- always bottom-centre, layout.ts's
 // bottomSeatCenterY -- extends below its own CENTER once translate(-50%,
@@ -123,6 +150,19 @@ export interface StageFit {
   /** Stage px between the felt's top edge and the play area, clearing the
    *  top chrome row. Consumed in CSS as --play-top. */
   playTop: number;
+  /**
+   * Whether the table is rendering at COMPACT_MEDIA_QUERY -- a landscape
+   * phone, essentially.
+   *
+   * Surfaced out of the fit rather than recomputed by each consumer so there
+   * is exactly one definition of "compact" shared by the CSS breakpoint, the
+   * dock band above, the dealer's flanking status row and the bank pill's
+   * placement. Those last two are two halves of one layout: the pill only has
+   * a centre corridor to sit in BECAUSE the dealer's status row has left it,
+   * so a consumer that disagreed about compactness would put the pill exactly
+   * where the row still is.
+   */
+  compact: boolean;
 }
 
 // Exported for tests -- this is the whole no-wasted-space contract, and it's
@@ -144,7 +184,7 @@ export function computeFit(
   seatCount = 0
 ): StageFit {
   if (availWidth <= 0 || availHeight <= 0) {
-    return { scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0 };
+    return { scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0, compact: isCompact };
   }
 
   // Width binds first, always: the stage is a fixed 1280 design px wide, so
@@ -225,7 +265,7 @@ export function computeFit(
   // grown) bands.
   const stageHeight = Math.min(availHeight / scale, grownPlayTop + STAGE_HEIGHT * vf + grownDockBand);
 
-  return { scale, stageHeight, vf, playTop: grownPlayTop };
+  return { scale, stageHeight, vf, playTop: grownPlayTop, compact: isCompact };
 }
 
 // seatCount: how many (non-dealer) seats are on the arc right now --
@@ -240,7 +280,7 @@ export function useStageScale(seatCount = 0) {
   const wrapRef = useRef<HTMLDivElement>(null);
   // Attach to the controls tray so its real height feeds the bottom band.
   const dockRef = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState<StageFit>({ scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0 });
+  const [fit, setFit] = useState<StageFit>({ scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0, compact: false });
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -259,7 +299,8 @@ export function useStageScale(seatCount = 0) {
         prev.scale === next.scale &&
         prev.stageHeight === next.stageHeight &&
         prev.vf === next.vf &&
-        prev.playTop === next.playTop
+        prev.playTop === next.playTop &&
+        prev.compact === next.compact
           ? prev
           : next
       );

@@ -220,6 +220,10 @@ describe("stage fit", () => {
   });
 
   it("degrades to the design size rather than dividing by zero before layout", () => {
-    expect(computeFit(0, 0, false)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0 });
+    // `compact` passes straight through even on the degenerate path -- it is an
+    // input, not something measured from the (absent) viewport, so it must be
+    // reported back honestly rather than defaulted.
+    expect(computeFit(0, 0, false)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0, compact: false });
+    expect(computeFit(0, 0, true)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0, compact: true });
   });
 });

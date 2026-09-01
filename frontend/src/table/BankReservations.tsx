@@ -1,7 +1,6 @@
 import { SeatPosition } from "./layout";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 import { Icon } from "./icons";
-import { bankPanelPlacement } from "./BankPanel";
 
 export interface Reservation {
   playerId: string;
@@ -13,23 +12,33 @@ export interface BankReservationsProps {
   reservations: Reservation[];
   scale?: number;
   // Same two inputs TableRoot already threads through seatPositions() for
-  // this exact reason -- see potY() below.
+  // this exact reason -- see potPoint() below.
   playTop?: number;
   vf?: number;
 }
 
-// Where the bank's money sits on the felt -- just under the BANK total (see
-// BankPanel), so a reservation reads as chips pushed out FROM the bank.
+// Mirrors Dealer.tsx's own anchor: `left: 640px; top: calc(var(--play-top) +
+// 160px * var(--vf))`. A shared STAGE COORDINATE, not a measurement of anything
+// the dealer renders -- its box can grow and shrink freely without moving this
+// point, which is the distinction docs/mobile-ui.md Part 2 rule 2 draws. If
+// that anchor moves in Dealer.tsx, move it here.
+const DEALER_ANCHOR_Y_COEF = 160;
+
+// Where the lines start: the dealer, because the dealer IS the bank.
 //
-// Reuses BankPanel's own placement directly (not a copy of its constants) so
-// the two can never drift apart the way the old parallel formula did. It is
-// no longer a constant: on a flattened phone the pill leaves the centre
-// column, and connector lines still drawn from stage-centre would point at
-// empty felt. +22 is the same "just under it" margin (the pill's own height
-// plus a small gap) the original constant always implied.
+// These used to originate at the BANK pill's own floating position, tracking it
+// through bankPanelPlacement() so the lines followed it when it slid out to the
+// rail. The pill has now left the felt entirely for the HUD frame (see
+// BankPanel.tsx), and connector lines cannot follow it there -- an SVG line
+// drawn to a point outside the stage would leave the felt and point at chrome.
+//
+// Anchoring to the dealer is not a fallback, it is what this always meant: a
+// reservation is money the BANK is holding, and the bank sits at the top of the
+// oval. Lines now emerge from behind the dealer's own box (.k-resv-lines is a
+// lower tier than .k-seat, so the dealer paints over the origin), which reads
+// as chips pushed out from the bank rather than trailing a floating badge.
 function potPoint(playTop: number, vf: number): { x: number; y: number } {
-  const place = bankPanelPlacement(playTop, vf, STAGE_WIDTH);
-  return { x: place.x, y: place.y + 22 };
+  return { x: STAGE_WIDTH / 2, y: playTop + DEALER_ANCHOR_Y_COEF * vf };
 }
 
 // Chips rest a fixed distance BACK from the seat rather than at a fixed
@@ -65,8 +74,9 @@ const T_MAX = 0.7;
 // first to check the bank is showing their bet at all. There is no constant
 // that fixes this without breaking something else: more SEAT_CLEARANCE just
 // pushes the badge further past T_MIN with no effect (T_MIN is already what's
-// binding), and loosening T_MIN would drop it onto the "BANK $x" pill
-// instead. So below this threshold the badge is skipped rather than forced
+// binding), and loosening T_MIN would drop it onto the pot end instead --
+// which is now the dealer's own box, since the BANK pill it used to be has
+// left the felt. So below this threshold the badge is skipped rather than forced
 // into a collision -- every seat's plate already prints "$wallet · $bet" (see
 // Seat.tsx), so the information survives, just without this particular
 // seat's dashed line to the pot.
