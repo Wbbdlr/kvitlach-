@@ -558,7 +558,6 @@ export function TableRoot({
             isViewerBanker={isAdmin}
             roundState={round?.state}
             canAct={canBankerAct}
-            compact={compact}
             onHit={() => onHit({ eleveroon: true })}
             onStand={onStand}
             deckCount={round?.deckRemaining ?? 0}

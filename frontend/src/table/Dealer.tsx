@@ -30,8 +30,6 @@ export interface DealerProps {
   // own hand for cardDiscardFly.
   discardDx?: number;
   discardDy?: number;
-  /** Landscape-phone layout -- see StageFit.compact. */
-  compact?: boolean;
   // The bank's own money, rendered on the banker's own seat -- see the
   // BankPanel call below.
   bankerWallet?: number;
@@ -58,7 +56,6 @@ export function Dealer({
   dealDy = 0,
   discardDx = 0,
   discardDy = 0,
-  compact = false,
   bankerWallet,
   reserved = 0,
 }: DealerProps) {
@@ -105,7 +102,23 @@ export function Dealer({
             stage.ts's DEALER_SEAT_OVERHANG_PX rather than absorbed silently --
             and step 2 hands ~39px straight back when the status row below folds
             into the plate. */}
-        {bankerWallet !== undefined && <BankPanel bankerWallet={bankerWallet} reserved={reserved} />}
+        {bankerWallet !== undefined && (
+          <BankPanel
+            bankerWallet={bankerWallet}
+            reserved={reserved}
+            // The banker's turn status rides on the SAME line as their total.
+            // That line is already allocated, so carrying the tag here costs
+            // the column nothing -- which is the whole reason the status row
+            // below the hand could be deleted rather than relocated again.
+            status={
+              statusInfo.label ? (
+                <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
+                  {isActive ? "Bank playing" : statusInfo.label}
+                </div>
+              ) : null
+            }
+          />
+        )}
 
         <button
           type="button"
@@ -130,7 +143,15 @@ export function Dealer({
               )}
               {isViewerBanker && <span className="k-plate-sub"> (you)</span>}
             </span>
-            <span className="k-plate-sub">Bank</span>
+            {/* The bank's own total, on the sub-line rather than in a row of
+                its own below the hand. A word and a number replacing a word
+                costs the column nothing; a row cost it ~39px it did not have.
+                is-muted carries the concealed case ("hidden", "--") the same
+                way the old .k-readout did -- selectors.ts encodes that
+                distinction in the value, and it has to survive the move. */}
+            <span className={clsx("k-plate-sub", !/^\d/.test(totalInfo.value) && "is-muted")}>
+              Bank · {totalInfo.value}
+            </span>
           </span>
           {bankerPlayer && (
             <span
@@ -182,39 +203,16 @@ export function Dealer({
           ))}
         </div>
 
-        {/* Total and status share ONE row rather than stacking. The dealer sits
-            at the top of the centre column and the bank panel just below it,
-            and when the table flattens that column runs out of room: the
-            status tag on its own line pushed the stack down onto the bank
-            panel, which painted over it ("BANK PLAYING" half-hidden behind the
-            bank total). Reclaiming the row fixes it where it starts, instead
-            of shoving the panel down onto the seat below.
-            Deliberately nowrap, not wrap: .k-seat is a fixed 168px column, and
-            "Total: hidden" + "WAITING..." together need ~190px -- flex-wrap
-            would fall back to two lines for exactly the worst case this exists
-            to fix, silently undoing it. .k-seat has no overflow:hidden, so a
-            wider row just overflows its column and stays centred on the
-            dealer's own anchor point instead of clipping. */}
-        <div
-          className={clsx(
-            "k-dealer-status flex items-center justify-center gap-1.5 flex-nowrap w-max max-w-none",
-            // On a landscape phone this row leaves the centre column entirely
-            // and flanks the cards instead -- see .k-dealer-status.is-flanking
-            // in index.css for the measurements, and BankPanel's own
-            // DEALER_STATUS_ROW_H, which is the other half of the same change:
-            // the bank pill reclaims exactly the space this row gives up.
-            compact && "is-flanking"
-          )}
-        >
-          <div className={clsx("k-readout", !/^\d/.test(totalInfo.value) && "is-muted")}>
-            {totalInfo.prefix} <b>{totalInfo.value}</b>
-          </div>
-          {statusInfo.label && (
-            <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
-              {isActive ? "Bank playing" : statusInfo.label}
-            </div>
-          )}
-        </div>
+        {/* The dealer's total and status USED to be a row of their own, right
+            here, below the hand -- the third thing stacked in a column that
+            fits two. It went through two fixes in that position (share one row
+            rather than stacking; then `is-flanking`, which moved it out beside
+            the cards on a phone) and neither held, because both were arguments
+            about where to put a row the column had no room for.
+            It is not here any more. The total rides on the plate's own sub-line
+            and the status tag rides in the header row above it -- both rows
+            that already existed, so the column is a whole row shorter than it
+            was. See docs/mobile-ui.md Part 2 rule 3. */}
 
         {canAct && (
           <div className="flex gap-2">

@@ -55,7 +55,17 @@ const TOP_CHROME_PX = 44;
 // (confirmed: SEAT_HEIGHT/2 flipped the dock-clearance regression test
 // negative on the same profile that started this).
 //
-// Grown from 40 to 52 when the bank's readout moved onto the banker's own seat
+// NOW 33, and the arithmetic is worth keeping because it has bitten twice.
+// Step 2 deleted the dealer's "Total: N" + status row (~39 stage px including
+// .k-seat's gap) from this column. The seat is centred, so losing 39 off its
+// height raises its bottom edge by 19.5 AND lowers its top edge by 19.5 -- so
+// the clearance this constant reserves shrinks by the same 19.5, not by 39.
+// 52 - 19.5 ~= 33. Lowering it moves the whole play area UP, which is the safe
+// direction for the dock-clearance test below; the bank header row above the
+// plate is still budgeted, it is just no longer paying for a status row too.
+//
+// The history below is the warning that produced this arithmetic:
+// grown from 40 to 52 when the bank's readout moved onto the banker's own seat
 // (Dealer.tsx renders BankPanel as .k-seat's first child). That adds ~24px to
 // the box -- ~18px for the pill plus .k-seat's own 6px gap -- but only HALF of
 // that lands above the anchor: the seat is centred with translate(-50%, -50%),
@@ -69,7 +79,7 @@ const TOP_CHROME_PX = 44;
 // of the viewer's dock margin.
 // Step 2 of the refactor hands this back and more -- folding the dealer's status
 // row into its plate removes ~39px from the same column.
-const DEALER_SEAT_OVERHANG_PX = 52;
+const DEALER_SEAT_OVERHANG_PX = 33;
 
 // How far the viewer's own seat -- always bottom-centre, layout.ts's
 // bottomSeatCenterY -- extends below its own CENTER once translate(-50%,

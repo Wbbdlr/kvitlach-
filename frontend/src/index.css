@@ -1011,10 +1011,27 @@ body:has(.k-fit) {
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  max-width: 100%;
+  /* The banker's header can run wider than .k-seat's 168px column -- the total
+     and a long status tag ("BEAT 1 - LOST 2") together need more. That is fine
+     and deliberate: .k-seat has no overflow:hidden, so the row simply stays
+     centred on the dealer's own anchor and extends over empty felt either side
+     of the cards. What it must NOT do is grow the column's HEIGHT, which is the
+     axis that has no room. */
+  width: max-content;
+  max-width: none;
   /* Display-only, and it sits directly above a button (the banker's plate opens
      their stats) -- it must never be what a thumb lands on. */
   pointer-events: none;
+}
+/* Total and status side by side. nowrap on purpose: the two wrapping onto
+   separate lines would put the height back into the column that deleting the
+   status row just took out of it, which is the entire point of the move. */
+.k-bank-hud-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 .k-banktotal {
   /* Counter-scaled again: this is back INSIDE the scaled stage, so a flat px
@@ -1059,70 +1076,18 @@ body:has(.k-fit) {
   white-space: nowrap;
 }
 
-/* The dealer's "Total: N" + status row, moved OUT of the centre column and
-   out to flank the bank's own cards, on a landscape phone only.
+/* The dealer's "Total: N" + status row is GONE, not relocated again.
 
-   Measured at 854x384: that column has to stack the dealer (plate, hand,
-   this row) and the viewer's whole seat between the chrome and the dock, and
-   it does not fit -- the dealer's row ended at y167 with the viewer's plate
-   starting at y168. One pixel. Three separate things were competing for that
-   band: this row, the bank pill, and any reaction bubble rising off the
-   viewer's seat, which is why the bank had been exiled to the left rail
-   ("way off to the side and nowhere near the center") and reactions landed
-   unreadably on the banker's total.
+   It lived below the hand, then shared one row, then flanked the cards on a
+   phone (`is-flanking`, ~40 lines of measured offsets that lived here). Every
+   version was an argument about where to put a row the centre column had no
+   room for: measured at 854x384 the dealer's row ended at y167 and the
+   viewer's plate began at y168.
 
-   The space either side of the dealer's HAND is empty, though -- the hand is
-   only ~48 stage px wide inside a 168px seat column, and the nearest arc
-   seats are far outside it. So the row leaves the column and sits level with
-   the cards instead, one chip each side. That frees ~33 stage px of the
-   centre column, which is what lets the bank pill go back where it belongs.
-
-   Numbers are stage px and measured, not guessed: the plate is 43.5 tall,
-   .k-seat's gap is 6, the dealer hand is 72 -- so the hand spans 49.5..121.5
-   and its centre is 85.5. This row is ~33 tall, hence top 69. The +/-53
-   pushes each chip just past the seat's own 168px column so they clear the
-   cards; at 854x384 that puts the left chip's edge at stage 489 against the
-   next seat's 352, and the right chip's at 762 against the shoe's 786. */
-.k-dealer-status.is-flanking {
-  position: absolute;
-  /* Level with the PLATE, not with the cards. Flanking the cards was tried
-     first and fails as the bank draws: the hand grows sideways, and by the
-     time a round resolved it had run 25-28px into both chips (caught by
-     phone-layout.spec.ts's resolved-round phase, not by the deal). The plate
-     cannot grow the same way -- .k-plate is max-width:100% of a .k-seat that
-     is a fixed 168 stage px -- so anchoring here makes the clearance
-     independent of how many cards the bank ends up holding. */
-  top: 0;
-  left: 0;
-  right: 0;
-  /* Overrides the row's own `w-max` (width: max-content). With that in place
-     the element sizes to its content and the `right` above simply does not
-     apply, so both chips stayed bunched together on the left instead of
-     splitting either side of the cards. */
-  width: auto;
-  max-width: none;
-  gap: 0;
-}
-/* Each chip anchored to the seat's CENTRE, not laid out by space-between.
-   space-between spreads the two chips to the row's outer edges, which centres
-   the GAP between them on the row -- but the chips are different widths
-   ("Total: hidden" is 78px, "Waiting..." 59px), so the gap lands off-centre
-   and the wider chip ran 3px into the dealer's cards. Anchoring each one a
-   fixed distance either side of centre keeps the clearance symmetric whatever
-   the two chips happen to say. 92 = half the seat column (84 stage px, the
-   widest .k-plate can ever be) plus an 8px margin -- derived from the fixed
-   column rather than measured off one banker's name, so a long name cannot
-   close it. */
-.k-dealer-status.is-flanking > * {
-  position: absolute;
-  top: 0;
-}
-.k-dealer-status.is-flanking > .k-readout {
-  right: calc(50% + 92px);
-}
-.k-dealer-status.is-flanking > .k-tag {
-  left: calc(50% + 92px);
-}
+   The column now carries one row fewer. The total rides on the plate's own
+   sub-line and the status tag rides in the bank header above it -- both rows
+   that already existed -- so there is nothing left to place. See Dealer.tsx
+   and docs/mobile-ui.md Part 2 rule 3. */
 
 /* A reaction bubble anchored to the SIDE of a seat instead of above it.
    Used for the seats in the centre column, where "above" is somebody else's

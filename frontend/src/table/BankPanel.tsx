@@ -1,6 +1,16 @@
+import { ReactNode } from "react";
+
 export interface BankPanelProps {
   bankerWallet: number;
   reserved?: number;
+  /**
+   * The banker's own turn status tag, rendered beside the total. Passed in
+   * rather than derived here because it is the DEALER's state, not the bank's
+   * -- this component only knows about money. It shares this row because the
+   * row already exists, which is what let Dealer.tsx delete its status row
+   * outright instead of relocating it for a third time.
+   */
+  status?: ReactNode;
 }
 
 // The bank's total, and what of it is spoken for.
@@ -27,12 +37,15 @@ export interface BankPanelProps {
 // everyone watching. A player's own betting limit is a different number -- it
 // only counts wagers ahead of them in turn order, and it's shown where they
 // actually need it, on the dock's bet controls.
-export function BankPanel({ bankerWallet, reserved = 0 }: BankPanelProps) {
+export function BankPanel({ bankerWallet, reserved = 0, status }: BankPanelProps) {
   const free = Math.max(bankerWallet - reserved, 0);
 
   return (
     <div className="k-bank-hud">
-      <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
+      <div className="k-bank-hud-row">
+        <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
+        {status}
+      </div>
       {reserved > 0 && (
         <div className="k-readout k-bank-split">
           <span>

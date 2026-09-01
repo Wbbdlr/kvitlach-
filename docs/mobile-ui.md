@@ -108,6 +108,23 @@ anything, and nothing has to be measured or avoided. The cost is that the band
 is empty most of the time — see Part 7 step 3 for what that costs at 640×360 and
 what happens where the budget will not carry it.
 
+**The reservation applies inside the HUD too, not just on the felt.** Where the
+compact fallback puts the bubble in the bottom-left HUD column, that column
+already holds the viewer's own plate. A bubble that *grows* the column and
+pushes the plate is the corridor problem rebuilt somewhere new — the same shape
+as ledger #6 and #7. The slot is allocated there whether or not a bubble is
+showing, exactly as on a seat.
+
+**Queue policy** (an unstated queue is a bug waiting for a full table):
+
+| | |
+|---|---|
+| Slots visible at once | **1**, in the compact fallback (the per-seat layout has no queue — each seat owns its own slot) |
+| Display duration | **2.5s** per bubble, not the per-seat layout's 10s. Eleven seats × 10s is a 110-second backlog; nobody is reading a reaction to a hand that ended two minutes ago |
+| Queue depth | **3** waiting, so worst-case latency is 7.5s |
+| Overflow | **Drop oldest first.** A reaction is a live response to the hand in front of you. When the queue is full the stale one is the one nobody needs |
+| In flight | The bubble currently showing always finishes its 2.5s; arrivals never truncate it, or a busy table becomes a flicker |
+
 ---
 
 ## Part 3 — Z-index tiers
@@ -342,15 +359,42 @@ for something that is usually not there.
 
 That does not fit. Two layouts, both containment, neither measuring anything:
 
-- **Where the budget carries it** (above the compact threshold): reserved
-  per-seat slot, bubble anchored to its speaker, tail pointing at them.
-- **Where it does not** (640×360 and similar): one bubble at a time in the
-  bottom-left HUD column, carrying the **sender's name** — so it still says who
-  spoke without needing to point. It costs no felt at all, because that column
-  is already allocated.
+- **Reserved per-seat slot** — bubble anchored to its speaker, tail pointing at
+  them. Where the budget carries it.
+- **Compact fallback** — one bubble at a time in the bottom-left HUD column,
+  carrying the **sender's name**, so it still says who spoke without pointing.
+  It costs no felt at all, because that column is already allocated.
 
-The fallback is selected by the same `COMPACT_QUERY` everything else uses, so
-this adds no fourth predicate.
+The switch is the same `COMPACT_QUERY` everything else uses, so this adds no
+fourth predicate. Stated concretely, because "above the threshold" is too vague
+to verify:
+
+| Viewport | compact? | Layout |
+|---|---|---|
+| 640×360, 800×360, 854×384, 844×390, 915×412, 896×414 | yes (height ≤ 440) | **fallback** |
+| 1024×768 | no | reserved per-seat slot |
+| 1512×950 | no | reserved per-seat slot |
+| 768×1024 portrait | no | reserved per-seat slot |
+
+**Every landscape phone is compact.** That is the headline: on a phone the
+fallback *is* the layout, and the per-seat slot only ever runs on a tablet or a
+desktop. Worth knowing before building it — the per-seat version is the one
+almost nobody will see.
+
+Predicted headroom at the three viewports above the line, from `computeFit`:
+
+| Viewport | scale | vf | play area | bubble slot | share |
+|---|---|---|---|---|---|
+| 1024×768 | 0.80 | ~0.87 | ~529 real px | 39 real px | ~7% |
+| 1512×950 | 1.18 | ~0.73 | ~655 real px | 39 real px | ~6% |
+| 768×1024 | 0.60 | 1.0 | ~456 real px | 39 real px | ~9% |
+
+**These are predictions, not measurements, and they are a gate on step 3 rather
+than a licence to start it.** Before the per-seat slot ships, measure the real
+rendered gap above each seat at those three viewports and confirm 39px fits with
+the arc still legible — a play area with room in total can still be crowded once
+`seatScale` has packed eleven seats onto it. Do not assume the budget carries
+just because the viewport is not 640×360.
 
 The z-index tiers (Part 3) land **as part of** this work, not as a later cleanup
 — step 3's lane needs a defined top tier to live in. Step 4 is independent of
@@ -394,6 +438,29 @@ The capture drives real rounds through a real WebSocket, so it exercises
 
 Add a state here rather than eyeballing it once. A screenshot nobody re-renders
 is worth less than the spec that keeps it honest.
+
+### Per-viewpoint state — screenshots are blind to this by construction
+
+**Anything that renders differently for "you" than for "them" needs an explicit
+test. A screenshot cannot catch it, ever.** Every capture is taken from one
+player's seat, so a thing that is correct from that seat and broken from every
+other one photographs perfectly.
+
+This is not hypothetical. Moving the viewer's identity into the HUD dropped
+their own Eleveroon star, which had lived on the seat avatar: every other player
+at the table could see that someone was calling it, and the one person who
+needed to see it could not. Twelve viewports of screenshots showed nothing,
+because the capture *is* that player. `App.tableView.test.tsx` caught it in
+seconds.
+
+The same shape is still open as ledger F1 — the banker's reactions have never
+rendered at all.
+
+When you change anything gated on `isMe`, `viewerId`, `isOwnerView`,
+`isViewerBanker`, or card concealment, write the test. Assert the **behaviour**
+("the player can see their own call"), not the location — the Eleveroon tests
+originally asserted the mark was inside `.k-seat`, which made them fail for the
+right reason but for the wrong stated cause.
 
 ### What the images cannot tell you
 
