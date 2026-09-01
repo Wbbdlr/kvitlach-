@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cardImages } from "../selectors";
+import { APP_VERSION } from "../../version";
 import { act, render } from "@testing-library/react";
 import { CardView } from "../CardView";
 import { Card } from "../../types";
@@ -74,5 +76,23 @@ describe("CardView -- Eleveroon-rejected card", () => {
     const { container, queryByText } = render(<CardView card={normalCard} pastFirstPaint />);
     expect(container.querySelector(".k-card-elev")).toBeFalsy();
     expect(queryByText("Eleveroon")).not.toBeInTheDocument();
+  });
+});
+
+// New card art shipped in v7.9 to the same twelve URLs and did not appear for
+// anyone: files in public/ keep their plain filenames, so browsers and the
+// Cloudflare edge both served what they already had. The query string is the
+// only thing that moves when the art changes.
+describe("card art cache-busting", () => {
+  it("versions every face with the current APP_VERSION", () => {
+    for (const rank of ["1", "6", "9", "11", "12"]) {
+      expect(cardImages[rank]).toBe(`/${rank}.png?v=${APP_VERSION}`);
+    }
+  });
+
+  // index.css fetches blank.png by its bare URL, so a versioned copy here
+  // would mean downloading that 2.6MB file a second time.
+  it("leaves blank.png unversioned", () => {
+    expect(cardImages.blank).toBe("/blank.png");
   });
 });

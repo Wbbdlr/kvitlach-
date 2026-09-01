@@ -1,3 +1,4 @@
+import { cardImages } from "./table/selectors";
 const NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/disclaimer", label: "Disclaimer" },
@@ -21,14 +22,14 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
       >
         <span className="relative inline-flex h-9 w-10 items-center justify-center pointer-events-none">
           <img
-            src="/11.png"
+            src={cardImages["11"]}
             alt=""
             aria-hidden="true"
             className="absolute h-9 w-auto -rotate-[24deg] -translate-x-[2px] drop-shadow-sm z-10"
             loading="lazy"
           />
           <img
-            src="/12.png"
+            src={cardImages["12"]}
             alt=""
             aria-hidden="true"
             className="absolute h-9 w-auto rotate-[23deg] translate-x-[16px] drop-shadow-sm"

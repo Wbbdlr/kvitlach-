@@ -157,44 +157,41 @@ Non-negotiable invariants — breaking these is a security bug, not a style issu
 
 ## Spending credits well
 
-Claude credits on this project are limited. The generic tool-efficiency rules
-live in the workspace `CLAUDE.md`; these are the ones this repo has actually
-paid for.
+Credits here are limited. Generic tool hygiene (batch calls, read narrowly,
+don't re-read what you just wrote) is in the workspace `CLAUDE.md` and is not
+repeated. These are the mistakes THIS repo has actually paid for, in order of
+what they cost.
 
-- **Round trips cost more than work.** The expensive thing is not a big edit,
-  it is asking the user a question, getting one answer, and asking again. When
-  a choice has variants (a font, a placement, a fade level), put **all** of
-  them in one comparison sheet and send it once. Two mockup rounds that could
-  have been one is the single biggest waste seen here.
-- **Never read images into context to judge them — send them.** `SendUserFile`
-  puts a proof sheet in front of the user for free. Read one back yourself
-  only to catch a rendering bug before the user sees it, and never read a
-  sheet that differs from the last only by a constant.
-- **Measure with a script, don't eyeball a raster.** Ink bounds, collisions,
-  clearances: a five-line Python one-liner prints the number. Loading card
-  PNGs into context to look at them costs far more and is less accurate — the
-  2/11 scrollwork collision was found by a row-ink scan, and would not have
-  been visible on a half-scale sheet.
-- **Run the one test file, not the suite.** The frontend suite is 273 tests /
-  ~46s and the backend has a known flake (below); a full run is for
-  cross-cutting work and final handoff only.
-- **Don't verify in a browser what a test already pins.** Use the browser for
-  layout, art and things only a real engine shows. A jsdom test is cheaper
-  than a preview server and it stays.
-- **Trust the edit.** Edit/Write error if they fail; re-reading a file to
-  confirm a change landed is pure cost. Re-read only for surrounding logic.
-- **Write findings down as they are found**, not at the end of a session. Any
-  measured number, dead file, or rejected approach that took real effort gets
-  recorded at the moment it is learned — that is what stops the next session
-  paying for it twice.
-- **But this file is loaded into every session, so keep it to rules, not
-  reference.** What belongs here is anything you can break without noticing:
-  traps, invariants, and "don't try X, it was tried". Measurements, setup
-  procedures and one-time checklists go in `docs/` with a one-line pointer
-  from here. Growing CLAUDE.md by 90 lines to record one session's work is a
-  recurring charge on every future session — that has already happened once
-  and is what `docs/CARD-ART.md` and `docs/OPERATIONS.md` were split out to
-  undo.
+- **Check the shape before writing code against it.** Two files were written
+  in one session against a guessed type and both needed rewriting:
+  `exportHistory.ts` assumed `RoundHistoryEntry` when the store holds
+  `CompletedRoundSummary`, and a whole `adminRoomList()` was written before
+  noticing `listRoomsForAdmin()` already existed. One grep first is cheaper
+  than either. Grep for the method or interface **before** the first line, not
+  after the typecheck fails.
+- **Round trips cost more than edits.** The expensive thing is asking, getting
+  one answer, and asking again. When a choice has variants (a font, a
+  placement, a fade), put **all** of them in one sheet and send it once. The
+  crown took two mockup rounds that should have been one.
+- **Send images, don't read them.** `SendUserFile` puts a proof sheet in front
+  of the user for free. Read one back only to catch a rendering bug first, and
+  never one that differs from the last by a constant.
+- **Measure rasters with a script.** Ink bounds, collisions, clearances: a
+  five-line Python one-liner prints the number. The 2/11 scrollwork collision
+  came from a row-ink scan and was invisible on the half-scale sheet.
+- **Run one test file; typecheck once per coherent change.** The frontend
+  suite is ~290 tests / ~46s, the backend ~30s with a known flake. Full runs
+  are for cross-cutting work and final handoff.
+- **Don't browser-verify what a test pins.** The browser is for layout, art,
+  and things only a real engine shows. A jsdom test is cheaper and it stays.
+- **Write findings down as they are found**, not at session end.
+- **Keep this file rules, not reference.** It loads into every session, so its
+  size is a recurring charge: 446 lines here plus 92 in the workspace file is
+  roughly 8k tokens before any work starts. What belongs here is what you can
+  break without noticing — traps, invariants, "X was tried and does not work".
+  Measurements, setup steps and checklists go in `docs/` with a one-line
+  pointer. Recording one session's work grew this file by 90 lines once
+  already; `docs/CARD-ART.md` and `docs/OPERATIONS.md` exist to undo that.
 
 ## Development rules
 
@@ -369,6 +366,14 @@ three things that bite without it:
 
 The mark is baked into the raster, so **no env var can change it** — `ALPHA`
 and `MARK_INK` are constants in the generator; edit and re-run.
+
+  Deploy note: the twelve faces live in `public/`, so they keep their plain
+  filenames forever and browsers and the Cloudflare edge both go on serving
+  the bytes they already have. `table/selectors.ts` appends
+  `?v=${APP_VERSION}` for exactly this reason — new art shipped in v7.9 and
+  did not appear for anyone until the query string moved. `blank.png` is
+  excluded on purpose: `index.css` fetches it by its bare URL too, and a
+  versioned copy would download that 2.6MB file twice.
 
 
 ## Phones: landscape, fullscreen, install

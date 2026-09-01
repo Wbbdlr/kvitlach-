@@ -1,17 +1,31 @@
 import { Card, Player, RoundPhase, Turn } from "../types";
+import { APP_VERSION } from "../version";
+// The 12 faces carry ?v=<APP_VERSION> and blank.png deliberately does not.
+//
+// These live in public/, so unlike anything Vite bundles they keep their plain
+// filenames forever -- there is no content hash to change when the art does.
+// Redrawing the cards in v7.9 shipped new bytes to the same twelve URLs, and
+// browsers and the Cloudflare edge both went on serving what they already had;
+// the deploy looked like it had silently not happened. The query string moves
+// with every version bump, which is exactly when the art can have changed.
+//
+// blank.png is excluded because index.css fetches it by its bare URL too, and
+// a versioned copy here would mean downloading that 2.6MB file twice.
+const CARD_VERSION = `?v=${APP_VERSION}`;
+
 export const cardImages: Record<string, string> = {
-  "1": "/1.png",
-  "2": "/2.png",
-  "3": "/3.png",
-  "4": "/4.png",
-  "5": "/5.png",
-  "6": "/6.png",
-  "7": "/7.png",
-  "8": "/8.png",
-  "9": "/9.png",
-  "10": "/10.png",
-  "11": "/11.png",
-  "12": "/12.png",
+  "1": `/1.png${CARD_VERSION}`,
+  "2": `/2.png${CARD_VERSION}`,
+  "3": `/3.png${CARD_VERSION}`,
+  "4": `/4.png${CARD_VERSION}`,
+  "5": `/5.png${CARD_VERSION}`,
+  "6": `/6.png${CARD_VERSION}`,
+  "7": `/7.png${CARD_VERSION}`,
+  "8": `/8.png${CARD_VERSION}`,
+  "9": `/9.png${CARD_VERSION}`,
+  "10": `/10.png${CARD_VERSION}`,
+  "11": `/11.png${CARD_VERSION}`,
+  "12": `/12.png${CARD_VERSION}`,
   blank: "/blank.png",
 };
 

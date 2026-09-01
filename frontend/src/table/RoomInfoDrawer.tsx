@@ -18,6 +18,9 @@ export interface RoomInfoDrawerProps {
   buyInRequests: BuyInRequest[];
   onRequestRename: (firstName: string, lastName?: string) => void;
   onRequestBuyIn: (amount: number, note?: string) => void;
+  /** Called with the player's own id for a personal copy, or nothing for the whole table. */
+  onExportHistory?: (focusPlayerId?: string) => void;
+  completedRounds?: number;
 }
 
 // Room name/ID chip -> this drawer, reachable by every seated player (not
@@ -38,6 +41,8 @@ export function RoomInfoDrawer({
   buyInRequests,
   onRequestRename,
   onRequestBuyIn,
+  onExportHistory,
+  completedRounds = 0,
 }: RoomInfoDrawerProps) {
   const [showRenameForm, setShowRenameForm] = useState(false);
   const [renameFirst, setRenameFirst] = useState("");
@@ -149,6 +154,36 @@ export function RoomInfoDrawer({
           {typeof buyIn === "number" && (
             <div className="text-xs text-slate-500 -mt-1">
               Buy-in per player: <span className="font-semibold text-slate-700">${buyIn.toLocaleString()}</span>
+            </div>
+          )}
+
+          {/* Every seated player can take the night home, not just the banker.
+              The export lived only in ManageDrawer before, which meant the one
+              person running the game was the only one who could keep a record
+              of it. Hidden until a round has actually finished -- an empty
+              keepsake is worse than no button. */}
+          {onExportHistory && completedRounds > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="text-sm font-semibold text-ink">Keep the game</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                {completedRounds} round{completedRounds === 1 ? "" : "s"} played so far.
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white"
+                  onClick={() => onExportHistory(playerId)}
+                >
+                  My results
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  onClick={() => onExportHistory()}
+                >
+                  Whole table
+                </button>
+              </div>
             </div>
           )}
 

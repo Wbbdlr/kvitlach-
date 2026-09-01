@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { cardImages } from "./selectors";
 import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
@@ -101,7 +102,8 @@ export interface TableRootProps {
   onVoidAbandonedRound: () => void;
   onAdjustChips: (playerId: string, amount: number, note?: string) => void;
   onKick: (playerId: string) => void;
-  onExportHistory: () => void;
+  /** Pass a player id for a personal copy, nothing for the whole table. */
+  onExportHistory: (focusPlayerId?: string) => void;
   onCloseRoom: () => void;
   onStartNextRound: () => void;
   onLeave: () => void;
@@ -497,14 +499,14 @@ export function TableRoot({
           <div className="flex items-end gap-3">
             <span className="relative inline-flex h-9 w-10 items-center justify-center pointer-events-none">
               <img
-                src="/11.png"
+                src={cardImages["11"]}
                 alt=""
                 aria-hidden="true"
                 className="absolute h-9 w-auto -rotate-[24deg] -translate-x-[2px] drop-shadow-sm z-10"
                 loading="lazy"
               />
               <img
-                src="/12.png"
+                src={cardImages["12"]}
                 alt=""
                 aria-hidden="true"
                 className="absolute h-9 w-auto rotate-[23deg] translate-x-[16px] drop-shadow-sm"
@@ -976,6 +978,8 @@ export function TableRoot({
         buyInRequests={room.buyInRequests ?? []}
         onRequestRename={onRequestRename}
         onRequestBuyIn={onRequestBuyIn}
+        onExportHistory={onExportHistory}
+        completedRounds={roundHistoryCount}
       />
 
       {waitingInfo && (

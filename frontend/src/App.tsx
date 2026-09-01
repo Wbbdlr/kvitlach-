@@ -6,6 +6,7 @@ import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
 
 import { enterImmersive, exitImmersive } from "./table/immersive";
+import { buildHistoryText, downloadText, historyFilename } from "./exportHistory";
 import { bestTotal, isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
 import { TableRoot } from "./table/TableRoot";
@@ -377,76 +378,16 @@ export default function App() {
     store.joinRoom(roomIdInput, joinFirstName, joinLastName, joinPassword || undefined, true);
   };
 
-  const exportRoundHistoryTxt = () => {
+  // Both entry points build the same file; the player-facing one is written
+  // from that player's point of view. See exportHistory.ts -- this used to be
+  // 60 lines here, reachable only from the banker's drawer.
+  const exportRoundHistoryTxt = (focusPlayerId?: string) => {
     const rounds = roundHistory ?? [];
     if (!rounds.length) return;
-    if (typeof window === "undefined") return;
-
-    const header = [
-      "Kvitlach Round History",
-      room?.roomId ? `Room: ${room.roomId}` : undefined,
-      `Exported: ${new Date().toLocaleString()}`,
-      "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const body = rounds
-      .map((r, idx) => {
-        const roundLines: string[] = [];
-        roundLines.push(`Round ${r.roundNumber ?? idx + 1}`);
-        roundLines.push(`Completed: ${new Date(r.completedAt).toLocaleString()}`);
-        roundLines.push(`Players: ${r.turns?.length ?? 0}`);
-        (r.turns ?? []).forEach((turn) => {
-          const name = [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName || "Player";
-          const role = turn.player.type === "admin" ? "Banker" : "Player";
-          const bet = typeof turn.bet === "number" ? `$${turn.bet}` : "--";
-          const net = typeof turn.settledNet === "number" ? ` | Net: ${turn.settledNet >= 0 ? "+" : ""}$${Math.abs(turn.settledNet)}` : "";
-          const stateLabel = statusDisplay(turn).label || turn.state;
-          roundLines.push(`  - ${name} (${role}) | State: ${stateLabel} | Bet: ${bet}${net}`);
-        });
-        if (r.balances?.length) {
-          const nameById = new Map(
-            (r.turns ?? []).map((turn) => [
-              turn.player.id,
-              [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName || "Player",
-            ])
-          );
-          roundLines.push("  Balances:");
-          r.balances.forEach((b) => {
-            const payerName = nameById.get(b.payer) ?? b.payer;
-            const payeeName = nameById.get(b.payee) ?? b.payee;
-            roundLines.push(`    - ${payerName} -> ${payeeName}: $${b.amount}`);
-          });
-        }
-        roundLines.push("");
-        return roundLines.join("\n");
-      })
-      .join("\n");
-
-    const content = [header, body].join("\n");
-    const filename = `kvitlach-history${room?.roomId ? `-${room.roomId}` : ""}.txt`;
-
-    const triggerDownload = (href: string) => {
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = filename;
-      anchor.rel = "noopener";
-      anchor.style.display = "none";
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-    };
-
-    try {
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      triggerDownload(url);
-      requestAnimationFrame(() => URL.revokeObjectURL(url));
-    } catch (err) {
-      const dataUri = `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`;
-      triggerDownload(dataUri);
-    }
+    downloadText(
+      historyFilename(room?.roomId, Boolean(focusPlayerId)),
+      buildHistoryText({ rounds, roomId: room?.roomId, roomName: room?.name, focusPlayerId })
+    );
   };
 
 
