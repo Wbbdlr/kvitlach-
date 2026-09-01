@@ -465,6 +465,12 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // server's own 90s turn timer, so the escape hatch lands while the player
   // still has time to actually retry the move.
   const PENDING_ACTION_TIMEOUT_MS = 10_000;
+  // Which of the three lobby forms was last submitted. The access gate is
+  // per-action now (create can need a code while join stays open), so an
+  // `invite_required` has to land on the form the player is actually looking
+  // at -- and nothing in the error envelope says which that was.
+  let lastLobbyAction: "create" | "join" | "practice" | undefined;
+
   let pendingActionTimer: ReturnType<typeof setTimeout> | undefined;
   const beginPendingAction = (requestId: string, type: "bet" | "hit" | "stand" | "skip") => {
     if (pendingActionTimer) clearTimeout(pendingActionTimer);
@@ -996,6 +1002,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           update.playerId = undefined;
           return update;
         }
+        // Puts the message on the form that was actually submitted, falling
+        // back to all three only when we somehow have no idea -- which is
+        // still better than silently swallowing it.
+        const lobbyErrors = (current: UIState["formErrors"], text: string) =>
+          lastLobbyAction
+            ? { ...current, [lastLobbyAction]: text }
+            : { ...current, create: text, join: text, practice: text };
         const pendingType = state.pendingAction?.type;
         const friendly = errorCopy(errorMessage);
         if (pendingType === "bet" || pendingType === "hit" || pendingType === "stand" || pendingType === "skip") {
@@ -1014,13 +1027,12 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           // below was added to fix -- this raises the shared access-code
           // banner, which sits above all three.
           update.accessCodeRequired = true;
-          update.formErrors = { ...state.formErrors, create: friendly, join: friendly, practice: friendly };
+          update.formErrors = lobbyErrors(state.formErrors, friendly);
         } else if (errorMessage === "locked_down") {
-          // Reaches all three forms like the invite codes above (closed mode
-          // gates creating, joining and practice alike), but raises no code
-          // banner -- in closed mode a code would not help, and offering a
-          // field that cannot work is worse than no field.
-          update.formErrors = { ...state.formErrors, create: friendly, join: friendly, practice: friendly };
+          // Same routing, but no code banner: in a closed mode a code would
+          // not help, and offering a field that cannot work is worse than
+          // offering no field at all.
+          update.formErrors = lobbyErrors(state.formErrors, friendly);
         } else if (errorMessage === "maintenance_mode" || errorMessage === "room_capacity") {
           update.formErrors = { ...state.formErrors, create: friendly };
         } else {
@@ -1029,6 +1041,23 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         }
         return update;
       });
+      return;
+    }
+    // Pushed from the admin page to everyone connected. Rendered through the
+    // same notification stack as everything else rather than as its own
+    // banner: it is one more thing the server has to say, and giving it a
+    // bespoke surface would mean a second thing that can cover the felt.
+    if (msg.type === "admin:notice") {
+      const notice = msg.payload as { text?: string; level?: string } | undefined;
+      const text = typeof notice?.text === "string" ? notice.text.trim().slice(0, 200) : "";
+      if (text) {
+        set((state: UIState) => ({
+          notifications: [
+            ...state.notifications,
+            makeNotification(text, notice?.level === "warning" ? "error" : "info"),
+          ].slice(-5),
+        }));
+      }
       return;
     }
     if (msg.type === "reaction:new") {
@@ -1242,6 +1271,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
         const trimmedRoomId = roomId?.trim() || undefined;
+        lastLobbyAction = "create";
         client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll, accessCode: get().accessCode || undefined });
     },
     // An options object rather than createRoom's positional style: four
@@ -1252,7 +1282,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set((s) => ({ formErrors: { ...s.formErrors, practice: "Enter a first name to start a practice game." } }));
         return;
       }
-      pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options, accessCode: get().accessCode || undefined });
+      lastLobbyAction = "practice";
+        pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options, accessCode: get().accessCode || undefined });
     },
     joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => {
       if (!roomId) {
@@ -1263,7 +1294,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         set((s) => ({ formErrors: { ...s.formErrors, join: "Enter a first name to join." } }));
         return;
       }
-      client.send("room:join", { roomId, firstName, lastName, password, spectator: Boolean(spectator), accessCode: get().accessCode || undefined });
+      lastLobbyAction = "join";
+        client.send("room:join", { roomId, firstName, lastName, password, spectator: Boolean(spectator), accessCode: get().accessCode || undefined });
     },
     startRound: (deckCount?: number) => {
       const roomId = get().room?.roomId;

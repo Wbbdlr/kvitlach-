@@ -1,8 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
-import Fastify, { FastifyRequest } from "fastify";
+import Fastify, { FastifyRequest, FastifyReply } from "fastify";
 import type { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
-import { AccessControl, isAccessMode, parseCodeList } from "./access.js";
+import { AccessControl, isAccessMode, isActionMode, parseCodeList } from "./access.js";
+import type { GatedAction } from "./access.js";
+import { GATED_ACTIONS } from "./access.js";
+import { RuntimeLimits, isLimitKey } from "./limits.js";
+import { AdminAuth } from "./admin-auth.js";
+import { renderAdminPage, renderLoginPage } from "./admin-page.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
 // interpolating into a <script> or an inline event handler: the HTML parser
@@ -92,93 +97,20 @@ function formatIdle(ms: number): string {
   return `${days}d ${hours % 24}h`;
 }
 
-function renderAdminPage(store: GameStore, access: AccessControl, token: string): string {
-  const rooms = store.listRoomsForAdmin().sort((a, b) => a.lastActivityAt - b.lastActivityAt);
-  const rows = rooms
-    .map((r) => {
-      const idleMs = Date.now() - r.lastActivityAt;
-      return `<tr>
-        <td><code>${escapeHtml(r.roomId)}</code></td>
-        <td>${escapeHtml(r.name ?? "")}</td>
-        <td>${r.playerCount}</td>
-        <td>${r.completedRounds}</td>
-        <td>${r.hasActiveRound ? "yes" : "no"}</td>
-        <td>${formatIdle(idleMs)}</td>
-        <td>
-          <form method="post" action="/admin/rooms/${encodeURIComponent(r.roomId)}/delete?token=${encodeURIComponent(token)}"
-                data-room="${escapeHtml(r.roomId)}"
-                onsubmit="return confirm('Delete room ' + this.dataset.room + '? This frees the Game ID immediately and cannot be undone.');">
-            <button type="submit">Delete</button>
-          </form>
-        </td>
-      </tr>`;
-    })
-    .join("\n");
-
-  const snap = access.snapshot();
-  const modeButton = (mode: string, label: string, hint: string) => `
-    <form method="post" action="/admin/access?token=${encodeURIComponent(token)}" class="mode">
-      <input type="hidden" name="mode" value="${mode}" />
-      <button type="submit" class="${snap.mode === mode ? "on" : ""}" ${snap.mode === mode ? "disabled" : ""}>${escapeHtml(label)}</button>
-      <span class="meta">${escapeHtml(hint)}</span>
-    </form>`;
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>Kvitlach admin</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1f2937; }
-  h1 { font-size: 1.25rem; }
-  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; font-size: 0.9rem; }
-  th { color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
-  button { background: #dc2626; color: white; border: none; border-radius: 4px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.85rem; }
-  button:hover { background: #b91c1c; }
-  .empty { color: #6b7280; margin-top: 1rem; }
-  .meta { color: #6b7280; font-size: 0.85rem; }
-  fieldset { border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem 1rem 1rem; margin: 0 0 1.5rem; }
-  legend { font-size: 0.75rem; text-transform: uppercase; color: #6b7280; font-weight: 600; }
-  .mode { display: flex; align-items: center; gap: 0.75rem; margin: 0.4rem 0; }
-  .mode button { background: #374151; min-width: 7rem; }
-  .mode button:hover { background: #111827; }
-  .mode button.on { background: #047857; cursor: default; opacity: 1; }
-  textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.4rem; }
-  .save { background: #1d4ed8; margin-top: 0.5rem; }
-  .save:hover { background: #1e40af; }
-</style>
-</head>
-<body>
-  <fieldset>
-    <legend>Access &mdash; currently <b>${snap.mode}</b></legend>
-    <p class="meta">Takes effect immediately, no restart, and survives one. Never affects a game already
-    in progress: reconnecting to a table you are already seated at is not gated.</p>
-    ${modeButton("open", "Open", "Anyone can create, join and practise.")}
-    ${modeButton("invite", "Invite only", `A code is required to create, join or practise. ${snap.codeCount} code(s) set.`)}
-    ${modeButton("closed", "Closed", "No new games at all. Use this when the box is struggling.")}
-    <form method="post" action="/admin/access?token=${encodeURIComponent(token)}">
-      <label class="meta" for="codes">Access codes &mdash; one per line. Case-insensitive.</label>
-      <textarea id="codes" name="codes" rows="4" placeholder="one code per line"></textarea>
-      <button type="submit" class="save">Replace codes</button>
-      <span class="meta">Existing codes are not shown. Saving replaces the whole list.</span>
-    </form>
-  </fieldset>
-
-  <h1>Active rooms (${rooms.length})</h1>
-  <p class="meta">Rooms auto-expire after 3 days of inactivity. Deleting one here frees its Game ID immediately.</p>
-  ${rooms.length === 0 ? '<p class="empty">No active rooms.</p>' : `
-  <table>
-    <thead>
-      <tr><th>Game ID</th><th>Name</th><th>Players</th><th>Rounds</th><th>Round active</th><th>Idle</th><th></th></tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>`}
-</body>
-</html>`;
+export interface HttpServerDeps {
+  access?: AccessControl;
+  limits?: RuntimeLimits;
+  auth?: AdminAuth;
+  /** Set by index.ts once the WS server exists; the broadcast form needs it. */
+  broadcast?: (text: string, level: "info" | "warning") => number;
 }
 
-export function createHttpServer(store: GameStore, access: AccessControl = new AccessControl()) {
+export function createHttpServer(store: GameStore, deps: HttpServerDeps | AccessControl = {}) {
+  // Older callers (and every existing test) pass an AccessControl positionally.
+  const opts: HttpServerDeps = deps instanceof AccessControl ? { access: deps } : deps;
+  const access = opts.access ?? new AccessControl();
+  const limits = opts.limits ?? new RuntimeLimits();
+  const auth = opts.auth ?? new AdminAuth();
   const app = Fastify({
     logger: {
       // The admin routes carry ADMIN_TOKEN as a query param (the plain-HTML
@@ -267,45 +199,133 @@ export function createHttpServer(store: GameStore, access: AccessControl = new A
   // valid token get a plain 404 rather than 401/403, so an unauthenticated
   // probe can't even confirm the route exists. A per-IP attempt throttle
   // guards against brute-forcing the token itself.
+  // Two ways in, both landing on the same session check.
+  //
+  //  - ADMIN_USERNAME + ADMIN_PASSWORD(_HASH): a login form and a signed
+  //    session cookie. This is what makes the page usable from another
+  //    machine, since a query-string token would then sit in proxy logs,
+  //    browser history and Referer headers.
+  //  - ADMIN_TOKEN in the query string: the original mechanism, kept because
+  //    it works from a shell with curl and because removing it would lock out
+  //    a deploy that has only ever had the token set.
+  //
+  // Neither being configured leaves the whole panel 404ing, which is the
+  // default. A wrong credential returns 404 as well, so an unauthenticated
+  // probe cannot even confirm the route exists -- meaning a 404 says nothing
+  // about WHICH of the two is wrong. That is deliberate, and it is also the
+  // single most confusing thing about this page when setting it up.
+  const authorized = (request: FastifyRequest): "session" | "token" | undefined => {
+    if (auth.verifySession(request.headers.cookie)) return "session";
+    const token = (request.query as Record<string, unknown>)?.token;
+    if (isValidToken(token)) return "token";
+    return undefined;
+  };
+
+  // Token callers must keep carrying the token on every form POST; cookie
+  // callers must not have it appended, or it would end up in their history.
+  const carry = (request: FastifyRequest, how: "session" | "token"): string =>
+    how === "token"
+      ? `?token=${encodeURIComponent(String((request.query as Record<string, unknown>).token))}`
+      : "";
+
+  const guard = (request: FastifyRequest, reply: FastifyReply): "session" | "token" | undefined => {
+    const ip = getClientIp(request);
+    if (isRateLimited(ip)) {
+      void reply.code(404).send("Not found");
+      return undefined;
+    }
+    const how = authorized(request);
+    if (!how) {
+      recordFailedAttempt(ip);
+      // A login form instead of a 404, but only when a username is actually
+      // configured -- otherwise the 404 has to stay total, or its presence
+      // would advertise the route to anyone who asks.
+      if (auth.enabled) void reply.code(401).type("text/html").send(renderLoginPage());
+      else void reply.code(404).send("Not found");
+      return undefined;
+    }
+    return how;
+  };
+
   app.get("/admin", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderAdminPage({
+        store,
+        access,
+        limits,
+        query: carry(request, how),
+        refresh: query.refresh === "1",
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  app.post("/admin/login", async (request, reply) => {
     const ip = getClientIp(request);
     if (isRateLimited(ip)) return reply.code(404).send("Not found");
-    const token = (request.query as Record<string, unknown>)?.token;
-    if (!isValidToken(token)) {
+    if (!auth.enabled) return reply.code(404).send("Not found");
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const session = auth.login(body.username, body.password);
+    if (!session) {
       recordFailedAttempt(ip);
-      return reply.code(404).send("Not found");
+      return reply.code(401).type("text/html").send(renderLoginPage("Wrong username or password."));
     }
-    reply.type("text/html").send(renderAdminPage(store, access, token as string));
+    return reply.header("set-cookie", auth.cookieHeader(session)).redirect("/admin");
   });
+
+  app.post("/admin/logout", async (_request, reply) =>
+    reply.header("set-cookie", auth.clearedCookieHeader()).code(200).type("text/html").send(renderLoginPage("Signed out."))
+  );
 
   app.post<{ Params: { roomId: string } }>("/admin/rooms/:roomId/delete", async (request, reply) => {
-    const ip = getClientIp(request);
-    if (isRateLimited(ip)) return reply.code(404).send("Not found");
-    const token = (request.query as Record<string, unknown>)?.token;
-    if (!isValidToken(token)) {
-      recordFailedAttempt(ip);
-      return reply.code(404).send("Not found");
-    }
+    const how = guard(request, reply);
+    if (!how) return reply;
     store.forceDeleteRoom(request.params.roomId);
-    reply.redirect(`/admin?token=${encodeURIComponent(token as string)}`);
+    return reply.redirect(`/admin${carry(request, how)}`);
   });
 
-  // One route for both controls on the panel: the mode buttons post `mode`,
-  // the textarea posts `codes`, and neither form carries the other's field.
-  // Sending only what changed means saving codes cannot silently reset the
-  // mode, and vice versa.
+  // One route for every access control on the page. Each form posts only its
+  // own field, so applying a preset cannot silently wipe the codes, changing
+  // one action cannot reset the other two, and saving codes cannot reopen a
+  // locked-down platform.
   app.post("/admin/access", async (request, reply) => {
-    const ip = getClientIp(request);
-    if (isRateLimited(ip)) return reply.code(404).send("Not found");
-    const token = (request.query as Record<string, unknown>)?.token;
-    if (!isValidToken(token)) {
-      recordFailedAttempt(ip);
-      return reply.code(404).send("Not found");
-    }
+    const how = guard(request, reply);
+    if (!how) return reply;
     const body = (request.body ?? {}) as Record<string, unknown>;
     if (isAccessMode(body.mode)) access.setMode(body.mode);
+    if (typeof body.action === "string" && GATED_ACTIONS.includes(body.action as GatedAction) && isActionMode(body.actionMode)) {
+      access.setActionMode(body.action as GatedAction, body.actionMode);
+    }
     if (typeof body.codes === "string") access.setCodes(parseCodeList(body.codes));
-    reply.redirect(`/admin?token=${encodeURIComponent(token as string)}`);
+    return reply.redirect(`/admin${carry(request, how)}`);
+  });
+
+  app.post("/admin/limits", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    if (body.reset === "1") limits.resetToDefaults();
+    else if (isLimitKey(body.key)) limits.set(body.key, body.value);
+    return reply.redirect(`/admin${carry(request, how)}`);
+  });
+
+  app.post("/admin/broadcast", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const text = typeof body.text === "string" ? body.text.trim().slice(0, 200) : "";
+    const level = body.level === "warning" ? "warning" : "info";
+    const sent = text && opts.broadcast ? opts.broadcast(text, level) : 0;
+    const note = !text
+      ? "Nothing to send."
+      : !opts.broadcast
+        ? "No WebSocket server attached; nothing sent."
+        : `Sent to ${sent} connection(s).`;
+    const sep = carry(request, how) ? "&" : "?";
+    return reply.redirect(`/admin${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   return app;

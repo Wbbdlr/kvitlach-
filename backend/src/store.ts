@@ -3,6 +3,7 @@ import { customAlphabet } from "nanoid";
 import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe, buildRoundHistoryEntry, recommendedDeckCount } from "./round.js";
 import { handleHit } from "./round.js";
 import { decideBotAction, decideBotBet } from "./bot.js";
+import { RuntimeLimits } from "./limits.js";
 import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
@@ -71,7 +72,7 @@ function normalizeMoney(raw: unknown): number | undefined {
 // above any realistic number of people learning the rules at once on a
 // family-night server, so it bounds the worst case without ever being the
 // thing a real user runs into.
-const MAX_CONCURRENT_PRACTICE_ROOMS = 25;
+// Capacity caps now live in limits.ts so they can be changed at runtime.
 // Practice rooms have been capped since they existed; real ones were not, and
 // on a public endpoint that was the bigger hole of the two. Nothing about
 // room:create requires an existing room, a password, or any prior state, so a
@@ -90,8 +91,7 @@ const MAX_CONCURRENT_PRACTICE_ROOMS = 25;
 // (a per-IP creation quota, which bounds one actor without letting them
 // exhaust the shared ceiling) needs the client IP down here in the store and
 // is worth doing if this ever gets abused in practice.
-const MAX_CONCURRENT_ROOMS = 150;
-const MAX_PLAYERS_PER_ROOM = 100;
+
 // How many non-banker players get an active seat in a single round. The felt
 // table's oval seating (frontend/src/table/layout.ts) can only fit players
 // without overlapping seat plates up to this count -- numerically confirmed,
@@ -161,9 +161,14 @@ interface RoomRecord {
 export interface AdminRoomSummary {
   roomId: string;
   name?: string;
+  practice: boolean;
+  bankerName?: string;
   playerCount: number;
+  botCount: number;
+  waitingCount: number;
   completedRounds: number;
   hasActiveRound: boolean;
+  hasPassword: boolean;
   lastActivityAt: number;
 }
 
@@ -179,9 +184,15 @@ export class GameStore {
   private sessions = new Map<string, SessionRecord>();
   private roundUpdateListener?: (round: RoundContext) => void;
   private db?: Database;
+  // Capacity caps are read through this on every check rather than captured
+  // at construction, so a change made from the admin page applies to the very
+  // next createRoom without a restart. Defaults to the historical constants
+  // when nothing is injected, which is what every test relies on.
+  readonly limits: RuntimeLimits;
 
-  constructor(db?: Database) {
+  constructor(db?: Database, limits: RuntimeLimits = new RuntimeLimits()) {
     this.db = db;
+    this.limits = limits;
   }
 
   private sanitizeName(value: string | undefined, max = MAX_NAME_LEN) {
@@ -445,7 +456,7 @@ export class GameStore {
     createRoom(admin: { firstName: string; lastName?: string; roomName?: string; password?: string; buyIn?: number; roomId?: string; bankerBankroll?: number }) {
     // Checked before anything is allocated or any id is claimed, so a refusal
     // leaves no trace behind (mirrors createPracticeRoom's own capacity gate).
-    if (this.rooms.size >= MAX_CONCURRENT_ROOMS) {
+    if (this.rooms.size >= this.limits.maxRooms) {
       throw new Error("room_capacity");
     }
     const player: Player = {
@@ -517,7 +528,7 @@ export class GameStore {
     deckCount?: number;
   }) {
     const activePracticeRooms = [...this.rooms.values()].filter((r) => r.room.practice === true).length;
-    if (activePracticeRooms >= MAX_CONCURRENT_PRACTICE_ROOMS) {
+    if (activePracticeRooms >= this.limits.maxPracticeRooms) {
       throw new Error("practice_capacity");
     }
 
@@ -596,7 +607,7 @@ export class GameStore {
       const roomRec = this.rooms.get(normalizedId);
     if (!roomRec) throw new Error("room_not_found");
     if (roomRec.room.password && roomRec.room.password !== info.password) throw new Error("invalid_password");
-    if (roomRec.room.players.length >= MAX_PLAYERS_PER_ROOM) throw new Error("room_full");
+    if (roomRec.room.players.length >= this.limits.maxPlayersPerRoom) throw new Error("room_full");
     const player: Player = {
       id: uuid(),
       firstName: this.sanitizeName(info.firstName),
@@ -1679,14 +1690,26 @@ export class GameStore {
   // and the whole point is to free up a Game ID even when you're not (or no
   // longer) that room's own banker.
   listRoomsForAdmin(): AdminRoomSummary[] {
-    return Array.from(this.rooms.entries()).map(([roomId, rec]) => ({
-      roomId,
-      name: rec.room.name,
-      playerCount: rec.room.players.length,
-      completedRounds: rec.room.completedRounds ?? 0,
-      hasActiveRound: Boolean(rec.room.roundId),
-      lastActivityAt: rec.lastActivityAt ?? Date.now(),
-    }));
+    return Array.from(this.rooms.entries())
+      .map(([roomId, rec]) => {
+        const banker = rec.room.players.find((p) => p.type === "admin");
+        return {
+          roomId,
+          name: rec.room.name,
+          practice: rec.room.practice === true,
+          bankerName: banker ? `${banker.firstName} ${banker.lastName ?? ""}`.trim() : undefined,
+          playerCount: rec.room.players.length,
+          botCount: rec.room.players.filter((p) => p.isBot === true).length,
+          waitingCount: rec.room.waitingPlayerIds?.length ?? 0,
+          completedRounds: rec.room.completedRounds ?? 0,
+          hasActiveRound: Boolean(rec.room.roundId),
+          hasPassword: Boolean(rec.room.password),
+          lastActivityAt: rec.lastActivityAt ?? Date.now(),
+        };
+      })
+      // Busiest first: on a struggling box the room worth looking at is the
+      // one with the most people in it, not whichever hashed first.
+      .sort((a, b) => b.playerCount - a.playerCount || b.lastActivityAt - a.lastActivityAt);
   }
 
   // The load picture, for /health/detail and /metrics. Separate from

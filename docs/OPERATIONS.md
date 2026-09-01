@@ -1,82 +1,132 @@
 # Operating the platform
 
-Lockdown and monitoring reference. CLAUDE.md keeps the one rule that is a bug
-if broken; the setup detail lives here because it is needed once, not every
-session.
+The admin panel and what it controls. CLAUDE.md keeps only the rules that are
+bugs if broken; the setup detail lives here because it is needed once.
 
 ## Reaching the admin panel
 
 **It is not on `kvitlach.us`.** `frontend/nginx.conf` serves the SPA only and
-proxies nothing, and the backend's HTTP port is published as
-`127.0.0.1:25000` — localhost on the server, and nowhere else. Asking for
-`https://kvitlach.us/admin` gets the React app via the SPA catch-all, which
-looks like the admin page is broken when it was never there. The tunnel
-carries `kvitlach.us` → frontend and `ws.kvitlach.us` → 25001; port 25000 has
-no public route at all, deliberately.
+proxies nothing, and the backend's HTTP port is not carried by the tunnel.
+Asking for `https://kvitlach.us/admin` gets the React app via the SPA
+catch-all, which looks like the admin page is broken when it was never there.
 
-So: **open a browser on the server itself** (the RDP session) and go to
-`http://127.0.0.1:25000/admin?token=$ADMIN_TOKEN`. From a workstation, an SSH
-port-forward (`ssh -L 25000:127.0.0.1:25000 …`) reaches the same place. Do not
-"fix" this by publishing 25000 or adding an nginx proxy — the token travels in
-the query string, which is exactly why the port stays local.
+The panel is on **port 25000**, and `ADMIN_BIND` in `deploy/.env` decides who
+can reach it:
 
-**Every admin route 404s when `ADMIN_TOKEN` is unset**, which is the default.
-A wrong or missing token also returns 404 rather than 401/403, so an
-unauthenticated probe cannot even confirm the route exists — meaning "404"
-tells you nothing about which of the two is wrong. Set it in
-`deploy/.env` (compose reads that file automatically, and
-`build-tarball.sh` excludes `.env`, so a deploy will not overwrite it):
+| `ADMIN_BIND` | reachable from | notes |
+|---|---|---|
+| `127.0.0.1` (default) | the server itself | browser on the box, or `ssh -L 25000:127.0.0.1:25000 …` |
+| `100.x.y.z` (Tailscale IP) | the tailnet | encrypted end to end by WireGuard. Safest option that works off-site. |
+| `192.168.50.23` | the LAN | login crosses the wire as **cleartext HTTP** |
+| `0.0.0.0` | LAN **and** tailnet | the only way to get both from one mapping |
+
+**Port 25000 also serves `/health`, `/health/detail` and `/metrics`.** Anything
+that can reach the panel can read those. None of these bindings creates public
+exposure on their own — nothing forwards 25000 from the router and the tunnel
+only carries the frontend — but `0.0.0.0` covers every *future* interface too,
+so re-check it if this box ever joins another network.
+
+> **TODO — replace password auth with something stronger.** A username and
+> password over plain HTTP on the LAN is the weak link here, and it is
+> deliberate and temporary. Better options, roughly in order of effort:
+> Tailscale Serve (gives it real HTTPS and a tailnet-only hostname for free),
+> a Cloudflare Access policy in front of it, or client certificates. Until one
+> of those lands, prefer `ADMIN_BIND` = the Tailscale IP over the LAN IP.
+
+## Turning it on
+
+The panel **404s entirely** unless credentials are configured, which is the
+default. A wrong password also returns 401 and a wrong token 404, so an
+unauthenticated probe cannot confirm what exists — meaning the response tells
+you nothing about *which* thing is misconfigured.
+
+Two mechanisms, either works:
+
+- **Username + password** (use this): `ADMIN_USERNAME` plus
+  `ADMIN_PASSWORD_HASH`. Gives a login form and a signed session cookie
+  lasting 12 hours. `ADMIN_PASSWORD` (plaintext) also works and warns on every
+  boot. Set `ADMIN_SESSION_SECRET` to keep sessions alive across restarts;
+  unset means a fresh random secret per boot, so a restart signs you out.
+- **`ADMIN_TOKEN` in the query string**: the original mechanism, kept because
+  it works from a shell with `curl`. Do not use it once the port is reachable
+  from other machines — a token in the URL is a token in every proxy log,
+  browser history entry and `Referer` header.
+
+Generate the hash on the server, then set the rest:
 
 ```bash
-cd ~/docker/kvitlach/deploy && grep -q '^ADMIN_TOKEN=' .env 2>/dev/null || echo "ADMIN_TOKEN=$(openssl rand -hex 24)" >> .env; docker compose up -d backend && echo "http://127.0.0.1:25000/admin?token=$(grep '^ADMIN_TOKEN=' .env | cut -d= -f2)"
+cd ~/docker/kvitlach && docker compose -f deploy/docker-compose.yml exec backend npm run hash-password -- 'your password here'
 ```
 
-The panel is plain HTML with no JavaScript on purpose (see `escapeHtml`'s
-comment in `http-server.ts`). It lists rooms with a force-delete for stuck
-Game IDs, and carries the access-mode controls below.
+Put the printed `ADMIN_PASSWORD_HASH=…` line into `deploy/.env` along with
+`ADMIN_USERNAME`, `ADMIN_SESSION_SECRET` (any long random string) and
+`ADMIN_BIND`, then `docker compose up -d backend`. `build-tarball.sh` excludes
+`.env`, so deploys will not overwrite it.
+
+## What the panel does
+
+- **Load** — rooms (against the current cap), players, live rounds, WS
+  connections, event-loop lag, memory, uptime. `auto-refresh` toggles a 15s
+  meta refresh; it is opt-in because refreshing while someone is typing a list
+  of access codes would eat it.
+- **Who can play** — presets and per-action modes, below.
+- **Capacity** — max rooms, max practice rooms, max players per room, live.
+  Lowering a cap never evicts anyone; it refuses the next one over the line.
+- **Broadcast** — pushes a banner to everyone currently at a table. Not
+  stored, so someone joining afterwards will not see it.
+- **Rooms** — busiest first, with banker, player/bot/waiting counts, rounds
+  played, whether a round is live, idle time, and force-delete to free a
+  stuck Game ID.
+
+**`eventLoopLagMs` is the number to watch.** Everything in this server — every
+room timer, every WS frame, every broadcast — runs on one event loop, so lag
+climbs while players are already seeing turns land late, well before memory or
+room count look alarming.
 
 ## Access control (`backend/src/access.ts`)
 
-Three modes, changed from **`/admin?token=$ADMIN_TOKEN`** with no restart:
+Each way in is gated separately, so "anyone can join a table, but only I can
+start one" is expressible — set **Start a table** to *Needs a code* and leave
+the other two on *Anyone*.
 
-| mode | create | join | practice | resume |
-|---|---|---|---|---|
-| `open` | yes | yes | yes | yes |
-| `invite` | code | code | code | **yes** |
-| `closed` | no | no | no | **yes** |
+| per action | meaning |
+|---|---|
+| `open` | anyone |
+| `code` | one of the access codes is required |
+| `closed` | nobody |
 
-- The mode and codes persist in the `settings` table and **reload on boot,
-  overriding the env defaults** — a lockdown must survive the restart that
-  usually follows whatever caused it. `ACCESS_MODE` / `ACCESS_CODES` in
-  `docker-compose.yml` are boot defaults only.
-- `MAINTENANCE_MODE=true` still works and maps to `closed`.
+The presets set all three at once: **Open** (all `open`), **Invite only** (all
+`code`), **Closed** (all `closed`). When the three disagree the page and
+`/health/detail` both report `custom`.
+
+- Changes apply immediately, no restart, and **persist in the `settings`
+  table, overriding the env defaults on boot** — a lockdown must survive the
+  restart that usually follows whatever caused it. `ACCESS_MODE` /
+  `ACCESS_CODES` / `MAX_ROOMS` etc. are boot defaults only. **To reopen, set
+  it back in the panel; editing compose will not do it.**
+- `MAINTENANCE_MODE=true` still works and maps to all-`closed`.
 - Codes are case-insensitive and trimmed (they get read down a phone line),
-  compared without short-circuiting, capped at 200 codes of 64 chars.
+  compared without short-circuiting, capped at 200 codes of 64 chars. Existing
+  codes are never displayed; saving replaces the whole list.
 - **There is no per-person allowlist and cannot be**: the platform has no
   accounts, only names and per-room session tokens. A shared code is the only
   "certain people" this data model can express.
 - Client side: the lobby shows an access-code field **only after** the server
-  refuses with `invite_required` / `invalid_invite`. The mode is never
-  published to unauthenticated clients, so the client cannot know in advance.
+  refuses. The mode is never published to unauthenticated clients, so the
+  client cannot know in advance; the error lands on whichever of the three
+  forms was actually submitted.
 
-Capacity caps predate this and are separate: 150 rooms, 25 practice rooms, 100
-players/room (`store.ts`), 80 connections/IP and 30 messages/10s
-(`ws-server.ts`).
+Rate limits are separate and still fixed in code: 80 connections/IP and 30
+messages/10s (`ws-server.ts`).
 
 ## Health endpoints
 
 - `GET /health` — `{"status":"ok"}`.
-- `GET /health/detail` — one flat JSON object for Kuma's **Json Query** monitor
-  type, the only one that can threshold on a number: `rooms`, `practiceRooms`,
-  `players`, `activeRounds`, `wsConnections`, `eventLoopLagMs`, `rssMb`,
-  `uptimeSeconds`, `accessMode`.
-- `GET /metrics` — the same gauges as Prometheus text, alongside the
-  pre-existing counters.
-
-**`eventLoopLagMs` is the one to watch for overload.** Everything in this
-server — every room timer, every WS frame, every broadcast — runs on the one
-event loop, so lag climbs while players are already seeing turns land late,
-well before CPU or RSS look alarming.
+- `GET /health/detail` — flat JSON for Kuma's **Json Query** monitor, the only
+  type that can threshold on a number: `rooms`, `practiceRooms`, `players`,
+  `activeRounds`, `wsConnections`, `eventLoopLagMs`, `rssMb`, `uptimeSeconds`,
+  `accessMode`.
+- `GET /metrics` — the same gauges as Prometheus text.
 
 ## Uptime Kuma
 
@@ -98,5 +148,7 @@ Kuma on 3001.
 | Json Query | `http://192.168.50.23:25000/health/detail` | `$.wsConnections` | `< 300` |
 | Json Query | `http://192.168.50.23:25000/health/detail` | `$.accessMode` | `== "open"` |
 
-The last one is a reminder, not an outage: it goes red while the platform is
-deliberately locked down, so a lockdown flipped at 2am cannot be forgotten.
+Those thresholds match the panel's own colour bands on purpose — the page and
+the alert should not disagree about what "bad" means. The last monitor is a
+reminder, not an outage: it goes red whenever access is restricted, so a
+lockdown flipped at 2am cannot be forgotten.

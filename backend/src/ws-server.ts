@@ -703,6 +703,28 @@ export class WSServer {
     });
   }
 
+  /**
+   * Pushes a notice to every connected socket, in every room. Called from the
+   * admin page.
+   *
+   * Transient on purpose: it reaches whoever is connected at the moment it is
+   * sent, and is not stored or replayed to anyone who joins afterwards. The
+   * thing it exists for -- "server restarting in five minutes" -- is only
+   * true for a few minutes, and a stored banner would still be greeting
+   * players an hour later.
+   */
+  broadcastNotice(text: string, level: "info" | "warning" = "info"): number {
+    const message: ServerEnvelope = { type: "admin:notice", payload: { text, level, at: Date.now() } };
+    let delivered = 0;
+    for (const sockets of this.rooms.values()) {
+      for (const sock of sockets) {
+        this.send(sock, message);
+        delivered += 1;
+      }
+    }
+    return delivered;
+  }
+
   private broadcast(roomId: string, message: ServerEnvelope) {
     const sockets = this.rooms.get(roomId);
     if (!sockets) return;

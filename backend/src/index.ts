@@ -3,18 +3,27 @@ import { GameStore } from "./store.js";
 import { WSServer } from "./ws-server.js";
 import { Database } from "./db.js";
 import { AccessControl, accessFromEnv, type AccessRecord } from "./access.js";
+import { RuntimeLimits, limitsFromEnv, type LimitsRecord } from "./limits.js";
+import { adminAuthFromEnv } from "./admin-auth.js";
 import { metrics } from "./metrics.js";
 
 const PORT_WS = Number(process.env.WS_PORT || 3001);
 const PORT_HTTP = Number(process.env.PORT || 3000);
 const ACCESS_SETTING_KEY = "access";
+const LIMITS_SETTING_KEY = "limits";
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL;
   const db = dbUrl ? new Database(dbUrl) : undefined;
   if (!db) console.warn("DATABASE_URL not set; connection logs disabled");
   if (db) await db.init();
-  const store = new GameStore(db);
+  // Same shape as the access record below: env is the boot default, the
+  // settings row is the more recent decision and wins.
+  const limits = new RuntimeLimits((record) => {
+    void db?.putSetting(LIMITS_SETTING_KEY, record).catch((e) => console.error("db putSetting(limits)", e));
+  });
+  limits.hydrate(limitsFromEnv());
+  const store = new GameStore(db, limits);
   await store.loadFromDB();
 
   // ONE AccessControl, shared by the HTTP admin page that mutates it and the
@@ -36,12 +45,36 @@ async function main() {
       console.error("db getSetting(access); falling back to env defaults", e);
     }
   }
+  if (db) {
+    try {
+      limits.hydrate(await db.getSetting<LimitsRecord>(LIMITS_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(limits); falling back to env defaults", e);
+    }
+  }
   console.log(`access mode: ${access.getMode()} (${access.snapshot().codeCount} code(s))`);
+  console.log(`limits: ${limits.maxRooms} rooms, ${limits.maxPracticeRooms} practice, ${limits.maxPlayersPerRoom} players/room`);
+
+  const auth = adminAuthFromEnv();
+  if (!auth.enabled && !process.env.ADMIN_TOKEN) {
+    console.warn("admin panel disabled: set ADMIN_USERNAME + ADMIN_PASSWORD_HASH (or ADMIN_TOKEN)");
+  }
+  // A plaintext password works, but says so every boot. On a box where the
+  // panel is now reachable from other machines, "it was only ever meant to be
+  // temporary" is exactly the thing that needs a recurring reminder.
+  if (process.env.ADMIN_PASSWORD && !process.env.ADMIN_PASSWORD_HASH) {
+    console.warn("ADMIN_PASSWORD is plaintext; prefer ADMIN_PASSWORD_HASH (npm run hash-password)");
+  }
 
   metrics.startEventLoopSampler();
-  new WSServer(store, PORT_WS, access);
+  const ws = new WSServer(store, PORT_WS, access);
 
-  const app = createHttpServer(store, access);
+  const app = createHttpServer(store, {
+    access,
+    limits,
+    auth,
+    broadcast: (text, level) => ws.broadcastNotice(text, level),
+  });
   await app.listen({ port: PORT_HTTP, host: "0.0.0.0" });
   console.log(`HTTP listening on http://0.0.0.0:${PORT_HTTP}`);
 }

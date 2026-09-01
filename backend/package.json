@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "simulate": "tsx src/simulate.ts"
+    "simulate": "tsx src/simulate.ts",
+    "hash-password": "node scripts/hash-password.mjs"
   },
   "dependencies": {
     "fastify": "^4.26.2",

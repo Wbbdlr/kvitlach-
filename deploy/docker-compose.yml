@@ -36,10 +36,38 @@ services:
       - MAINTENANCE_MODE=${MAINTENANCE_MODE:-}
       - ACCESS_MODE=${ACCESS_MODE:-}
       - ACCESS_CODES=${ACCESS_CODES:-}
+      # Capacity caps -- boot defaults only, same as above. Unset means the
+      # built-in 150 / 25 / 100 (backend/src/limits.ts).
+      - MAX_ROOMS=${MAX_ROOMS:-}
+      - MAX_PRACTICE_ROOMS=${MAX_PRACTICE_ROOMS:-}
+      - MAX_PLAYERS_PER_ROOM=${MAX_PLAYERS_PER_ROOM:-}
+      # Admin panel. With none of these set the panel 404s entirely, which is
+      # the default. ADMIN_PASSWORD_HASH comes from `npm run hash-password`;
+      # ADMIN_PASSWORD (plaintext) works but warns on every boot. Set
+      # ADMIN_SESSION_SECRET to keep logins alive across restarts -- unset
+      # means a fresh random secret per boot, i.e. a restart signs you out.
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:25000:25000"
+      # 25000 carries the admin panel AND /health, /health/detail, /metrics --
+      # anything that can reach one can read the others. ADMIN_BIND controls
+      # who that is; it defaults to 127.0.0.1, so an operator who does nothing
+      # keeps the old server-browser-or-SSH-tunnel-only behaviour.
+      #
+      #   100.x.y.z (the box's Tailscale IP) -- tailnet only, encrypted end to
+      #     end by WireGuard. The safest option that still works off-site.
+      #   192.168.50.23 -- LAN only. Works from any machine in the house, but
+      #     the login crosses the wire as cleartext HTTP.
+      #   0.0.0.0 -- both at once, which is the only way to get both from a
+      #     single mapping. No public exposure follows from this on its own
+      #     (nothing forwards 25000 from the router, and the tunnel only
+      #     carries the frontend), but it does mean every present and FUTURE
+      #     interface, so re-check it if this box ever gets another network.
+      - "${ADMIN_BIND:-127.0.0.1}:25000:25000"
       - "127.0.0.1:25001:25001"
     mem_limit: 1g
     cpus: "3.0"

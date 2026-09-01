@@ -315,17 +315,38 @@ stale `kvitlach-deploy.tar.gz` still sitting in Downloads and deploys the
 
 ## Operating the platform
 
-Lockdown modes, health endpoints and the Uptime Kuma monitor list:
-[docs/OPERATIONS.md](docs/OPERATIONS.md). The one rule that is a bug if broken:
+The admin panel (`/admin` on port 25000), access modes, capacity caps, health
+endpoints and the Uptime Kuma monitors: [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Rules that are bugs if broken:
 
 - **`room:resume` is never gated, in any access mode.** Resume is how someone
   already seated at a live table gets back after their connection blinks;
   gating it turns "stop new load" into "eject everyone mid-hand". Lockdown
   closes the door; it does not empty the building. Do not add it to the gate.
+- **The admin page has no JavaScript, deliberately.** Every control is a form
+  POST then a redirect, so there is no client state to desync and no script
+  that could reach the session cookie. Don't add fetch-based controls.
+- **`MAX_SEATED_PLAYERS_PER_ROUND = 11` is not a runtime setting** and must
+  not become one. It is derived from `layout.ts`'s collision maths and pinned
+  by `layout.test.ts`; a web form for it would let the felt be broken from a
+  browser. `limits.ts` holds the caps that are safe to change (rooms,
+  practice rooms, players/room) and says so.
+- **Access modes and capacity caps persist and override env on boot.** Env
+  vars are boot defaults only. Reopening a locked-down platform means using
+  the panel — editing compose will not do it.
 
-Two things not worth rediscovering: **Kuma 2.5.0 has no write API** (monitors
-are GUI-only — an hour was spent proving it, don't try again), and **there can
-be no per-person allowlist** because the platform has no accounts.
+Three things not worth rediscovering: **Kuma 2.5.0 has no write API**
+(monitors are GUI-only — an hour was spent proving it), **there can be no
+per-person allowlist** because the platform has no accounts, and **`/admin` is
+not reachable at kvitlach.us** — nginx serves the SPA and proxies nothing, so
+that URL renders the React app rather than 404ing, which reads as a broken
+admin page.
+
+**Open TODO — the admin panel's auth is the weak link.** Username + password
+over cleartext HTTP on the LAN was chosen knowingly as an interim step. Move
+it to Tailscale Serve (real HTTPS, tailnet-only hostname), a Cloudflare Access
+policy, or client certificates. Until then prefer binding `ADMIN_BIND` to the
+Tailscale IP rather than the LAN one.
 
 
 ## Card art (`frontend/public/*.png`)
