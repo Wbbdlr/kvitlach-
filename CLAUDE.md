@@ -155,6 +155,47 @@ Non-negotiable invariants — breaking these is a security bug, not a style issu
    joining player's starting wallet.
 6. Bots must never authenticate as actors (`!actor.isBot` guards).
 
+## Spending credits well
+
+Claude credits on this project are limited. The generic tool-efficiency rules
+live in the workspace `CLAUDE.md`; these are the ones this repo has actually
+paid for.
+
+- **Round trips cost more than work.** The expensive thing is not a big edit,
+  it is asking the user a question, getting one answer, and asking again. When
+  a choice has variants (a font, a placement, a fade level), put **all** of
+  them in one comparison sheet and send it once. Two mockup rounds that could
+  have been one is the single biggest waste seen here.
+- **Never read images into context to judge them — send them.** `SendUserFile`
+  puts a proof sheet in front of the user for free. Read one back yourself
+  only to catch a rendering bug before the user sees it, and never read a
+  sheet that differs from the last only by a constant.
+- **Measure with a script, don't eyeball a raster.** Ink bounds, collisions,
+  clearances: a five-line Python one-liner prints the number. Loading card
+  PNGs into context to look at them costs far more and is less accurate — the
+  2/11 scrollwork collision was found by a row-ink scan, and would not have
+  been visible on a half-scale sheet.
+- **Run the one test file, not the suite.** The frontend suite is 273 tests /
+  ~46s and the backend has a known flake (below); a full run is for
+  cross-cutting work and final handoff only.
+- **Don't verify in a browser what a test already pins.** Use the browser for
+  layout, art and things only a real engine shows. A jsdom test is cheaper
+  than a preview server and it stays.
+- **Trust the edit.** Edit/Write error if they fail; re-reading a file to
+  confirm a change landed is pure cost. Re-read only for surrounding logic.
+- **Write findings down as they are found**, not at the end of a session. Any
+  measured number, dead file, or rejected approach that took real effort gets
+  recorded at the moment it is learned — that is what stops the next session
+  paying for it twice.
+- **But this file is loaded into every session, so keep it to rules, not
+  reference.** What belongs here is anything you can break without noticing:
+  traps, invariants, and "don't try X, it was tried". Measurements, setup
+  procedures and one-time checklists go in `docs/` with a one-line pointer
+  from here. Growing CLAUDE.md by 90 lines to record one session's work is a
+  recurring charge on every future session — that has already happened once
+  and is what `docs/CARD-ART.md` and `docs/OPERATIONS.md` were split out to
+  undo.
+
 ## Development rules
 
 - Understand the request, inspect the relevant code, then make the **smallest
@@ -233,6 +274,18 @@ pastable server-side block as part of that same turn — don't wait to be
 asked separately.** Skip this for doc-only pushes (README/CLAUDE.md/docs/,
 no runtime-code diff); nothing running needs to change for those.
 
+**A deploy turn is not finished until the user has all four of these in it:**
+the version it is (`v7.9`), the tarball's path, the one paste block, and the
+sha256 so they can confirm the copy survived RDP. Handing over a tarball with
+no paste block has actually happened — the user was left holding a file and no
+way to apply it. Say all four even when the previous turn already said three.
+
+**Build it with `bash deploy/build-tarball.sh`, never `git archive`.** That
+has also actually happened. `git archive` writes wherever you point it and
+silently omits anything not committed, so the user's next RDP copy grabs the
+stale `kvitlach-deploy.tar.gz` still sitting in Downloads and deploys the
+*previous* build while every version badge insists otherwise.
+
 1. Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 first (see
    Constraints below), so the footer badge proves which build is live.
 2. Build the tarball:
@@ -260,6 +313,83 @@ no runtime-code diff); nothing running needs to change for those.
    **Never add `-v` to any `docker compose down`** in a command given to the
    user — it destroys the Postgres volume (all round/room history).
 
+## Operating the platform
+
+Lockdown modes, health endpoints and the Uptime Kuma monitor list:
+[docs/OPERATIONS.md](docs/OPERATIONS.md). The one rule that is a bug if broken:
+
+- **`room:resume` is never gated, in any access mode.** Resume is how someone
+  already seated at a live table gets back after their connection blinks;
+  gating it turns "stop new load" into "eject everyone mid-hand". Lockdown
+  closes the door; it does not empty the building. Do not add it to the gate.
+
+Two things not worth rediscovering: **Kuma 2.5.0 has no write API** (monitors
+are GUI-only — an hour was spent proving it, don't try again), and **there can
+be no per-person allowlist** because the platform has no accounts.
+
+
+## Card art (`frontend/public/*.png`)
+
+Full reference: [docs/CARD-ART.md](docs/CARD-ART.md) — geometry, the dot spec,
+font licensing, and how to regenerate. Read it before touching the art. The
+three things that bite without it:
+
+- **The card PNGs are generated, not hand-edited.** `tools/card-mark.py`
+  composites the mark and the 9's underdot from `tools/card-src/` into
+  `frontend/public/`. Hand-editing a face is undone by the next run.
+- **The generator reads `card-src/`, never `public/`. Do not "simplify" that
+  into an in-place edit.** The mark is composited, so a generator reading its
+  own output stamps a second SCHLESINGER over the first every run, and at
+  thumbnail size the damage is invisible.
+- **After any change to the mark, look at cards 2 and 11.** They are the only
+  two with an ornamental frame, and they use a lower foot baseline (y1374 vs
+  y1352) to clear its bottom flourish at y1333. A plain card cannot show that
+  collision, so checking one proves nothing.
+
+The mark is baked into the raster, so **no env var can change it** — `ALPHA`
+and `MARK_INK` are constants in the generator; edit and re-run.
+
+
+## Phones: landscape, fullscreen, install
+
+Testers kept landing on the felt in portrait, seeing a squeezed table, and not
+working out that they were meant to rotate. Three pieces, in order of how much
+they actually help:
+
+- **`table/immersive.ts`** — `enterImmersive()` goes fullscreen and locks
+  landscape; `exitImmersive()` undoes both. **Called from the Join / Create /
+  Watch / Practice handlers in `App.tsx`, never from an effect.** That is the
+  whole trick: `fullscreen.ts`'s comment ("no way to enter fullscreen
+  automatically") is true of `orientationchange`, which is not a user gesture
+  — but *entering a table is a tap*, and a tap is. The call has to stay
+  synchronous inside the handler; the room arrives a WS round-trip later, so
+  waiting for it loses the gesture. The landscape lock is chained onto the
+  fullscreen promise because Chrome rejects `orientation.lock()` outright
+  unless a fullscreen element already exists.
+- Gated on `isHandheld()` — coarse pointer **and** a screen short edge ≤820px.
+  Coarse alone catches touchscreen laptops and TVs, and yanking a laptop into
+  fullscreen because someone clicked Join would be obnoxious. Short edge, not
+  width: the phone may already be held landscape.
+- `exitImmersive()` hangs off `room` disappearing, not off the Leave button —
+  being kicked, the banker closing the table and a voided room all land there
+  too, and each would otherwise strand someone locked landscape on the
+  portrait lobby.
+- **iOS gets none of this** (no Fullscreen API for ordinary elements, no
+  orientation lock). The `.k-rotate-hint` banner and the install nudge are the
+  whole story there; don't "fix" the no-op.
+- **`pwa.ts` + `public/sw.js` + `InstallPrompt.tsx`** — the install nudge.
+  The service worker **caches nothing on purpose**: Chrome only fires
+  `beforeinstallprompt` for a site with a worker that has a fetch handler, and
+  a caching worker would serve testers yesterday's bundle while the footer
+  badge told them otherwise. Its fetch handler must stay a no-op that never
+  calls `respondWith()`. Removing the worker later needs a released version
+  that calls `unregister()` first — deleting the file does not uninstall it.
+- `beforeinstallprompt` fires **once, early, often before React mounts**, and
+  never again. `pwa.ts` listens at module scope for that reason; don't move it
+  into a component.
+- The iOS branch of `InstallPrompt` shares `kvitlach.iosInstallHintSeen` with
+  `TableRoot`'s in-table hint, so dismissing either silences both.
+
 ## Constraints
 
 - **Never** `docker compose down -v` — it destroys the Postgres volume.
@@ -267,7 +397,7 @@ no runtime-code diff); nothing running needs to change for those.
 - Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 before building a
   deploy tarball, so testers can confirm which build they're on.
 - **Run `npx vite build` AFTER the version bump, not just before it.** The
-  bump is a code edit like any other and can break the build on its own -- a
+  bump is a code edit like any other and can break the build on its own — a
   scripted bump once truncated `version.ts` to zero bytes (the write handle
   was opened before the read ran), which passed every test that had already
   run and then failed the frontend image build on the server with
@@ -275,3 +405,21 @@ no runtime-code diff); nothing running needs to change for those.
   writing in the same expression that reads it; read into a variable first,
   or use `sed`.
 - Don't commit or push unless asked.
+
+---
+
+## Host change 2026-08-30 — container DNS now goes through AdGuard
+
+On the adguard box, `/etc/docker/daemon.json` now sets `"dns":["192.168.50.23"]`, so every container
+resolves through AdGuard Home (filtered and logged) instead of `8.8.8.8` / `1.1.1.1`.
+
+**Do not add a `dns:` block to any compose file deployed to that host.** A per-service `dns:`
+overrides the daemon setting and silently recreates the bypass — the container stops being filtered
+and stops appearing in the query log. Four services were found doing exactly this on 2026-08-30
+(`kitchen-dashboard`, `kitchen-dashboard-demo`, `linkwarden-linkwarden-1`,
+`linkwarden-meilisearch-1`) and are being cleaned up.
+
+If a container cannot resolve a domain, the cause is a blocklist match, not the resolver. Check the
+AdGuard query log and add an allowlist rule — do not pin a public DNS server to work around it.
+
+Full context, rationale, and rollback: `homeserver/CLAUDE.md`.
