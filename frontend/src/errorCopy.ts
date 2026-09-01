@@ -41,6 +41,11 @@ export const ERROR_COPY: Record<string, string> = {
 
   // Getting to a table.
   room_not_found: "Room not found. Check the room ID and try again.",
+  // Only ever reached from an admin-panel Watch link. The grant lasts 30
+  // minutes and the panel re-mints on every refresh, so a stale link is the
+  // overwhelmingly likely cause -- say that rather than "not allowed", which
+  // reads as a permissions problem the operator cannot fix.
+  watch_not_allowed: "This watch link has expired. Reopen it from the admin panel.",
   room_full: "This table is full (100 players max). Try a different room.",
   invalid_password: "Incorrect password.",
   invalid_session: "Your session has expired. Please rejoin the table.",

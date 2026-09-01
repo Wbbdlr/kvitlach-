@@ -58,6 +58,13 @@ interface UIState {
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
   createPracticeRoom: (firstName: string, options?: { botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => void;
   joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => void;
+  // The admin panel's Watch link, which is NOT joinRoom(spectator: true). That
+  // seats a named spectator the table can see; this subscribes with no player
+  // identity at all. `watching` is what the felt keys its read-only mode off:
+  // there is no playerId to infer it from, and an undefined playerId is also
+  // what a still-connecting player has.
+  watchRoom: (roomId: string, token: string) => void;
+  watching: boolean;
   notifications: UINotification[];
   dismissNotification: (id: string) => void;
   setFormError: (form: "join" | "create" | "round" | "global" | "practice", message?: string) => void;
@@ -217,6 +224,21 @@ const getUrlRoomId = (): string | undefined => {
     const params = new URLSearchParams(window.location.search);
     const roomId = params.get("room");
     return roomId ? roomId.trim().toUpperCase() : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+// The grant on an admin panel Watch link. Read straight from the URL on every
+// connect rather than stashed in state, because it has to survive a reload of
+// the tab, and deliberately NOT persisted to localStorage: it authorises
+// watching one table for 30 minutes and should die with the tab, not linger
+// where a later ordinary player on the same browser could pick it up.
+export const getUrlWatchToken = (): string | undefined => {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const token = new URLSearchParams(window.location.search).get("watch");
+    return token ? token.trim() : undefined;
   } catch {
     return undefined;
   }
@@ -1122,6 +1144,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const payload = (msg.payload as any) || {};
         if (payload.room) Object.assign(update, analyzeRoomTransition(state, payload.room as RoomState));
         if (payload.room) nextErrors.join = undefined;
+        // Set from the ack, never inferred. Once true it stays true for the
+        // life of the tab: nothing in a watcher's session can turn them into
+        // a player, and clearing it on a later ack would hand them controls.
+        if (payload.watching) update.watching = true;
         if (msg.requestId && state.pendingAction?.requestId === msg.requestId) update.pendingAction = undefined;
         if (payload.round) {
           const nextRound = payload.round as RoundState;
@@ -1176,6 +1202,20 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     if (connectTimer) clearTimeout(connectTimer);
     connectTimer = undefined;
     set({ status: "connected", message: undefined, pendingAction: undefined });
+
+    // Priority 0: an admin Watch link. Must come before the resume paths --
+    // a watcher has no session, so priority 1 would find none, decide the
+    // /table/<id> URL was a stale bookmark and rewrite it to /?room=<id>,
+    // dropping the token and dumping the operator on the lobby the first
+    // time their connection blinked.
+    const watchToken = getUrlWatchToken();
+    if (watchToken) {
+      const watchRoomId = getUrlRoomId();
+      if (watchRoomId) {
+        client.send("room:watch", { roomId: watchRoomId.trim().toUpperCase(), token: watchToken });
+        return;
+      }
+    }
 
     // Priority 1: URL param ?room=ROOMID — try per-room saved session first.
     const urlRoomId = getUrlRoomId();
@@ -1258,6 +1298,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     formErrors: {},
     accessCode: loadAccessCode(),
     accessCodeRequired: false,
+    watching: false,
     setAccessCode: (code: string) => {
       const trimmed = code.trim();
       persistAccessCode(trimmed);
@@ -1305,6 +1346,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
       lastLobbyAction = "join";
         client.send("room:join", { roomId, firstName, lastName, password, spectator: Boolean(spectator), accessCode: get().accessCode || undefined });
+    },
+    watchRoom: (roomId: string, token: string) => {
+      if (!roomId || !token) return;
+      // No accessCode: a lockdown is about who may take a seat, and an
+      // operator watching has not taken one. Same reasoning as room:resume.
+      lastLobbyAction = "join";
+      client.send("room:watch", { roomId: roomId.trim().toUpperCase(), token });
     },
     startRound: (deckCount?: number) => {
       const roomId = get().room?.roomId;

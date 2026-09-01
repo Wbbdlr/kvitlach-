@@ -108,6 +108,9 @@ export interface HttpServerDeps {
    *  The panel is on port 25000 and the app is behind the tunnel, so the
    *  panel cannot build a working table URL from its own request host. */
   appUrl?: string;
+  /** Mints the per-room grant the panel's Watch links carry. Wired to the WS
+   *  server, which is the only thing that can redeem one. */
+  watchToken?: (roomId: string) => string;
 }
 
 export function createHttpServer(store: GameStore, deps: HttpServerDeps | AccessControl = {}) {
@@ -266,6 +269,7 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
         // load, and a stale page is worse than useless -- it is misleading.
         refresh: query.refresh !== "0",
         appUrl: opts.appUrl,
+        watchToken: opts.watchToken,
         notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
       })
     );

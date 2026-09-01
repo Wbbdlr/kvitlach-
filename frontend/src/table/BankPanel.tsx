@@ -1,3 +1,6 @@
+import { clsx } from "clsx";
+import { STAGE_WIDTH } from "./layout";
+
 export interface BankPanelProps {
   bankerWallet: number;
   reserved?: number;
@@ -78,6 +81,72 @@ export function bankPanelTop(playTop: number, vf: number): number {
   return Math.min(desired, midpoint, ceiling);
 }
 
+// Below this vf the centre column has no corridor left AT ALL -- not a tight
+// one, a negative one. bankPanelTop's two walls cross: measured live at
+// 854x384 (a landscape Galaxy, the viewport this was reported on) the
+// dealer's box ended at y167 and the viewer's began at y162, so every
+// candidate position above is already inside one of them. The function was
+// tuned when MIN_VF was 0.5; it is 0.4 now, and no vertical arithmetic can
+// fix a corridor that does not exist.
+const CORRIDOR_FLOOR = 0.55;
+// Where it goes instead: out of the centre column entirely, into the empty
+// left interior. Everything on this table that stacks -- dealer, bank,
+// viewer -- is pinned to the centre, so the centre runs out of room while
+// the left and right thirds of the felt sit empty. Measured at 854x384:
+// x0-380 and x474-854 are free between y200 and y280.
+//
+// "Empty" specifically INCLUDES the discard pile, which is the one fixture
+// on the dealer's left (.k-discard, `left: 50% - 145px`) and which does not
+// render until a round has resolved -- so it is absent from any screenshot
+// taken at the deal. Measured live at 854x384 with the pile up: it occupies
+// x330-350 / y102-144 and this pill lands at x78-144 / y204-220, clear by
+// 186px horizontally and 60px vertically. They miss each other on BOTH axes
+// because the pile rides high beside the dealer (top: play-top + 116*vf)
+// while OFFSET_Y_COEF deliberately puts this one low, under the arc's ends.
+// phone-layout.spec.ts now plays a round out so the pile is on the felt when
+// it measures; before that it was checking a table the pile had never
+// appeared on.
+const OFFSET_X_FRACTION = 0.13;
+// Deliberately BELOW the side seats rather than beside them. The arc's own
+// ends (55deg/305deg) are its highest points, so the free left space is under
+// them, not level with them: at 854x384 the left seat ends at y191 and this
+// lands the pill at y204.
+const OFFSET_Y_COEF = 500;
+
+export interface BankPlacement {
+  x: number;
+  y: number;
+  /** True once the pill has left the centre column, so it stacks instead. */
+  offset: boolean;
+}
+
+/**
+ * Where the bank cluster renders, in stage px.
+ *
+ * At vf >= CORRIDOR_FLOOR this is exactly what it always was -- centred, at
+ * bankPanelTop -- so every viewport that already worked is untouched. Below
+ * it, x and y both ease toward the left interior, so the pill slides rather
+ * than jumping if a window is dragged across the threshold.
+ */
+export function bankPanelPlacement(playTop: number, vf: number, stageWidth: number): BankPlacement {
+  const centred = { x: stageWidth / 2, y: bankPanelTop(playTop, vf), offset: false };
+  if (vf >= CORRIDOR_FLOOR) return centred;
+  const t = Math.min(1, (CORRIDOR_FLOOR - vf) / (CORRIDOR_FLOOR - MIN_VF_REF));
+  const targetX = stageWidth * OFFSET_X_FRACTION;
+  const targetY = playTop + OFFSET_Y_COEF * vf;
+  return {
+    x: centred.x + (targetX - centred.x) * t,
+    y: centred.y + (targetY - centred.y) * t,
+    offset: t > 0.5,
+  };
+}
+// stage.ts's MIN_VF, duplicated rather than imported: importing it here would
+// make BankPanel depend on the fit module purely for a ramp endpoint, and the
+// ramp only needs to know roughly where vf stops falling. If MIN_VF moves,
+// this wants revisiting -- it going stale is exactly what broke the function
+// above.
+const MIN_VF_REF = 0.4;
+
 // The bank's total, centred on the felt where everyone can see it (the
 // mockup's `.bank` cluster). Display-only and deliberately so: it lives
 // inside the scaled stage, so any control here would shrink with the table.
@@ -89,7 +158,7 @@ export function BankPanel({ bankerWallet, reserved = 0, playTop = 0, vf = 1 }: B
   // it only counts wagers ahead of them in turn order, and it's shown where
   // they actually need it, on the dock's bet controls.
   const free = Math.max(bankerWallet - reserved, 0);
-  const top = bankPanelTop(playTop, vf);
+  const place = bankPanelPlacement(playTop, vf, STAGE_WIDTH);
 
   return (
     // One row, not two. The reservation used to sit on its own line beneath
@@ -99,11 +168,17 @@ export function BankPanel({ bankerWallet, reserved = 0, playTop = 0, vf = 1 }: B
     // bankPanelTop above), which a second line would blow straight through
     // regardless of where exactly this pill sits.
     <div
-      className="absolute left-1/2 -translate-x-1/2 z-[12] flex flex-row flex-wrap items-center justify-center gap-x-2.5 gap-y-1"
-      // BankReservations.tsx's potY() mirrors bankPanelTop() (+ this pill's
-      // own height, to sit just under it) so its connector lines start where
-      // this pill actually renders -- change one, change both.
-      style={{ top: `${top}px` }}
+      className={clsx(
+        "absolute -translate-x-1/2 z-[12] flex flex-wrap items-center gap-x-2.5 gap-y-1",
+        // Out of the centre column there is no longer a wide clear row to
+        // spread along, but there IS vertical room -- so the two pills stack
+        // instead of running side by side into the seats either side.
+        place.offset ? "flex-col justify-start" : "flex-row justify-center"
+      )}
+      // BankReservations.tsx mirrors bankPanelPlacement() (+ this pill's own
+      // height, to sit just under it) so its connector lines start where this
+      // pill actually renders -- change one, change both.
+      style={{ left: `${place.x}px`, top: `${place.y}px` }}
     >
       <div className="k-banktotal">BANK ${bankerWallet.toLocaleString()}</div>
       {reserved > 0 && (

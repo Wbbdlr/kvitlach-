@@ -108,6 +108,14 @@ body {
 :root {
   --k-plate: #f7f3ea;
   --k-plate-ink: #1f2937;
+  /* The same parchment, translucent, for plates sitting ON the felt -- they
+     read as glaring near-white blocks against a dark table. Deliberately a
+     separate token rather than making --k-plate itself translucent:
+     .k-preround-chip uses that one on a solid panel, where letting the panel
+     through would just look like a rendering bug.
+     0.82 is set by the SUB line, not the name. See .k-plate-sub. */
+  --k-plate-felt: rgba(247, 243, 234, 0.82);
+  --k-plate-felt-edge: rgba(224, 216, 196, 0.7);
   --k-gold-soft: rgba(230, 164, 75, 0.16);
 }
 
@@ -454,9 +462,12 @@ body:has(.k-fit) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--k-plate);
+  background: var(--k-plate-felt);
   color: var(--k-plate-ink);
-  border: 1px solid #e0d8c4;
+  /* Softened along with the fill: a translucent panel inside a hard opaque
+     border still reads as a bright block, because the edge is what draws the
+     eye at seat size. */
+  border: 1px solid var(--k-plate-felt-edge);
   border-radius: 9px;
   padding: 4px 8px 4px 4px;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.28);
@@ -479,6 +490,16 @@ body:has(.k-fit) {
 .k-plate.is-offline {
   opacity: 0.55;
   filter: grayscale(1);
+}
+/* Anyone who has actually asked their OS for more contrast gets the solid
+   plate back. The transparency above is a look; legibility of a player's own
+   name and wallet is not, and an older player asking for exactly that is why
+   .k-plate-name is counter-scaled in the first place. */
+@media (prefers-contrast: more) {
+  .k-plate {
+    background: var(--k-plate);
+    border-color: #e0d8c4;
+  }
 }
 
 /* Initials-only avatar chip. */
@@ -555,7 +576,16 @@ body:has(.k-fit) {
 .k-plate-sub {
   font-size: clamp(10px, calc(8px / var(--stage-scale, 1)), 14px);
   font-weight: 600;
-  color: #7a6a4a;
+  /* Darkened from #7a6a4a when the plate went translucent, and this is what
+     set the 0.82 alpha rather than taste. The NAME has huge headroom (13.3:1
+     solid, still 8.7:1 at 0.80 over the darkest felt) -- but this wallet line
+     was already the marginal one at 4.76:1 SOLID, and transparency comes
+     straight off it: 3.4:1 at 0.84 with the old colour, below AA.
+     #5d5139 restores 4.80:1 measured against all three felts at both ends of
+     their gradient, so the line is no less readable than before the change.
+     Same hue, walked darker -- the plate is meant to look like parchment.
+     If the alpha above ever drops further, re-solve this; do not just dim. */
+  color: #5d5139;
   white-space: nowrap;
 }
 
@@ -1153,6 +1183,98 @@ body:has(.k-fit) {
   }
 }
 
+/* The felt/chip pickers, collapsed behind one chrome button (AppearanceMenu).
+   Anchored the same way .k-fs-hint is -- the chrome row renders at true
+   viewport size, outside .k-fit's scaled stage, so absolute positioning here
+   is not touched by the stage transform.
+
+   left:0 rather than right:0 because this button sits at the LEFT end of the
+   row; hanging the panel off its right edge would push it toward the middle
+   of the screen and back over the felt, which is the habit that put the old
+   hint on top of the dealer. */
+.k-appearance-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(10, 20, 14, 0.97);
+  border: 1px solid rgba(230, 164, 75, 0.45);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+.k-appearance-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+.k-appearance-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(238, 242, 234, 0.72);
+}
+.k-appearance-note {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(238, 242, 234, 0.55);
+}
+/* Each switcher carries its own leading icon, which existed to name the
+   cluster for sighted mobile users who never see a hover title. Inside the
+   panel the FELT / CHIPS labels do that job better, and the icon reads as a
+   stray eighth swatch. Hidden here only -- the components keep it for their
+   own sake, and the aria-labels are untouched either way. */
+.k-appearance-row svg {
+  display: none;
+}
+/* On a landscape phone the chrome is 61px of a 384px screen and the panel
+   would hang most of the way down the felt. Tightened rather than hidden --
+   the control has to stay reachable on the device most people play on. */
+@media (max-height: 440px) {
+  .k-appearance-panel {
+    gap: 6px;
+    padding: 8px 10px;
+    /* Pinned to the viewport's left edge rather than hung off the button.
+       The chrome row is centred, so its first button sits about a third of
+       the way across, and a panel anchored to it opens straight over the
+       dealer -- the same mistake the old felt/chip hint made. Fixed, not
+       absolute: the chrome renders outside .k-fit's scaled stage, so there
+       is no transform to escape, and 62px clears the row at every landscape
+       phone size this file tunes against (measured 61px at 854x384). */
+    position: fixed;
+    left: 10px;
+    top: 62px;
+  }
+  .k-appearance-note {
+    display: none;
+  }
+}
+
+/* Same problem, other axis. The rule above keys on WIDTH, so a landscape
+   phone -- 854 wide, 384 tall -- never matches it and kept the floating box
+   hanging off its chip, straight over the felt: measured at 854x384 it
+   covered the dealer's plate and a player's nameplate outright.
+   Bottom-pinning it the way the narrow rule does was tried and just moved
+   the collision onto the controls dock, which owns the whole bottom band at
+   this size. On a screen this short there is no free corner to put a 200px
+   box in -- the play band is 252px tall and every part of it is spoken for.
+   So this nudge, alone of the three, does not appear there: it advertises a
+   cosmetic felt/chip colour picker, and covering the dealer to mention it is
+   a bad trade. The fullscreen and rotate hints are load-bearing and stay. */
+@media (max-height: 440px) and (min-width: 541px) {
+  .k-fs-hint--left {
+    display: none;
+  }
+}
+
 /* Rotate-to-landscape nudge. Table is landscape-first by design (see
    fullscreen.ts's screen.orientation.lock("landscape")), but that lock only
    ever fires once someone taps the fullscreen button -- .k-fs-hint points at
@@ -1568,20 +1690,14 @@ body:has(.k-fit) {
   .k-logo-tag {
     display: none;
   }
-  /* ChipSwitcher (2026-08-11) added a whole new persistent 124px-wide
-     cluster to .k-chrome-top's row -- on top of an already razor-thin
-     budget (the comment right below measured only ~2px of spare margin at
-     568px, the narrowest width this file tunes against). Confirmed live:
-     at 568x320 that pushed row 1's packed content clean past the wordmark's
-     own footprint, landing the felt swatches almost entirely on top of
-     "Kvitlach" (measured feltLeft 10 vs wordmark's own x 37-96). Same fix
-     as the tagline above -- chip color is a decorative preference, not
-     needed to identify or play the game, so it's the next thing to give at
-     this breakpoint. FeltSwitcher stays: it already fit within the
-     original tuned margin on its own, this is only about the newcomer. */
-  .k-chip-switcher {
-    display: none;
-  }
+  /* ChipSwitcher used to be hidden outright here: as a persistent 124px
+     cluster in .k-chrome-top it blew a razor-thin row budget (~2px of spare
+     margin at 568px) and shoved the felt swatches on top of the "Kvitlach"
+     wordmark. Both switchers now live inside AppearanceMenu's panel instead,
+     so the row cost is one button and the crowding that rule existed for is
+     gone. Deliberately NOT re-added scoped to the panel: hiding it there
+     would remove the chip picker from the only place it still exists, on
+     exactly the narrow phones this breakpoint is about. */
   /* The wordmark's own counter-scale (see .k-topbar > * above) targets a
      constant ~32px regardless of stage scale, which is exactly right on a
      normal phone -- but on the narrowest real Android widths even that

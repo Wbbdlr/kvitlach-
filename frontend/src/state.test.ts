@@ -1004,3 +1004,67 @@ describe("public BANK! frame notification (a redealt frame's discarded outcome)"
     expect(useGameStore.getState().notifications.some((n) => n.message.includes("Bank showed"))).toBe(false);
   });
 });
+
+describe("admin watch links", () => {
+  // Same setup as the session-lifecycle block above. Not inherited: that
+  // beforeEach lives inside its own describe, and without a copy here the
+  // socket stub was whatever the previous block happened to leave behind --
+  // these tests then asserted against a stale store and failed confusingly.
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub, only the members WSClient touches are implemented
+    global.WebSocket = MockWebSocket;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends room:watch for a ?watch= link instead of resuming or joining", async () => {
+    window.history.pushState({}, "", "/table/WATCHME?watch=grant123");
+
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    // Exactly one message, and not room:resume. Before this existed, onOpen
+    // found no session for the /table/ URL, decided it was a stale bookmark
+    // and rewrote the address to /?room=WATCHME -- dropping the grant and
+    // putting the operator on the lobby's join form.
+    expect(socket.sent).toHaveLength(1);
+    expect(socket.sent[0]).toMatchObject({
+      type: "room:watch",
+      payload: { roomId: "WATCHME", token: "grant123" },
+    });
+    expect(window.location.pathname).toBe("/table/WATCHME");
+  });
+
+  it("marks the viewer as watching without storing a session", async () => {
+    window.history.pushState({}, "", "/table/WATCHME?watch=grant123");
+
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    const requestId = socket.sent[0].requestId;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "ack",
+        requestId,
+        payload: { watching: true, room: { roomId: "WATCHME", players: [], wallets: {} } },
+      }),
+    });
+
+    const state = useGameStore.getState();
+    expect(state.watching).toBe(true);
+    expect(state.room?.roomId).toBe("WATCHME");
+    // No seat, no identity, nothing persisted: a watcher must not be able to
+    // come back later as a player on this browser.
+    expect(state.playerId).toBeUndefined();
+    expect(state.session).toBeUndefined();
+    expect(window.localStorage.getItem(roomKey("WATCHME"))).toBeNull();
+  });
+});

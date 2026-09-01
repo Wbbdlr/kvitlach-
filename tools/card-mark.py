@@ -35,6 +35,33 @@ SRC = os.path.join(HERE, "card-src")
 FACE = os.path.join(HERE, "fonts", "Cinzel[wght].ttf")
 
 NAME = "SCHLESINGER"
+
+# WHICH cards carry the mark. Not all twelve: a mark on every card reads as a
+# watermark -- the thing a printer stamps to deter copying -- while a mark on a
+# few reads as a signature, which is what real decks have always done by
+# signing the ace and leaving the pips alone. Reported as "gaudy" on all twelve.
+#
+#   1  -- the ace, and the only head cartouche (HEAD_TOP); the traditional
+#         place for a maker's mark.
+#   8  -- the eight nights. This is a Chanukah game and 8 is its number.
+#   12 -- the game's own signature card: it reads as 12, 9 OR 10, re-evaluated
+#         every time (see CLAUDE.md's rules section). Nothing else in the deck
+#         is distinctive that way.
+#
+# Two copies of each in a 24-card deck, so the mark lands on 6 of 24 -- often
+# enough to be seen most rounds, never twice in one hand's fan.
+#
+# Side effect worth keeping: 2 and 11, the only ornamental-frame cards, are NOT
+# in this set. Their 67px band is what caps SIZE and is where the mark was
+# reported sitting on the frame. The clearance code below stays -- the planned
+# admin editor can switch any card on, and then it matters again -- but no
+# shipped default depends on it any more.
+#
+# frontend/src/table/cardMark.ts mirrors this set for the live overlay. The
+# overlay exists to reproduce these rasters exactly; if the two disagree, a
+# card gains or loses its mark the moment the overlay is switched on.
+MARKED = frozenset({1, 8, 12})
+
 # Sized and inked for 68px, not for 946px.
 #
 # The first version of this mark stood 34px tall at ALPHA 140. It looked right
@@ -44,15 +71,19 @@ NAME = "SCHLESINGER"
 # averaged out to paper colour. Ink contrast across the mark's band fell from
 # 104 at full res to 38 at 68px -- not "faint", gone.
 #
-# These numbers are chosen by measuring contrast AFTER the downscale. 72/220
-# holds 88, which is where the word becomes readable rather than a smudge.
-# If you change either, re-measure at 68px; the full-res sheet will lie to you.
+# These numbers are chosen by measuring contrast AFTER the downscale. The
+# current 58/230 holds 74; 38 is the value that was invisible and ~70 is where
+# the word stops being a word. WEIGHT is what buys headroom if SIZE has to drop
+# further -- at 58/230, wght 700 restores 87. If you change any of the three,
+# re-measure at 68px; the full-res sheet will lie to you.
 #
-# Full opacity. "Faded" is delivered by the reduction itself -- eleven letters
-# at 53px cap arrive at the felt covering only part of each pixel, so the mark
-# lands around luminance 159 against 236 paper however solid the source is.
-# Adding transparency on top of that only bleeds chroma toward the paper.
-ALPHA = 255
+# Nearly solid. "Faded" is delivered mostly by the reduction itself -- eleven
+# letters at 43px cap arrive at the felt covering only part of each pixel, so
+# the mark lands around luminance 162 against 236 paper however solid the
+# source is. Transparency on top of that bleeds chroma toward the paper, so it
+# is a small trim, not the main lever: 230 costs ~6 points of contrast at 68px
+# and 2 points of saturation. 140 was tried once and erased the mark.
+ALPHA = 230
 # A blue rather than black, so the mark reads as a second printing plate
 # instead of a faded numeral. The numerals stay pure black; only the mark and
 # its frame take the tint.
@@ -70,8 +101,16 @@ ALPHA = 255
 # subordinate to the numerals, but visibly blue instead of grey. Going darker
 # to "strengthen" it makes it greyer, not bluer -- that is the trap.
 MARK_INK = (43, 95, 176)
-SIZE = 72                # Cinzel caps stand 53px here
-TRACKING = 11
+# 58 is 72 less 19%. The mark at 72 fit the ornate pair by 8px above and 9px
+# below -- geometrically clear, but at a 14x reduction that is half a pixel
+# each way, so on the felt the word sat *on* the frame. Reported from a live
+# table. 58 doubles both clearances (14px / 13px) and reads as an imprint
+# rather than a caption. Cost: contrast at 68px falls 100 -> 74. That is well
+# clear of the 38 that made the mark vanish in v7.9-8.5, but it is the floor --
+# do not take SIZE lower without raising WEIGHT to pay for it.
+SIZE = 58                # Cinzel caps stand 43px here
+TRACKING = 9             # kept proportional to SIZE; 11 at this size crowds
+                         # the ornate pair's frame horizontally
 # Cinzel's wght axis runs 400..900. Pinned to 600 because STROKE WEIGHT, not
 # hue, is what carries colour through a 14x downscale: thin strokes get
 # averaged with the cream paper, so the mark arrives grey no matter how blue
@@ -99,24 +138,30 @@ SS = 4                   # supersample; PIL fills are hard-aliased
 #
 # Two baselines, because the ornate pair genuinely cannot take the plain one.
 #
-# The plain ten sit at 1350: cap tops at 1297 (far clear of art ending 1172)
-# and 56px of paper under the word before the rule. A single baseline at 1397
-# was tried, to clear cards 2 and 11 with one number and delete this special
-# case -- it worked geometrically and looked wrong, crowding the mark against
-# the bottom rule on all ten plain cards to accommodate two. Reported from a
-# live table as "too low"; the tidier code was not worth the worse card.
+# The plain ten sit at 1350: cap tops at 1307 (far clear of art ending 1172)
+# and 56px of paper under the word before the rule. A single baseline for all
+# twelve was tried, to clear cards 2 and 11 with one number and delete this
+# special case -- it worked geometrically and looked wrong, crowding the mark
+# against the bottom rule on all ten plain cards to accommodate two. Reported
+# from a live table as "too low"; the tidier code was not worth the worse card.
 #
-# 1397 is the highest the ornate pair can go: scrollwork ends at 1337 and caps
-# stand 53px at SIZE 72, so cap tops land at 1344, clearing it by 7px. They do
-# sit lower than the rest, which their frame forces and which is invisible at
-# felt size. Re-measure 2 and 11 specifically if SIZE ever grows -- a plain
-# card cannot show that collision.
+# 1393 centres the ornate pair in their own band: scrollwork ends at 1337 and
+# caps stand 43px at SIZE 58, so cap tops land at 1351 -- 14px of paper above,
+# 13px below to the rule at 1406. Both gaps matter. At SIZE 72 they were 8 and
+# 9, which survives a row-ink scan and still reads as the word touching the
+# frame once the card is 68px wide. Re-measure 2 and 11 specifically if SIZE
+# ever grows -- a plain card cannot show that collision.
 FOOT_BASELINE = 1350
-FOOT_BASELINE_ORNATE = 1397
+FOOT_BASELINE_ORNATE = 1393
 ORNATE = {2, 11}
-HEAD_TOP = 76            # card 1's cartouche: rule ends y31, digit starts
-                         # y269, so the free head band is 236px. The taller
-                         # box (144px) leaves 45px above and 49px below.
+# Card 1's cartouche: the rule ends y31 and the digit starts y269, so the free
+# head band is y32..268 (237px). The box was 144px tall at HEAD_TOP 76, which
+# hung it 45px under the rule and read as a masthead rather than a mark. At
+# 122px tall and HEAD_TOP 96 it sits 65px under the rule and 51px above the
+# numeral -- fractionally below centre on purpose, so it reads as belonging to
+# the card rather than crowning it. Keep the bottom gap at 45px or more; below
+# that the frame and the digit start to look like one object at felt size.
+HEAD_TOP = 96
 
 # The 9's underdot, which tells it from the 6 (the real deck's 6 is undotted,
 # so this goes on the 9 alone). The font's own period, baseline-aligned.
@@ -214,7 +259,7 @@ def foot_mark(img, card):
     return Image.alpha_composite(img, layer.resize(img.size, Image.LANCZOS))
 
 
-def head_cartouche(img, size=66, tracking=12, box_h=144, pad_x=52):
+def head_cartouche(img, size=56, tracking=10, box_h=122, pad_x=44):
     """Double-rule frame around the name at the head -- card 1 only.
 
     No crown. Four crowns were drawn and every one read as pasted on: a
@@ -239,10 +284,23 @@ def head_cartouche(img, size=66, tracking=12, box_h=144, pad_x=52):
     return Image.alpha_composite(img, layer.resize(img.size, Image.LANCZOS))
 
 
-def render(card):
+def render(card, mark=True):
+    """The card face. `mark=False` stops before the maker's mark.
+
+    Callers decide WHICH cards get one (see MARKED); this only decides whether
+    to draw it on the card it was handed.
+
+    The 9's underdot is NOT part of the mark and is drawn either way: it is
+    what tells a 9 from a 6 (the real deck's 6 is undotted), so a card without
+    it is misread rather than merely unbranded. The unmarked art is what the
+    live SVG overlay draws onto -- serving card-src directly would ship a
+    dotless 9 and put an ambiguous card on the table.
+    """
     img = Image.open(os.path.join(SRC, f"{card}.png")).convert("RGBA")
     if card == 9:
         img = draw_dot(img)
+    if not mark:
+        return img
     return head_cartouche(img) if card == 1 else foot_mark(img, card)
 
 
@@ -269,13 +327,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--write", action="store_true",
                     help="rewrite frontend/public/1..12.png in place")
+    ap.add_argument("--no-mark", action="store_true",
+                    help="art WITHOUT the maker's mark (the 9 keeps its dot) -- "
+                         "what ships once the mark is drawn live over the card")
     ap.add_argument("--out", default=os.getcwd(), help="where proof sheets go")
     args = ap.parse_args()
 
     if not os.path.exists(FACE):
         sys.exit(f"missing {FACE} -- see tools/fonts/OFL.txt")
 
-    cards = [render(n) for n in range(1, 13)]
+    cards = [render(n, mark=n in MARKED and not args.no_mark) for n in range(1, 13)]
     if args.write:
         for n, img in zip(range(1, 13), cards):
             img.save(os.path.join(PUB, f"{n}.png"))

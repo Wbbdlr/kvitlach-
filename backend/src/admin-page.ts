@@ -142,10 +142,14 @@ export interface AdminPageDeps {
   refresh: boolean;
   /** Origin of the player-facing app, for Watch links. Omitted, they are hidden. */
   appUrl?: string;
+  /** Mints the per-room grant a Watch link carries. Omitted, links are hidden:
+   *  a link without one lands on the lobby and seats the operator as a player,
+   *  which is the bug this exists to prevent. */
+  watchToken?: (roomId: string) => string;
   notice?: string;
 }
 
-export function renderAdminPage({ store, access, limits, query, refresh, appUrl, notice }: AdminPageDeps): string {
+export function renderAdminPage({ store, access, limits, query, refresh, appUrl, watchToken, notice }: AdminPageDeps): string {
   const load = store.loadSnapshot();
   const lag = Math.round(metrics.eventLoopLagMs);
   const conns = metrics.currentWsConnections;
@@ -206,16 +210,21 @@ export function renderAdminPage({ store, access, limits, query, refresh, appUrl,
   }).join("");
 
   const rooms = store.listRoomsForAdmin();
-  // Opens the real table in spectator mode rather than re-rendering the game
-  // server-side: watching is a feature the app already has, and a second
-  // renderer here would be a second thing to keep true to the round state.
-  // Spectators are seated as watchers, so this never joins the admin to a hand.
+  // Opens the real table rather than re-rendering the game server-side: a
+  // second renderer here would be a second thing to keep true to round state.
+  //
+  // `?watch=<token>` is load-bearing, not decoration. Without it this was a
+  // plain link to the table, which put the operator on the lobby's join form
+  // and seated them as an ordinary PLAYER at the table they meant to observe
+  // -- visible to everyone and holding a wallet. The token makes the client
+  // send room:watch instead, which subscribes without creating a Player.
+  //
   // The path must be /table/<id>: App.tsx matches `^/table/([^/]+)/?$` and
   // nothing else, so a bare `/<id>` silently lands on the lobby instead. That
   // shipped once in this very function and was caught only by clicking it.
   const watchLink = (roomId: string) =>
-    appUrl
-      ? `<a href="${escapeHtml(appUrl.replace(/\/$/, ""))}/table/${encodeURIComponent(roomId)}" target="_blank" rel="noopener">Watch</a>`
+    appUrl && watchToken
+      ? `<a href="${escapeHtml(appUrl.replace(/\/$/, ""))}/table/${encodeURIComponent(roomId)}?watch=${encodeURIComponent(watchToken(roomId))}" target="_blank" rel="noopener">Watch</a>`
       : '<span class="meta" title="Set PUBLIC_APP_URL to enable">&mdash;</span>';
   const rows = rooms
     .map((r) => {

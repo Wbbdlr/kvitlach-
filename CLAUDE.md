@@ -71,7 +71,7 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
 - **`index.ts`'s `unhandledRejection`/`uncaughtException` handlers are a
   backstop, not a fix.** Every fire-and-forget call should already catch at
   its own site. Anything reaching the backstop log line is a bug to fix at
-  source. Node 20 kills the process on an unhandled rejection by default —
+  source. Node kills the process on an unhandled rejection by default —
   before this existed, one dropped socket's failed DB write during cleanup
   could take down every room on the server.
 - **`useEscapeKey.ts`** — new dialogs use it, not a bespoke `keydown`.

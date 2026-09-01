@@ -4,7 +4,7 @@ import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useChip, useFelt } from "../theme";
-import { discardPilePosition, orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
+import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { useMediaQuery } from "../useMediaQuery";
@@ -14,8 +14,7 @@ import { PlayerDock } from "./PlayerDock";
 import { BankPanel } from "./BankPanel";
 import { BankReservations } from "./BankReservations";
 import { ReactionLayer } from "./ReactionLayer";
-import { FeltSwitcher } from "./FeltSwitcher";
-import { ChipSwitcher } from "./ChipSwitcher";
+import { AppearanceMenu } from "./AppearanceMenu";
 import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
 import { WaitingListDrawer, WaitingListEntry } from "./WaitingListDrawer";
@@ -61,6 +60,10 @@ export interface TableRootProps {
   round?: RoundState;
   playerId?: string;
   isAdmin: boolean;
+  /** An operator who arrived by an admin-panel Watch link: subscribed to the
+   *  room's broadcasts with no seat, no wallet and no Player record. Not the
+   *  same as a spectator, who is seated and visible. */
+  watching?: boolean;
   bankerTurn?: Turn;
   playerTurns: Turn[];
   // Every resolved hand's cards from EARLIER rounds on the current shoe --
@@ -130,6 +133,7 @@ export function TableRoot({
   round,
   playerId,
   isAdmin,
+  watching = false,
   bankerTurn,
   playerTurns,
   shoeDiscards,
@@ -364,7 +368,18 @@ export function TableRoot({
     [playerTurns, playerId]
   );
   const positions = seatPositions(seatedTurns.length, vf, playTop);
-  const seatShrink = seatScale(positions);
+  // Two independent collision rules, and the tighter one wins: seats against
+  // each other (crowding, binds on a full table) and seats against the dealer
+  // (binds on a short viewport, where vf has already bottomed out). The
+  // second was missing entirely and is what made phone landscape unplayable.
+  // Two independent collision rules, and the tighter one wins: seats against
+  // each other (crowding, binds on a full table) and seats against the dealer
+  // (binds on a short viewport, where vf has already bottomed out). The
+  // second was missing entirely and is what made phone landscape unplayable.
+  const seatShrink = Math.min(
+    seatScale(positions),
+    dealerClearanceScale(positions, playTop + 160 * vf)
+  );
 
   // Origin for the card-deal-in flight animation (see Seat.tsx/Dealer.tsx) --
   // nominal stage-px from the shoe to a given seat, divided by seatShrink so
@@ -641,23 +656,21 @@ export function TableRoot({
       )}
       <div className="k-chrome-top">
         <span className="relative inline-flex items-center gap-1">
-          <FeltSwitcher
+          <AppearanceMenu
             felt={felt}
-            onChange={(name) => {
+            chip={chip}
+            onFeltChange={(name) => {
               setFelt(name);
               dismissThemeHint();
             }}
-          />
-          <ChipSwitcher
-            chip={chip}
-            onChange={(name) => {
+            onChipChange={(name) => {
               setChip(name);
               dismissThemeHint();
             }}
           />
           {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
             <div className="k-fs-hint k-fs-hint--left">
-              Tap a swatch to change your table felt or chip color -- just for your view.
+              Table colors live here -- change your felt or chips, just for your view.
               <button type="button" onClick={dismissThemeHint}>
                 Got it
               </button>
@@ -917,7 +930,13 @@ export function TableRoot({
               room.practice hands them this exact button (there is only ever
               one human at that table, so it can't reach anyone else's game),
               same as a real banker choosing their own moment. */}
-          {isAdmin || room.practice ? (
+          {/* A watcher must fall through both branches. room.practice hands
+              its button to "the one human here", which is true of a player at
+              a practice table and false of an operator watching one -- they
+              would have been able to deal a hand into someone else's game. */}
+          {watching ? (
+            <span className="k-tag muted">Watching &middot; the table can&rsquo;t see you</span>
+          ) : isAdmin || room.practice ? (
             <button type="button" className="k-btn bet k-pulse-attn" onClick={onStartNextRound}>
               {!preRound ? "Start next round" : firstDeal ? "Deal the first round" : "Deal the next round"}
             </button>

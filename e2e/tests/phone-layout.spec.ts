@@ -1,0 +1,197 @@
+import { test, expect, Page } from "@playwright/test";
+
+// Nothing here checks a feature. It checks that the felt's elements do not sit
+// on top of each other, which is a thing unit tests structurally cannot see:
+// layout.ts's collision maths is pinned by layout.test.ts and was passing
+// throughout, because the pair that actually collided was one it never
+// compared.
+//
+// Reported from a real Galaxy in fullscreen landscape: "a bunch of the
+// elements of the game were overlapping onto each other ... it makes playing
+// the game unbearable on phones, and that's how most people will be playing."
+// Measured at 854x384: the play band is 252px and had to hold a 106px dealer
+// seat above a 146px viewer seat, with the bank pill between them. Three
+// separate causes, all invisible to the existing suites:
+//
+//   1. seatScale() compares player seats against each other. The DEALER is
+//      rendered separately and was in no comparison at all, so the seats
+//      never shrank -- their transform was pure translation.
+//   2. bankPanelTop() was tuned when MIN_VF was 0.5. At the current 0.4 its
+//      two walls cross: a NEGATIVE corridor, which no vertical arithmetic
+//      can place a pill inside.
+//   3. The felt/chip hint's own escape hatch keys on `max-width: 540px`, and
+//      a landscape phone is 854 wide. Same bug, other axis.
+//
+// Viewports are real device sizes, not round numbers: Galaxy-class phones in
+// landscape, which is what the table locks itself to on a handheld.
+const PHONE_LANDSCAPE = [
+  { name: "Galaxy S21 landscape", width: 800, height: 360 },
+  { name: "Galaxy S22 landscape", width: 854, height: 384 },
+  { name: "Galaxy S22 Ultra landscape", width: 915, height: 412 },
+];
+
+// An ALLOWLIST, not a denylist -- the denylist this started as had to grow
+// every run and still reported things that are correct by design:
+//
+//   - cards within one hand overlap deliberately (the fan, see .k-hand's
+//     negative margin), so card-vs-card is meaningless;
+//   - toasts are floating overlays whose whole job is to sit above the felt;
+//   - reservation chips REST against a seat, and their connector line's
+//     bounding box necessarily spans from the bank pill it leaves;
+//   - the felt oval and the full-stage SVG layer contain everything.
+//
+// These are the elements that carry a player's information -- nameplates,
+// totals, hands, the bank -- and none of them may ever sit on another. Using
+// the hand CONTAINER rather than individual cards is what keeps the fan from
+// reading as a defect while still catching one player's hand on another's.
+// k-discard is here because the bank cluster's new home is described as "the
+// empty left interior" -- and the discard pile is the one thing that lives on
+// the dealer's LEFT (`left: 50% - 145px`, the shoe's mirror image). Measured
+// at 854x384 after a resolved round they are 186px apart horizontally and 60px
+// vertically -- the pile rides high beside the dealer, the bank sits low --
+// but "empty" was an eyeball claim about a screenshot taken before the pile
+// existed, and that is exactly the kind of claim this file is for.
+const CHECKED = new Set([
+  "k-seat", "k-plate", "k-plate-name", "k-plate-sub",
+  "k-readout", "k-tag", "k-banktotal", "k-bank-split",
+  "k-hand", "k-shoe", "k-discard", "k-fs-hint", "k-controls",
+]);
+
+// Two boxes touching by a few px is antialiasing and rounding, not a layout
+// bug. This is calibrated to catch what a player sees: the smallest real
+// defect found on the reported viewport was a nameplate 5px inside the
+// dealer's box, at 21% of the smaller element.
+const MIN_OVERLAP_FRACTION = 0.18;
+const MIN_OVERLAP_PX = 3;
+
+interface Overlap {
+  a: string;
+  b: string;
+  pct: number;
+  px: string;
+}
+
+/**
+ * Waits until the felt stops moving.
+ *
+ * A card in flight is legitimately on top of things it will not be on top of
+ * a moment later, so sampling mid-deal reports overlaps that do not exist. A
+ * fixed sleep was tried first and passed alone but failed under Playwright's
+ * default two workers -- the deal simply takes longer on a contended machine,
+ * which is a property of the harness, not of the layout. Sampling positions
+ * until they repeat measures the thing actually being waited for.
+ */
+async function settle(page: Page, quietMs = 400, timeoutMs = 20_000): Promise<void> {
+  const snapshot = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll(".k-hand img, .k-seat, .k-banktotal")]
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}`;
+        })
+        .join("|")
+    );
+  const deadline = Date.now() + timeoutMs;
+  let previous = await snapshot();
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(quietMs);
+    const current = await snapshot();
+    if (current === previous && current.length > 0) return;
+    previous = current;
+  }
+}
+
+async function findOverlaps(page: Page): Promise<Overlap[]> {
+  return page.evaluate(
+    ({ checked, minFraction, minPx }) => {
+      const allowed = new Set(checked);
+      const nameOf = (el: Element) => {
+        const raw = (el as HTMLElement).className;
+        const str = typeof raw === "string" ? raw : (raw as unknown as SVGAnimatedString)?.baseVal ?? "";
+        return str.split(/\s+/).filter((c) => c.startsWith("k-")).slice(0, 2).join(".");
+      };
+      const visible = [...document.querySelectorAll("[class*='k-']")].filter((el) => {
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        const name = nameOf(el);
+        return (
+          r.width > 8 && r.height > 8 &&
+          cs.visibility !== "hidden" && cs.display !== "none" && cs.opacity !== "0" &&
+          name && allowed.has(name.split(".")[0])
+        );
+      });
+      const found: { a: string; b: string; pct: number; px: string }[] = [];
+      for (let i = 0; i < visible.length; i += 1) {
+        for (let j = i + 1; j < visible.length; j += 1) {
+          const a = visible[i];
+          const b = visible[j];
+          // An element inside another is nesting, not collision.
+          if (a.contains(b) || b.contains(a)) continue;
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          const ox = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+          const oy = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+          if (ox < minPx || oy < minPx) continue;
+          const fraction = (ox * oy) / Math.min(ra.width * ra.height, rb.width * rb.height);
+          if (fraction < minFraction) continue;
+          found.push({
+            a: nameOf(a), b: nameOf(b),
+            pct: Math.round(fraction * 100),
+            px: `${Math.round(ox)}x${Math.round(oy)}`,
+          });
+        }
+      }
+      return found.sort((x, y) => y.pct - x.pct);
+    },
+    { checked: [...CHECKED], minFraction: MIN_OVERLAP_FRACTION, minPx: MIN_OVERLAP_PX }
+  );
+}
+
+for (const vp of PHONE_LANDSCAPE) {
+  test(`felt has no overlapping elements on ${vp.name} (${vp.width}x${vp.height})`, async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 2,
+    });
+    const page = await context.newPage();
+    await page.goto("/");
+
+    // Practice needs no second browser and no room code, and it seats bots --
+    // so the arc is populated, which is what makes the seats collide at all.
+    await page.getByRole("button", { name: /Practice Against the Computer/i }).click();
+
+    const check = async (phase: string) => {
+      await settle(page);
+      const overlaps = await findOverlaps(page);
+      expect(
+        overlaps,
+        `Overlapping elements on ${vp.width}x${vp.height} (${phase}):\n` +
+          overlaps.map((o) => `  ${o.pct}% (${o.px}px)  ${o.a}  X  ${o.b}`).join("\n")
+      ).toEqual([]);
+    };
+
+    // TWO phases, because no single moment of a round has every element on the
+    // felt at once, and each phase owns something the other cannot show:
+    //
+    //   mid-hand  -- the bank's reservation split only exists against a LIVE
+    //                wager, and the viewer's seat is at its tallest with cards
+    //                in it. Both are load-bearing for the seat maths.
+    //   resolved  -- the discard pile does not render at all until the round
+    //                has its first entry (DiscardPile.tsx returns null at
+    //                zero), so a check that stops at the deal can never see
+    //                the pile, no matter what the allowlist says.
+    const bet = page.getByRole("button", { name: "Bet", exact: true });
+    await bet.waitFor({ state: "visible", timeout: 30_000 });
+    await bet.click();
+    await expect(page.locator(".k-hand img").first()).toBeVisible({ timeout: 15_000 });
+    await check("mid-hand, live wager");
+
+    await page.getByRole("button", { name: "Stand", exact: true }).click();
+    await expect(page.locator(".k-discard")).toBeVisible({ timeout: 30_000 });
+    await check("round resolved, discard pile up");
+
+    await context.close();
+  });
+}

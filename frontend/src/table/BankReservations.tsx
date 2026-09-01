@@ -1,7 +1,7 @@
 import { SeatPosition } from "./layout";
 import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
 import { Icon } from "./icons";
-import { bankPanelTop } from "./BankPanel";
+import { bankPanelPlacement } from "./BankPanel";
 
 export interface Reservation {
   playerId: string;
@@ -20,14 +20,16 @@ export interface BankReservationsProps {
 
 // Where the bank's money sits on the felt -- just under the BANK total (see
 // BankPanel), so a reservation reads as chips pushed out FROM the bank.
-const POT_X = STAGE_WIDTH / 2;
-
-// Reuses BankPanel's own top-anchor formula directly (not a copy of its
-// constants) so the two can never drift apart the way the old parallel
-// formula did -- +22 is the same "just under it" margin (this pill's own
-// height plus a small gap) the original constant always implied.
-function potY(playTop: number, vf: number): number {
-  return bankPanelTop(playTop, vf) + 22;
+//
+// Reuses BankPanel's own placement directly (not a copy of its constants) so
+// the two can never drift apart the way the old parallel formula did. It is
+// no longer a constant: on a flattened phone the pill leaves the centre
+// column, and connector lines still drawn from stage-centre would point at
+// empty felt. +22 is the same "just under it" margin (the pill's own height
+// plus a small gap) the original constant always implied.
+function potPoint(playTop: number, vf: number): { x: number; y: number } {
+  const place = bankPanelPlacement(playTop, vf, STAGE_WIDTH);
+  return { x: place.x, y: place.y + 22 };
 }
 
 // Chips rest a fixed distance BACK from the seat rather than at a fixed
@@ -72,17 +74,17 @@ function minViableDistance(scale: number): number {
   return (SEAT_CLEARANCE * scale) / (1 - T_MIN);
 }
 
-function restPoint(position: SeatPosition, potYVal: number, scale: number): { x: number; y: number } {
-  const dx = position.x - POT_X;
-  const dy = position.y - potYVal;
+function restPoint(position: SeatPosition, pot: { x: number; y: number }, scale: number): { x: number; y: number } {
+  const dx = position.x - pot.x;
+  const dy = position.y - pot.y;
   const distance = Math.hypot(dx, dy);
   const clearance = SEAT_CLEARANCE * scale;
   const t = distance > 0 ? Math.min(T_MAX, Math.max(T_MIN, (distance - clearance) / distance)) : T_MIN;
-  return { x: POT_X + dx * t, y: potYVal + dy * t };
+  return { x: pot.x + dx * t, y: pot.y + dy * t };
 }
 
-function isPlaceable(position: SeatPosition, potYVal: number, scale: number): boolean {
-  return Math.hypot(position.x - POT_X, position.y - potYVal) >= minViableDistance(scale);
+function isPlaceable(position: SeatPosition, pot: { x: number; y: number }, scale: number): boolean {
+  return Math.hypot(position.x - pot.x, position.y - pot.y) >= minViableDistance(scale);
 }
 
 // Chips the bank has committed to wagers it hasn't settled yet, drawn on the
@@ -93,8 +95,8 @@ function isPlaceable(position: SeatPosition, potYVal: number, scale: number): bo
 // round goes round and why a table can stall on an empty bank. None of that
 // was visible before -- players just found their limit had moved.
 export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 }: BankReservationsProps) {
-  const potYVal = potY(playTop, vf);
-  const placeable = reservations.filter((r) => isPlaceable(r.position, potYVal, scale));
+  const pot = potPoint(playTop, vf);
+  const placeable = reservations.filter((r) => isPlaceable(r.position, pot, scale));
   if (placeable.length === 0) return null;
 
   return (
@@ -107,12 +109,12 @@ export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 
         aria-hidden="true"
       >
         {placeable.map((r) => {
-          const end = restPoint(r.position, potYVal, scale);
+          const end = restPoint(r.position, pot, scale);
           return (
             <line
               key={r.playerId}
-              x1={POT_X}
-              y1={potYVal}
+              x1={pot.x}
+              y1={pot.y}
               x2={end.x}
               y2={end.y}
               className="k-resv-line"
@@ -122,7 +124,7 @@ export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 
       </svg>
 
       {placeable.map((r) => {
-        const at = restPoint(r.position, potYVal, scale);
+        const at = restPoint(r.position, pot, scale);
         return (
           <div
             key={r.playerId}

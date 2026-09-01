@@ -203,6 +203,60 @@ export function seatScale(positions: SeatPosition[]): number {
   return Math.min(1, Math.max(0.36, scale));
 }
 
+// The dealer's own seat box, in stage px. Smaller than SEAT_HEIGHT because
+// that constant is calibrated to the VIEWER's seat, which renders 92px cards
+// (see its comment); the dealer's renders 72px ones. Live-measured 2026-09-01
+// at 1512x950, seatShrink 1: dealer 151 stage px against the viewer's 206.
+// 160 keeps the same few px of slack SEAT_HEIGHT allows itself.
+const DEALER_SEAT_HEIGHT = 160;
+// The height this check has to reserve for a PLAYER seat, which is not
+// SEAT_HEIGHT. That constant is a spacing reservation for seat-against-seat
+// crowding, and it under-reserves the viewer's own seat, the one that
+// actually meets the dealer: measured live at 854x384 the viewer's box ran
+// 91 stage px above its centre and 92 below at seatShrink 0.84, i.e. 218
+// unscaled against SEAT_HEIGHT's 200. Reserving 200 left a 7px overlap --
+// small, but visible as the dealer's plate touching the viewer's name.
+// 224 covers the measured 218 with the same few px of slack SEAT_HEIGHT
+// allows itself for box-shadow spill.
+const VIEWER_SEAT_HEIGHT = 224;
+
+/**
+ * How much to shrink the player seats so none of them collides with the
+ * DEALER, who is not on the arc and never shrinks.
+ *
+ * seatScale() above only compares players against each other, so nothing in
+ * the system watched this pair -- and it is the pair that fails first on a
+ * phone. On a 854x384 landscape Galaxy the play band is 252px and has to hold
+ * a 106px dealer seat above a 146px viewer seat; `vf` is already pinned at
+ * MIN_VF, so the arc cannot flatten any further to help, and the viewer's
+ * nameplate landed 17px inside the dealer's box. Reported as the table being
+ * unplayable on a phone, which is where most of these games get played.
+ *
+ * Only the player's half of each pair shrinks, hence SEAT_HEIGHT * s against
+ * the dealer's fixed half. Clearing on EITHER axis is enough, same rule as
+ * seatScale -- a seat far enough to the side is fine however tall it is,
+ * which is why this binds on the bottom-centre seat and almost nowhere else.
+ *
+ * `dealerY` is the dealer seat's centre in stage px: `playTop + 160 * vf`,
+ * the same point TableRoot deals cards from. Verified against live rects at
+ * two viewports (predicted 195.6 / 170.0, measured 195.6 / 170.0).
+ */
+export function dealerClearanceScale(positions: SeatPosition[], dealerY: number): number {
+  let scale = 1;
+  for (const p of positions) {
+    const dy = Math.abs(p.y - dealerY);
+    const dx = Math.abs(p.x - CX);
+    const byHeight = (2 * dy - DEALER_SEAT_HEIGHT) / VIEWER_SEAT_HEIGHT;
+    const byWidth = (2 * dx - SEAT_WIDTH) / SEAT_WIDTH;
+    const needed = Math.max(byHeight, byWidth);
+    if (needed < scale) scale = needed;
+  }
+  // Same backstop as seatScale, and for the same reason: clamping above what
+  // the table actually needs does not keep seats readable, it just puts the
+  // overlap back.
+  return Math.min(1, Math.max(0.36, scale));
+}
+
 // Index of the bottom-centre slot in seatPositions()'s output -- where the
 // viewer belongs, per the card-game convention of "you sit at the near edge".
 export function viewerSlotIndex(count: number): number {

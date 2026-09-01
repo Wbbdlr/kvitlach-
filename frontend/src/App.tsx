@@ -65,6 +65,7 @@ export default function App() {
   const prevActiveTurnIdRef = useRef<string | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
   const formErrors = store.formErrors ?? {};
+  const watching = store.watching;
   const accessCodeRequired = store.accessCodeRequired;
   const accessCode = store.accessCode;
   const setAccessCode = store.setAccessCode;
@@ -99,6 +100,11 @@ export default function App() {
     // runs) is treated exactly like an invite link's ?room= hint here.
     const fromPath = window.location.pathname.match(/^\/table\/([^/]+)\/?$/)?.[1];
     const params = new URLSearchParams(window.location.search);
+    // An admin Watch link is not a prefill hint -- state.ts's onOpen sends
+    // room:watch for it. Filling the lobby's join form here as well would
+    // leave a "join this table as a player" form sitting under the felt,
+    // which is the exact thing the operator must not do by accident.
+    if (params.get("watch")) return;
     const fromQuery = fromPath ? decodeURIComponent(fromPath) : params.get("room");
     if (fromQuery) {
       setRoomId(fromQuery);
@@ -418,6 +424,7 @@ export default function App() {
         round={round}
         playerId={playerId}
         isAdmin={isAdmin}
+        watching={watching}
         bankerTurn={primaryBankerTurn}
         playerTurns={playerTurns}
         shoeDiscards={store.shoeDiscards}

@@ -54,7 +54,7 @@ does not change what gets installed, and the container is discarded after the
 build. Pinning a newer npm in the Dockerfile adds a network step and a moving
 part to every build for no change in output.
 
-### Open TODO — the base image is Node 20, and that is a real problem
+### DONE in v8.9 — both Dockerfiles now pin `node:22-alpine`
 
 Three things, one fix:
 
@@ -76,10 +76,11 @@ Three things, one fix:
   `esbuild`, which is dev-only and excluded by `npm ci --omit=dev`.
 - The frontend's runtime stage is `nginx:alpine`; Node only builds the bundle.
 
-**Ship it as its own deploy**, not folded into a release carrying other
-changes. If a base-image change does misbehave on the server, it should be the
-only suspect. Node 22 is itself in maintenance until April 2027, so this buys
-real time rather than being a hop.
+Shipped in v8.9 alongside other changes at the user's explicit direction —
+the plan had been to isolate it, so if the server misbehaves on that build,
+the base image is one of several suspects rather than the only one. Node 22 is
+in maintenance until April 2027, so this buys real time rather than being a
+hop. Next EOL to watch: **April 2027**.
 
 ## `caniuse-lite is 9 months old`
 

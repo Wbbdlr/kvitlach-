@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json tsconfig.json vitest.config.ts ./
 COPY src ./src
@@ -8,7 +8,7 @@ COPY src ./src
 # versions from package-lock.json.
 RUN npm ci && npm run build
 
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 COPY --from=build /app/package*.json ./
 # Production dependencies only. Copying the build stage's node_modules put

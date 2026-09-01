@@ -78,6 +78,11 @@ async function main() {
     // panel answers on 25000 and the app is served by nginx behind the
     // tunnel, so it cannot infer this from its own request host.
     appUrl: process.env.PUBLIC_APP_URL || "https://kvitlach.us",
+    // Minted here rather than in the page so the grant lives in the WS server
+    // that redeems it. Same process, so no shared secret is needed -- and it
+    // must stay that way: splitting HTTP and WS into separate processes would
+    // silently break every Watch link.
+    watchToken: (roomId) => ws.mintWatchToken(roomId),
   });
   await app.listen({ port: PORT_HTTP, host: "0.0.0.0" });
   console.log(`HTTP listening on http://0.0.0.0:${PORT_HTTP}`);
@@ -85,7 +90,7 @@ async function main() {
 
 // Backstop, not a strategy: every known fire-and-forget path catches at its
 // own call site, and those catches are what actually keep things running. This
-// exists because the default for an unhandled rejection on Node 20 is to kill
+// exists because the default for an unhandled rejection since Node 15 is to kill
 // the process, and one stray promise in one player's disconnect should not end
 // the night for everyone else. Logged loudly so a rejection that lands here is
 // treated as a bug to fix at its source rather than quietly swallowed forever.

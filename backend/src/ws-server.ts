@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket, RawData } from "ws";
+import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "http";
 import { AccessControl } from "./access.js";
 import { validatePayload } from "./payload.js";
@@ -43,6 +44,11 @@ export class WSServer {
   private meta = new WeakMap<WebSocket, ConnectionMeta>();
   private connsByIp = new Map<string, Set<WebSocket>>();
   private msgCount = new WeakMap<WebSocket, { count: number; resetAt: number }>();
+  // Admin "Watch" grants, minted by the admin page and redeemed by room:watch.
+  // Held here rather than in the store because they are connection-level
+  // authorisation, not game state, and must not survive a restart: the admin
+  // panel re-renders its links every 15s, so a lost grant costs one refresh.
+  private watchTokens = new Map<string, { roomId: string; expires: number }>();
 
   // How many rooms this server currently holds socket sets for. Must track
   // rooms with someone CONNECTED, not rooms ever created -- see onClose. Read
@@ -115,7 +121,7 @@ export class WSServer {
           this.store.setPresence(info.roomId, info.playerId, "offline");
           this.broadcastRoom(info.roomId);
           // Both of these reach Postgres, and both are fire-and-forget. An
-          // unhandled rejection terminates the process on Node 20, so a db
+          // unhandled rejection terminates the process (Node 15+), so a db
           // hiccup while ONE player's socket closed would drop every player
           // in every room. store.ts already catches on all its own void
           // writes; these two were the outliers.
@@ -224,6 +230,38 @@ export class WSServer {
           });
           this.broadcastRoom(room.roomId);
           await this.broadcastConnections(room.roomId);
+          break;
+        }
+        // The admin panel's Watch link. A watcher is subscribed to the room's
+        // broadcasts and nothing else: no Player, no wallet, no seat, no
+        // session token.
+        //
+        // Deliberately NOT room:join with spectator:true, which is what the
+        // lobby's own Watch button sends. That path creates a real Player, so
+        // it shows in the roster, counts against maxPlayersPerRoom and is
+        // announced to the table -- correct for a guest watching a friend
+        // play, and the opposite of what an operator checking on a table
+        // needs. The two are different features that share a verb.
+        //
+        // Nothing here can act on the game: every action handler reads
+        // meta.playerId, and this attaches without one, so a watcher fails
+        // the same guard an unauthenticated socket does. That is the whole
+        // security model for this case -- there is no allow-list to keep in
+        // sync with it.
+        case "room:watch": {
+          const { roomId, token } = (payload as any) || {};
+          if (!roomId) throw new Error("invalid_payload");
+          const normalizedId = String(roomId).trim().toUpperCase();
+          if (!this.redeemWatchToken(token, normalizedId)) throw new Error("watch_not_allowed");
+          const room = this.store.getRoom(normalizedId);
+          if (!room) throw new Error("room_not_found");
+          this.attachWatcher(socket, normalizedId);
+          const round = room.roundId ? this.store.getRound(room.roundId) : undefined;
+          this.sendAck(socket, requestId, {
+            room,
+            watching: true,
+            round: round ? this.sanitizeRound(round) : undefined,
+          });
           break;
         }
         // Deliberately NOT gated by this.access -- see assertAllowed's comment
@@ -686,6 +724,58 @@ export class WSServer {
     } catch (err) {
       console.error("connection logging failed", err);
     }
+  }
+
+  /**
+   * Issues a one-room, time-boxed grant for the admin panel's Watch link.
+   *
+   * The panel authenticates over HTTP on 25000; gameplay is a separate socket
+   * on 25001 that has never heard of an admin session. This token is the only
+   * thing carrying that authorisation across, which is why it is scoped to a
+   * single room and expires: the link ends up in a browser history, and a
+   * bare `?watch=1` with no proof would let anyone who learned a room id sit
+   * in it unseen -- strictly worse than the visible spectator seat the lobby
+   * already offers.
+   */
+  mintWatchToken(roomId: string, ttlMs = 30 * 60 * 1000): string {
+    const now = Date.now();
+    for (const [t, grant] of this.watchTokens) {
+      if (grant.expires <= now) this.watchTokens.delete(t);
+    }
+    const token = randomBytes(18).toString("hex");
+    this.watchTokens.set(token, { roomId: roomId.trim().toUpperCase(), expires: now + ttlMs });
+    return token;
+  }
+
+  private redeemWatchToken(token: unknown, roomId: string): boolean {
+    if (typeof token !== "string" || !token) return false;
+    const grant = this.watchTokens.get(token);
+    if (!grant) return false;
+    if (grant.expires <= Date.now()) {
+      this.watchTokens.delete(token);
+      return false;
+    }
+    // Not deleted on use. The watcher's own tab reconnects on every network
+    // blink and would otherwise be locked out of a table it is already
+    // watching; the expiry is what bounds the grant.
+    return grant.roomId === roomId;
+  }
+
+  /**
+   * Subscribes a socket to a room's broadcasts with NO player identity.
+   *
+   * Not a variant of attach(): the difference is the whole point. attach()
+   * sets meta.playerId (which is what authorises every game action) and calls
+   * recordConnection, which is what puts a row in the banker's connection
+   * list. A watcher gets neither, so it is invisible to the table and inert
+   * on it. It still lands in this.rooms, so onClose's empty-Set reap covers
+   * it exactly as it covers a player.
+   */
+  private attachWatcher(socket: WebSocket, roomId: string) {
+    const existing = this.meta.get(socket) ?? {};
+    this.meta.set(socket, { ...existing, roomId, playerId: undefined, connectionId: undefined });
+    if (!this.rooms.has(roomId)) this.rooms.set(roomId, new Set());
+    this.rooms.get(roomId)!.add(socket);
   }
 
   private broadcastRoom(roomId: string) {
