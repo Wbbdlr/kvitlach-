@@ -5,10 +5,12 @@ import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
 
+import { enterImmersive, exitImmersive } from "./table/immersive";
 import { bestTotal, isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
 import { TableRoot } from "./table/TableRoot";
 import { RulesModals } from "./RulesModals";
+import InstallPrompt from "./InstallPrompt";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
 
@@ -62,6 +64,9 @@ export default function App() {
   const prevActiveTurnIdRef = useRef<string | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
   const formErrors = store.formErrors ?? {};
+  const accessCodeRequired = store.accessCodeRequired;
+  const accessCode = store.accessCode;
+  const setAccessCode = store.setAccessCode;
   const dismissNotification = store.dismissNotification;
   const dismissBankerSummary = store.dismissBankerSummary;
   const sendReaction = store.sendReaction;
@@ -321,8 +326,26 @@ export default function App() {
     }
   }, [room?.buyIn, buyInAmount]);
 
+  // Release the landscape lock and fullscreen on the way out. This watches
+  // `room` disappearing rather than hanging off the Leave button, because
+  // Leave is only one of the ways out -- being kicked, the banker closing the
+  // table, and the room being voided all land here too, and every one of them
+  // would otherwise strand the player locked landscape on the portrait lobby.
+  const wasInRoom = useRef(false);
+  useEffect(() => {
+    const inRoom = Boolean(room);
+    if (wasInRoom.current && !inRoom) exitImmersive();
+    wasInRoom.current = inRoom;
+  }, [room]);
+
+  // enterImmersive() runs first in each of these, and from the handler itself
+  // rather than from an effect on `room` arriving: the fullscreen request only
+  // counts while the browser still considers itself inside the tap that
+  // triggered it, and the room does not arrive until a WS round-trip later.
+  // See table/immersive.ts.
   const onCreate = (e: FormEvent) => {
     e.preventDefault();
+    enterImmersive();
     const bankerBankrollPayload = bankerBankrollManuallySet ? bankerBankroll : undefined;
     store.createRoom(
       bankerFirstName,
@@ -337,6 +360,7 @@ export default function App() {
 
   const onJoin = (e: FormEvent) => {
     e.preventDefault();
+    enterImmersive();
     store.setFormError("join", undefined);
     store.joinRoom(roomIdInput, joinFirstName, joinLastName, joinPassword || undefined, false);
   };
@@ -344,8 +368,12 @@ export default function App() {
   const onWatch = (e: React.MouseEvent) => {
     e.preventDefault();
     store.setFormError("join", undefined);
+    // The two validation bail-outs below come BEFORE enterImmersive(): a
+    // watcher who left the room ID blank stays on the lobby, and taking them
+    // fullscreen to read a form error would be nonsense.
     if (!roomIdInput) { store.setFormError("join", "Enter a room ID to watch."); return; }
     if (!joinFirstName) { store.setFormError("join", "Enter your name so others know you're watching."); return; }
+    enterImmersive();
     store.joinRoom(roomIdInput, joinFirstName, joinLastName, joinPassword || undefined, true);
   };
 
@@ -561,6 +589,31 @@ export default function App() {
         </div>
       )}
       <SiteHeader />
+        {/* One field for all three lobby forms. It only appears once the
+            server has actually refused for want of a code (see state.ts's
+            accessCodeRequired) -- the mode is not published to unauthenticated
+            clients, so an always-visible "access code (if you have one)" box
+            would be asking every ordinary visitor about a lock that is not
+            there. */}
+        {!room && accessCodeRequired && (
+          <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex flex-col gap-2">
+            <h2 className="text-sm font-semibold text-amber-900">This table is invite-only right now</h2>
+            <p className="text-xs text-amber-800">
+              Enter the access code you were given, then try again. It is remembered on this device.
+            </p>
+            <label className="text-sm text-amber-900">
+              Access code
+              <input
+                className="mt-1 w-full rounded border border-amber-300 px-3 py-2"
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+            </label>
+          </section>
+        )}
         {!room && (
           <section className="rounded-xl shadow-md bg-blue-50/70 border border-blue-200 p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
@@ -611,6 +664,8 @@ export default function App() {
             </div>
           </section>
         )}
+
+        {!room && <InstallPrompt />}
 
         {!room && (
           <section className="grid md:grid-cols-2 gap-4 items-start">
@@ -886,14 +941,15 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                enterImmersive();
                 store.createPracticeRoom(practiceFirstName.trim() || "Guest", {
                   botCount: practiceBotCount,
                   deckCount: practiceDecks,
                   buyIn: practiceBuyIn,
                   bankBuyIn: practiceBankBuyIn,
-                })
-              }
+                });
+              }}
               className="w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-accent/85"
               title="Start a solo table against computer players -- no code needed"
             >
