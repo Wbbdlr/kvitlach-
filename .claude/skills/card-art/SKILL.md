@@ -20,20 +20,38 @@ Full geometry, the dot spec, font licensing and regeneration steps:
   thumbnail size the damage is invisible.
 
 - **After any change to the mark, look at cards 2 and 11.** They are the only
-  two with an ornamental frame and use a lower foot baseline (`y1374` vs
-  `y1352`) to clear its bottom flourish at `y1333`. A plain card cannot show
-  that collision, so checking one proves nothing. Find it with a row-ink scan,
-  not by eye on a half-scale sheet — that is how it was missed the first time.
+  two with an ornamental frame, and its bottom flourish reaches `y1337` where
+  the plain ten are clear from `y1172`. Their free band is **67px** against the
+  others' 232px, and it is what caps `SIZE`. A plain card cannot show that
+  collision, so checking one proves nothing. Find it with a row-ink scan, not
+  by eye on a half-scale sheet — that is how it was missed the first time.
 
-## Sizes: design for 92px, not 946px
+## Sizes: design for 68px, not 946px
 
-Source art is 946×1438. Cards render at **~92 CSS px** on the felt and **36px**
-in the lobby. A mark that is 34px tall in the source is **3px** on screen.
+Source art is 946×1438. Cards render at **68 CSS px** on the felt (measured on
+the live table) and **36px** in the lobby — a 14× reduction.
 
-The first mark shipped at `SIZE=46 / ALPHA=140`, was approved on a full-size
-proof sheet, and was invisible in play. **Always proof at the real rendered
-size** — 92px and 184px (2× phone screen) — not at full resolution. A variant
-sheet at true size costs one script and settles the question in one round trip.
+The first mark shipped at `SIZE=46 / ALPHA=140`, approved on a full-resolution
+proof sheet, and **did not appear at all** in play: eleven letters landed on
+about two pixel rows and averaged to paper colour. Not faint — absent.
+
+**Judge the mark by ink contrast measured AFTER the downscale**, over the
+mark's own band (`x280..666, y1330..1400`), never by eye at full res:
+
+| setting | contrast at full res | at 68px | verdict |
+|---|---|---|---|
+| 46 / 140 (shipped v7.9–8.5) | 104 | **38** | invisible |
+| 72 / 220 (current) | 161 | **88** | reads |
+| 90 / 210 | 157 | 88 | reads, but **does not fit cards 2 and 11** |
+
+Current geometry: one baseline at `y1397` for all twelve (caps stand 53px at
+`SIZE 72`, so cap tops land at `y1344` — 7px clear of the ornate scrollwork,
+9px under the frame rule). Card 1 keeps its head cartouche, `HEAD_TOP=76`,
+box 144px, in the 236px band between the rule at `y31` and the digit at `y269`.
+
+`SIZE` cannot simply be raised: 90 reads no better and breaks the ornate pair.
+`ALPHA` is the free lever, and a mark that changes size between cards looks
+like a mistake rather than a maker's mark.
 
 `ALPHA` and `MARK_INK` are constants in the generator and are **baked into the
 raster** — no environment variable can change them. Edit and re-run.

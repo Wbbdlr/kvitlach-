@@ -31,39 +31,76 @@ SRC = os.path.join(HERE, "card-src")
 # Cinzel, SIL OFL (tools/fonts/OFL.txt). Deliberately NOT in frontend/public:
 # the mark is baked into the PNGs, so shipping the face itself would push
 # 125KB at every visitor for nothing. The variable font's default instance is
-# wght 400 = Regular, which is what we want, so no axis pinning is needed.
+# wght 400; the mark pins the axis to WEIGHT below -- see the note there.
 FACE = os.path.join(HERE, "fonts", "Cinzel[wght].ttf")
 
 NAME = "SCHLESINGER"
-ALPHA = 140              # ~55% ink
+# Sized and inked for 68px, not for 946px.
+#
+# The first version of this mark stood 34px tall at ALPHA 140. It looked right
+# on a full-resolution proof sheet and was invisible in play: a card renders at
+# 68 CSS px on the felt (measured on the live table; 36px in the lobby), which
+# is a 14x reduction, so eleven letters landed on about two pixel rows and
+# averaged out to paper colour. Ink contrast across the mark's band fell from
+# 104 at full res to 38 at 68px -- not "faint", gone.
+#
+# These numbers are chosen by measuring contrast AFTER the downscale. 72/220
+# holds 88, which is where the word becomes readable rather than a smudge.
+# If you change either, re-measure at 68px; the full-res sheet will lie to you.
+ALPHA = 220
 # A cool slate blue rather than black, so the mark reads as a second printing
-# plate instead of a faded numeral. Over the #F6F0F0 paper at ALPHA 140 this
-# lands around #8B98B2 -- present, clearly blue, nowhere near competing with
-# the numerals. The numerals themselves stay pure black; only the mark and its
-# frame take the tint.
+# plate instead of a faded numeral. The numerals stay pure black; only the mark
+# and its frame take the tint.
+#
+# Do not reach for a deeper blue to make it read bluer on the felt: at ALPHA
+# 220 this lands at #5E7398 (38% saturation) at full res but only ~10% at 68px,
+# and pushing the ink to #16305F moves that to 12%. Alpha compositing toward
+# the cream paper desaturates the ink BEFORE any downscaling does, and thin
+# strokes then average with the paper. WEIGHT is the lever that works.
 MARK_INK = (51, 80, 127)
-SIZE = 46
-TRACKING = 7
+SIZE = 72                # Cinzel caps stand 53px here
+TRACKING = 11
+# Cinzel's wght axis runs 400..900. Pinned to 600 because STROKE WEIGHT, not
+# hue, is what carries colour through a 14x downscale: thin strokes get
+# averaged with the cream paper, so the mark arrives grey no matter how blue
+# the ink is. Measured on the mark's band at 68px, holding SIZE and ALPHA:
+#
+#   wght 400  #B9BDCC   9.7% saturation   contrast  89
+#   wght 600  #8E9BB4  20.8% saturation   contrast 112
+#   wght 700  #7888A6  27.8% saturation   contrast 133
+#
+# 600 is the point where it reads as blue on the felt and still looks like a
+# printed maker's mark rather than a heading at full resolution. Deepening
+# MARK_INK instead was tried and moves saturation by ~2 points -- the paper
+# wins that argument, the stroke width does not.
+#
+# Applies to the mark alone. The 9's underdot comes from the card face's own
+# DidoneRoomNumbers.otf and is untouched by this.
+WEIGHT = 600
 SS = 4                   # supersample; PIL fills are hard-aliased
 
-# Measured off the 946x1438 art: frame rule x24..923 / y27..1410.
+# Measured off the 946x1438 art by row-ink scan (x120..826, alpha>40 and
+# L<215). The frame rule sits at y1406..1410 on every card. Free bands:
 #
-# Two foot baselines, because cards 2 and 11 are not like the others. Those
-# two carry an ornamental frame whose bottom flourish reaches y1333 (row-ink
-# scan over x60..886); the plain ten are clear from y1180 down. Cinzel caps
-# stand 34px at SIZE 46.
+#   plain ten     art ends y1172  ->  free y1173..1405  (232px)
+#   cards 2, 11   scrollwork ends y1337  ->  free y1338..1405  (67px)
 #
-# The plain cards sit at 1352, which reads as a foot line rather than
-# something crowding the rule. The ornate pair cannot: 1352 puts their cap
-# tops at 1318, straight through the scrollwork. 1374 is the highest baseline
-# that clears it (7px over the flourish, 36px under the rule), so they sit
-# slightly lower than the rest by necessity. Re-check 2 and 11 specifically
-# after changing SIZE -- a plain card will not show the collision.
-FOOT_BASELINE = 1352
-FOOT_BASELINE_ORNATE = 1374
-ORNATE = {2, 11}
-HEAD_TOP = 118           # card 1's cartouche: below the rule at y27, above
-                         # the digit at y271, weighted toward the numeral
+# ONE baseline for all twelve now, at 1397. Caps stand 53px at SIZE 72, so the
+# cap tops land at 1344: 7px clear of the ornate scrollwork and 9px under the
+# rule. That is the whole reason SIZE is 72 and not larger -- 90 would read
+# better still on the felt (cap 67) but cannot fit cards 2 and 11 at all, and a
+# mark that changes size between cards looks like a mistake rather than a
+# maker's mark. ALPHA carries what SIZE cannot.
+#
+# This replaces the earlier split baselines (1352 plain / 1374 ornate). The
+# collision that forced them is now cleared by geometry rather than by a
+# special case -- but re-measure 2 and 11 specifically if SIZE ever grows,
+# because a plain card cannot show that collision.
+FOOT_BASELINE = 1397
+ORNATE = {2, 11}         # kept for the post-render clearance check only
+HEAD_TOP = 76            # card 1's cartouche: rule ends y31, digit starts
+                         # y269, so the free head band is 236px. The taller
+                         # box (144px) leaves 45px above and 49px below.
 
 # The 9's underdot, which tells it from the 6 (the real deck's 6 is undotted,
 # so this goes on the 9 alone). The font's own period, baseline-aligned.
@@ -131,6 +168,18 @@ def draw_dot(img):
     return Image.alpha_composite(img, layer)
 
 
+def mark_font(px):
+    """Cinzel at WEIGHT. Falls back to the 400 default if the build of
+    FreeType underneath PIL has no variable-font support -- the mark then
+    renders lighter rather than the run failing outright."""
+    f = ImageFont.truetype(FACE, px)
+    try:
+        f.set_variation_by_axes([WEIGHT])
+    except Exception:
+        print(f"  warning: could not pin Cinzel to wght {WEIGHT}; using 400")
+    return f
+
+
 def _tracked(d, f, cx, baseline, tracking, ink):
     widths = [d.textlength(c, font=f) for c in NAME]
     x = cx - (sum(widths) + tracking * (len(NAME) - 1)) / 2
@@ -142,14 +191,14 @@ def _tracked(d, f, cx, baseline, tracking, ink):
 
 def foot_mark(img, card):
     """Plain imprint at the foot -- cards 2..12."""
-    baseline = FOOT_BASELINE_ORNATE if card in ORNATE else FOOT_BASELINE
+    baseline = FOOT_BASELINE
     layer = Image.new("RGBA", (img.width * SS, img.height * SS), (0, 0, 0, 0))
-    _tracked(ImageDraw.Draw(layer), ImageFont.truetype(FACE, SIZE * SS),
+    _tracked(ImageDraw.Draw(layer), mark_font(SIZE * SS),
              img.width * SS / 2, baseline * SS, TRACKING * SS, (*MARK_INK, ALPHA))
     return Image.alpha_composite(img, layer.resize(img.size, Image.LANCZOS))
 
 
-def head_cartouche(img, size=44, tracking=8, box_h=96, pad_x=44):
+def head_cartouche(img, size=66, tracking=12, box_h=144, pad_x=52):
     """Double-rule frame around the name at the head -- card 1 only.
 
     No crown. Four crowns were drawn and every one read as pasted on: a
@@ -160,7 +209,7 @@ def head_cartouche(img, size=44, tracking=8, box_h=96, pad_x=44):
     d = ImageDraw.Draw(layer)
     ink = (*MARK_INK, ALPHA)
     cx = img.width * SS / 2
-    f = ImageFont.truetype(FACE, size * SS)
+    f = mark_font(size * SS)
     top, bh = HEAD_TOP * SS, box_h * SS
     bot = top + bh
     tw = sum(d.textlength(c, font=f) for c in NAME) + tracking * SS * (len(NAME) - 1)
