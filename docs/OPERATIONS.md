@@ -52,16 +52,24 @@ Two mechanisms, either works:
   from other machines — a token in the URL is a token in every proxy log,
   browser history entry and `Referer` header.
 
-Generate the hash on the server, then set the rest:
+**One paste sets everything up** — no editor, which matters because Dockge
+only shows the compose and `.env` files for stacks inside its own stacks
+directory, and this one lives in `~/docker/kvitlach`:
 
 ```bash
-cd ~/docker/kvitlach && docker compose -f deploy/docker-compose.yml exec backend npm run hash-password -- 'your password here'
+cd ~/docker/kvitlach && bash deploy/setup-admin.sh 'yourname' 'your password' 0.0.0.0
 ```
 
-Put the printed `ADMIN_PASSWORD_HASH=…` line into `deploy/.env` along with
-`ADMIN_USERNAME`, `ADMIN_SESSION_SECRET` (any long random string) and
-`ADMIN_BIND`, then `docker compose up -d backend`. `build-tarball.sh` excludes
-`.env`, so deploys will not overwrite it.
+It hashes the password (inside the running container, so the host needs no
+node), writes `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `ADMIN_BIND` and a
+generated `ADMIN_SESSION_SECRET` into `deploy/.env`, clears any stale
+`ADMIN_TOKEN`, restarts the backend and prints the URLs to open. Re-run it to
+change the password; the session secret is only generated once, so re-running
+does not sign you out. `build-tarball.sh` excludes `.env`, so deploys never
+overwrite it.
+
+The third argument is `ADMIN_BIND` and defaults to `0.0.0.0`. Pass `127.0.0.1`
+for server-only, or the box's `100.x.y.z` for tailnet-only.
 
 ## What the panel does
 

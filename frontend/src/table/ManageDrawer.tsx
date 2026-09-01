@@ -366,7 +366,7 @@ export function ManageDrawer({
             className="text-xs font-semibold text-blue-600 underline disabled:text-slate-300 disabled:no-underline"
             onClick={onExportHistory}
           >
-            Export .txt
+            Export the night
           </button>
         </div>
 

@@ -6,7 +6,7 @@ import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
 
 import { enterImmersive, exitImmersive } from "./table/immersive";
-import { buildHistoryText, downloadText, historyFilename } from "./exportHistory";
+import { buildHistoryHtml, downloadFile, historyFilename } from "./exportHistory";
 import { bestTotal, isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
 import { TableRoot } from "./table/TableRoot";
@@ -384,9 +384,9 @@ export default function App() {
   const exportRoundHistoryTxt = (focusPlayerId?: string) => {
     const rounds = roundHistory ?? [];
     if (!rounds.length) return;
-    downloadText(
+    downloadFile(
       historyFilename(room?.roomId, Boolean(focusPlayerId)),
-      buildHistoryText({ rounds, roomId: room?.roomId, roomName: room?.name, focusPlayerId })
+      buildHistoryHtml({ rounds, roomId: room?.roomId, roomName: room?.name, focusPlayerId })
     );
   };
 

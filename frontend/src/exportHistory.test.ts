@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHistoryText, historyFilename, summarize } from "./exportHistory";
+import { buildHistoryHtml, historyFilename, summarize, verdict } from "./exportHistory";
 import type { CompletedRoundSummary } from "./state";
 
 // The file this produces is the only thing a player takes home, and it is
@@ -72,47 +72,80 @@ describe("summarize", () => {
   });
 });
 
-describe("buildHistoryText", () => {
-  it("includes standings and every round", () => {
-    const text = buildHistoryText({ rounds, roomId: "ZXD636", roomName: "Chanukah night 3" });
-    expect(text).toContain("Chanukah night 3");
-    expect(text).toContain("Table ZXD636");
-    expect(text).toContain("FINAL STANDINGS");
-    expect(text).toContain("Shloime (Banker)");
-    expect(text).toContain("Round 1");
-    expect(text).toContain("Round 2");
-    expect(text).toContain("2 rounds");
+describe("buildHistoryHtml", () => {
+  it("is a self-contained document with no external requests", () => {
+    const html = buildHistoryHtml({ rounds, roomId: "ZXD636", roomName: "Chanukah night 3" });
+    expect(html.startsWith("<!doctype html>")).toBe(true);
+    // It has to still render years from now on a machine with no network, so
+    // nothing may be fetched: no fonts, images, scripts or stylesheets.
+    expect(html).not.toMatch(/<script|<img|https?:\/\/[^"']*\.(css|js|woff|png|jpg)/);
   });
 
-  it("writes a personal section only when a player is named", () => {
-    expect(buildHistoryText({ rounds })).not.toContain("YOUR NIGHT");
-    const mine = buildHistoryText({ rounds, focusPlayerId: "p1" });
-    expect(mine).toContain("YOUR NIGHT — Rivky");
-    expect(mine).toContain("-$10");
-    expect(mine).toContain("2 of 3 at the table");
+  it("carries the table's identity and every round", () => {
+    const html = buildHistoryHtml({ rounds, roomId: "ZXD636", roomName: "Chanukah night 3" });
+    expect(html).toContain("Chanukah night 3");
+    expect(html).toContain("ZXD636");
+    expect(html).toContain("Round 1");
+    expect(html).toContain("Round 2");
+    expect(html).toContain("Final standings");
+  });
+
+  it("leads with the player's own number when one is named", () => {
+    expect(buildHistoryHtml({ rounds })).not.toContain('class="who"&gt;Rivky');
+    const mine = buildHistoryHtml({ rounds, focusPlayerId: "p1" });
+    expect(mine).toContain("Rivky");
+    expect(mine).toContain("−$10");
+    expect(mine).toContain("2 of 3");
+  });
+
+  // The sheet is built from user-supplied names, so a name is the one place
+  // markup could get in. A player called "<b>" must not bold the document.
+  it("escapes player names rather than rendering them", () => {
+    const nasty = [
+      { ...rounds[0], turns: [turn("p1", "<script>x</script>", 10, 10)] },
+    ] as unknown as CompletedRoundSummary[];
+    const html = buildHistoryHtml({ rounds: nasty });
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>x</script>");
   });
 
   it("names the cards rather than scoring them", () => {
     // The 12 is worth 12, 9 or 10 depending on the hand, so a single printed
-    // number would be a lie about what was actually dealt.
-    expect(buildHistoryText({ rounds })).toContain("[9]");
-  });
-
-  it("resolves settlement ids to names", () => {
-    expect(buildHistoryText({ rounds })).toContain("Moshe → Rivky: $10");
+    // number would misreport what was actually dealt.
+    expect(buildHistoryHtml({ rounds })).toContain("9");
   });
 
   it("does not blow up on an empty history", () => {
-    const text = buildHistoryText({ rounds: [] });
-    expect(text).toContain("0 rounds");
-    expect(text).toContain("FINAL STANDINGS");
+    const html = buildHistoryHtml({ rounds: [] });
+    expect(html).toContain("No completed rounds.");
+    expect(html).toContain("Final standings");
+  });
+});
+
+describe("verdict", () => {
+  const base = { playerId: "p", name: "N", isBanker: false, wagered: 0, best: 0, worst: 0, wins: 0, losses: 0, pushes: 0, busts: 0 };
+  it("says something different for winning, losing and breaking even", () => {
+    expect(verdict({ ...base, rounds: 5, net: 50, streak: 1 }, 1, 4)).toMatch(/top of the table/i);
+    expect(verdict({ ...base, rounds: 5, net: 50, streak: 1 }, 3, 4)).toMatch(/finished up, 3 of 4/i);
+    expect(verdict({ ...base, rounds: 5, net: 0, streak: 0 }, 2, 4)).toMatch(/exactly even/i);
+    expect(verdict({ ...base, rounds: 5, net: -50, streak: 0 }, 4, 4)).toMatch(/down on the night/i);
+  });
+
+  // Losing money is the common case, so it is the one that most needs
+  // something better to say than the number already above it.
+  it("finds the consolation in a losing night with a streak in it", () => {
+    expect(verdict({ ...base, rounds: 9, net: -20, streak: 4 }, 3, 4)).toMatch(/4 in a row/);
+  });
+
+  it("talks about the bank, not placings, for the banker", () => {
+    expect(verdict({ ...base, isBanker: true, rounds: 6, net: 30, streak: 2 }, 1, 4)).toMatch(/held the bank/i);
   });
 });
 
 describe("historyFilename", () => {
   it("dates the file and marks a personal copy", () => {
     const now = new Date("2026-01-05T12:00:00");
-    expect(historyFilename("ZXD636", false, now)).toBe("kvitlach-history-ZXD636-2026-01-05.txt");
-    expect(historyFilename("ZXD636", true, now)).toBe("kvitlach-my-history-ZXD636-2026-01-05.txt");
+    expect(historyFilename("ZXD636", false, now)).toBe("kvitlach-table-ZXD636-2026-01-05.html");
+    expect(historyFilename("ZXD636", true, now)).toBe("kvitlach-my-night-ZXD636-2026-01-05.html");
   });
 });
