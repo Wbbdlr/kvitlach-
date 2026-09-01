@@ -92,12 +92,22 @@ set_key ADMIN_TOKEN ""
 echo "Wrote $ENV_FILE"
 docker compose -f "$REPO_ROOT/deploy/docker-compose.yml" up -d backend
 
-HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+# Everything below only prints where to log in. It must never be able to fail
+# the run: by this point .env is written and the backend is restarting, so
+# exiting non-zero here reports failure for a setup that actually succeeded.
+# `set -e` plus `pipefail` made that real -- `hostname -I` is Linux-only, and
+# on any host without it the whole script aborted after doing all its work.
+HOST_IP=""
+HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')" || HOST_IP=""
+TS_IP=""
+if command -v tailscale >/dev/null 2>&1; then
+  TS_IP="$(tailscale ip -4 2>/dev/null | head -1)" || TS_IP=""
+fi
+
 echo
 echo "Admin panel ready. Sign in as: $USERNAME"
 echo "  on this server : http://127.0.0.1:25000/admin"
 [ -n "$HOST_IP" ] && echo "  from the LAN   : http://$HOST_IP:25000/admin"
-command -v tailscale >/dev/null 2>&1 && \
-  echo "  over Tailscale : http://$(tailscale ip -4 2>/dev/null | head -1):25000/admin"
+[ -n "$TS_IP" ]   && echo "  over Tailscale : http://$TS_IP:25000/admin"
 echo
 echo "Bound to $BIND. Re-run this script to change the password."

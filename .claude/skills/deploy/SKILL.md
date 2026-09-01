@@ -70,6 +70,22 @@ previous turn already said three of them.
 
 5. Report the sha256 and byte size.
 
+## Before shipping a change to anything in `deploy/`
+
+```bash
+bash deploy/verify-setup-admin.sh
+```
+
+The unit suites cannot see this class of bug and both shipped anyway: a script
+calling a path no image contains, and a `$` in `.env` that Compose ate. This
+drives the real script against a throwaway tree with a stub `docker`, then
+checks what landed in `.env` — no `$`, three hash parts, unchanged under
+Compose-style interpolation, verifies against the password, wrong password
+rejected, session secret not rotated on re-run.
+
+**"The tests passed" is not evidence a deploy script works.** It was true both
+times a broken one went out.
+
 ## Never
 
 - **Never add `-v` to any `docker compose down`** in a command given to the
