@@ -51,10 +51,17 @@ const PHONE_LANDSCAPE = [
 // vertically -- the pile rides high beside the dealer, the bank sits low --
 // but "empty" was an eyeball claim about a screenshot taken before the pile
 // existed, and that is exactly the kind of claim this file is for.
+// k-reaction is here because a reaction bubble is a floating overlay that
+// LOOKS like it should be exempt (toasts are), and is not: it lives for 10
+// seconds anchored to a seat, and at the reported viewport the viewer's own
+// bubble rose off the bottom-centre seat straight onto the banker's total
+// (measured x404-450 y154-166 against the dealer's readout x356-435 y145-167)
+// -- "muddled ... not even readable". It is information covering information,
+// which is exactly what this file is for.
 const CHECKED = new Set([
   "k-seat", "k-plate", "k-plate-name", "k-plate-sub",
   "k-readout", "k-tag", "k-banktotal", "k-bank-split",
-  "k-hand", "k-shoe", "k-discard", "k-fs-hint", "k-controls",
+  "k-hand", "k-shoe", "k-discard", "k-reaction", "k-fs-hint", "k-controls",
 ]);
 
 // Two boxes touching by a few px is antialiasing and rounding, not a layout
@@ -187,6 +194,30 @@ for (const vp of PHONE_LANDSCAPE) {
     await bet.click();
     await expect(page.locator(".k-hand img").first()).toBeVisible({ timeout: 15_000 });
     await check("mid-hand, live wager");
+
+    // A live reaction bubble on the felt, before the hand resolves. Sent from
+    // the picker exactly the way a player does it, and deliberately the
+    // LONGEST phrase in the list -- the bubble is white-space: nowrap, so the
+    // longest string is the widest box and the only one worth checking.
+    await page.getByRole("button", { name: "React" }).click();
+    const phrases = page.locator('[role="dialog"], .relative.z-30 > div').first();
+    await phrases.waitFor({ timeout: 10_000 });
+    const longest = await page.evaluate(() => {
+      const panel = [...document.querySelectorAll("div")].find((d) =>
+        d.className.includes("bottom-full")
+      );
+      const buttons = [...(panel?.querySelectorAll("button") ?? [])];
+      const pick = buttons.sort((a, b) => (b.textContent ?? "").length - (a.textContent ?? "").length)[0];
+      pick?.click();
+      return pick?.textContent?.trim() ?? "";
+    });
+    expect(longest.length, "expected a reaction phrase to send").toBeGreaterThan(0);
+    await expect(page.locator(".k-reaction")).toBeVisible({ timeout: 10_000 });
+    await check(`reaction bubble up ("${longest}")`);
+    // Guards the guard: the bubble removes itself after 10s, so if settle()
+    // ever ran long the check above would have measured a felt with no bubble
+    // on it and passed for the wrong reason.
+    await expect(page.locator(".k-reaction")).toBeVisible();
 
     await page.getByRole("button", { name: "Stand", exact: true }).click();
     await expect(page.locator(".k-discard")).toBeVisible({ timeout: 30_000 });

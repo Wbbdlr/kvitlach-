@@ -14,6 +14,7 @@ demand. Adding a paragraph here is a recurring bill; think before you do.
 | changing card faces or the maker's mark | skill `card-art` |
 | locking down access, admin panel, capacity, monitoring | skill `admin-ops` |
 | touching phone landscape / fullscreen / PWA install | skill `phone-ui` |
+| changing any layout, spacing or z-order | **Mobile UI & layout** below |
 | running or adding tests, chasing a red suite | skill `testing` |
 | asked about npm audit / upgrades / build-log warnings | skill `deps` |
 | needing full rules, architecture, card geometry, ops setup | `docs/` |
@@ -140,6 +141,67 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 - The felt is a fixed 1280-wide virtual stage scaled to the viewport
   (`stage.ts`). Position in stage units, never viewport pixels.
 - Don't commit or push unless asked.
+
+## Mobile UI & layout
+
+Most players are on a phone, in landscape.
+**[docs/mobile-ui.md](docs/mobile-ui.md) is the design contract — read Part 1
+(the scene / HUD split) and Part 6 (the bug ledger) before writing any layout
+code.** It also holds the four rules, the z-index tiers, the orientation model,
+the verification loop and the refactor plan. Six of the ledger's ten bugs were
+one structural bug wearing six hats; Part 1 is what stops the seventh.
+
+**Stack:** plain DOM + CSS. React 18 + Tailwind, no canvas, no WebGL, no engine
+— so z-index, flex/grid and media queries are the real tools, and DevTools sees
+everything. Card faces are PNG with a live SVG overlay (`table/cardMark.ts`).
+Dev server `npm run dev` in `frontend/` on **5173** (backend 3000/3001); in
+Docker the built `dist/` is served by **nginx on 4173**. Minimum supported:
+**360px wide portrait**, **640×360 landscape** for the table.
+
+**Orientation** (precise form; the short version is false — docs Part 4):
+portrait lobby and landing; the table **requires landscape on a handheld**
+(`isHandheld()`, short edge ≤ 820px) and is gated in portrait there; **larger
+viewports render the table in any orientation**, because the stage scales to fit
+— a 768×1024 portrait tablet is a supported surface, not a broken one.
+
+```bash
+npm --prefix e2e run screenshots
+```
+
+12 viewports into `e2e/screenshots/` (gitignored), ~3 min. Also
+`npx playwright test tests/phone-layout.spec.ts` for the automated overlap
+assertions.
+
+### Hard rules
+
+- **Never call a layout change done from reading code. Render it and look.**
+  Both open bugs in the ledger were found by the first capture run, in code
+  that had already been measured element-by-element and passed its suite.
+- **Never `100vh`** for full-height mobile — `dvh`/`svh` or a JS-set property.
+  `.k-fit` already does `height: 100vh; height: 100dvh`, in that order.
+- **Never "fix" overflow or overlap with `overflow: hidden`, a negative margin,
+  `!important`, or a smaller font.** Those hide it. Find the rule causing it.
+- **Account for device pixel ratio.** Card art ships at 946×1438 and `blank.png`
+  is deliberately oversized so a 3x screen stays crisp; captures run at dpr 2–3.
+- **Layer tiers, and any cross-tier overlap must be deliberate:** felt/oval
+  (z 0–9) → seats and gameplay (10–20) → HUD, dock, bank (25–45) → chrome and
+  modals (46+). A reaction bubble at z 45 sitting over a total is *inside* one
+  tier, which is exactly how that bug hid.
+- **If the same layout bug survives two fix attempts, stop patching and report
+  the structural cause.** See ledger #3/#5/#7 — one crowded centre column
+  wearing three hats.
+
+### Strong defaults (deviate only with a one-line why)
+
+- Spacing **4 / 8 / 12 / 16 / 24 / 32 / 48px** for chrome, HUD and menus.
+  Felt geometry is exempt: derive it from the 1280×760 stage and `--vf`, and
+  say which.
+- Adaptive layout for anything responding to screen size. Absolute positioning
+  is legitimate *inside* the stage (that is what stage units are for) — mark
+  genuinely pinned chrome as intentional.
+- **Controls ≥44×44px.** Cards may be smaller when the felt demands it, but
+  need forgiving hitboxes and real separation.
+- Respect safe-area insets — `viewport-fit=cover` is already set.
 
 ## Constraints
 

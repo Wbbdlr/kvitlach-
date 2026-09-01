@@ -7,6 +7,9 @@ frontend/.env.local
 backend/tmp/
 *.log
 *.DS_Store
+# Rendered by `npm --prefix e2e run screenshots` -- a local view for looking
+# at the layout, regenerated on demand and never reviewed as a diff.
+e2e/screenshots/
 e2e/test-results/
 e2e/playwright-report/
 e2e/blob-report/
