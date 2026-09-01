@@ -46,15 +46,40 @@ react-router alone until there is a reason beyond the audit number.
 
 ## `New major version of npm available! 10.8.2 -> 12.0.2`
 
-Ignore it. That is npm *inside the `node:20-alpine` build stage*. The image
-pins it, builds use `npm ci` against the committed lockfile, and the container
-is thrown away after the build. Upgrading npm inside a Dockerfile adds a
-network step and a moving part to every build and changes nothing about the
-output.
+**The notice is a red herring; what it sits on top of is not.**
 
-The version of node itself is worth revisiting eventually — node 20 leaves
-maintenance in 2026 — but that is a deliberate change with a test run, not a
-build-log reaction.
+Upgrading npm on its own is pointless here. That is npm *inside the build
+stage*: builds use `npm ci` against the committed lockfile, so npm's version
+does not change what gets installed, and the container is discarded after the
+build. Pinning a newer npm in the Dockerfile adds a network step and a moving
+part to every build for no change in output.
+
+### Open TODO — the base image is Node 20, and that is a real problem
+
+Three things, one fix:
+
+1. **Node 20 reached end of life in April 2026.** Both `backend/Dockerfile`
+   and `frontend/Dockerfile` pin `node:20-alpine`, so the images run a runtime
+   that no longer receives security patches.
+2. **CI proves the code on Node 22** (`.github/workflows/ci.yml`, all three
+   jobs) **and the images ship Node 20.** Every green check is against a
+   runtime that is not the one in production.
+3. Newer npm comes bundled with newer Node — which is how to get it, rather
+   than chasing npm separately.
+
+**Fix: move both Dockerfiles to `node:22-alpine`.** Assessed low risk on
+2026-09-01, evidence gathered rather than assumed:
+
+- Both suites already pass on Node 22 — in CI, and locally on v22.17.0.
+- **No native dependencies to rebuild.** Backend production deps are 6
+  packages; the only package anywhere with an install hook or `binding.gyp` is
+  `esbuild`, which is dev-only and excluded by `npm ci --omit=dev`.
+- The frontend's runtime stage is `nginx:alpine`; Node only builds the bundle.
+
+**Ship it as its own deploy**, not folded into a release carrying other
+changes. If a base-image change does misbehave on the server, it should be the
+only suspect. Node 22 is itself in maintenance until April 2027, so this buys
+real time rather than being a hop.
 
 ## `caniuse-lite is 9 months old`
 

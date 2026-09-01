@@ -73,7 +73,11 @@ async function main() {
     access,
     limits,
     auth,
-    broadcast: (text, level) => ws.broadcastNotice(text, level),
+    broadcast: (text, level, roomId) => ws.broadcastNotice(text, level, roomId),
+    // Where the player-facing app lives, for the panel's Watch links. The
+    // panel answers on 25000 and the app is served by nginx behind the
+    // tunnel, so it cannot infer this from its own request host.
+    appUrl: process.env.PUBLIC_APP_URL || "https://kvitlach.us",
   });
   await app.listen({ port: PORT_HTTP, host: "0.0.0.0" });
   console.log(`HTTP listening on http://0.0.0.0:${PORT_HTTP}`);

@@ -917,6 +917,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       const isPracticeError = Boolean(msg.requestId && msg.requestId === pendingPracticeRequestId);
       if (isPracticeError) pendingPracticeRequestId = undefined;
       if (isPracticeError) {
+        // Access refusals must NOT be handled here. This branch returns, so
+        // anything it swallows never reaches the shared handler below that
+        // raises the access-code banner -- and practice is one of the three
+        // gated actions. Before this check, requiring a code for practice gave
+        // the player "Something went wrong. Please try again." and no field to
+        // type a code into: the button simply looked broken, permanently.
+        if (errorMessage !== "invite_required" && errorMessage !== "invalid_invite" && errorMessage !== "locked_down") {
         // Inline, not a notification: unlike round:start/watermark/reshuffle
         // (fired from a popover the banker might have already closed), this
         // form is the only place this action can even be triggered from, and
@@ -931,6 +938,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           formErrors: { ...state.formErrors, practice: friendly },
         }));
         return;
+        }
+        // invite_required / invalid_invite / locked_down fall through.
       }
       if (errorMessage === "deck_empty") {
         // Can arrive on ANY bet/hit, not just a tracked admin action -- the

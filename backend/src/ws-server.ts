@@ -713,10 +713,21 @@ export class WSServer {
    * true for a few minutes, and a stored banner would still be greeting
    * players an hour later.
    */
-  broadcastNotice(text: string, level: "info" | "warning" = "info"): number {
+  /**
+   * Pushes a banner to live sockets. `roomId` targets one table; omitted, it
+   * goes to every table. Nothing is stored either way, so anyone who joins
+   * afterwards never sees it.
+   */
+  broadcastNotice(text: string, level: "info" | "warning" = "info", roomId?: string): number {
     const message: ServerEnvelope = { type: "admin:notice", payload: { text, level, at: Date.now() } };
     let delivered = 0;
-    for (const sockets of this.rooms.values()) {
+    // An unknown roomId must deliver to NOBODY, not fall back to everyone --
+    // a stale room id in a dropdown (the table closed while the page sat open)
+    // would otherwise turn "tell table ABC" into "tell the whole platform".
+    const targets = roomId === undefined
+      ? [...this.rooms.values()]
+      : [this.rooms.get(roomId)].filter((s): s is Set<WebSocket> => s !== undefined);
+    for (const sockets of targets) {
       for (const sock of sockets) {
         this.send(sock, message);
         delivered += 1;

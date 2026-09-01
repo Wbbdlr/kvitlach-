@@ -101,8 +101,13 @@ export interface HttpServerDeps {
   access?: AccessControl;
   limits?: RuntimeLimits;
   auth?: AdminAuth;
-  /** Set by index.ts once the WS server exists; the broadcast form needs it. */
-  broadcast?: (text: string, level: "info" | "warning") => number;
+  /** Set by index.ts once the WS server exists; the broadcast form needs it.
+   *  `roomId` targets one table; omitted, every table. */
+  broadcast?: (text: string, level: "info" | "warning", roomId?: string) => number;
+  /** Origin of the player-facing app, for the admin panel's Watch links.
+   *  The panel is on port 25000 and the app is behind the tunnel, so the
+   *  panel cannot build a working table URL from its own request host. */
+  appUrl?: string;
 }
 
 export function createHttpServer(store: GameStore, deps: HttpServerDeps | AccessControl = {}) {
@@ -257,7 +262,10 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
         access,
         limits,
         query: carry(request, how),
-        refresh: query.refresh === "1",
+        // On unless explicitly stopped. An operator opens this page to watch
+        // load, and a stale page is worse than useless -- it is misleading.
+        refresh: query.refresh !== "0",
+        appUrl: opts.appUrl,
         notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
       })
     );
@@ -318,12 +326,16 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     const body = (request.body ?? {}) as Record<string, unknown>;
     const text = typeof body.text === "string" ? body.text.trim().slice(0, 200) : "";
     const level = body.level === "warning" ? "warning" : "info";
-    const sent = text && opts.broadcast ? opts.broadcast(text, level) : 0;
+    // "" is the All tables option. Anything else targets that room only, and
+    // an id that no longer exists delivers to nobody rather than to everyone.
+    const roomId = typeof body.roomId === "string" && body.roomId.trim() ? body.roomId.trim() : undefined;
+    const sent = text && opts.broadcast ? opts.broadcast(text, level, roomId) : 0;
+    const where = roomId ? `table ${roomId}` : "all tables";
     const note = !text
       ? "Nothing to send."
       : !opts.broadcast
         ? "No WebSocket server attached; nothing sent."
-        : `Sent to ${sent} connection(s).`;
+        : `Sent to ${sent} connection(s) on ${where}.`;
     const sep = carry(request, how) ? "&" : "?";
     return reply.redirect(`/admin${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });

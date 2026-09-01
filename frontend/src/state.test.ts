@@ -383,6 +383,46 @@ describe("practice mode", () => {
     expect(useGameStore.getState().formErrors.join).toBeUndefined();
   });
 
+  // Practice is one of the three gated actions, but the practice-error branch
+  // returns early, so it used to swallow access refusals before they could
+  // reach the handler that raises the access-code banner. The player got
+  // "Something went wrong. Please try again." and NO field to type a code
+  // into -- the button was permanently dead with no way forward. Found on a
+  // live table, not by any test.
+  it("raises the access-code banner when practice needs a code, rather than a dead error", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    useGameStore.getState().createPracticeRoom("Alice");
+    const practiceRequestId = socket.sent[socket.sent.length - 1].requestId;
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "error", requestId: practiceRequestId, error: { message: "invite_required" } }),
+    });
+
+    expect(useGameStore.getState().accessCodeRequired).toBe(true);
+    expect(useGameStore.getState().formErrors.practice).not.toBe("Something went wrong. Please try again.");
+  });
+
+  // A wrong code has to keep the field on screen so it can be corrected.
+  it("keeps the access-code banner up when the code entered is wrong", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    useGameStore.getState().createPracticeRoom("Alice");
+    const requestId = socket.sent[socket.sent.length - 1].requestId;
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "error", requestId, error: { message: "invalid_invite" } }),
+    });
+
+    expect(useGameStore.getState().accessCodeRequired).toBe(true);
+  });
+
   it("sends bot count, buy-in, bank bankroll and deck count together", async () => {
     const useGameStore = await freshState();
     useGameStore.getState().init();

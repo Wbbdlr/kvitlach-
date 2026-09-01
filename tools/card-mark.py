@@ -47,17 +47,29 @@ NAME = "SCHLESINGER"
 # These numbers are chosen by measuring contrast AFTER the downscale. 72/220
 # holds 88, which is where the word becomes readable rather than a smudge.
 # If you change either, re-measure at 68px; the full-res sheet will lie to you.
-ALPHA = 220
-# A cool slate blue rather than black, so the mark reads as a second printing
-# plate instead of a faded numeral. The numerals stay pure black; only the mark
-# and its frame take the tint.
 #
-# Do not reach for a deeper blue to make it read bluer on the felt: at ALPHA
-# 220 this lands at #5E7398 (38% saturation) at full res but only ~10% at 68px,
-# and pushing the ink to #16305F moves that to 12%. Alpha compositing toward
-# the cream paper desaturates the ink BEFORE any downscaling does, and thin
-# strokes then average with the paper. WEIGHT is the lever that works.
-MARK_INK = (51, 80, 127)
+# Full opacity. "Faded" is delivered by the reduction itself -- eleven letters
+# at 53px cap arrive at the felt covering only part of each pixel, so the mark
+# lands around luminance 159 against 236 paper however solid the source is.
+# Adding transparency on top of that only bleeds chroma toward the paper.
+ALPHA = 255
+# A blue rather than black, so the mark reads as a second printing plate
+# instead of a faded numeral. The numerals stay pure black; only the mark and
+# its frame take the tint.
+#
+# CHROMA, not darkness. This was a slate navy (#33507F) for three releases and
+# every one of them looked grey on the felt. Mixing a dark, low-chroma ink with
+# cream paper yields grey; a brighter, more saturated blue stays blue through
+# the same mix. Measured at 68px, holding SIZE/WEIGHT and alpha 255:
+#
+#   #33507F navy   -> #8C99B3   22% saturation   luminance 152
+#   #2B5FB0 royal  -> #87A1CE   34% saturation   luminance 159
+#   #1E63C8 true   -> #80A3DB   41% saturation   luminance 159
+#
+# Royal is the pick: as light as the navy at the felt size, so it stays clearly
+# subordinate to the numerals, but visibly blue instead of grey. Going darker
+# to "strengthen" it makes it greyer, not bluer -- that is the trap.
+MARK_INK = (43, 95, 176)
 SIZE = 72                # Cinzel caps stand 53px here
 TRACKING = 11
 # Cinzel's wght axis runs 400..900. Pinned to 600 because STROKE WEIGHT, not
@@ -85,19 +97,23 @@ SS = 4                   # supersample; PIL fills are hard-aliased
 #   plain ten     art ends y1172  ->  free y1173..1405  (232px)
 #   cards 2, 11   scrollwork ends y1337  ->  free y1338..1405  (67px)
 #
-# ONE baseline for all twelve now, at 1397. Caps stand 53px at SIZE 72, so the
-# cap tops land at 1344: 7px clear of the ornate scrollwork and 9px under the
-# rule. That is the whole reason SIZE is 72 and not larger -- 90 would read
-# better still on the felt (cap 67) but cannot fit cards 2 and 11 at all, and a
-# mark that changes size between cards looks like a mistake rather than a
-# maker's mark. ALPHA carries what SIZE cannot.
+# Two baselines, because the ornate pair genuinely cannot take the plain one.
 #
-# This replaces the earlier split baselines (1352 plain / 1374 ornate). The
-# collision that forced them is now cleared by geometry rather than by a
-# special case -- but re-measure 2 and 11 specifically if SIZE ever grows,
-# because a plain card cannot show that collision.
-FOOT_BASELINE = 1397
-ORNATE = {2, 11}         # kept for the post-render clearance check only
+# The plain ten sit at 1350: cap tops at 1297 (far clear of art ending 1172)
+# and 56px of paper under the word before the rule. A single baseline at 1397
+# was tried, to clear cards 2 and 11 with one number and delete this special
+# case -- it worked geometrically and looked wrong, crowding the mark against
+# the bottom rule on all ten plain cards to accommodate two. Reported from a
+# live table as "too low"; the tidier code was not worth the worse card.
+#
+# 1397 is the highest the ornate pair can go: scrollwork ends at 1337 and caps
+# stand 53px at SIZE 72, so cap tops land at 1344, clearing it by 7px. They do
+# sit lower than the rest, which their frame forces and which is invisible at
+# felt size. Re-measure 2 and 11 specifically if SIZE ever grows -- a plain
+# card cannot show that collision.
+FOOT_BASELINE = 1350
+FOOT_BASELINE_ORNATE = 1397
+ORNATE = {2, 11}
 HEAD_TOP = 76            # card 1's cartouche: rule ends y31, digit starts
                          # y269, so the free head band is 236px. The taller
                          # box (144px) leaves 45px above and 49px below.
@@ -191,7 +207,7 @@ def _tracked(d, f, cx, baseline, tracking, ink):
 
 def foot_mark(img, card):
     """Plain imprint at the foot -- cards 2..12."""
-    baseline = FOOT_BASELINE
+    baseline = FOOT_BASELINE_ORNATE if card in ORNATE else FOOT_BASELINE
     layer = Image.new("RGBA", (img.width * SS, img.height * SS), (0, 0, 0, 0))
     _tracked(ImageDraw.Draw(layer), mark_font(SIZE * SS),
              img.width * SS / 2, baseline * SS, TRACKING * SS, (*MARK_INK, ALPHA))

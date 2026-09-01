@@ -11,8 +11,12 @@ import { metrics } from "./metrics.js";
 // is a form POST followed by a redirect, so there is no client state to get
 // out of step with the server, nothing to break if a request fails, and no
 // script that could ever put the session cookie somewhere it should not be.
-// The one concession is an optional <meta refresh>, opt-in via a link, because
-// auto-refreshing while someone is typing a list of access codes would eat it.
+// The one concession is a <meta refresh>, now ON by default: an operator opens
+// this page to watch load, and a page showing stale numbers is worse than
+// useless, it is misleading. It was opt-in originally for a real reason -- a
+// refresh mid-typing eats a half-written list of access codes -- so the codes
+// field says to stop the refresh first, and "stop auto-refresh" is one click
+// away in the top bar. `?refresh=0` is the off switch.
 
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -136,10 +140,12 @@ export interface AdminPageDeps {
   /** Appended to every form action so token-authenticated sessions keep working. */
   query: string;
   refresh: boolean;
+  /** Origin of the player-facing app, for Watch links. Omitted, they are hidden. */
+  appUrl?: string;
   notice?: string;
 }
 
-export function renderAdminPage({ store, access, limits, query, refresh, notice }: AdminPageDeps): string {
+export function renderAdminPage({ store, access, limits, query, refresh, appUrl, notice }: AdminPageDeps): string {
   const load = store.loadSnapshot();
   const lag = Math.round(metrics.eventLoopLagMs);
   const conns = metrics.currentWsConnections;
@@ -200,6 +206,17 @@ export function renderAdminPage({ store, access, limits, query, refresh, notice 
   }).join("");
 
   const rooms = store.listRoomsForAdmin();
+  // Opens the real table in spectator mode rather than re-rendering the game
+  // server-side: watching is a feature the app already has, and a second
+  // renderer here would be a second thing to keep true to the round state.
+  // Spectators are seated as watchers, so this never joins the admin to a hand.
+  // The path must be /table/<id>: App.tsx matches `^/table/([^/]+)/?$` and
+  // nothing else, so a bare `/<id>` silently lands on the lobby instead. That
+  // shipped once in this very function and was caught only by clicking it.
+  const watchLink = (roomId: string) =>
+    appUrl
+      ? `<a href="${escapeHtml(appUrl.replace(/\/$/, ""))}/table/${encodeURIComponent(roomId)}" target="_blank" rel="noopener">Watch</a>`
+      : '<span class="meta" title="Set PUBLIC_APP_URL to enable">&mdash;</span>';
   const rows = rooms
     .map((r) => {
       const idle = Date.now() - r.lastActivityAt;
@@ -212,6 +229,7 @@ export function renderAdminPage({ store, access, limits, query, refresh, notice 
         <td>${r.completedRounds}</td>
         <td>${r.hasActiveRound ? '<span class="ok">yes</span>' : "no"}</td>
         <td>${formatIdle(idle)}</td>
+        <td>${watchLink(r.roomId)}</td>
         <td>
           <form method="post" action="/admin/rooms/${encodeURIComponent(r.roomId)}/delete${query}"
                 data-room="${escapeHtml(r.roomId)}"
@@ -228,7 +246,7 @@ export function renderAdminPage({ store, access, limits, query, refresh, notice 
     `<div class="topbar">
       <h1 style="margin:0">Kvitlach admin</h1>
       <span class="meta">
-        <a href="${act(refresh ? "/admin" : "/admin?refresh=1")}">${refresh ? "stop auto-refresh" : "auto-refresh"}</a>
+        <a href="${act(refresh ? "/admin?refresh=0" : "/admin")}">${refresh ? "stop auto-refresh" : "start auto-refresh"}</a>
         &middot; <a href="/health/detail">raw JSON</a>
         &middot; <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>
       </span>
@@ -257,7 +275,8 @@ export function renderAdminPage({ store, access, limits, query, refresh, notice 
         </div>
       </div>
       <form method="post" action="${act("/admin/access")}" style="margin-top:0.75rem">
-        <label class="meta" for="codes">Access codes &mdash; one per line, case-insensitive, spaces trimmed.</label>
+        <label class="meta" for="codes">Access codes &mdash; one per line, case-insensitive, spaces trimmed.
+        <b>Stop auto-refresh above before typing a long list</b>, or a refresh will clear what you have typed.</label>
         <textarea id="codes" name="codes" rows="3" placeholder="one code per line"></textarea>
         <button type="submit" class="save">Replace codes</button>
         <span class="meta">Existing codes are never shown. Saving replaces the whole list; ${snap.codeCount} set now.</span>
@@ -277,10 +296,14 @@ export function renderAdminPage({ store, access, limits, query, refresh, notice 
 
     <fieldset>
       <legend>Broadcast</legend>
-      <p class="meta">Pushes a banner to everyone currently at a table. Not stored &mdash; someone who joins
-      afterwards will not see it.</p>
+      <p class="meta">Pushes a banner to people currently at a table. Not stored &mdash; someone who joins
+      afterwards will not see it. Pick one table to reach only that game.</p>
       <form method="post" action="${act("/admin/broadcast")}" class="row">
-        <input type="text" name="text" maxlength="200" placeholder="Server restarting in 5 minutes" style="flex:1 1 22rem" />
+        <input type="text" name="text" maxlength="200" placeholder="Server restarting in 5 minutes" style="flex:1 1 20rem" />
+        <select name="roomId">
+          <option value="">All tables</option>
+          ${rooms.map((r) => `<option value="${escapeHtml(r.roomId)}">${escapeHtml(r.roomId)}${r.name ? ` &mdash; ${escapeHtml(r.name)}` : ""}</option>`).join("")}
+        </select>
         <select name="level"><option value="info">Info</option><option value="warning">Warning</option></select>
         <button type="submit" class="save">Send</button>
       </form>
@@ -290,7 +313,7 @@ export function renderAdminPage({ store, access, limits, query, refresh, notice 
     <p class="meta">Busiest first. Rooms auto-expire after 3 days idle; deleting one frees its Game ID at once.</p>
     ${rooms.length === 0 ? '<p class="meta">No active rooms.</p>' : `
     <table>
-      <thead><tr><th>Game ID</th><th>Name</th><th>Banker</th><th>Players</th><th>Rounds</th><th>Live</th><th>Idle</th><th></th></tr></thead>
+      <thead><tr><th>Game ID</th><th>Name</th><th>Banker</th><th>Players</th><th>Rounds</th><th>Live</th><th>Idle</th><th></th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`}`,
     refresh

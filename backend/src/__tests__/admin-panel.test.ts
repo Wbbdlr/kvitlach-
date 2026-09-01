@@ -16,14 +16,14 @@ const limits = new RuntimeLimits();
 // The store must share the SAME limits instance the panel mutates -- that is
 // exactly the wiring these tests exist to prove, and index.ts does it too.
 const store = new GameStore(undefined, limits);
-const broadcasts: Array<{ text: string; level: string }> = [];
+const broadcasts: Array<{ text: string; level: string; roomId?: string }> = [];
 
 const app = createHttpServer(store, {
   access,
   limits,
   auth: new AdminAuth({ username: "admin", password: hashPassword("pw"), secret: "secret" }),
-  broadcast: (text, level) => {
-    broadcasts.push({ text, level });
+  broadcast: (text, level, roomId) => {
+    broadcasts.push({ text, level, roomId });
     return 3;
   },
 });
@@ -144,7 +144,22 @@ describe("admin panel controls", () => {
   it("hands a broadcast to the WS server", async () => {
     broadcasts.length = 0;
     await post("/admin/broadcast", { text: "  restarting in 5  ", level: "warning" });
-    expect(broadcasts).toEqual([{ text: "restarting in 5", level: "warning" }]);
+    expect(broadcasts).toEqual([{ text: "restarting in 5", level: "warning", roomId: undefined }]);
+  });
+
+  // "All tables" posts an empty roomId. It has to arrive as undefined, not "",
+  // or the WS server would look up a room named "" and reach nobody -- the
+  // whole-platform announcement would silently go nowhere.
+  it("treats a blank room as all tables, not as a room named blank", async () => {
+    broadcasts.length = 0;
+    await post("/admin/broadcast", { text: "everyone", level: "info", roomId: "" });
+    expect(broadcasts).toEqual([{ text: "everyone", level: "info", roomId: undefined }]);
+  });
+
+  it("targets a single table when one is picked", async () => {
+    broadcasts.length = 0;
+    await post("/admin/broadcast", { text: "just you", level: "info", roomId: " ABC123 " });
+    expect(broadcasts).toEqual([{ text: "just you", level: "info", roomId: "ABC123" }]);
   });
 
   it("does not broadcast an empty message", async () => {
