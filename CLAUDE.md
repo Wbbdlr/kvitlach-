@@ -419,6 +419,11 @@ they actually help:
 ## Constraints
 
 - **Never** `docker compose down -v` — it destroys the Postgres volume.
+- **The backend runtime image holds `dist/` and nothing else** — no `src/`, no
+  `scripts/`. Anything invoked with `docker compose exec backend` must live in
+  `dist` or be inlined (`node -e`). `setup-admin.sh` shipped broken once for
+  exactly this: it called `scripts/hash-password.mjs`, which is in the repo and
+  in no image. Check the Dockerfile's runtime stage before writing a path.
 - Use `DOCKER_BUILDKIT=0` when building on the server (BuildKit has failed there).
 - Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 before building a
   deploy tarball, so testers can confirm which build they're on.

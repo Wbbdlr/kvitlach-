@@ -29,11 +29,22 @@ fi
 # Hash inside the running container so this needs no node on the host. Falls
 # back to the host's node if the container is not up yet (first-time setup
 # before the stack has ever started).
+#
+# The hashing is inlined rather than calling scripts/hash-password.mjs, because
+# backend/Dockerfile's runtime stage copies only dist -- scripts/ is not in the
+# image and never has been. Inlining also means this works against whatever
+# image is ALREADY running, which matters: you need the hash in order to
+# configure the panel, so it cannot depend on first deploying a fixed image.
+# Keep in step with hashPassword() in backend/src/admin-auth.ts (scrypt, 32).
+HASH_JS='const {randomBytes,scryptSync}=require("node:crypto");const s=randomBytes(16).toString("hex");console.log("ADMIN_PASSWORD_HASH=scrypt$"+s+"$"+scryptSync(process.env.KV_PW,s,32).toString("hex"));'
+
 hash_password() {
   if docker compose -f "$REPO_ROOT/deploy/docker-compose.yml" ps --status running backend 2>/dev/null | grep -q backend; then
-    docker compose -f "$REPO_ROOT/deploy/docker-compose.yml" exec -T backend node scripts/hash-password.mjs "$1"
+    # Password goes through the environment, not argv: argv is visible in `ps`
+    # to every other user on the box for as long as the hash takes to compute.
+    docker compose -f "$REPO_ROOT/deploy/docker-compose.yml" exec -T -e KV_PW="$1" backend node -e "$HASH_JS"
   else
-    node "$REPO_ROOT/backend/scripts/hash-password.mjs" "$1"
+    KV_PW="$1" node -e "$HASH_JS"
   fi
 }
 
