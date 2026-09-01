@@ -57,9 +57,13 @@ NAME = "SCHLESINGER"
 # admin editor can switch any card on, and then it matters again -- but no
 # shipped default depends on it any more.
 #
-# frontend/src/table/cardMark.ts mirrors this set for the live overlay. The
-# overlay exists to reproduce these rasters exactly; if the two disagree, a
-# card gains or loses its mark the moment the overlay is switched on.
+# WHAT SHIPS IS NOW UNMARKED ART. As of v9.1 the mark is drawn live over the
+# card by frontend/src/table/cardMark.ts, so frontend/public/ is written with
+# --no-mark and this set no longer describes anything baked into a PNG. It is
+# the DESIGN set: which cards show a mark at all, mirrored by that module's
+# DEFAULT_MARK.cards and pinned to it by cardMark.test.ts, which reads this
+# line out of this file. Baking still works (--write without --no-mark) and is
+# what the proof sheets use to compare the two pipelines.
 MARKED = frozenset({1, 8, 12})
 
 # Sized and inked for 68px, not for 946px.

@@ -9,6 +9,16 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/kvitlach-icon-512.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/kvitlach-icon-192.png" />
     <link rel="preload" href="/DidoneRoomNumbers.otf" as="font" type="font/otf" crossorigin>
+    <!-- Cinzel carries the maker's mark CardView draws over the card art. It
+         is declared font-display:block (see index.css for why -- card 1's
+         cartouche is sized from Cinzel's own advance widths, so a fallback
+         face paints the word overflowing its frame). Without this preload the
+         face is not fetched until the first 1, 8 or 12 is dealt, and "block"
+         means that card renders with the mark INVISIBLE until the download
+         finishes -- measured: document.fonts.ready resolved with the face
+         still "unloaded", so the mark would have popped in a beat late on the
+         first marked card of a session. 25KB, subset to the mark's glyphs. -->
+    <link rel="preload" href="/cinzel-subset.woff2" as="font" type="font/woff2" crossorigin>
     <!-- iOS Safari has no Fullscreen API for ordinary elements (see
          table/fullscreen.ts) -- installing as a home-screen web app is the
          only way an iPhone player gets a chrome-free table, so this needs to

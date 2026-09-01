@@ -96,3 +96,54 @@ describe("card art cache-busting", () => {
     expect(cardImages.blank).toBe("/blank.png");
   });
 });
+
+// The mark is no longer baked into the PNGs -- public/ ships the unmarked
+// render and this overlay is the ONLY thing that draws it. So "no mark
+// rendered" is not a cosmetic regression here, it is the mark being gone.
+describe("maker's mark overlay", () => {
+  const mark = (container: HTMLElement) => container.querySelector(".k-cardmark");
+
+  it("draws the mark on the cards that carry one", () => {
+    for (const rank of ["1", "8", "12"]) {
+      const { container } = render(<CardView card={{ name: rank, attributes: { values: [Number(rank)] } }} />);
+      expect(mark(container), `card ${rank}`).toBeTruthy();
+      expect(mark(container)?.innerHTML, `card ${rank}`).toContain("SCHLESINGER");
+    }
+  });
+
+  it("creates no element at all for the other nine", () => {
+    // Not an empty <svg>: the felt re-renders every card each round, and an
+    // overlay per card would be nine wasted nodes per hand for nothing.
+    for (const rank of ["2", "3", "5", "9", "10", "11"]) {
+      const { container } = render(<CardView card={{ name: rank, attributes: { values: [Number(rank)] } }} />);
+      expect(mark(container), `card ${rank}`).toBeNull();
+    }
+  });
+
+  it("never marks a face-down card", () => {
+    // hidden renders blank.png -- a mark on the card BACK would show the
+    // table what is about to be dealt.
+    const { container } = render(<CardView card={{ name: "8", attributes: { values: [8] } }} hidden />);
+    expect(mark(container)).toBeNull();
+  });
+
+  it("aligns to the art, not to the layout box", () => {
+    // The old list UI's fixed w-10/h-14 box is a different aspect ratio from
+    // the 946x1438 card, so the img letterboxes inside it. preserveAspectRatio
+    // makes the overlay letterbox identically; inset:0 alone would print the
+    // mark a few px off the art.
+    const { container } = render(<CardView card={{ name: "8", attributes: { values: [8] } }} size="md" />);
+    const svg = mark(container);
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 946 1438");
+    expect(svg?.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
+  });
+
+  it("desaturates with the card face on an Eleveroon reject", () => {
+    // A mark that stayed blue on a greyed-out card reads as a separate thing
+    // sitting on top of it, not as something printed on it.
+    const { container } = render(
+      <CardView card={{ name: "12", attributes: { values: [12], eleveroonIgnored: true } }} pastFirstPaint />
+    );
+    expect(mark(container)?.getAttribute("class")).toContain("grayscale");
+  });
+});

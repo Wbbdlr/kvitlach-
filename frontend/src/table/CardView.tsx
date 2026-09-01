@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { Card } from "../types";
 import { cardImages } from "./selectors";
 import { Icon } from "./icons";
+import { ART_H, ART_W, DEFAULT_MARK, markSvgBody } from "./cardMark";
 
 // Total ms from mount to a freshly-rejected card vanishing into the discard
 // pile: cardDealIn (340) + eleveroonReject's own delay (340) + its duration
@@ -57,6 +58,16 @@ export function CardView({
   const sizeClass = size === "lg" ? "w-12 h-[4.5rem] sm:w-16 sm:h-24" : size === "md" ? "w-10 h-14 sm:w-12 sm:h-16" : "";
 
   const elevActive = ignored && !hidden;
+
+  // The maker's mark, drawn over the art instead of baked into the PNG. The
+  // art in public/ is now the UNMARKED render (tools/card-mark.py --no-mark),
+  // so this is the only thing that draws it -- if it stops rendering the mark
+  // is simply gone, it does not fall back to a stamped PNG.
+  //
+  // "" for a face-down card and for every card outside DEFAULT_MARK.cards
+  // (currently 1, 8 and 12), so no element is created at all rather than an
+  // empty <svg> over every card on a felt that re-renders each round.
+  const markBody = hidden || showFallback ? "" : markSvgBody(Number(card.name), DEFAULT_MARK);
 
   // The discard pile (DiscardPile.tsx), not a ring left sitting in the hand,
   // is the record of an Eleveroon reject -- see index.css's cardDiscardFly
@@ -131,6 +142,20 @@ export function CardView({
           src={src}
           alt={alt}
           className={clsx(size ? "w-full h-full object-contain" : undefined, elevActive && "opacity-70 grayscale")}
+        />
+      )}
+      {markBody && (
+        // Same opacity/grayscale treatment as the img above: an Eleveroon
+        // reject desaturates its card face, and a mark that stayed blue on a
+        // greyed-out card would read as a separate element sitting on top of
+        // it rather than as something printed on the card.
+        <svg
+          className={clsx("k-cardmark", elevActive && "opacity-70 grayscale")}
+          viewBox={`0 0 ${ART_W} ${ART_H}`}
+          preserveAspectRatio="xMidYMid meet"
+          aria-hidden="true"
+          focusable="false"
+          dangerouslySetInnerHTML={{ __html: markBody }}
         />
       )}
       {showFallback && (

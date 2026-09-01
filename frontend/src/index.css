@@ -10,6 +10,26 @@
   font-display: swap;
 }
 
+/* Cinzel, SIL OFL (tools/fonts/OFL.txt), subset to the mark's own glyphs --
+   25KB with the wght axis intact. Used by nothing but the maker's mark that
+   CardView draws over the card art (table/cardMark.ts).
+
+   font-display: BLOCK, not swap, and that is the whole reason this comment
+   exists. Card 1's cartouche frame is drawn at a width computed from Cinzel's
+   own advance widths (cardMark.ts's ADV table, read out of the font file). In
+   a fallback face those advances are different, so `swap` would paint the word
+   in Georgia at the wrong width inside a box sized for Cinzel -- text visibly
+   overflowing its own frame -- and then reflow. `block` renders nothing until
+   the face is ready, which for a decorative mark is strictly better than
+   showing it broken. */
+@font-face {
+  font-family: 'Cinzel';
+  src: url('/cinzel-subset.woff2') format('woff2');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: block;
+}
+
 body {
   font-family: theme('fontFamily.body');
   min-height: 100vh;
@@ -1013,6 +1033,29 @@ body:has(.k-fit) {
   font-size: 9px;
   color: rgba(230, 164, 75, 0.75);
   white-space: nowrap;
+}
+
+/* The maker's mark, drawn live over the card art rather than baked into it
+   (CardView.tsx + table/cardMark.ts). Only cards in DEFAULT_MARK.cards get one
+   at all -- markSvgBody returns "" otherwise and no element is rendered.
+
+   preserveAspectRatio on the SVG itself does the alignment: the viewBox is the
+   art's exact 946x1438, so "xMidYMid meet" letterboxes identically to the
+   img's own object-contain. That matters for the old list UI, whose fixed
+   w-10/h-14 box is a different ratio from the card -- inset:0 alone would put
+   the mark a few px off the art it is supposed to be printed on.
+
+   geometricPrecision because the browser otherwise subpixel-antialiases this
+   text and the baked raster it replaces was greyscale-antialiased by LANCZOS.
+   Measured side by side at 92px, that difference was visible as colour
+   fringing on the letter edges under magnification. */
+.k-cardmark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  text-rendering: geometricPrecision;
 }
 
 /* Card back image, reused at several sizes. */
