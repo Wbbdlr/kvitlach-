@@ -40,10 +40,20 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
+// `scrypt$salt$hash` is the format hashPassword emits and what a human pasting
+// into .env by hand will have. `scrypt:salt:hash` means exactly the same thing
+// and exists because Docker Compose interpolates `$` in .env files: both halves
+// of a `$`-delimited hash are read as undefined variables and expand to
+// nothing, so the backend receives the bare word "scrypt" and every login fails
+// with the right password. Compose documents `$$` as the escape, but a value
+// with no `$` in it cannot be eaten by Compose, a shell, sed or an editor at
+// all, so setup-admin.sh writes the colon form and this accepts both.
+const SCRYPT_PREFIX = /^scrypt[$:]/;
+
 export function verifyPassword(stored: string, provided: string): boolean {
   if (!stored || !provided) return false;
-  if (stored.startsWith("scrypt$")) {
-    const [, salt, expected] = stored.split("$");
+  if (SCRYPT_PREFIX.test(stored)) {
+    const [, salt, expected] = stored.split(stored[6] === ":" ? ":" : "$");
     if (!salt || !expected) return false;
     let actual: Buffer;
     try {
@@ -139,6 +149,20 @@ export function adminAuthFromEnv(env: NodeJS.ProcessEnv = process.env): AdminAut
   const username = env.ADMIN_USERNAME?.trim().toLowerCase();
   const password = env.ADMIN_PASSWORD_HASH || env.ADMIN_PASSWORD;
   if (!username || !password) return new AdminAuth();
+  // A hash that arrives without its salt and digest can never match anything,
+  // so every login fails with no clue why. This happened for real: a scrypt
+  // hash is `scrypt$salt$hash`, and Docker Compose interpolates `$` in .env,
+  // so both halves were read as undefined variables and the backend received
+  // the bare word "scrypt". Say so loudly rather than silently rejecting a
+  // correct password forever. (deploy/setup-admin.sh now writes `$$`.)
+  if (SCRYPT_PREFIX.test(password) && password.split(password[6] === ":" ? ":" : "$").length !== 3) {
+    console.error(
+      "[admin] ADMIN_PASSWORD_HASH is malformed -- expected scrypt:<salt>:<hash>, got " +
+        `${password.split(password[6] === ":" ? ":" : "$").length} part(s). If it came from ` +
+        "deploy/.env, Compose interpolation ate the '$'; re-run deploy/setup-admin.sh, which " +
+        "writes the ':' form. Every login fails until this is fixed.",
+    );
+  }
   return new AdminAuth({
     username,
     password,

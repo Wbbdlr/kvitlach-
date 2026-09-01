@@ -46,7 +46,22 @@ const STYLE = `
   .grid3 { display: flex; flex-wrap: wrap; gap: 1.25rem; }
   .topbar { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
   code { font-size: 0.85em; }
+  /* The login gets its own sizing rather than the dense control-panel scale.
+     It is typed once, often on a phone over Tailscale, and a password you
+     cannot read is a password you retype four times. Stacked labels and full
+     -width fields; 1.05rem also clears the 16px threshold below which iOS
+     Safari zooms the whole page on focus. */
+  .login { max-width: 21rem; margin: 1.5rem 0; }
+  .login .row { display: block; margin: 0 0 0.9rem; }
+  .login label { display: block; min-width: 0; margin-bottom: 0.3rem; font-size: 0.8rem; font-weight: 600;
+                 text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
+  .login input { width: 100%; box-sizing: border-box; font-size: 1.05rem; padding: 0.6rem 0.65rem; letter-spacing: 0.01em; }
+  .login input:focus { outline: 2px solid #1d4ed8; outline-offset: 1px; border-color: #1d4ed8; }
+  .login button { width: 100%; font-size: 1rem; padding: 0.65rem; }
   @media (prefers-color-scheme: dark) {
+    .login label { color: #9ca3af; }
+    .login input { background: #111827; border-color: #4b5563; }
+    .login input:focus { outline-color: #93c5fd; border-color: #93c5fd; }
     body { background: #0b1220; color: #e5e7eb; }
     table, fieldset, .tile { background: #111827; }
     th, td, fieldset, .tile, .topbar { border-color: #1f2937; }
@@ -77,10 +92,10 @@ export function renderLoginPage(error?: string): string {
     "Kvitlach admin",
     `<h1>Kvitlach admin</h1>
     ${error ? `<p class="bad">${escapeHtml(error)}</p>` : ""}
-    <form method="post" action="/admin/login">
-      <div class="row"><label for="u">Username</label><input id="u" type="text" name="username" autocomplete="username" autofocus /></div>
+    <form method="post" action="/admin/login" class="login">
+      <div class="row"><label for="u">Username</label><input id="u" type="text" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus /></div>
       <div class="row"><label for="p">Password</label><input id="p" type="password" name="password" autocomplete="current-password" /></div>
-      <div class="row"><label></label><button type="submit" class="save">Sign in</button></div>
+      <div class="row"><button type="submit" class="save">Sign in</button></div>
     </form>
     <p class="meta">Sessions last 12 hours and are not shared between browsers.</p>`,
     false

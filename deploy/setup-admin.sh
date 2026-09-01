@@ -70,7 +70,14 @@ set_key() {
 }
 
 set_key ADMIN_USERNAME "$USERNAME"
-set_key ADMIN_PASSWORD_HASH "${HASH_LINE#ADMIN_PASSWORD_HASH=}"
+# Written with ':' separators, not the '$' that hashPassword emits. Docker
+# Compose interpolates .env, so `scrypt$salt$hash` has both halves read as
+# undefined variables and expands to the bare word "scrypt" -- the backend then
+# rejects the correct password forever, with a warning nobody reads. Compose
+# documents '$$' as the escape, but a value containing no '$' cannot be eaten
+# by Compose, a shell, sed or an editor at all. verifyPassword accepts both.
+RAW_HASH="${HASH_LINE#ADMIN_PASSWORD_HASH=}"
+set_key ADMIN_PASSWORD_HASH "${RAW_HASH//\$/:}"
 set_key ADMIN_BIND "$BIND"
 # Only generated once: rotating it would sign out every open session, which is
 # a surprise nobody wants from re-running a setup script to change a password.

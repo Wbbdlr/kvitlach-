@@ -31,6 +31,24 @@ describe("password hashing", () => {
     expect(verifyPassword("", "anything")).toBe(false);
   });
 
+  // deploy/setup-admin.sh writes ':' separators because Docker Compose
+  // interpolates '$' in .env -- a '$'-delimited hash reaches the backend as the
+  // bare word "scrypt" and every login fails against the correct password.
+  // This is not a theoretical case; it shipped, and cost an evening.
+  it("accepts a colon-separated hash exactly as it does a dollar one", () => {
+    const dollars = hashPassword("correct horse");
+    const colons = dollars.replace(/\$/g, ":");
+    expect(colons).not.toContain("$");
+    expect(verifyPassword(colons, "correct horse")).toBe(true);
+    expect(verifyPassword(colons, "wrong horse")).toBe(false);
+    expect(verifyPassword("scrypt:onlysalt", "anything")).toBe(false);
+  });
+
+  // What Compose actually leaves behind after eating the separators.
+  it("rejects the hash Compose interpolation leaves behind", () => {
+    expect(verifyPassword("scrypt", "correct horse")).toBe(false);
+  });
+
   // Documented, warned about at boot, and supported so the panel is usable
   // before anyone has run the hashing script.
   it("accepts a plaintext stored password", () => {
