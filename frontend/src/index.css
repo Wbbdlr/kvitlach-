@@ -731,11 +731,18 @@ body:has(.k-fit) {
 }
 .k-hand {
   transition: transform 220ms ease;
+  /* Set inline by Seat.tsx for the VIEWER's own hand only, and 1 everywhere
+     else. The seat's own transform: scale() is a NAMEPLATE-collision number
+     (layout.ts seatScale) and the cards were only ever riding it; this is how
+     the hand opts out of a shrink that was never about the hand. See
+     viewerHandScale(). Composed rather than overridden so .is-fanned's lift
+     below still applies -- an inline transform would have silently killed it. */
+  transform: scale(var(--k-hand-scale, 1));
 }
 /* "Raise up a bit" -- lifted clear of its resting position, same easing as
    the card spacing below so the whole hand reads as one motion. */
 .k-hand.is-fanned {
-  transform: translateY(-10px);
+  transform: translateY(-10px) scale(var(--k-hand-scale, 1));
 }
 /* Cancels the overlap rules above entirely (specificity: two classes beats
    one) rather than just loosening --k-fan -- "see all the cards clearly"
@@ -955,8 +962,17 @@ body:has(.k-fit) {
   pointer-events: none;
 }
 .k-resv-line {
-  stroke: rgba(240, 197, 121, 0.32);
-  stroke-width: 1.5;
+  /* Was 0.32 alpha at 1.5 user units. The SVG lives inside the scaled stage,
+     so on a landscape phone (stage scale ~0.67) that resolved to a 1px line at
+     a third opacity over felt -- reported by a tester as the connector lines
+     having disappeared entirely. They had not; they were a hairline nobody
+     could see, which is the same thing to a player.
+     non-scaling-stroke pins the width in DEVICE px instead of stage units, so
+     the line stays the same weight on a phone as on a desktop rather than
+     thinning out exactly where the screen is smallest. */
+  stroke: rgba(240, 197, 121, 0.55);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
   stroke-linecap: round;
   stroke-dasharray: 3 7;
   animation: resvFlow 1.6s linear infinite;
@@ -1139,7 +1155,7 @@ body:has(.k-fit) {
   bottom: auto;
   top: 50%;
   left: 100%;
-  transform: translateY(-50%);
+  transform: translateY(-50%) scale(var(--k-rx, 1));
   margin-left: 10px;
 }
 /* The tail must always point at whoever spoke -- that is what makes a bubble a
@@ -1171,10 +1187,10 @@ body:has(.k-fit) {
   animation-name: reactionLifeSide;
 }
 @keyframes reactionLifeSide {
-  0% { opacity: 0; transform: translateY(-50%) translateX(-6px) scale(0.7); }
-  5% { opacity: 1; transform: translateY(-50%) translateX(0) scale(1.08); }
-  9%, 85% { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-50%) translateX(8px) scale(0.96); }
+  0% { opacity: 0; transform: translateY(-50%) translateX(-6px) scale(calc(0.7 * var(--k-rx, 1))); }
+  5% { opacity: 1; transform: translateY(-50%) translateX(0) scale(calc(1.08 * var(--k-rx, 1))); }
+  9%, 85% { opacity: 1; transform: translateY(-50%) translateX(0) scale(calc(1 * var(--k-rx, 1))); }
+  100% { opacity: 0; transform: translateY(-50%) translateX(8px) scale(calc(0.96 * var(--k-rx, 1))); }
 }
 @media (prefers-reduced-motion: reduce) {
   .k-reaction.is-side {
@@ -2490,11 +2506,22 @@ body:has(.k-fit) {
    The whole 10s life is one animation (see state.ts, which drops the reaction
    at exactly 10s): pop in, hold, then drift up and fade so it leaves on its
    own instead of vanishing between frames. */
+/* --k-rx counter-scales this bubble back out of its seat's transform.
+   A reaction is an ANNOUNCEMENT -- the one thing on the felt whose whole
+   purpose is being read from the other side of the table -- and it was riding
+   seatScale(), a nameplate-collision number. Measured at a full eleven-seat
+   table on a 854x384 phone: 14px type x 0.449 seat shrink x 0.667 stage scale
+   = 4px of emoji. Reported as "totally not visible and tiny, impossible for
+   anyone to see". Set inline by Seat.tsx as 1/scale, so the bubble renders at
+   its designed size however crowded the arc gets.
+   It is applied in the keyframes below, not here: the animation owns transform
+   on this element for its whole 10s life, so a value set here would last one
+   frame. This declaration is the pre-animation resting state only. */
 .k-reaction {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) scale(var(--k-rx, 1));
   background: linear-gradient(180deg, rgba(24, 40, 29, 0.97), rgba(10, 18, 13, 0.97));
   border: 1px solid rgba(230, 164, 75, 0.55);
   border-radius: 12px;
@@ -2528,11 +2555,11 @@ body:has(.k-fit) {
   border-top: 7px solid rgba(12, 20, 15, 0.97);
 }
 @keyframes reactionLife {
-  0% { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.7); }
-  5% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.08); }
-  9% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-  85% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.96); }
+  0% { opacity: 0; transform: translateX(-50%) translateY(6px) scale(calc(0.7 * var(--k-rx, 1))); }
+  5% { opacity: 1; transform: translateX(-50%) translateY(0) scale(calc(1.08 * var(--k-rx, 1))); }
+  9% { opacity: 1; transform: translateX(-50%) translateY(0) scale(calc(1 * var(--k-rx, 1))); }
+  85% { opacity: 1; transform: translateX(-50%) translateY(0) scale(calc(1 * var(--k-rx, 1))); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(calc(0.96 * var(--k-rx, 1))); }
 }
 @media (prefers-reduced-motion: reduce) {
   /* Still leaves on its own, just without the travel -- a reaction that never

@@ -4,7 +4,7 @@ import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useChip, useFelt } from "../theme";
-import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTurnsBySeat, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
+import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTurnsBySeat, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH, viewerHandScale } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { useMediaQuery } from "../useMediaQuery";
@@ -405,6 +405,15 @@ export function TableRoot({
     dealerClearanceScale(positions, playTop + 160 * vf)
   );
 
+  // The viewer's own hand opts out of seatShrink, because seatShrink is about
+  // nameplates and their seat has not rendered one since step 1 moved their
+  // identity into the HUD. layout.ts viewerHandScale() carries the reasoning
+  // and the measurements; -1 (viewer not seated -- spectating, or the banker,
+  // who is not on the arc at all) simply means nobody's hand is exempt.
+  const viewerSeatIndex = seatedTurns.findIndex((t) => t.player.id === playerId);
+  const viewerHand =
+    viewerSeatIndex >= 0 ? viewerHandScale(positions, viewerSeatIndex, seatShrink) : seatShrink;
+
   // Origin for the card-deal-in flight animation (see Seat.tsx/Dealer.tsx) --
   // nominal stage-px from the shoe to a given seat, divided by seatShrink so
   // a shrunk seat's cards still travel the true on-screen distance instead of
@@ -726,8 +735,13 @@ export function TableRoot({
         )}
 
         {seatedTurns.map((turn, idx) => {
-          const seatDelta = positions[idx] ? dealDeltaFor(positions[idx], seatShrink) : { dx: 0, dy: 0 };
-          const seatDiscardDelta = positions[idx] ? discardDeltaFor(positions[idx], seatShrink) : { dx: 0, dy: 0 };
+          // Divide by the scale the CARDS render at, not the seat's: these
+          // offsets live on .k-hand, which no longer shares the seat's
+          // transform for the viewer (see viewerHand above). Using seatShrink
+          // here would leave their cards flying in from short of the shoe.
+          const handAt = idx === viewerSeatIndex ? viewerHand : seatShrink;
+          const seatDelta = positions[idx] ? dealDeltaFor(positions[idx], handAt) : { dx: 0, dy: 0 };
+          const seatDiscardDelta = positions[idx] ? discardDeltaFor(positions[idx], handAt) : { dx: 0, dy: 0 };
           return (
             <Seat
               key={turn.player.id}
@@ -744,6 +758,7 @@ export function TableRoot({
               presence={presenceByPlayerId[turn.player.id]}
               position={positions[idx]}
               scale={seatShrink}
+              handScale={handAt}
               isBankActor={bankLock?.playerId === turn.player.id}
               onSkipOther={isAdmin ? onSkip : undefined}
               onOpenStats={onOpenStats}

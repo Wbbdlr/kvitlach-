@@ -203,6 +203,67 @@ export function seatScale(positions: SeatPosition[]): number {
   return Math.min(1, Math.max(0.36, scale));
 }
 
+// Nominal width of the VIEWER's own hand, unscaled stage px. Their cards are
+// the wide ones (--k-card-w: 61px against everyone else's 41px, see
+// index.css's .k-hand.is-me) and past three they overlap at 0.45 rather than
+// stacking, so a hand grows slowly after the third card. 185 is a three-card
+// hand with the gaps; a six-card one measures ~285 but by then it is fanned
+// on tap, which is its own interaction and deliberately allowed to overlap.
+export const VIEWER_HAND_WIDTH = 185;
+// Breathing room between the viewer's hand and the neighbour box it is
+// measured against -- the same few px of slack SEAT_HEIGHT allows itself.
+const VIEWER_HAND_GAP = 8;
+
+/**
+ * How big the VIEWER's own hand is allowed to be, independent of seatScale().
+ *
+ * seatScale() answers exactly one question: how far must every seat shrink so
+ * NAMEPLATES stop overlapping? SEAT_WIDTH is a plate width -- 168px of avatar,
+ * name, wallet and bet. That single number is then applied as one
+ * `transform: scale()` to the whole seat, so it also shrinks three things that
+ * are not nameplates and collide with nothing: the cards, the reaction bubble,
+ * and (through the same prop) the bank's reservation badges. A crowded table
+ * therefore pays for its nameplate problem in the legibility of the things
+ * players actually have to read.
+ *
+ * Measured live at a full eleven-seat table, 854x384: the viewer's own card
+ * rendered 17x27 real px against the banker's 32x48 -- the banker being bigger
+ * only because they are not on the arc and never shrink. Reported by a tester
+ * as "my card is tiny and very hard to see; my cards should still be bigger in
+ * the centre like the banker's are". They are right, and it is not a card-size
+ * constant that is wrong, it is which scale the cards are riding.
+ *
+ * The viewer's seat is the one that can afford to opt out. Step 1 moved their
+ * plate, total and status tag off the felt into the HUD (Seat.tsx's
+ * identityInHud), so what is left in that seat is a hand and nothing else --
+ * it is the only seat on the arc whose footprint is NOT a nameplate. Measured
+ * slack around it at that same full table: 54px to the nearest neighbour's
+ * plate horizontally, 44px to the banker's box above. The hand was never what
+ * was crowded.
+ *
+ * Compared on x only. A seat high on the flank is far away vertically and
+ * genuinely irrelevant, so counting it as a horizontal blocker over-constrains
+ * -- but the seats that actually bind are the viewer's two neighbours at the
+ * bottom of the arc, where the ellipse is flat and the separation IS
+ * horizontal. Conservative in the direction that cannot cause an overlap.
+ *
+ * Never returns less than `seatShrink`: this may only ever make the viewer's
+ * hand bigger than the status quo, never smaller.
+ */
+export function viewerHandScale(positions: SeatPosition[], viewerIndex: number, seatShrink: number): number {
+  const me = positions[viewerIndex];
+  if (!me) return seatShrink;
+  let half = Infinity;
+  for (let i = 0; i < positions.length; i += 1) {
+    if (i === viewerIndex) continue;
+    // The neighbour's own footprint is its PLATE, the widest thing it renders.
+    const available = Math.abs(positions[i].x - me.x) - (SEAT_WIDTH * seatShrink) / 2 - VIEWER_HAND_GAP;
+    if (available < half) half = available;
+  }
+  if (!Number.isFinite(half)) return 1;
+  return Math.min(1, Math.max(seatShrink, (2 * half) / VIEWER_HAND_WIDTH));
+}
+
 // The dealer's own seat box, in stage px. Smaller than SEAT_HEIGHT because
 // that constant is calibrated to the VIEWER's seat, which renders 92px cards
 // (see its comment); the dealer's renders 72px ones. Live-measured 2026-09-01

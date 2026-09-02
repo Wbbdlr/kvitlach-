@@ -77,9 +77,15 @@ const T_MAX = 0.7;
 // binding), and loosening T_MIN would drop it onto the pot end instead --
 // which is now the dealer's own box, since the BANK pill it used to be has
 // left the felt. So below this threshold the badge is skipped rather than forced
-// into a collision -- every seat's plate already prints "$wallet · $bet" (see
-// Seat.tsx), so the information survives, just without this particular
-// seat's dashed line to the pot.
+// into a collision.
+//
+// This used to be justified with "every seat's plate already prints
+// $wallet · $bet, so the information survives". That stopped being true for the
+// VIEWER in step 1, which moved their plate off the felt into the HUD -- and
+// the viewer's own seat is precisely the one this threshold fires on. The
+// information does still survive, but in the HUD readout (ViewerHud.tsx), not
+// in a plate. Corrected rather than deleted: the behaviour is still right, the
+// reason given for it had gone stale underneath it.
 function minViableDistance(scale: number): number {
   return (SEAT_CLEARANCE * scale) / (1 - T_MIN);
 }
@@ -97,6 +103,18 @@ function isPlaceable(position: SeatPosition, pot: { x: number; y: number }, scal
   return Math.hypot(position.x - pot.x, position.y - pot.y) >= minViableDistance(scale);
 }
 
+// How far the BADGE itself is allowed to shrink, as opposed to how far back
+// from the seat it rests. Those are two different questions and `scale`
+// answered both: at a full eleven-seat table the badge inherited seatScale's
+// 0.449 and rendered 14x8 real px on a 854x384 phone -- a coin glyph and a
+// dollar amount inside fourteen pixels. Reported by a tester as the chips and
+// their connector lines having disappeared; they had not, they were too small
+// to resolve as anything. Positioning still uses the true seat scale below,
+// because THAT is genuinely a fact about the seat.
+// Floored rather than pinned to 1: eleven badges at full size, all converging
+// on the same pot, start colliding with each other instead.
+const MIN_BADGE_SCALE = 0.8;
+
 // Chips the bank has committed to wagers it hasn't settled yet, drawn on the
 // line between the bank and the player each one is covering.
 //
@@ -106,6 +124,7 @@ function isPlaceable(position: SeatPosition, pot: { x: number; y: number }, scal
 // was visible before -- players just found their limit had moved.
 export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 }: BankReservationsProps) {
   const pot = potPoint(playTop, vf);
+  const badgeScale = Math.max(scale, MIN_BADGE_SCALE);
   const placeable = reservations.filter((r) => isPlaceable(r.position, pot, scale));
   if (placeable.length === 0) return null;
 
@@ -142,7 +161,7 @@ export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 
             style={{
               left: `${at.x}px`,
               top: `${at.y}px`,
-              transform: `translate(-50%, -50%) scale(${scale})`,
+              transform: `translate(-50%, -50%) scale(${badgeScale})`,
             }}
             title={`The bank is holding $${r.amount.toLocaleString()} to cover this wager.`}
           >

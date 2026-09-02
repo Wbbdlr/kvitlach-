@@ -23,6 +23,15 @@ export interface SeatProps {
   presence?: Player["presence"];
   position: SeatPosition;
   scale?: number;
+  /**
+   * The scale this seat's CARDS render at, which is not the same number as
+   * `scale`. That one is a nameplate-collision result (layout.ts seatScale);
+   * the hand was only ever riding it. See layout.ts viewerHandScale() for why
+   * the viewer's hand gets its own, and what was measured.
+   * Absolute, not a multiplier -- Seat divides it by `scale` itself, so a
+   * caller never has to know the seat's transform to reason about card size.
+   */
+  handScale?: number;
   isBankActor?: boolean;
   onSkipOther?: (playerId: string) => void;
   onOpenStats?: (playerId: string) => void;
@@ -87,6 +96,7 @@ export function Seat({
   presence,
   position,
   scale = 1,
+  handScale,
   isBankActor,
   onSkipOther,
   onOpenStats,
@@ -162,11 +172,19 @@ export function Seat({
       // fanned hand wide enough to reach a neighbour needs its whole seat
       // raised, not just the hand inside it, or it would fan out UNDER them.
       className={clsx("k-seat", isCurrentTurn && "is-active", canFan && fanned && "hand-fanned")}
-      style={{
-        left: `${position.x}px`,
-        top: `${position.y}px`,
-        transform: `translate(-50%, -50%) scale(${scale})`,
-      }}
+      style={
+        {
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+          transform: `translate(-50%, -50%) scale(${scale})`,
+          // Both of these undo part of the seat's own scale for one child that
+          // should never have been shrinking with it (index.css .k-hand,
+          // .k-reaction). Expressed as ratios so the child needs no knowledge
+          // of the seat's transform: 1 means "shrink with the seat as before".
+          "--k-hand-scale": (handScale ?? scale) / scale,
+          "--k-rx": 1 / scale,
+        } as React.CSSProperties
+      }
     >
       {reactionEmoji && (
         <div className={clsx("k-reaction", sideReaction && "is-side")} aria-label="Reaction">
