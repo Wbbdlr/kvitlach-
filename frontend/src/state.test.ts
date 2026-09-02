@@ -852,6 +852,15 @@ describe("public Eleveroon notification (whole table, not just the player it hap
 
     const notifications = useGameStore.getState().notifications;
     expect(notifications.some((n) => n.message.includes("Eleveroon!") && n.message.includes("Dana"))).toBe(true);
+
+    // What the call-out actually means, not just that one fired. The wording
+    // shipped as "saved a busting eleven", which reads as the eleven being
+    // rescued -- the opposite of the rule. What Eleveroon saves is the PLAYER,
+    // from a futch. Nothing else here can catch a message that means the wrong
+    // thing while containing all the right words.
+    const called = notifications.find((n) => n.message.includes("Eleveroon!"))!;
+    expect(called.message).toContain("avoided");
+    expect(called.message).not.toContain("saved");
   });
 
   it("does not fire on the very first round:state a client sees, even carrying an already-ignored card (a mid-round reconnect)", async () => {

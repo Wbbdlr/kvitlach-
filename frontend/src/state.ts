@@ -647,7 +647,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (newlyIgnored) {
         const name =
           [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName || "A player";
-        return makeNotification(`Eleveroon! ${name} just saved a busting eleven.`, "success");
+        return makeNotification(`Eleveroon! ${name} just avoided a futching eleven.`, "success");
       }
     }
     return undefined;
