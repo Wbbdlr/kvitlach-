@@ -38,6 +38,44 @@ const playerName = (turn: Turn): string =>
   turn.player.firstName ||
   "Player";
 
+/**
+ * What one turn was actually worth, and whether any of it was ever at stake.
+ *
+ * This is the whole of the export's money bug, in one place. The sheet used to
+ * read `turn.settledNet` for everybody and `turn.bet` as everybody's wager,
+ * and both are wrong in a way that only shows up against real data:
+ *
+ *   settledNet is set on the BANKER's turn by the BANK!-lock settlement path
+ *   (store.ts) and NOWHERE ELSE. An ordinary player's turn never carries it,
+ *   so every player's net came out as exactly 0 -- which is why the sheet
+ *   showed $0 down every column, and why every round was then counted a push,
+ *   because the W/L tally is derived from that same number.
+ *
+ *   the banker's `bet` is not a wager. calculateEndState overwrites the admin
+ *   turn's `bet` with the round's SIGNED NET (round.ts), so adding it into a
+ *   "wagered" total booked the bank's winnings as money it had put up. The
+ *   banker never wagers; their stake is always 0.
+ *
+ * A player's real stake is `settledBet ?? bet`, in that order: `bet` is zeroed
+ * the moment a seat is paid out mid-round and settledBet keeps what was at
+ * risk (see round.ts's noWager/alreadySettled notes). Nothing at stake is a
+ * push whatever the cards said -- a blatt does not win or lose money.
+ *
+ * Mirrors the server's own buildRoundHistoryEntry (round.ts), which has always
+ * computed it this way for the durable history; only the export disagreed.
+ */
+function turnMoney(turn: Turn): { stake: number; net: number } {
+  if (turn.player.type === "admin") {
+    const net = typeof turn.settledNet === "number" ? turn.settledNet : turn.bet ?? 0;
+    return { stake: 0, net };
+  }
+  const stake = turn.settledBet ?? turn.bet ?? 0;
+  if (stake === 0) return { stake: 0, net: 0 };
+  if (turn.state === "won") return { stake, net: stake };
+  if (turn.state === "lost") return { stake, net: -stake };
+  return { stake, net: 0 };
+}
+
 /** Per-player totals across every completed round, richest first. */
 export function summarize(rounds: CompletedRoundSummary[]): PlayerTotals[] {
   const byId = new Map<string, PlayerTotals>();
@@ -68,9 +106,14 @@ export function summarize(rounds: CompletedRoundSummary[]): PlayerTotals[] {
       // appear under the name they finished the night with.
       row.name = playerName(turn);
       row.rounds += 1;
-      if (typeof turn.bet === "number") row.wagered += turn.bet;
-      if (turn.busted) row.busts += 1;
-      const net = typeof turn.settledNet === "number" ? turn.settledNet : 0;
+      const { stake, net } = turnMoney(turn);
+      row.wagered += stake;
+      // statusDisplay is the one place that knows the difference between
+      // going over 21 and merely losing the showdown -- App.tsx leans on it
+      // for the same reason. `turn.busted` alone is set on the banker and on
+      // server-backfilled history turns, but a live player's bust is only
+      // derivable from their cards, so counting the flag missed most of them.
+      if (statusDisplay(turn).label === "FUTCHED!") row.busts += 1;
       row.net += net;
       if (net > row.best) row.best = net;
       if (net < row.worst) row.worst = net;
@@ -222,7 +265,10 @@ export function buildHistoryHtml({ rounds, roomId, roomName, focusPlayerId, now 
     .map((round, idx) => {
       const hands = (round.turns ?? [])
         .map((turn) => {
-          const net = typeof turn.settledNet === "number" ? turn.settledNet : 0;
+          // Same derivation as the standings above -- see turnMoney. Reading
+          // settledNet directly here printed every player's hand as $0, which
+          // is the round-by-round half of the same bug.
+          const { net } = turnMoney(turn);
           // Card NAMES, not values: the 12 is worth 12, 9 or 10 depending on
           // the hand, so one printed number would misreport what was dealt.
           const cards = (turn.cards ?? []).map((c) => c.name).join(" · ");
