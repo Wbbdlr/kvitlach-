@@ -2433,9 +2433,31 @@ body:has(.k-fit) {
 /* Bank-depleted decision: nobody at the table can act until the banker picks
    one of these, so unlike the banners above this one is interactive and must
    stay clickable (no pointer-events:none). */
+/* The blocking prompt the whole table waits on: a BANK! wager has emptied the
+   bank, nobody can act, and only the banker can move it along.
+ *
+ * It used to sit at `top: 22%` -- a fraction of the VIEWPORT, chosen when the
+ * felt was the only thing on screen. Measured at a full table with the prompt
+ * live: at 640x360 it spanned y9-149 and hit the top chrome row (which is where
+ * Leave lives), the BANK! banner that explains why it is there, and three
+ * seats. Reported by a tester as the banker's chip controls being misplaced and
+ * overlapping. 22% of a 360px-tall phone is 79px, and the panel is 141px tall,
+ * so it was always going to start above the chrome no matter what was in it.
+ *
+ * Centred instead. Not a magic number in the same sense: `top: 50%` with a
+ * -50% translate is genuine centring, and .k-fit centres the felt inside
+ * itself, so this lands in the middle of the OVAL -- the one part of the table
+ * that is deliberately empty (it is where the watermark goes). It clears the
+ * chrome row above and the dock below at every supported size by construction
+ * rather than by arithmetic.
+ *
+ * It still covers seats, and that is correct for this particular box: it is
+ * modal in effect, nothing underneath it can be acted on until it is answered,
+ * and the two things it must never cover are the row carrying Leave and the
+ * banner saying what happened. */
 .k-bank-decision {
   position: absolute;
-  top: 22%;
+  top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 48;
