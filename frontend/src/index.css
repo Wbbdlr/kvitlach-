@@ -207,6 +207,34 @@ body {
   user-select: none;
 }
 
+/* The felt and the chrome band are a game board, not a document. Every string
+   on them -- a seat's total, a status tag, the bank pill -- is a readout that
+   is about to be replaced by the next deal, and none of it is text anyone
+   wants to select.
+   Reported on desktop as "clicking around the game areas drops a large
+   blinking cursor on the screen": a click into selectable text collapses a
+   selection there, and the caret it leaves is drawn at the felt's own font
+   size, which --stage-scale can run to three times the chrome's. Selecting is
+   also what a mis-drag does instead of a pinch or a card fan, so this kills a
+   blue-highlighted table at the same time.
+   Deliberately NOT on .k-fit as a whole. The drawers and modals inside it hold
+   the room ID, the invite link and the room password, and RoomInfoDrawer's
+   clipboard fallback tells the player in as many words to "select the ID above
+   and copy it" -- a blanket rule here would make that instruction a lie. */
+.felt-table,
+.k-bottom-band {
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Anything genuinely typed into still is. The dock's bet field lives inside
+   the band, and a field you cannot put a caret in is not a field. */
+.k-bottom-band input,
+.k-bottom-band textarea,
+.k-bottom-band [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* touch-action: manipulation drops the ~300ms tap delay and suppresses
    double-tap-to-zoom, both of which misfire during fast bet/hit/stand
    tapping on a phone. Scoped to actual controls, not text inputs. */
@@ -1726,7 +1754,17 @@ body:has(.k-fit) {
    the controls panel starts" is a containment relationship, not a number
    computed from the dock's rendered width. The readout is position:absolute so
    it cannot widen the stack it is aligning itself to, which would move the very
-   edge it is aligning to. */
+   edge it is aligning to.
+
+   What this anchor is NOT is stable. The stack is content-width and centred,
+   and the dock's contents change on every deal and every round boundary -- so
+   this left edge slides sideways, and `bottom: 100%` moves whenever the dock
+   wraps or is not rendered at all. That is fine for a panel nobody has touched
+   (it is the layout's own business where it goes) and unacceptable for one a
+   player has deliberately placed. So everything below governs the untouched
+   panel only: from the first drag onward draggablePanel.ts sets an inline
+   `position: fixed`, which wins over all of it, and the felt stops being able
+   to move the panel at all. */
 .k-dock-stack {
   position: relative;
   display: flex;

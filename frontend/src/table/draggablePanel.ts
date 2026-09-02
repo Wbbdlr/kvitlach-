@@ -9,13 +9,31 @@ import { CSSProperties, PointerEvent as ReactPointerEvent, RefObject, useCallbac
 // bottom-left with their thumb; a banker watching the felt wants it small and
 // out of the way; someone squinting at a crowded table wants it big.
 //
-// Expressed as a TRANSFORM on the panel, not as position/top/left. The panel
-// stays exactly where the layout puts it (.k-hud-bottom-left, flow-laid above
-// the tray -- see docs/mobile-ui.md Part 2 rule 2), and this is an offset FROM
-// that. Two things fall out of that choice: an untouched panel is byte-for-byte
-// the layout it was before, and a player who drags it into a corner that later
-// stops existing (rotate the phone, resize the window) is pulled back to
-// something on-screen rather than stranded off it.
+// TWO positioning modes, and the split is the whole point:
+//
+//   UNTOUCHED -- no positioning at all. The panel sits exactly where the
+//   layout puts it (.k-dock-stack, above the dock), byte-for-byte the layout
+//   it was before this hook existed.
+//
+//   MOVED -- `position: fixed` at viewport coordinates. Once a player has put
+//   it somewhere, that somewhere is a place on their screen, and nothing on
+//   the felt gets to move it again.
+//
+// It used to be a TRANSFORM in both modes -- an offset from wherever the
+// layout had put the panel. That reads as elegant and is wrong, because the
+// layout position is not a constant: the readout anchors to .k-dock-stack's
+// left edge and top (index.css), the stack is content-width and centred, and
+// the dock's contents change on every deal, every round boundary, and every
+// state where there is no dock at all. So the resting position slid sideways
+// as the controls changed width and jumped vertically as they wrapped or
+// vanished, carrying the player's offset along with it. Reported as "that
+// panel is pushed around the screen as cards are dealt and as rounds progress"
+// -- a floating panel needs a frame that does not move, and the only one on
+// offer is the viewport.
+//
+// A position saved in landscape is off the bottom of the same phone in
+// portrait, so fixed coordinates are clamped back on screen whenever the
+// viewport changes under them -- see `clamp`.
 
 const STORE_PREFIX = "kvitlach.panel.";
 const MIN_SCALE = 0.75;
@@ -24,31 +42,53 @@ const MAX_SCALE = 1.8;
 // The panel carries no controls today, but it is the kind of thing that grows
 // one, and a panel that jumps on contact feels broken either way.
 const DRAG_SLOP_PX = 6;
+// Keep at least this much of the panel reachable, in screen px.
+const KEEP_PX = 44;
 
 interface Placement {
-  dx: number;
-  dy: number;
+  /** Viewport px of the panel's top-left, or null while it is still in flow. */
+  x: number | null;
+  y: number | null;
   scale: number;
 }
 
-const DEFAULT: Placement = { dx: 0, dy: 0, scale: 1 };
+/**
+ * A placement written by the transform-offset version of this hook. It cannot
+ * be converted without knowing where the layout was putting the panel, which
+ * is only knowable once it has been laid out -- so it is carried separately
+ * and cashed in on the first measured pass, rather than discarded. Discarding
+ * would silently move every existing player's panel back to the corner.
+ */
+interface LegacyOffset {
+  dx: number;
+  dy: number;
+}
 
-function load(key: string): Placement {
-  if (typeof window === "undefined" || !window.localStorage) return DEFAULT;
+const DEFAULT: Placement = { x: null, y: null, scale: 1 };
+
+function boundScale(value: unknown): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(value) || 1));
+}
+
+function load(key: string): { placement: Placement; legacy?: LegacyOffset } {
+  if (typeof window === "undefined" || !window.localStorage) return { placement: DEFAULT };
   try {
     const raw = window.localStorage.getItem(STORE_PREFIX + key);
-    if (!raw) return DEFAULT;
-    const parsed = JSON.parse(raw) as Partial<Placement>;
-    return {
-      dx: Number.isFinite(parsed.dx) ? (parsed.dx as number) : 0,
-      dy: Number.isFinite(parsed.dy) ? (parsed.dy as number) : 0,
-      // Clamped on the way IN as well as on the way out: this is player-
-      // editable storage, and a hand-set 40 would render a readout wider than
-      // the screen with no way to reach the grip that would fix it.
-      scale: Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(parsed.scale) || 1)),
-    };
+    if (!raw) return { placement: DEFAULT };
+    const parsed = JSON.parse(raw) as Partial<Placement & LegacyOffset>;
+    // Clamped on the way IN as well as on the way out: this is player-editable
+    // storage, and a hand-set 40 would render a readout wider than the screen
+    // with no way to reach the grip that would fix it.
+    const scale = boundScale(parsed.scale);
+    if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+      return { placement: { x: parsed.x as number, y: parsed.y as number, scale } };
+    }
+    const dx = Number.isFinite(parsed.dx) ? (parsed.dx as number) : 0;
+    const dy = Number.isFinite(parsed.dy) ? (parsed.dy as number) : 0;
+    if (dx === 0 && dy === 0) return { placement: { ...DEFAULT, scale } };
+    return { placement: { x: null, y: null, scale }, legacy: { dx, dy } };
   } catch {
-    return DEFAULT;
+    return { placement: DEFAULT };
   }
 }
 
@@ -62,7 +102,7 @@ function save(key: string, placement: Placement): void {
 }
 
 export interface DraggablePanel {
-  /** Spread onto the panel: the transform, and the drag pointer handler. */
+  /** Spread onto the panel: its positioning, and the drag pointer handler. */
   panelProps: { style: CSSProperties; onPointerDown: (event: ReactPointerEvent) => void };
   /** Spread onto the resize grip. */
   gripProps: { onPointerDown: (event: ReactPointerEvent) => void };
@@ -72,70 +112,60 @@ export interface DraggablePanel {
 }
 
 /**
- * @param ref      the panel itself, measured to keep it on screen
- * @param key      storage key, scoped per panel
- * @param hostScale  any scale already applied by an ancestor, so a drag of N
- *                   screen px moves the panel N screen px rather than N/scale
+ * @param ref  the panel itself, measured to keep it on screen and to find its
+ *             resting position the first time it is dragged
+ * @param key  storage key, scoped per panel
  */
-export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string, hostScale = 1): DraggablePanel {
-  const [placement, setPlacement] = useState<Placement>(() => load(key));
+export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): DraggablePanel {
+  const initial = useRef(load(key));
+  const [placement, setPlacement] = useState<Placement>(initial.current.placement);
+  const legacy = useRef(initial.current.legacy);
   const live = useRef(placement);
   live.current = placement;
 
-  // Pull a panel back on screen whenever the viewport changes under it. A
-  // position saved in landscape is off the bottom of the same phone in
-  // portrait, and the panel is the thing a player would be looking for to
-  // work out what had happened.
+  // Pull a floating panel back on screen. Works in viewport px throughout,
+  // which is what makes it simple now: the panel's own rendered box is the
+  // only thing to measure, and there is no resting position to subtract out.
   const clamp = useCallback(
     (next: Placement): Placement => {
+      if (next.x === null || next.y === null) return next;
       const el = ref.current;
       if (!el || typeof window === "undefined") return next;
-      // An UNMOVED panel is never rescued. Where it sits is the layout's
-      // business, and the layout is what keeps it on screen -- nothing here
-      // has a better answer than .k-hud-bottom-left's own flow position.
-      //
-      // Not merely an optimisation. The mount pass measures shortly after
-      // first paint, and the bottom band is anchored to --stage-h, which
-      // TableRoot only sets once it has measured the viewport -- so an early
-      // pass can read a rect the panel is about to leave, decide it is out of
-      // bounds, and bake in a correction that is wrong the moment layout
-      // settles. Measured at 800x360: an untouched readout was translated
-      // (236, -225) out of its corner and onto the bank's own total.
-      if (next.dx === 0 && next.dy === 0) return next;
       const box = el.getBoundingClientRect();
       // A zero-sized rect means it is not laid out yet; there is nothing to
       // measure against and no correction worth guessing at.
       if (box.width === 0 || box.height === 0) return next;
-      // Where the panel sits with the CURRENT offset already applied, so the
-      // resting position is recovered by subtracting it.
-      const restLeft = box.left - live.current.dx * hostScale;
-      const restTop = box.top - live.current.dy * hostScale;
-      // Keep at least this much of it reachable, in screen px.
-      const keep = 44;
-      const minDx = (-restLeft - box.width + keep) / hostScale;
-      const maxDx = (window.innerWidth - restLeft - keep) / hostScale;
-      const minDy = (-restTop - box.height + keep) / hostScale;
-      const maxDy = (window.innerHeight - restTop - keep) / hostScale;
       return {
         scale: next.scale,
-        dx: Math.min(maxDx, Math.max(minDx, next.dx)),
-        dy: Math.min(maxDy, Math.max(minDy, next.dy)),
+        x: Math.min(window.innerWidth - KEEP_PX, Math.max(KEEP_PX - box.width, next.x)),
+        y: Math.min(window.innerHeight - KEEP_PX, Math.max(KEEP_PX - box.height, next.y)),
       };
     },
-    [ref, hostScale]
+    [ref]
   );
 
   const rescue = useCallback(() => {
     setPlacement((current) => {
+      // Cash in a saved transform offset now that there is a real box to read:
+      // with the legacy transform still applied, the panel's rect IS the
+      // position the player chose, so freezing it is exact rather than a guess.
+      if (current.x === null && legacy.current) {
+        const box = ref.current?.getBoundingClientRect();
+        if (!box || box.width === 0) return current;
+        legacy.current = undefined;
+        const frozen = clamp({ scale: current.scale, x: box.left, y: box.top });
+        save(key, frozen);
+        return frozen;
+      }
       const bounded = clamp(current);
       // Persisted, not merely applied. Without this the correction lives only
       // in React state, and the next mount reads the same out-of-bounds value
       // straight back out of storage -- which is the bug this is here to stop,
       // just deferred to the next page load.
-      if (bounded.dx !== current.dx || bounded.dy !== current.dy) save(key, bounded);
+      if (bounded.x !== current.x || bounded.y !== current.y) save(key, bounded);
       return bounded;
     });
-  }, [clamp, key]);
+  }, [clamp, key, ref]);
 
   // On mount as well as on resize. A resize listener only helps a player who
   // is watching when it happens; a position saved on a phone in landscape, or
@@ -145,15 +175,10 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string, host
     if (typeof window === "undefined") return undefined;
     // After first paint, so the panel has a real rect to be measured against.
     const raf = window.requestAnimationFrame(rescue);
-    // A ResizeObserver rather than the window's resize event, and for a
-    // specific reason: this hook re-registers its listeners whenever hostScale
-    // changes, and hostScale changes ON RESIZE -- so the re-render triggered by
-    // the very event being listened for can remove the listener mid-dispatch,
-    // before it is called. Measured: shrinking 1280x800 to 640x360 clamped the
-    // panel vertically (from the mount pass) and not horizontally (the resize
-    // pass never ran). RO callbacks fire after layout, outside the event
-    // dispatch, so there is no ordering to lose. stage.ts reaches for the same
-    // tool a few lines away.
+    // A ResizeObserver rather than the window's resize event. RO callbacks
+    // fire after layout and outside the event dispatch, so a re-render cannot
+    // remove the listener mid-dispatch. stage.ts reaches for the same tool a
+    // few lines away.
     const observer =
       typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => rescue()) : undefined;
     observer?.observe(document.documentElement);
@@ -188,7 +213,15 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string, host
       if (event.button !== undefined && event.button !== 0) return;
       const startX = event.clientX;
       const startY = event.clientY;
-      const from = { ...live.current };
+      let from = { ...live.current };
+      // The handoff from flow to floating: read where the layout has the panel
+      // right now and start from there, so the first drag does not jump.
+      if (mode === "move" && from.x === null) {
+        const box = ref.current?.getBoundingClientRect();
+        if (!box || box.width === 0) return;
+        legacy.current = undefined;
+        from = { ...from, x: box.left, y: box.top };
+      }
       const target = event.currentTarget as HTMLElement;
       let dragging = false;
       target.setPointerCapture?.(event.pointerId);
@@ -199,12 +232,14 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string, host
         if (!dragging && Math.hypot(dx, dy) < DRAG_SLOP_PX) return;
         dragging = true;
         if (mode === "move") {
-          setPlacement(clamp({ ...from, dx: from.dx + dx / hostScale, dy: from.dy + dy / hostScale }));
+          // Viewport px on both sides now, so a drag of N screen px moves the
+          // panel N screen px with nothing to divide out.
+          setPlacement(clamp({ ...from, x: (from.x as number) + dx, y: (from.y as number) + dy }));
         } else {
           // Down-right grows it. Both axes count so the gesture works whichever
           // way the grip is dragged, at 200px of travel per full size step.
           const next = from.scale + (dx + dy) / 200;
-          setPlacement({ ...live.current, scale: Math.min(MAX_SCALE, Math.max(MIN_SCALE, next)) });
+          setPlacement({ ...live.current, scale: boundScale(next) });
         }
         moveEvent.preventDefault();
       };
@@ -219,27 +254,40 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string, host
       target.addEventListener("pointerup", onUp);
       target.addEventListener("pointercancel", onUp);
     },
-    [clamp, commit, hostScale]
+    [clamp, commit, ref]
   );
 
   const reset = useCallback(() => {
+    legacy.current = undefined;
     setPlacement(DEFAULT);
     save(key, DEFAULT);
   }, [key]);
 
-  const moved = placement.dx !== 0 || placement.dy !== 0 || placement.scale !== 1;
+  const floating = placement.x !== null;
+  const moved = floating || Boolean(legacy.current) || placement.scale !== 1;
 
-  return {
-    panelProps: {
-      style: {
-        transform: `translate(${placement.dx}px, ${placement.dy}px) scale(${placement.scale})`,
-        // Anchored to the corner the layout already puts it in, so growing it
-        // pushes into the empty felt rather than off the bottom of the screen.
+  // Fixed and flow modes need different scale origins. Floating, the panel is
+  // pinned by its top-left, so growing it must not drag that corner; in flow
+  // it is anchored to the corner the layout puts it in, so growing it pushes
+  // into the empty felt rather than off the bottom of the screen.
+  const style: CSSProperties = floating
+    ? {
+        position: "fixed",
+        left: placement.x as number,
+        top: placement.y as number,
+        margin: 0,
+        transform: `scale(${placement.scale})`,
+        transformOrigin: "top left",
+        touchAction: "none",
+      }
+    : {
+        transform: `translate(${legacy.current?.dx ?? 0}px, ${legacy.current?.dy ?? 0}px) scale(${placement.scale})`,
         transformOrigin: "bottom left",
         touchAction: "none",
-      },
-      onPointerDown: (event) => begin(event, "move"),
-    },
+      };
+
+  return {
+    panelProps: { style, onPointerDown: (event) => begin(event, "move") },
     gripProps: { onPointerDown: (event) => begin(event, "resize") },
     moved,
     reset,

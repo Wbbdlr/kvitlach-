@@ -8,15 +8,17 @@ import { useDraggablePanel } from "./draggablePanel";
 export interface ViewerHudProps {
   turn: Turn;
   viewerId?: string;
+  /**
+   * Whether the table is actually waiting on YOU right now. Not derivable from
+   * `turn` alone -- every unplayed turn in the round is `pending`, so without
+   * this the panel called itself active for the whole round and, worse, showed
+   * statusDisplay's "Waiting..." while your own timer bar was running down.
+   * Comes from useTableData's activeTurnId, the same source Seat.tsx uses.
+   */
+  isActiveTurn?: boolean;
+  isNextTurn?: boolean;
   roundState?: RoundPhase;
   walletAmount?: number;
-  /**
-   * The scale its container already applies (.k-hud-bottom-left counter-scales
-   * against --stage-scale on a big monitor). Passed so a drag of N screen px
-   * moves the panel N screen px, rather than N divided by whatever the host
-   * happened to be doing.
-   */
-  hostScale?: number;
 }
 
 // Your own name, money and total -- in your own corner, not on the table.
@@ -37,13 +39,22 @@ export interface ViewerHudProps {
 // running), no stats button (yours is in the dock).
 //
 // Lives in the HUD frame at true viewport pixels -- see docs/mobile-ui.md
-// Part 1. It is flow-laid inside .k-hud-bottom-left alongside the toast stack,
-// so neither has to know the other's height.
-export function ViewerHud({ turn, viewerId, roundState, walletAmount, hostScale = 1 }: ViewerHudProps) {
+// Part 1. Untouched, it is laid out by .k-dock-stack, above the dock (it left
+// .k-hud-bottom-left when the toasts took the other corner). Once a player
+// drags it, it stops taking its position from the layout at all and becomes
+// viewport-fixed -- see draggablePanel.ts for why that split has to exist.
+export function ViewerHud({
+  turn,
+  viewerId,
+  isActiveTurn,
+  isNextTurn,
+  roundState,
+  walletAmount,
+}: ViewerHudProps) {
   // Draggable and resizable, because there is no one right corner for it --
   // see draggablePanel.ts. Untouched, it renders exactly where it always did.
   const panelRef = useRef<HTMLDivElement>(null);
-  const { panelProps, gripProps, moved, reset } = useDraggablePanel(panelRef, "viewerHud", hostScale);
+  const { panelProps, gripProps, moved, reset } = useDraggablePanel(panelRef, "viewerHud");
   const totalInfo = totalDisplay(turn, viewerId, roundState);
   const statusInfo = statusDisplay(turn);
   const betInfo = betDisplay(turn);
@@ -54,7 +65,16 @@ export function ViewerHud({ turn, viewerId, roundState, walletAmount, hostScale 
   // to survive here or every total reads alike.
   const totalIsConcealed = !/^\d/.test(totalInfo.value);
   const totalIsBust = statusInfo.label === "FUTCHED!";
-  const isCurrentTurn = turn.state === "pending" && roundState !== "final";
+  // Same three lines as Seat.tsx:115 and :157, because this panel IS the
+  // viewer's seat plate -- it was lifted out of the felt and the plate's
+  // turn logic did not come with it. statusDisplay() only sees the turn, and
+  // an unplayed turn is `pending` whether the table is waiting on you or on
+  // someone four seats away, so it answered "Waiting..." to both. Your own
+  // timer bar was winding down beside a tag telling you to wait.
+  const isCurrentTurn = Boolean(isActiveTurn && turn.state === "pending" && roundState !== "terminate");
+  const isNextPlayer = Boolean(isNextTurn && !isCurrentTurn && turn.state === "pending" && roundState !== "terminate");
+  const tagLabel = isNextPlayer ? "Up next" : isCurrentTurn ? "Your turn" : statusInfo.label;
+  const tagClass = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
   const showBet = betInfo.label !== "—";
   // Carried over from the seat plate this replaced, where it lived on the
   // avatar. It has to come along: the mark is how you can see you are calling
@@ -98,11 +118,7 @@ export function ViewerHud({ turn, viewerId, roundState, walletAmount, hostScale 
         <div className={clsx("k-viewer-hud-total", totalIsConcealed && "is-muted", totalIsBust && "is-bust")}>
           {totalInfo.prefix} <b>{totalInfo.value}</b>
         </div>
-        {statusInfo.label && (
-          <div className={clsx("k-viewer-hud-tag", tagVariant(statusInfo.label, isCurrentTurn))}>
-            {statusInfo.label}
-          </div>
-        )}
+        {tagLabel && <div className={clsx("k-viewer-hud-tag", tagClass)}>{tagLabel}</div>}
       </div>
       {/* Only once it has been moved: an always-visible "put it back" on a
           panel nobody has touched is clutter that explains a feature by

@@ -1133,17 +1133,10 @@ export function TableRoot({
             <ViewerHud
               turn={myPlayerTurn}
               viewerId={playerId}
+              isActiveTurn={activeTurnId === myPlayerTurn.player.id}
+              isNextTurn={nextTurnId === myPlayerTurn.player.id}
               roundState={round?.state}
               walletAmount={myWallet}
-              // Flat 1 now, not max(1, scale). It used to counter-scale against
-              // the stage because it sat alone in a corner outside it, where a
-              // flat 12px read as tiny beside a felt rendering everything a
-              // third bigger. It now sits directly on top of the dock, which is
-              // flat-px chrome, so it takes the dock's treatment -- and a
-              // counter-scale here would be actively harmful: at --stage-scale 2
-              // a 169px readout becomes 338px and reaches from the dock's left
-              // edge into the viewer's own cards.
-              hostScale={1}
             />
           )}
         {/* The banker has dropped and the table is waiting on them. Nothing else
