@@ -2288,6 +2288,46 @@ body:has(.k-fit) {
   border-radius: 14px;
   box-shadow: var(--k-surface-shadow);
   color: var(--k-surface-ink);
+  /* Tells the browser to draw its OWN parts dark too: the number input's
+     spinner arrows, the focus ring, autofill's background, an overflow
+     scrollbar. Those are not reachable from CSS, so without this they stay
+     light on a dark surface no matter what the rules below say. */
+  color-scheme: dark;
+}
+
+/* Form controls in a dialog.
+   The retrofit further down repainted every text utility the dialogs were
+   built with, but the fields were never in that set: `mt-1 w-full rounded
+   border px-3 py-2` carries no colour utility at all, so an input keeps the
+   BROWSER's defaults -- white paper, black ink, a grey hairline. Those
+   defaults were right when this markup lived in the lobby, which is on white,
+   and they came along unchanged when the surface underneath turned dark.
+   Reported as the dialogs matching the table but the fields not.
+   Styled by element rather than by fixing each call site: the fields are
+   plain HTML controls and this is what element selectors are for -- and a
+   field added tomorrow inherits it instead of having to remember. */
+.k-dialog input:not([type="checkbox"]):not([type="radio"]),
+.k-dialog select,
+.k-dialog textarea {
+  background-color: var(--k-surface-inset);
+  border-color: var(--k-surface-inset-line);
+  color: var(--k-surface-ink);
+}
+.k-dialog input::placeholder,
+.k-dialog textarea::placeholder {
+  color: var(--k-surface-ink-dim);
+}
+.k-dialog input:focus-visible,
+.k-dialog select:focus-visible,
+.k-dialog textarea:focus-visible {
+  outline: 2px solid rgba(230, 164, 75, 0.55);
+  outline-offset: 1px;
+  border-color: var(--k-surface-line);
+}
+/* The boxes keep their own accent rather than the OS blue. */
+.k-dialog input[type="checkbox"],
+.k-dialog input[type="radio"] {
+  accent-color: #e6a44b;
 }
 
 /* A row inside a dialog -- the boxed-out Game ID, the stats strip, a pending

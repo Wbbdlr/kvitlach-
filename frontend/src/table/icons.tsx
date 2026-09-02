@@ -14,6 +14,8 @@ export type IconName =
   | "bell"
   | "check"
   | "pencil"
+  | "coins-plus"
+  | "user-pencil"
   | "door"
   | "music"
   | "speaker"
@@ -59,6 +61,22 @@ const ICON_PATHS: Record<IconName, string> = {
   bell: '<path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4.5 1.8 5.5 1.8 5.5H4.7S6.5 14.5 6.5 10z"/><path d="M10 18a2 2 0 0 0 4 0"/>',
   check: '<circle cx="12" cy="12" r="8.5"/><path d="M8 12.3l2.7 2.7L16 9.5"/>',
   pencil: '<path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14 7l3 3"/>',
+  // "Ask for more chips" and "change my name". Both asked for as the plain
+  // icon plus a second glyph saying what you are doing TO it -- a stack of
+  // chips alone is "money", a pencil alone is "edit", and neither says which
+  // of the two menus a button opens.
+  //
+  // Composed rather than drawn as new art: the stack is `coins` and the head
+  // is `user-x`'s, shifted and shrunk to leave a corner free. So the pair
+  // still reads as the same family, and a change to either base is one edit.
+  // The stack stays CLOSED. A first pass clipped its right side to make room
+  // for the plus, and at 4x it read as a capital E: an outline that stops
+  // short is a different letterform, not a smaller drawing of the same one.
+  // The plus sits clear of it in the free corner instead.
+  "coins-plus":
+    '<ellipse cx="9" cy="5.5" rx="5.5" ry="2"/><path d="M3.5 5.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9"/><path d="M3.5 10c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2"/><path d="M18.5 15v6M15.5 18h6"/>',
+  "user-pencil":
+    '<circle cx="8.5" cy="7" r="3.4"/><path d="M2 20c0-3.9 2.7-7 6.5-7 1 0 1.9.2 2.7.6"/><path d="M13 20h3l6.2-6.2a1.7 1.7 0 0 0-2.4-2.4L13.6 17.6z"/>',
   door: '<path d="M13 4H7a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h6"/><path d="M17 15.5l3.5-3.5L17 8.5"/><path d="M20.5 12H10.5"/>',
   music: '<path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
   speaker: '<path d="M4 9v6h3.5L13 19V5L7.5 9H4z"/><path d="M16.5 9a5 5 0 0 1 0 6"/>',

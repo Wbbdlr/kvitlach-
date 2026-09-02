@@ -4,6 +4,7 @@ import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
 import { useDialogFocus } from "../useDialogFocus";
+import { ChipRequestForm, RenameRequestForm } from "./SelfServiceForms";
 
 export interface RoomInfoDrawerProps {
   open: boolean;
@@ -58,11 +59,7 @@ export function RoomInfoDrawer({
   focus,
 }: RoomInfoDrawerProps) {
   const [showRenameForm, setShowRenameForm] = useState(false);
-  const [renameFirst, setRenameFirst] = useState("");
-  const [renameLast, setRenameLast] = useState("");
   const [showBuyInForm, setShowBuyInForm] = useState(false);
-  const [buyInAmount, setBuyInAmount] = useState("");
-  const [buyInNote, setBuyInNote] = useState("");
   const [copied, setCopied] = useState<"id" | "link" | "password" | null>(null);
   const [copyFailed, setCopyFailed] = useState<"id" | "link" | "password" | null>(null);
   const selfServiceRef = useRef<HTMLDivElement>(null);
@@ -253,50 +250,18 @@ export function RoomInfoDrawer({
                     {showRenameForm ? "Hide" : "Request name change"}
                   </button>
                 </div>
-                {myRenameRequest && (
+                {showRenameForm && (
+                  <RenameRequestForm
+                    pending={myRenameRequest}
+                    onSubmit={onRequestRename}
+                    onDone={() => setShowRenameForm(false)}
+                  />
+                )}
+                {!showRenameForm && myRenameRequest && (
                   <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
                     Pending banker approval for {myRenameRequest.firstName}
                     {myRenameRequest.lastName ? ` ${myRenameRequest.lastName}` : ""}.
                   </div>
-                )}
-                {showRenameForm && (
-                  <form
-                    className="flex flex-col gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      onRequestRename(renameFirst, renameLast || undefined);
-                      setRenameFirst("");
-                      setRenameLast("");
-                      setShowRenameForm(false);
-                    }}
-                  >
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs">
-                        First name (required)
-                        <input
-                          className="mt-1 w-full rounded border px-3 py-2"
-                          value={renameFirst}
-                          onChange={(e) => setRenameFirst(e.target.value)}
-                          required
-                          autoComplete="given-name"
-                          autoCapitalize="words"
-                        />
-                      </label>
-                      <label className="text-xs">
-                        Last name (optional)
-                        <input
-                          className="mt-1 w-full rounded border px-3 py-2"
-                          value={renameLast}
-                          onChange={(e) => setRenameLast(e.target.value)}
-                          autoComplete="family-name"
-                          autoCapitalize="words"
-                        />
-                      </label>
-                    </div>
-                    <button type="submit" className="bg-accent text-white rounded px-3 py-2 text-sm font-semibold">
-                      Submit rename request
-                    </button>
-                  </form>
                 )}
               </div>
 
@@ -311,51 +276,18 @@ export function RoomInfoDrawer({
                     {showBuyInForm ? "Hide" : "Request more chips"}
                   </button>
                 </div>
-                {myBuyInRequest && (
+                {showBuyInForm && (
+                  <ChipRequestForm
+                    pending={myBuyInRequest}
+                    onSubmit={onRequestBuyIn}
+                    onDone={() => setShowBuyInForm(false)}
+                  />
+                )}
+                {!showBuyInForm && myBuyInRequest && (
                   <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
                     Pending banker approval for ${myBuyInRequest.amount}
                     {myBuyInRequest.note ? ` · "${myBuyInRequest.note}"` : ""}.
                   </div>
-                )}
-                {showBuyInForm && (
-                  <form
-                    className="flex flex-col gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const parsed = Number(buyInAmount);
-                      if (!Number.isFinite(parsed) || parsed <= 0) return;
-                      onRequestBuyIn(parsed, buyInNote || undefined);
-                      setBuyInAmount("");
-                      setBuyInNote("");
-                      setShowBuyInForm(false);
-                    }}
-                  >
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs">
-                        Amount (required)
-                        <input
-                          className="mt-1 w-full rounded border px-3 py-2"
-                          type="number"
-                          min={1}
-                          value={buyInAmount}
-                          onChange={(e) => setBuyInAmount(e.target.value)}
-                          required
-                        />
-                      </label>
-                      <label className="text-xs">
-                        Note (optional)
-                        <input
-                          className="mt-1 w-full rounded border px-3 py-2"
-                          value={buyInNote}
-                          onChange={(e) => setBuyInNote(e.target.value)}
-                          placeholder="e.g. Lost last round"
-                        />
-                      </label>
-                    </div>
-                    <button type="submit" className="bg-accent text-white rounded px-3 py-2 text-sm font-semibold">
-                      Submit chip request
-                    </button>
-                  </form>
                 )}
               </div>
             </>

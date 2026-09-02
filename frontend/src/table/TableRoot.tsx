@@ -21,6 +21,7 @@ import { ChromeMenu } from "./ChromeMenu";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
+import { QuickRequestDialog, QuickRequestKind } from "./QuickRequestDialog";
 import { WaitingListDrawer, WaitingListEntry } from "./WaitingListDrawer";
 import { StatsModal } from "./StatsModal";
 import { DiscardEntry, DiscardPile, discardedEntries } from "./DiscardPile";
@@ -206,6 +207,9 @@ export function TableRoot({
     setRoomInfoFocus(section);
     setRoomInfoOpen(true);
   };
+  // The chrome's two self-service buttons, each opening only its own form.
+  // Undefined means neither is open. See QuickRequestDialog.
+  const [quickRequest, setQuickRequest] = useState<QuickRequestKind | undefined>();
   const [waitingListOpen, setWaitingListOpen] = useState(false);
   const [discardPileOpen, setDiscardPileOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
@@ -691,29 +695,34 @@ export function TableRoot({
           Reshuffle
         </button>
       )}
-      {/* The two things a player actually needs mid-game, named. Both open the
-          same drawer these already lived in -- the forms and the pending-
-          request state are there and belong together -- but they now say
-          which one they want instead of hiding behind the room's name.
+      {/* The two things a player actually needs mid-game, each with its own
+          one-purpose menu (QuickRequestDialog). They used to open the whole
+          Table Info drawer with the right section pre-expanded, which still
+          put the room's ID, invite link, password and export controls on
+          screen to answer a one-line question -- reported as the buttons
+          taking you to the table settings menu instead of doing what they
+          say. The forms are shared with that drawer, not copied.
+          Icons carry a second glyph for the same reason the labels exist: a
+          stack of chips alone is "money" and a pencil alone is "edit".
           Banker-side equivalents live in Manage, hence !isAdmin. */}
       {!isAdmin && (
         <>
           <button
             type="button"
             className="k-chip-btn k-ctl-primary"
-            onClick={() => openRoomInfo("chips")}
+            onClick={() => setQuickRequest("chips")}
             title="Ask the banker for more chips"
           >
-            <Icon name="coins" size={13} />
+            <Icon name="coins-plus" size={13} />
             <span className="k-ctl-label">Ask for chips</span>
           </button>
           <button
             type="button"
             className="k-chip-btn k-ctl-primary"
-            onClick={() => openRoomInfo("rename")}
+            onClick={() => setQuickRequest("rename")}
             title="Request a name change"
           >
-            <Icon name="pencil" size={13} />
+            <Icon name="user-pencil" size={13} />
             <span className="k-ctl-label">Change my name</span>
           </button>
         </>
@@ -1037,7 +1046,7 @@ export function TableRoot({
             <button
               type="button"
               className="k-tag warn"
-              onClick={() => setRoomInfoOpen(true)}
+              onClick={() => setQuickRequest("chips")}
               title="Ask the banker for more chips."
             >
               {myBuyInRequest ? "Chip request pending…" : "Out of chips — tap to request more"}
@@ -1258,6 +1267,15 @@ export function TableRoot({
       {discardPileOpen && <DiscardPileModal entries={discardEntries} onClose={() => setDiscardPileOpen(false)} />}
 
       {bankSummaryOpen && <BankSummaryModal summary={bankSummary} onClose={onDismissBankSummary} />}
+
+      <QuickRequestDialog
+        kind={quickRequest}
+        onClose={() => setQuickRequest(undefined)}
+        renameRequest={playerId ? (room.renameRequests ?? []).find((r) => r.playerId === playerId) : undefined}
+        buyInRequest={myBuyInRequest}
+        onRequestRename={onRequestRename}
+        onRequestBuyIn={onRequestBuyIn}
+      />
 
       <RoomInfoDrawer
         open={roomInfoOpen}
