@@ -55,11 +55,15 @@ to be there.
 
 **2. Position by containment, never by measuring a sibling's rendered height.**
 If a layout formula references another component's measured size, the layout is
-already broken — it just hasn't been photographed yet. `BankPanel.tsx` currently
-holds four such constants (`VIEWER_PLATE_TOP_CONST = 205.75 / 2`,
-`DEALER_BOTTOM_CONST = 75`, `DEALER_STATUS_ROW_H = 39`, `BANK_PILL_HEIGHT = 24`).
-A longer name, a wrapped tag or a fifth card invalidates them silently. Put the
-element in a container that bounds it instead.
+already broken — it just hasn't been photographed yet. A longer name, a wrapped
+tag or a fifth card invalidates such a constant silently. Put the element in a
+container that bounds it instead.
+
+`BankPanel.tsx` held four of them — `VIEWER_PLATE_TOP_CONST = 205.75 / 2`,
+`DEALER_BOTTOM_CONST = 75`, `DEALER_STATUS_ROW_H = 39`, `BANK_PILL_HEIGHT = 24`
+— and the refactor deleted all four. What is left at `BankPanel.tsx:20` is a
+comment naming them in the past tense, which is the only reason this paragraph
+can still be checked.
 
 **2b. Contrast is containment too: anything over the felt owns its own
 background.**
@@ -250,27 +254,34 @@ Three different questions. Never collapse them into one helper.
 |---|---|---|---|
 | `isHandheld()` (`table/immersive.ts`) | *"May we take over this device's orientation and fullscreen when it enters a table?"* | coarse pointer **and** short edge ≤ 820px | Measures the **device**, not the viewport, because it may already be held landscape. Deliberately generous: every call is best-effort and a refusal is a no-op, so over-matching costs nothing |
 | `GATE_QUERY` (the rotate gate) | *"Is this viewport too small to render the table in portrait at all?"* | `(orientation: portrait) and (max-width: 540px)` | Measures the **rendered viewport**. In portrait, width *is* the short edge. 540 keeps a 768px tablet playing — the one number that must not become 820 |
-| `COMPACT_QUERY` (`stage.ts`) | *"Is the rendered table cramped enough to need compact chrome and dock styling?"* | `(max-width: 520px), (max-height: 440px)` | An **OR across both axes**. The height arm is the one that catches a landscape phone, which is wide (854) but short (384). A width-only test here was bug #9 |
+| `COMPACT_MEDIA_QUERY` (`stage.ts`) | *"Is the rendered table cramped enough to need compact chrome and dock styling?"* | `(max-width: 520px), (max-height: 440px)` | An **OR across both axes**. The height arm is the one that catches a landscape phone, which is wide (854) but short (384). A width-only test here was bug #9 |
 
 
 ### One source for each string
 
 A JS string that must stay byte-identical to a CSS rule, with nothing enforcing
 it, is the same failure mode as the measured constants Part 2 deletes — silent
-until a screenshot catches it. `frontend/src/table/breakpoints.ts` owns both
-query strings. Two different enforcement mechanisms, because the two queries do
-different jobs:
+until a screenshot catches it.
 
-- **`GATE_QUERY` has no CSS rule at all.** The gate controls *rendering* — the
-  table must not paint underneath it — which is a React decision, not a style.
-  `TableRoot` reads `useMediaQuery(GATE_QUERY)` and returns the gate instead of
-  the table. `.k-rotate-hint`'s media query is deleted outright, so there is
-  nothing left to drift from.
-- **`COMPACT_QUERY` keeps its CSS media queries** (it styles many rules across
-  `index.css`; driving them from JS would be worse). The TS constant is pinned to
-  the CSS by a test that reads `index.css` and compares — the same technique
-  `cardMark.test.ts` already uses to pin a TS constant to `tools/card-mark.py`.
-  Drift becomes a red test instead of a screenshot nobody took.
+**This rule is the target, not the state.** It was written in the present tense
+describing a refactor step that was never carried out, and it survived a trim
+and a restore in that form — a rule claiming to be enforced is one nobody
+re-checks. What is actually true today:
+
+| | Claimed | Actual |
+|---|---|---|
+| Owning module | `table/breakpoints.ts` | **No such file.** `TableRoot.tsx:288` also names it, in a comment describing "step 4 of the refactor" |
+| Gate query | `TableRoot` reads `useMediaQuery(GATE_QUERY)` | `TableRoot.tsx:290` hardcodes the literal `"(orientation: portrait) and (max-width: 540px)"` |
+| Gate's CSS rule | deleted outright | `.k-rotate-hint`'s media query is still at `index.css:1633`, duplicating that string |
+| Compact query | `COMPACT_QUERY`, pinned to `index.css` by a test | `COMPACT_MEDIA_QUERY` at `stage.ts:18`, not exported, no pinning test. The string appears in six `index.css` blocks |
+
+The design is still right, and it is what to build: one module owning both
+strings, the gate query enforced by deleting its CSS rule so there is nothing
+left to drift from, and the compact query — which legitimately styles many rules
+and should stay in CSS — pinned by a test that reads `index.css` and compares,
+the technique `cardMark.test.ts` already uses against `tools/card-mark.py`.
+Until that exists, treat both strings as **duplicated and unenforced**, and grep
+for the literal before changing either.
 
 ---
 

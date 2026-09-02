@@ -282,11 +282,15 @@ export function TableRoot({
   // must never be substituted here. 540 is the number that keeps that tablet
   // playing; it must not become 820. See docs/mobile-ui.md Part 4.
   //
-  // This string is duplicated in index.css's .k-rotate-hint rule with nothing
-  // enforcing the match -- the same silent-drift failure mode as the measured
-  // constants in BankPanel.tsx. Step 4 of the refactor moves it to
-  // table/breakpoints.ts as GATE_QUERY and deletes the CSS rule outright, so
-  // there is nothing left to drift from.
+  // This string is duplicated in index.css's .k-rotate-hint rule (line 1633)
+  // with nothing enforcing the match -- the same silent-drift failure mode as
+  // the measured constants that used to be in BankPanel.tsx.
+  //
+  // The fix is still owed: move it to a module owning both query strings and
+  // delete the CSS rule outright, so there is nothing left to drift from. That
+  // was written here as "step 4 of the refactor" and never done, and the design
+  // doc then described it in the present tense for months. Until it exists,
+  // grep for the literal before changing either copy.
   const rotateHintShowing = useMediaQuery("(orientation: portrait) and (max-width: 540px)");
 
   // The felt/chip swatches are the only chrome-top controls that carry no
