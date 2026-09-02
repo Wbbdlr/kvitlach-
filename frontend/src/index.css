@@ -1758,6 +1758,47 @@ body:has(.k-fit) {
   align-items: flex-end;
   text-align: right;
 }
+/* The resize grip: a small diagonal in the bottom-right corner, the same
+   affordance a textarea uses, so it needs no explaining. 18px of hit area
+   against the 44px control floor is a deliberate exception -- it is not a
+   control you hunt for mid-hand, it is one you find when you have already
+   decided to change the panel, and a 44px square here would cover the total
+   the panel exists to show. */
+.k-viewer-hud-grip {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 0 46%, rgba(230, 164, 75, 0.55) 46% 54%, transparent 54% 100%),
+    linear-gradient(135deg, transparent 0 66%, rgba(230, 164, 75, 0.4) 66% 74%, transparent 74% 100%);
+  border-bottom-right-radius: 10px;
+}
+/* "Put it back", top-right, and only once there is something to put back. */
+.k-viewer-hud-reset {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(230, 164, 75, 0.5);
+  background: rgba(10, 20, 14, 0.97);
+  color: #f0c579;
+  cursor: pointer;
+}
+.k-viewer-hud.is-moved {
+  /* A moved panel has left the corner it was anchored in, so it can end up over
+     the felt with seats behind it. It already carries the shared scrim (rule
+     2b); this just says plainly that it is floating. */
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+}
+
 .k-toast-stack {
   display: flex;
   flex-direction: column;
@@ -1767,9 +1808,16 @@ body:has(.k-fit) {
 /* The viewer's own name, money and total -- their corner of the HUD. Compact by
    design and deliberately unlike an on-table .k-plate: see ViewerHud.tsx. */
 .k-viewer-hud {
+  /* Draggable and resizable (draggablePanel.ts). The offset is a transform,
+     not top/left, so an untouched panel is exactly the flow-laid box it always
+     was and only a player who has actually moved it pays for the feature.
+     `relative` is for the grip and the reset button below, which hang off its
+     corners. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  cursor: grab;
   background: linear-gradient(180deg, rgba(12, 22, 16, 0.92), rgba(8, 16, 12, 0.96));
   border: 1px solid rgba(230, 164, 75, 0.3);
   border-radius: 10px;

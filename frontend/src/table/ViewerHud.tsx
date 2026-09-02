@@ -1,13 +1,22 @@
 import { clsx } from "clsx";
+import { useRef } from "react";
 import { Turn, RoundPhase } from "../types";
 import { totalDisplay, statusDisplay, betDisplay, tagVariant, fullName } from "./selectors";
 import { Icon } from "./icons";
+import { useDraggablePanel } from "./draggablePanel";
 
 export interface ViewerHudProps {
   turn: Turn;
   viewerId?: string;
   roundState?: RoundPhase;
   walletAmount?: number;
+  /**
+   * The scale its container already applies (.k-hud-bottom-left counter-scales
+   * against --stage-scale on a big monitor). Passed so a drag of N screen px
+   * moves the panel N screen px, rather than N divided by whatever the host
+   * happened to be doing.
+   */
+  hostScale?: number;
 }
 
 // Your own name, money and total -- in your own corner, not on the table.
@@ -30,7 +39,11 @@ export interface ViewerHudProps {
 // Lives in the HUD frame at true viewport pixels -- see docs/mobile-ui.md
 // Part 1. It is flow-laid inside .k-hud-bottom-left alongside the toast stack,
 // so neither has to know the other's height.
-export function ViewerHud({ turn, viewerId, roundState, walletAmount }: ViewerHudProps) {
+export function ViewerHud({ turn, viewerId, roundState, walletAmount, hostScale = 1 }: ViewerHudProps) {
+  // Draggable and resizable, because there is no one right corner for it --
+  // see draggablePanel.ts. Untouched, it renders exactly where it always did.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const { panelProps, gripProps, moved, reset } = useDraggablePanel(panelRef, "viewerHud", hostScale);
   const totalInfo = totalDisplay(turn, viewerId, roundState);
   const statusInfo = statusDisplay(turn);
   const betInfo = betDisplay(turn);
@@ -51,7 +64,12 @@ export function ViewerHud({ turn, viewerId, roundState, walletAmount }: ViewerHu
   const showEleveroonCall = Boolean(turn.player.type !== "admin" && turn.eleveroonCalled && turn.state === "pending");
 
   return (
-    <div className={clsx("k-viewer-hud", isCurrentTurn && "is-active")}>
+    <div
+      ref={panelRef}
+      className={clsx("k-viewer-hud", isCurrentTurn && "is-active", moved && "is-moved")}
+      {...panelProps}
+      title="Drag to move -- grab the corner to resize"
+    >
       <div className="k-viewer-hud-top">
         {showEleveroonCall && (
           <span className="k-elev-mark is-inline" title="You are calling Eleveroon" aria-label="Calling Eleveroon">
@@ -86,6 +104,33 @@ export function ViewerHud({ turn, viewerId, roundState, walletAmount }: ViewerHu
           </div>
         )}
       </div>
+      {/* Only once it has been moved: an always-visible "put it back" on a
+          panel nobody has touched is clutter that explains a feature by
+          apologising for it. Double-click on desktop, long-press-free tap
+          target on a phone -- it is a button either way. */}
+      {moved && (
+        <button
+          type="button"
+          className="k-viewer-hud-reset"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={reset}
+          title="Put the readout back"
+          aria-label="Put the readout back"
+        >
+          <Icon name="rotate" size={9} />
+        </button>
+      )}
+      {/* The resize grip. Its own pointer handler, and it stops the event
+          reaching the panel's -- otherwise the same press would start a move
+          and a resize at once. */}
+      <span
+        className="k-viewer-hud-grip"
+        aria-hidden="true"
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          gripProps.onPointerDown(event);
+        }}
+      />
     </div>
   );
 }

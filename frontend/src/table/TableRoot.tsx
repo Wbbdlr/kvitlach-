@@ -1035,6 +1035,10 @@ export function TableRoot({
                 viewerId={playerId}
                 roundState={round?.state}
                 walletAmount={myWallet}
+                // .k-hud-bottom-left counter-scales itself against the stage on
+                // a large monitor; the drag has to know, or it would move by a
+                // fraction of the distance the finger travelled.
+                hostScale={Math.max(1, scale)}
               />
             )}
           </div>
