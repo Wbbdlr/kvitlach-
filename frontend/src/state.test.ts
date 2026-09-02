@@ -1068,3 +1068,126 @@ describe("admin watch links", () => {
     expect(window.localStorage.getItem(roomKey("WATCHME"))).toBeNull();
   });
 });
+
+// The banker acting last is the moment the whole table waits on -- every
+// unresolved wager settles against them at once. Until this existed, the only
+// signal was a caption inside the dock that covered the futch and nothing else,
+// so a bank that simply WON said nothing at all. Reported by a tester as no
+// alert coming up when the banker won or futched.
+describe("bank outcome notification", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.pushState({}, "", "/");
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub
+    global.WebSocket = MockWebSocket;
+  });
+
+  const card = (values: number[]) => ({ name: values.join("/"), attributes: { values } });
+
+  const round = (banker: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    roundId: "R1",
+    roomId: "ROOM1",
+    deckRemaining: 10,
+    state: "playing",
+    roundNumber: 1,
+    turns: [
+      {
+        player: { id: "banker", firstName: "Gabbai", lastName: "", type: "admin", presence: "online" },
+        cards: [],
+        state: "pending",
+        ...banker,
+      },
+    ],
+    ...extra,
+  });
+
+  async function connected() {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    return { useGameStore, socket };
+  }
+
+  const send = (socket: any, payload: unknown) =>
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload }) });
+
+  const texts = (useGameStore: any) => useGameStore.getState().notifications.map((n: any) => n.message);
+
+  it("announces a bank futch to the table", async () => {
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "p1" });
+    // A prevRound to diff against: without one, a client that just connected
+    // would replay a finished round as if it had only now happened.
+    send(socket, round({}));
+    send(socket, round({ cards: [card([10]), card([9]), card([9])], state: "lost", busted: true }));
+    expect(texts(useGameStore).some((t: string) => /bank futched/i.test(t))).toBe(true);
+  });
+
+  it("announces a bank that simply won, which used to say nothing at all", async () => {
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "p1" });
+    send(socket, round({}));
+    send(socket, round({ cards: [card([10]), card([10])], state: "won" }));
+    expect(texts(useGameStore).some((t: string) => /bank stood on 20/i.test(t))).toBe(true);
+  });
+
+  it("calls a banker who merely ended down on money LOST, not futched", async () => {
+    // A banker's turn also resolves to "lost" when they finish the round down
+    // on chips, which is why `busted` is a separate field -- calling that a
+    // futch would be wrong on the hand players care most about.
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "p1" });
+    send(socket, round({}));
+    send(socket, round({ cards: [card([10]), card([9])], state: "lost", busted: false }));
+    const all = texts(useGameStore).join(" | ");
+    expect(all).toMatch(/finished down on the round/i);
+    expect(all).not.toMatch(/futched/i);
+  });
+
+  it("does not tell the banker twice about their own hand", async () => {
+    // Their client already had "You won this hand!" from outcomeNotification.
+    // Two toasts saying one thing to one person is the exact duplication the
+    // bank-frame path was fixed for once already.
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "banker" });
+    send(socket, round({}));
+    send(socket, round({ cards: [card([10]), card([10])], state: "won" }));
+    const all = texts(useGameStore);
+    expect(all.some((t: string) => /^you stood on 20 and took the round/i.test(t))).toBe(true);
+    expect(all.some((t: string) => /^the bank stood/i.test(t))).toBe(false);
+  });
+
+  it("tells the banker what THEY did, not what a wagering player did", async () => {
+    // The banker never puts a bet down, so isPushTurn was true for them at the
+    // end of every round -- the person the whole table had just settled
+    // against was told "Push -- your wager is returned", win, lose or futch.
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "banker" });
+    send(socket, round({}));
+    send(socket, round({ cards: [card([10]), card([9]), card([9])], state: "lost", busted: true }));
+    const all = texts(useGameStore).join(" | ");
+    expect(all).toMatch(/you futched with 28/i);
+    expect(all).not.toMatch(/wager is returned/i);
+  });
+
+  it("says it once, not on every later broadcast of the same resolved round", async () => {
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "p1" });
+    send(socket, round({}));
+    const resolved = round({ cards: [card([10]), card([10])], state: "won" });
+    send(socket, resolved);
+    send(socket, resolved);
+    expect(texts(useGameStore).filter((t: string) => /bank stood on 20/i.test(t))).toHaveLength(1);
+  });
+
+  it("stays quiet for a client with no previous round to diff against", async () => {
+    // Joining, or reconnecting, mid-round. Firing here would replay whatever
+    // happened to be sitting on the round as if it had just happened.
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "p1" });
+    send(socket, round({ cards: [card([10]), card([10])], state: "won" }));
+    expect(texts(useGameStore).some((t: string) => /bank stood/i.test(t))).toBe(false);
+  });
+});

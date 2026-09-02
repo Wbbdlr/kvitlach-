@@ -597,10 +597,27 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     const prevTurn =
       prevRound?.roundId === nextRound.roundId ? prevRound?.turns.find((t) => t.player.id === playerId) : undefined;
     if (prevTurn && (prevTurn.state === "won" || prevTurn.state === "lost")) return undefined;
-    if (isPushTurn(nextTurn)) return makeNotification("Push -- your wager is returned.", "info");
-    if (nextTurn.state === "won") return makeNotification("You won this hand!", "success");
     const { total, bustedTotal } = bestTotal(nextTurn.cards);
     const busted = total === undefined && bustedTotal !== undefined;
+    // The banker is not a wagering player, and this used to treat them as one.
+    // They never put a bet down, so isPushTurn below was true for them at the
+    // end of EVERY round -- meaning the person the whole table just settled
+    // against was told "Push -- your wager is returned", win, lose or futch.
+    // Found while testing the table-wide announcement (see
+    // bankOutcomeNotification): the banker's half of "no alert when the banker
+    // wins" was not a missing toast, it was a toast describing someone else's
+    // situation. Second person, same wording as the table-wide version, so the
+    // banker and the table are told the same story about the same hand.
+    if (nextTurn.player?.type === "admin") {
+      if (nextTurn.busted) {
+        return makeNotification(`You futched with ${bustedTotal ?? "a bust"} -- every hand still live wins.`, "error");
+      }
+      return nextTurn.state === "won"
+        ? makeNotification(`You stood on ${total ?? "--"} and took the round.`, "success")
+        : makeNotification(`You stood on ${total ?? "--"} and finished down on the round.`, "info");
+    }
+    if (isPushTurn(nextTurn)) return makeNotification("Push -- your wager is returned.", "info");
+    if (nextTurn.state === "won") return makeNotification("You won this hand!", "success");
     return makeNotification(busted ? "You Futched!" : "You lost this hand.", "error");
   };
 
