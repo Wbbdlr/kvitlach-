@@ -4,7 +4,7 @@ import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useChip, useFelt } from "../theme";
-import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
+import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTurnsBySeat, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { useMediaQuery } from "../useMediaQuery";
@@ -375,11 +375,17 @@ export function TableRoot({
   const showOutOfChips = Boolean(!isAdmin && isSeatedPlayer && myWallet === 0);
   const myBuyInRequest = playerId ? (room.buyInRequests ?? []).find((r) => r.playerId === playerId) : undefined;
 
-  // Seat the viewer at the bottom edge (standard card-game convention) while
-  // preserving cyclic turn order around the table.
+  // Seat order is NOT turn order -- see layout.ts's orderTurnsBySeat for why
+  // deriving one from the other made players visibly change chairs each round.
+  const seatOrderedTurns = useMemo(
+    () => orderTurnsBySeat(playerTurns, room.players, (t) => t.player.id),
+    [playerTurns, room.players]
+  );
+
+  // Seat the viewer at the bottom edge (standard card-game convention).
   const seatedTurns = useMemo(
-    () => orderSeatsForViewer(playerTurns, (t) => t.player.id === playerId),
-    [playerTurns, playerId]
+    () => orderSeatsForViewer(seatOrderedTurns, (t) => t.player.id === playerId),
+    [seatOrderedTurns, playerId]
   );
   const positions = seatPositions(seatedTurns.length, vf, playTop);
   // Two independent collision rules, and the tighter one wins: seats against

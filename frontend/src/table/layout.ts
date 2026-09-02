@@ -264,6 +264,32 @@ export function viewerSlotIndex(count: number): number {
   return Math.round((count - 1) / 2);
 }
 
+// Put a round's turns into SEAT order, which is not turn order.
+//
+// round.turns arrives already rotated: store.ts's startRound rotates the player
+// list by nextStart so a different player leads each round and the banker acts
+// last. That is the rule working correctly. Laying seats out by each turn's
+// INDEX in that array, however, made the same rotation move everyone's chair --
+// one array doing two jobs, and a tester watching players visibly change seats
+// between rounds.
+//
+// `players` (room.players) is the stable order: appended on join, removed on
+// leave, reordered by nothing. A seat derived from it holds for a whole session
+// and moves only when the table's membership actually changes, which is the
+// rule for seats. Turn order is untouched and still comes from the turn array
+// itself, so reading clockwise still tells you who plays after whom -- the
+// rotation changes where the round STARTS, not the cyclic order.
+//
+// Players not in `players` sort last rather than throwing: a turn for someone
+// who just left is a transient state during a broadcast, not a reason to blank
+// the felt.
+export function orderTurnsBySeat<T>(turns: T[], players: { id: string }[], idOf: (t: T) => string): T[] {
+  const seatOf = new Map(players.map((p, i) => [p.id, i]));
+  return [...turns].sort(
+    (a, b) => (seatOf.get(idOf(a)) ?? players.length) - (seatOf.get(idOf(b)) ?? players.length)
+  );
+}
+
 // Rotate a turn list so the viewer lands in the bottom-center slot while
 // preserving the cyclic turn order (so reading clockwise still reflects who
 // plays after whom). Returns the list unchanged if the viewer isn't seated.
