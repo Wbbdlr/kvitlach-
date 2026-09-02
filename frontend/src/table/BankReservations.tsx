@@ -1,5 +1,5 @@
 import { SeatPosition } from "./layout";
-import { STAGE_HEIGHT, STAGE_WIDTH } from "./layout";
+import { STAGE_HEIGHT, STAGE_WIDTH, VIEWER_HAND_WIDTH } from "./layout";
 import { Icon } from "./icons";
 
 export interface Reservation {
@@ -10,6 +10,9 @@ export interface Reservation {
 
 export interface BankReservationsProps {
   reservations: Reservation[];
+  // Whose seat is the bottom-centre one with no plate on the felt. Their badge
+  // is placed by a different rule -- see viewerRestPoint().
+  viewerId?: string;
   scale?: number;
   // Same two inputs TableRoot already threads through seatPositions() for
   // this exact reason -- see potPoint() below.
@@ -121,6 +124,39 @@ function isPlaceable(position: SeatPosition, pot: { x: number; y: number }, scal
   return Math.hypot(position.x - pot.x, position.y - pot.y) >= minViableDistance(scale);
 }
 
+// How far out from the viewer's own seat centre their badge sits, in nominal
+// stage px. Half a full-width hand plus enough daylight for the badge itself.
+// Deliberately NOT multiplied by `scale`: VIEWER_HAND_WIDTH is the hand's width
+// at viewerHandScale 1, and the hand no longer shrinks with the seat (that is
+// the whole point of viewerHandScale), so measuring the offset against the
+// unshrunk width keeps the badge clear at every seat count. On a table where
+// the hand IS smaller the badge simply sits a little further out, which costs
+// nothing -- there is open felt either side of the bottom-centre seat.
+const VIEWER_BADGE_OFFSET = VIEWER_HAND_WIDTH / 2 + 58;
+// Keep the badge on the felt if the offset would push it off the stage edge.
+const STAGE_EDGE_MARGIN = 40;
+
+// The viewer's badge does not go on the bank->seat line at all.
+//
+// Every other seat has a plate on the felt, so "rest a fixed clearance back
+// from the seat" puts the chip just outside their nameplate and the line reads
+// as the bank pushing chips toward them. The viewer has no plate on the felt --
+// it moved to the HUD in step 1 -- and their seat is the closest of all to the
+// bank by construction, so that same rule had nowhere to put it: measured live,
+// bank anchor to viewer seat is ~98px with the clearance alone eating ~65, so
+// T_MIN clamped the badge to a third of the way and left it floating in open
+// felt. Reported as the reserved chips being nowhere near the player's spot,
+// and unfixable by any choice of constant -- the line is simply too short.
+//
+// Beside the cards instead, at the same height, where there is open felt on
+// both sides of the bottom-centre seat. The connector line still runs from the
+// bank to it, so it is still visibly the bank's money.
+function viewerRestPoint(position: SeatPosition): { x: number; y: number } {
+  const right = position.x + VIEWER_BADGE_OFFSET;
+  const onRight = right <= STAGE_WIDTH - STAGE_EDGE_MARGIN;
+  return { x: onRight ? right : position.x - VIEWER_BADGE_OFFSET, y: position.y };
+}
+
 // How far the BADGE itself is allowed to shrink, as opposed to how far back
 // from the seat it rests. Those are two different questions and `scale`
 // answered both: at a full eleven-seat table the badge inherited seatScale's
@@ -140,10 +176,16 @@ const MIN_BADGE_SCALE = 0.8;
 // into what you're allowed to bet, which is why a BANK! window shrinks as the
 // round goes round and why a table can stall on an empty bank. None of that
 // was visible before -- players just found their limit had moved.
-export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 }: BankReservationsProps) {
+export function BankReservations({ reservations, viewerId, scale = 1, playTop = 0, vf = 1 }: BankReservationsProps) {
   const pot = potPoint(playTop, vf);
   const badgeScale = Math.max(scale, MIN_BADGE_SCALE);
-  const placeable = reservations.filter((r) => isPlaceable(r.position, pot, scale));
+  // The viewer is never filtered out. isPlaceable asks "is there room on the
+  // line between the bank and this seat", and for the viewer the answer is
+  // always no -- that is exactly why they get their own rule below, rather than
+  // being dropped as unplaceable and leaving the one player who is looking for
+  // their own wager with nothing to look at.
+  const at = (r: Reservation) => (r.playerId === viewerId ? viewerRestPoint(r.position) : restPoint(r.position, pot, scale));
+  const placeable = reservations.filter((r) => r.playerId === viewerId || isPlaceable(r.position, pot, scale));
   if (placeable.length === 0) return null;
 
   return (
@@ -156,7 +198,7 @@ export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 
         aria-hidden="true"
       >
         {placeable.map((r) => {
-          const end = restPoint(r.position, pot, scale);
+          const end = at(r);
           return (
             <line
               key={r.playerId}
@@ -171,14 +213,14 @@ export function BankReservations({ reservations, scale = 1, playTop = 0, vf = 1 
       </svg>
 
       {placeable.map((r) => {
-        const at = restPoint(r.position, pot, scale);
+        const point = at(r);
         return (
           <div
             key={r.playerId}
             className="k-resv"
             style={{
-              left: `${at.x}px`,
-              top: `${at.y}px`,
+              left: `${point.x}px`,
+              top: `${point.y}px`,
               transform: `translate(-50%, -50%) scale(${badgeScale})`,
             }}
             title={`The bank is holding $${r.amount.toLocaleString()} to cover this wager.`}

@@ -891,7 +891,7 @@ export function TableRoot({
         })}
 
         {!roundOver && (
-          <BankReservations reservations={reservations} scale={seatShrink} playTop={playTop} vf={vf} />
+          <BankReservations reservations={reservations} viewerId={playerId} scale={seatShrink} playTop={playTop} vf={vf} />
         )}
 
         {round && <DiscardPile entries={discardEntries} onOpen={() => setDiscardPileOpen(true)} />}
