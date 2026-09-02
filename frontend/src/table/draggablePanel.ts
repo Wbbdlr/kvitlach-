@@ -90,7 +90,22 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string, host
     (next: Placement): Placement => {
       const el = ref.current;
       if (!el || typeof window === "undefined") return next;
+      // An UNMOVED panel is never rescued. Where it sits is the layout's
+      // business, and the layout is what keeps it on screen -- nothing here
+      // has a better answer than .k-hud-bottom-left's own flow position.
+      //
+      // Not merely an optimisation. The mount pass measures shortly after
+      // first paint, and the bottom band is anchored to --stage-h, which
+      // TableRoot only sets once it has measured the viewport -- so an early
+      // pass can read a rect the panel is about to leave, decide it is out of
+      // bounds, and bake in a correction that is wrong the moment layout
+      // settles. Measured at 800x360: an untouched readout was translated
+      // (236, -225) out of its corner and onto the bank's own total.
+      if (next.dx === 0 && next.dy === 0) return next;
       const box = el.getBoundingClientRect();
+      // A zero-sized rect means it is not laid out yet; there is nothing to
+      // measure against and no correction worth guessing at.
+      if (box.width === 0 || box.height === 0) return next;
       // Where the panel sits with the CURRENT offset already applied, so the
       // resting position is recovered by subtracting it.
       const restLeft = box.left - live.current.dx * hostScale;
