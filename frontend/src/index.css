@@ -1360,6 +1360,37 @@ body:has(.k-fit) {
    row; hanging the panel off its right edge would push it toward the middle
    of the screen and back over the felt, which is the habit that put the old
    hint on top of the dealer. */
+/* The top chrome's overflow panel (ChromeMenu). Anchored the same way
+   .k-appearance-panel is, and for the same reason -- this row renders at true
+   viewport size outside the scaled stage, so absolute positioning here is not
+   affected by the stage transform.
+   right:0, not left:0: this button sits at the right end of a right-anchored
+   row, so a left-anchored panel would hang off the screen edge. */
+.k-chrome-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 24px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(10, 20, 14, 0.97);
+  border: 1px solid rgba(230, 164, 75, 0.45);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+/* Inside the panel the controls wrap freely -- it is a panel, growing is what
+   it is for. This is the opposite of the row it came out of, where wrapping was
+   the bug: nothing sits below a popover, and it is on the HUD popover tier. */
+.k-chrome-menu .k-room {
+  max-width: 100%;
+}
+
 .k-appearance-panel {
   position: absolute;
   top: calc(100% + 8px);
@@ -1936,6 +1967,17 @@ body:has(.k-fit) {
    on the banker's own seat, so the 22px slot that drove every previous number
    here does not constrain it at all. */
 @media (max-width: 520px), (max-height: 440px) {
+  /* THE bound on the chrome row. `flex-wrap: wrap` is what let every extra
+     control push a new line down onto the felt (ledger #2); nowrap makes that
+     structurally impossible rather than unlikely, and stage.ts's TOP_CHROME_PX
+     budget for exactly one row becomes true instead of aspirational.
+     Safe only because ChromeMenu now collapses the controls behind one button
+     at this same breakpoint -- nowrap on the old content would have overflowed
+     sideways instead, which is not better. If something is ever added back to
+     this row inline, it has to fit or it has to go in the menu. */
+  .k-chrome-top {
+    flex-wrap: nowrap;
+  }
   .k-banktotal {
     font-size: 11px;
     padding: 2px 9px;

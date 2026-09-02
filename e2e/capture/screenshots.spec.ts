@@ -170,6 +170,12 @@ for (const vp of VIEWPORTS) {
       .catch(() => false);
     if (stood) {
       await page.locator(".k-discard").waitFor({ timeout: 30_000 }).catch(() => undefined);
+      // Resolving also raises an outcome toast, which shares the bottom-left
+      // HUD column with the viewer's own readout -- the one corner where two
+      // independent things stack. Wait for it so the sweep actually photographs
+      // them together instead of catching the column half-empty; state.ts
+      // auto-dismisses toasts at 18s and keeps up to 5.
+      await page.locator(".k-toast").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
       await settle(page);
       await shot(page, dir, "4-table-resolved");
     }

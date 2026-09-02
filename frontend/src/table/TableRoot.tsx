@@ -15,6 +15,7 @@ import { BankPanel } from "./BankPanel";
 import { BankReservations } from "./BankReservations";
 import { ViewerHud } from "./ViewerHud";
 import { ReactionLayer } from "./ReactionLayer";
+import { ChromeMenu } from "./ChromeMenu";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
@@ -682,129 +683,290 @@ export function TableRoot({
           )}
         </div>
       )}
+      {/* ONE row, and it must stay one row. `flex-wrap: wrap` with nothing
+          reserved below it meant every wrapped line landed lower over the
+          felt -- at 640x360 Reshuffle / Practice Table / Leave sat on the
+          dealer's plate and a seat (ledger #2). stage.ts budgets exactly one
+          row for this (TOP_CHROME_PX); the row just never honoured it.
+
+          On a landscape phone -- which is every phone here, since the table
+          locks landscape -- the controls nobody touches mid-hand collapse
+          behind one button. What stays inline is what you must see or reach
+          without thinking: warnings, and Leave. The room name goes in the
+          menu because tapping it opens a drawer, not because it is unimportant.
+
+          The SAME JSX renders inline on a desktop and inside the panel on a
+          phone -- see ChromeMenu, which takes children for exactly this
+          reason. Two renderings of one list is how they drift. */}
       <div className="k-chrome-top">
-        <span className="relative inline-flex items-center gap-1">
-          <AppearanceMenu
-            felt={felt}
-            chip={chip}
-            onFeltChange={(name) => {
-              setFelt(name);
-              dismissThemeHint();
-            }}
-            onChipChange={(name) => {
-              setChip(name);
-              dismissThemeHint();
-            }}
-          />
-          {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
-            <div className="k-fs-hint k-fs-hint--left">
-              Table colors live here -- change your felt or chips, just for your view.
-              <button type="button" onClick={dismissThemeHint}>
-                Got it
-              </button>
-            </div>
-          )}
-        </span>
-        <button
-          type="button"
-          className="k-chip-btn"
-          onClick={onShowHowTo}
-          title="How to play Kvitlach"
-          aria-label="How to play Kvitlach"
-        >
-          ?
-        </button>
-        <button
-          type="button"
-          className="k-chip-btn"
-          onClick={onToggleMusic}
-          aria-pressed={musicEnabled}
-          style={!musicEnabled ? { opacity: 0.45 } : undefined}
-          title={musicEnabled ? "Mute background music" : "Play background music"}
-          aria-label={musicEnabled ? "Mute background music" : "Play background music"}
-        >
-          <Icon name="music" size={13} />
-        </button>
-        <button
-          type="button"
-          className="k-chip-btn"
-          onClick={onToggleSfx}
-          aria-pressed={sfxEnabled}
-          style={!sfxEnabled ? { opacity: 0.45 } : undefined}
-          title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
-          aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
-        >
-          <Icon name="speaker" size={13} />
-        </button>
-        <button
-          type="button"
-          className="k-chip-btn"
-          onClick={onToggleMotion}
-          aria-pressed={motionEnabled}
-          style={!motionEnabled ? { opacity: 0.45 } : undefined}
-          title={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
-          aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
-        >
-          <Icon name="motion" size={13} />
-        </button>
-        {fullscreenSupported && (
-          <span className="relative inline-flex">
+        {compact ? (
+          <ChromeMenu>
+            <span className="relative inline-flex items-center gap-1">
+              <AppearanceMenu
+                felt={felt}
+                chip={chip}
+                onFeltChange={(name) => {
+                  setFelt(name);
+                  dismissThemeHint();
+                }}
+                onChipChange={(name) => {
+                  setChip(name);
+                  dismissThemeHint();
+                }}
+              />
+              {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
+                <div className="k-fs-hint k-fs-hint--left">
+                  Table colors live here -- change your felt or chips, just for your view.
+                  <button type="button" onClick={dismissThemeHint}>
+                    Got it
+                  </button>
+                </div>
+              )}
+            </span>
             <button
               type="button"
               className="k-chip-btn"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
-              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              onClick={onShowHowTo}
+              title="How to play Kvitlach"
+              aria-label="How to play Kvitlach"
             >
-              <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
+              ?
             </button>
-            {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
-              <div className="k-fs-hint">
-                Tap for fullscreen -- best in landscape.
-                <button type="button" onClick={dismissFullscreenHint}>
-                  Got it
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={onToggleMusic}
+              aria-pressed={musicEnabled}
+              style={!musicEnabled ? { opacity: 0.45 } : undefined}
+              title={musicEnabled ? "Mute background music" : "Play background music"}
+              aria-label={musicEnabled ? "Mute background music" : "Play background music"}
+            >
+              <Icon name="music" size={13} />
+            </button>
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={onToggleSfx}
+              aria-pressed={sfxEnabled}
+              style={!sfxEnabled ? { opacity: 0.45 } : undefined}
+              title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+              aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+            >
+              <Icon name="speaker" size={13} />
+            </button>
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={onToggleMotion}
+              aria-pressed={motionEnabled}
+              style={!motionEnabled ? { opacity: 0.45 } : undefined}
+              title={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+              aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+            >
+              <Icon name="motion" size={13} />
+            </button>
+            {fullscreenSupported && (
+              <span className="relative inline-flex">
+                <button
+                  type="button"
+                  className="k-chip-btn"
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
+                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                >
+                  <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
                 </button>
-              </div>
+                {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
+                  <div className="k-fs-hint">
+                    Tap for fullscreen -- best in landscape.
+                    <button type="button" onClick={dismissFullscreenHint}>
+                      Got it
+                    </button>
+                  </div>
+                )}
+              </span>
             )}
-          </span>
-        )}
-        {showIOSInstallHint && (
-          <span className="relative inline-flex">
-            <span className="k-chip-btn" style={{ cursor: "default" }}>
-              <Icon name="share" size={13} />
-            </span>
-            <div className="k-fs-hint">
-              Add to Home Screen (tap Share, then "Add to Home Screen") for a full-screen table.
-              <button type="button" onClick={dismissIOSInstallHint}>
-                Got it
+            {showIOSInstallHint && (
+              <span className="relative inline-flex">
+                <span className="k-chip-btn" style={{ cursor: "default" }}>
+                  <Icon name="share" size={13} />
+                </span>
+                <div className="k-fs-hint">
+                  Add to Home Screen (tap Share, then "Add to Home Screen") for a full-screen table.
+                  <button type="button" onClick={dismissIOSInstallHint}>
+                    Got it
+                  </button>
+                </div>
+              </span>
+            )}
+            {isAdmin && (
+              <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
+                <Icon name="users" size={13} />
+                Manage
               </button>
-            </div>
-          </span>
-        )}
-        {isAdmin && (
-          <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
-            <Icon name="users" size={13} />
-            Manage
-          </button>
-        )}
-        {/* Real bankers reach reshuffle through Manage -> Deck. A practice
-            room's banker is a bot with no session (see store.ts's
-            reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
-            gated and out of reach -- this gives the one human at a practice
-            table the same direct, no-confirmation access onPracticeTopUp
-            already gets, rather than exposing the entire admin drawer
-            (kick/rename/close-room) just to reach one control. */}
-        {room.practice && (
-          <button
-            type="button"
-            className="k-chip-btn"
-            onClick={onReshuffleDeck}
-            title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
-            aria-label="Reshuffle deck"
-          >
-            <Icon name="shuffle" size={13} />
-            Reshuffle
-          </button>
+            )}
+            {/* Real bankers reach reshuffle through Manage -> Deck. A practice
+                room's banker is a bot with no session (see store.ts's
+                reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
+                gated and out of reach -- this gives the one human at a practice
+                table the same direct, no-confirmation access onPracticeTopUp
+                already gets, rather than exposing the entire admin drawer
+                (kick/rename/close-room) just to reach one control. */}
+            {room.practice && (
+              <button
+                type="button"
+                className="k-chip-btn"
+                onClick={onReshuffleDeck}
+                title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
+                aria-label="Reshuffle deck"
+              >
+                <Icon name="shuffle" size={13} />
+                Reshuffle
+              </button>
+            )}
+            <button
+              type="button"
+              className="k-room"
+              onClick={() => setRoomInfoOpen(true)}
+              title="Table info and sharing"
+            >
+              {room.name || room.roomId}
+            </button>
+          </ChromeMenu>
+        ) : (
+          <>
+            <span className="relative inline-flex items-center gap-1">
+              <AppearanceMenu
+                felt={felt}
+                chip={chip}
+                onFeltChange={(name) => {
+                  setFelt(name);
+                  dismissThemeHint();
+                }}
+                onChipChange={(name) => {
+                  setChip(name);
+                  dismissThemeHint();
+                }}
+              />
+              {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
+                <div className="k-fs-hint k-fs-hint--left">
+                  Table colors live here -- change your felt or chips, just for your view.
+                  <button type="button" onClick={dismissThemeHint}>
+                    Got it
+                  </button>
+                </div>
+              )}
+            </span>
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={onShowHowTo}
+              title="How to play Kvitlach"
+              aria-label="How to play Kvitlach"
+            >
+              ?
+            </button>
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={onToggleMusic}
+              aria-pressed={musicEnabled}
+              style={!musicEnabled ? { opacity: 0.45 } : undefined}
+              title={musicEnabled ? "Mute background music" : "Play background music"}
+              aria-label={musicEnabled ? "Mute background music" : "Play background music"}
+            >
+              <Icon name="music" size={13} />
+            </button>
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={onToggleSfx}
+              aria-pressed={sfxEnabled}
+              style={!sfxEnabled ? { opacity: 0.45 } : undefined}
+              title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+              aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+            >
+              <Icon name="speaker" size={13} />
+            </button>
+            <button
+              type="button"
+              className="k-chip-btn"
+              onClick={onToggleMotion}
+              aria-pressed={motionEnabled}
+              style={!motionEnabled ? { opacity: 0.45 } : undefined}
+              title={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+              aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+            >
+              <Icon name="motion" size={13} />
+            </button>
+            {fullscreenSupported && (
+              <span className="relative inline-flex">
+                <button
+                  type="button"
+                  className="k-chip-btn"
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
+                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                >
+                  <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
+                </button>
+                {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
+                  <div className="k-fs-hint">
+                    Tap for fullscreen -- best in landscape.
+                    <button type="button" onClick={dismissFullscreenHint}>
+                      Got it
+                    </button>
+                  </div>
+                )}
+              </span>
+            )}
+            {showIOSInstallHint && (
+              <span className="relative inline-flex">
+                <span className="k-chip-btn" style={{ cursor: "default" }}>
+                  <Icon name="share" size={13} />
+                </span>
+                <div className="k-fs-hint">
+                  Add to Home Screen (tap Share, then "Add to Home Screen") for a full-screen table.
+                  <button type="button" onClick={dismissIOSInstallHint}>
+                    Got it
+                  </button>
+                </div>
+              </span>
+            )}
+            {isAdmin && (
+              <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
+                <Icon name="users" size={13} />
+                Manage
+              </button>
+            )}
+            {/* Real bankers reach reshuffle through Manage -> Deck. A practice
+                room's banker is a bot with no session (see store.ts's
+                reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
+                gated and out of reach -- this gives the one human at a practice
+                table the same direct, no-confirmation access onPracticeTopUp
+                already gets, rather than exposing the entire admin drawer
+                (kick/rename/close-room) just to reach one control. */}
+            {room.practice && (
+              <button
+                type="button"
+                className="k-chip-btn"
+                onClick={onReshuffleDeck}
+                title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
+                aria-label="Reshuffle deck"
+              >
+                <Icon name="shuffle" size={13} />
+                Reshuffle
+              </button>
+            )}
+            <button
+              type="button"
+              className="k-room"
+              onClick={() => setRoomInfoOpen(true)}
+              title="Table info and sharing"
+            >
+              {room.name || room.roomId}
+            </button>
+          </>
         )}
         {bankIsEmpty && (
           <button
@@ -866,14 +1028,6 @@ export function TableRoot({
               : `${waitingInfo.count} queued for next round`}
           </button>
         )}
-        <button
-          type="button"
-          className="k-room"
-          onClick={() => setRoomInfoOpen(true)}
-          title="Table info and sharing"
-        >
-          {room.name || room.roomId}
-        </button>
         <button type="button" className="k-chip-btn" onClick={onLeave} title="Leave this game and return to the join screen">
           <Icon name="door" size={13} />
           Leave

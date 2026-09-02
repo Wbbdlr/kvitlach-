@@ -38,6 +38,7 @@ export type IconName =
   | "expand"
   | "compress"
   | "bot"
+  | "more"
   | "close"
   | "motion"
   | "rotate"
@@ -87,6 +88,10 @@ const ICON_PATHS: Record<IconName, string> = {
   // silhouette survives the size because it is one solid shape, not eight thin
   // ticks -- the same reasoning as the `motion` icon's own three attempts.
   bot: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9.5 16v2.5M14.5 16v2.5"/><path d="M7 18.5h10"/>',
+  // Three dots -- the universal "the rest of the controls are in here"
+  // affordance. Solid circles rather than an ellipsis glyph so it holds up
+  // at the 15px it renders in the chrome row.
+  more: '<circle cx="5" cy="12" r="1.9" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.9" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.9" fill="currentColor" stroke="none"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   // Third icon tried here. Straight equal-length lines (v1) read as a menu
   // button; a comet -- dot on a curved trail (v2) -- and wind lines (v3)

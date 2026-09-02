@@ -124,6 +124,7 @@ showing, exactly as on a seat.
 | Queue depth | **3** waiting, so worst-case latency is 7.5s |
 | Overflow | **Drop oldest first.** A reaction is a live response to the hand in front of you. When the queue is full the stale one is the one nobody needs |
 | In flight | The bubble currently showing always finishes its 2.5s; arrivals never truncate it, or a busy table becomes a flicker |
+| Fair share | **A queued message from a sender not yet shown outranks a second message from one already shown.** 2.5s is a display duration, not a cooldown — without this, one chatty bot holds the slot back to back and nobody else is ever seen. Rank by "has this sender occupied the slot during the current drain", then by arrival; a repeat from the same sender only plays once no new sender is waiting |
 
 ---
 
@@ -294,7 +295,8 @@ layout. Keep to ten.
 | # | Bug | Root cause | State |
 |---|---|---|---|
 | 1 | 768×1024: the BANK pill covered the branding tagline ("AH HEIMISHE CHANUKAH SHPIL" half-hidden) | Introduced by step 1 and caught by its own sweep. `.k-chrome-top` is `justify-content: flex-end`, so a flex item wider than the line overflows the **start** edge — leftward, over the branding. The bank readout is ~322px against ~294px of free row at that width | Fixed — `.k-bank-hud` wraps and can shrink, so the pair stacks inside its box instead of escaping it |
-| 2 | Chrome buttons (Reshuffle / Practice Table / Leave) land mid-felt over the dealer's plate and a seat — portrait at 360 wide, and landscape at 640×360 | One cause, both orientations: `.k-chrome-top` is an unbounded wrapping flex row with nothing below it reserved, so every wrapped line lands lower over the stage. At 640×360 its content is ~810px against ~437px of row. In portrait the rotate "gate" is a `pointer-events: none` banner with the whole table rendering underneath it | **OPEN** — portrait half closed by the total gate (Part 4, step 4); the landscape wrap needs the row bounded, and is not yet scheduled |
+| 1b | `.k-hud-bottom-left` clears the dock by a hardcoded `--controls-band: 84px`, but the dock's tallest measured state is 79px + gutter and it is a full-width box | A guessed sibling height — rule 2, in code this refactor added. If the dock grows past the band, its box rises into the viewer's own readout | **OPEN** — leading suspect for the intermittent 800×360 spec failure below; not reproduced |
+| 2 | Chrome buttons (Reshuffle / Practice Table / Leave) land mid-felt over the dealer's plate and a seat — portrait at 360 wide, and landscape at 640×360 | One cause, both orientations: `.k-chrome-top` was an unbounded wrapping flex row with nothing below it reserved, so every wrapped line landed lower over the stage | Landscape **fixed** by 3b — `ChromeMenu` collapses the controls behind one button and the row is `nowrap`, so it cannot wrap. Portrait still **OPEN** until step 4's gate |
 | 3 | 640×360: bank pill + reserved/free sit centred, on top of the viewer's nameplate | `bankPanelPlacement` took the *centred* branch because the reclaimed corridor cleared `BANK_PILL_HEIGHT` at that vf, but the pill is not stacked at that width so it was far wider than the corridor was clear | Fixed by step 1 — the readout left the felt entirely |
 | 4 | Viewer's reaction bubble covered the banker's total for its full 10s life | `.k-reaction` anchors `bottom: 100%` of its seat; the bottom-centre seat's "above" is the dealer's row | Patched (`is-side`) — closed properly by step 3 |
 | 5 | Reaction bubbles unreadable on a phone (~8px) | Fixed `font-size` inside a stage scaled to 0.667; no counter-scale | Patched (counter-scale) — closed properly by step 3 |
@@ -376,10 +378,25 @@ to verify:
 | 1512×950 | no | reserved per-seat slot |
 | 768×1024 portrait | no | reserved per-seat slot |
 
-**Every landscape phone is compact.** That is the headline: on a phone the
-fallback *is* the layout, and the per-seat slot only ever runs on a tablet or a
-desktop. Worth knowing before building it — the per-seat version is the one
-almost nobody will see.
+**Every landscape phone is compact, so the "fallback" is the primary design.**
+The table locks landscape on a handheld and every landscape phone matches on
+height, so the bottom-left HUD bubble is what essentially every real player will
+see. The reserved per-seat slot runs on exactly three non-phone viewports.
+
+Build accordingly: the compact path gets the design attention and the careful
+verification; the per-seat version is the edge case, not the reference.
+
+**This includes the speaker tail.** It was asked for and restored deliberately
+— at a table of eleven it is the only thing saying who spoke — but it belongs
+to the per-seat layout, so almost no actual player will ever see one. Nobody
+reading this later should mistake it for the primary design, and no future
+decision should be justified by "the tail needs it". In the compact path the
+sender's NAME does that job instead.
+
+If the headroom measurement below fails — if 39px does not survive `seatScale`
+packing eleven seats — **do not build the per-seat version at all.** Run compact
+everywhere and record that here. Three viewports is not worth a second layout
+that cannot be kept honest.
 
 Predicted headroom at the three viewports above the line, from `computeFit`:
 

@@ -62,6 +62,15 @@ const CHECKED = new Set([
   "k-seat", "k-plate", "k-plate-name", "k-plate-sub",
   "k-readout", "k-tag", "k-banktotal", "k-bank-split",
   "k-hand", "k-shoe", "k-discard", "k-reaction", "k-fs-hint", "k-controls",
+  // The bottom-left HUD column and both of its occupants. These share one
+  // corner: the viewer's own name/total/status sits at the bottom and round
+  // toasts stack above it. The column is bottom-anchored and flow-laid so an
+  // arriving toast grows it UPWARD and never moves the readout -- but that is
+  // a claim about layout, and this is where claims about layout get checked.
+  // Worth checking rather than eyeballing because the worst case is not one
+  // toast: state.ts keeps up to 5 (slice(-5)) and auto-dismisses at 18s, so
+  // five can be stacked over the readout at once.
+  "k-viewer-hud", "k-toast",
 ]);
 
 // Two boxes touching by a few px is antialiasing and rounding, not a layout
@@ -221,7 +230,16 @@ for (const vp of PHONE_LANDSCAPE) {
 
     await page.getByRole("button", { name: "Stand", exact: true }).click();
     await expect(page.locator(".k-discard")).toBeVisible({ timeout: 30_000 });
-    await check("round resolved, discard pile up");
+    // Resolving the round also raises an outcome toast, which lands in the
+    // bottom-left HUD column directly above the viewer's own readout. Waiting
+    // for it is what makes .k-toast/.k-viewer-hud in CHECKED mean anything --
+    // an allowlist entry for an element that never rendered is inert, which is
+    // exactly how .k-discard sat in here measuring a felt the pile had never
+    // appeared on. state.ts auto-dismisses at 18s, so this is a real window,
+    // not a permanent fixture.
+    await expect(page.locator(".k-toast").first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".k-viewer-hud")).toBeVisible();
+    await check("round resolved, discard pile up, outcome toast over the viewer readout");
 
     await context.close();
   });
