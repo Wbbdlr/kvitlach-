@@ -81,7 +81,17 @@ export class WSClient {
   // the radio was off.
   wake() {
     if (this.closedDeliberately) return;
-    if (this.socket?.readyState === WebSocket.OPEN) return;
+    const state = this.socket?.readyState;
+    // CONNECTING is left alone, not just OPEN. A socket mid-handshake has not
+    // had its chance yet, and discarding it to start another recreates exactly
+    // the race connect()'s own guard exists to prevent: two sockets competing
+    // to resume one session token, where the loser's invalid_session wipes out
+    // the winner's just-restored state. Seen as a player who reloaded mid-round
+    // coming back with no seat at all -- a browser that fires visibilitychange
+    // right after load would land here while the first socket was still
+    // opening. If it never completes, the browser errors it and onclose
+    // schedules a reconnect, which is the path that should handle it.
+    if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
@@ -90,7 +100,8 @@ export class WSClient {
     // A socket in CLOSING, or one whose close event never got dispatched while
     // the tab was frozen, would block connect()'s guard without ever
     // completing. Drop it and let onOpen's room:resume rebuild the state.
-    if (this.socket && this.socket.readyState !== WebSocket.OPEN) this.discardSocket();
+    // (CONNECTING never reaches here -- see the guard above.)
+    if (this.socket) this.discardSocket();
     this.reconnectListeners.forEach((fn) => fn());
     this.connect();
   }

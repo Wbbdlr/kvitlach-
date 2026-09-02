@@ -334,6 +334,21 @@ describe("WSClient", () => {
       expect(sent.mock.calls[0][0]).toContain("turn:stand");
     });
 
+    it("leaves a socket that is still opening alone", () => {
+      // A socket mid-handshake has not had its chance yet. Discarding it to
+      // start another puts two sockets in a race to resume one session token,
+      // and the loser's invalid_session wipes out the winner's restored state
+      // -- seen as a player who reloaded mid-round coming back with no seat.
+      const client = newClient();
+      client.connect();
+      expect(MockWebSocket.instances[0].readyState).toBe(MockWebSocket.CONNECTING);
+      hide();
+      show();
+      window.dispatchEvent(new Event("online"));
+      expect(MockWebSocket.instances).toHaveLength(1);
+      expect(MockWebSocket.instances[0].closeCalls).toBe(0);
+    });
+
     it("does not resurrect a session the player deliberately left", () => {
       // close() is the Leave button. It leaves no socket and no timer, which
       // is indistinguishable from a drop -- so without an explicit guard the

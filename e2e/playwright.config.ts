@@ -40,6 +40,13 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${FRONTEND_PORT}`,
     trace: "retain-on-failure",
+    // Playwright's default navigation timeout is INFINITE, and that turned
+    // every slow page load into a bare "Test timeout of 120000ms exceeded"
+    // naming no assertion at all -- which is why the intermittent failures in
+    // this suite were so hard to place. Bounded so a stall says it is a stall,
+    // and says which navigation.
+    navigationTimeout: 45_000,
+    actionTimeout: 20_000,
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
@@ -59,11 +66,27 @@ export default defineConfig({
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     },
     {
+      // A BUILT bundle served by vite preview, not the dev server.
+      //
+      // The dev server serves every module as its own request, and a fresh
+      // BrowserContext has an empty HTTP cache -- so each new context pays for
+      // hundreds of round trips before the page is usable. Specs here open
+      // three contexts (two-players) and thirteen (seat-cap), and page.goto had
+      // no timeout of its own, so a slow cold load silently ate a test's whole
+      // 120s budget and surfaced as a flake with no assertion attached. It was
+      // blamed on layout, on contention, and on worker count in turn; it was
+      // none of them.
+      //
+      // One bundle, and it is also the artefact that actually ships (nginx
+      // serves the same dist in Docker), so the suite now exercises the
+      // production build rather than a dev-only module graph. The build costs
+      // a few seconds once per run and repays it on the first context.
+      //
       // --strictPort: fail loudly instead of silently drifting to a free
       // port if FRONTEND_PORT is somehow taken -- baseURL above would
       // otherwise point at nothing and every test would fail with a
       // confusing connection-refused instead of a clear startup error.
-      command: `npm run dev -- --port ${FRONTEND_PORT} --strictPort`,
+      command: `npm run build && npx vite preview --port ${FRONTEND_PORT} --strictPort`,
       cwd: "../frontend",
       port: FRONTEND_PORT,
       // Vite exposes VITE_-prefixed process env vars via import.meta.env
@@ -71,9 +94,13 @@ export default defineConfig({
       // -- this overrides frontend/.env.local's own ws://localhost:3001
       // for the duration of the test run, pointing this Vite instance at
       // the E2E backend above instead of a developer's regular local one.
+      // Baked in at BUILD time now rather than read at dev-server startup --
+      // same variable, same effect, but it has to be present for the `npm run
+      // build` half of the command above, not just the preview half.
       env: { VITE_WS_URL: `ws://localhost:${WS_PORT}` },
       reuseExistingServer: false,
-      timeout: 30_000,
+      // Raised from 30s: this now builds before it serves.
+      timeout: 120_000,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     },
   ],

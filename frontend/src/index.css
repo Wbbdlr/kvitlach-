@@ -2907,8 +2907,19 @@ body:has(.k-fit) {
   border-radius: 6px;
   box-shadow: 0 0 0 2px rgba(230, 164, 75, 0.55);
 }
+/* Rule 2b: anything over the felt owns its own background. This was
+   rgba(38, 26, 10, 0.55), and 55% is not a background -- it is a tint, so the
+   felt underneath was still deciding how the word "Eleveroon" read, which is a
+   per-player localStorage preference.
+   Caught by the contrast spec the moment bots started claiming Eleveroon (T9):
+   the badge had always been like this and had simply never rendered in a
+   capture, because nothing in a practice room ever called it.
+   The shared --felt-scrim carries the opacity and the warm tint rides on top as
+   a gradient, exactly as .k-tag does it -- NOT a second scrim value, which is
+   how one token quietly becomes eight measured constants again. */
 .k-elev-badge {
-  background: rgba(38, 26, 10, 0.55);
+  background-color: var(--felt-scrim);
+  background-image: linear-gradient(rgba(74, 50, 18, 0.55), rgba(74, 50, 18, 0.55));
   border-radius: 6px;
 }
 .k-elev-badge-icon {

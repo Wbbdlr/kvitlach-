@@ -28,8 +28,27 @@ export async function clickIfAppears(locator: Locator, timeout = 3000): Promise<
   } catch {
     return false;
   }
-  await locator.click();
-  return true;
+  try {
+    await locator.click({ timeout: 5_000 });
+    return true;
+  } catch {
+    // It was visible a moment ago and is not actionable now.
+    //
+    // This is the same race the comment above describes, on its other side.
+    // playOutTurn clicks Hit and then Stand; if that Hit busted or landed on
+    // 21, the server resolves the turn and the dock unmounts -- but waitFor
+    // above has already seen Stand, because the round:state carrying the
+    // resolution had not arrived yet. click() then waits for a button that is
+    // never coming back, and with no timeout of its own it used to consume the
+    // whole 120s test budget and surface as a bare "Test timeout exceeded"
+    // naming nothing. That is the entire "854x384 flake", and it was blamed on
+    // layout, on worker contention and on leaked processes in turn.
+    //
+    // Returning false is honest: this helper exists to click a control only if
+    // it is genuinely there to be clicked, and a turn that resolved itself
+    // needs no Stand.
+    return false;
+  }
 }
 
 export async function createTable(page: Page, roomId: string, roomName: string, firstName = "Banker") {
