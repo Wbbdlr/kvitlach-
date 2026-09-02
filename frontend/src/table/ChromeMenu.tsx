@@ -47,8 +47,24 @@ export function ChromeMenu({ children }: ChromeMenuProps) {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
+  // The wrapper is deliberately NOT `relative`. An open .k-chrome-menu anchors
+  // to its nearest positioned ancestor, and while that was this span the menu
+  // hung off the BUTTON -- which sits in .k-chrome-top, a flex row whose width
+  // is its content. Every chrome control that comes and goes with the round
+  // (Reshuffle appearing as the shoe runs down, the room pill changing width)
+  // re-flowed that row, slid the button along it, and dragged the open menu
+  // across the screen. Reported on mobile as the menu being "pushed around by
+  // events happening in the game" -- which is exactly what it was, and why it
+  // reads as wrong: a popover is over the table, not part of it.
+  //
+  // Without `relative` the anchor becomes .k-chrome-top, which is pinned
+  // `right: max(8px, env(safe-area-inset-right))`. Its LEFT edge still moves as
+  // buttons come and go; its right edge cannot. The menu's own `right: 0`
+  // therefore stops moving, and `top: calc(100% + 8px)` still means "just below
+  // the row" -- 100% is now the row's height rather than one button's, which is
+  // the same 40px. wrapRef is unaffected; it only drives click-outside.
   return (
-    <span ref={wrapRef} className="relative inline-flex">
+    <span ref={wrapRef} className="inline-flex">
       <button
         type="button"
         className="k-chip-btn"

@@ -752,6 +752,23 @@ body:has(.k-fit) {
      viewerHandScale(). Composed rather than overridden so .is-fanned's lift
      below still applies -- an inline transform would have silently killed it. */
   transform: scale(var(--k-hand-scale, 1));
+  /* The hand grows DOWNWARD from a fixed top edge, never outward from its
+     middle. .turn-bar-track sits immediately above this box in flow, and a
+     transform does not move it: with the default centre origin, any
+     --k-hand-scale above 1 grew the hand UP into the bar and painted over it.
+     Reported on mobile, and mobile-only for a reason -- --k-hand-scale is
+     1/seatShrink, so it is exactly 1 on a desktop table that never shrinks and
+     the bug cannot appear there. Live at 854x384, four seats, scale 1.333:
+     bar 193-194, hand 190-251, i.e. the hand's top sat 3px ABOVE the bar's.
+     Pinning the origin puts the top at 195 and keeps it there at every scale
+     (measured 1.333 and 1.64 both -> 195), so the bar is out of reach by
+     construction rather than by a gap constant that holds at one scale.
+
+     .is-fanned's -10px lift below still crosses it, deliberately: fanning is
+     a transient state the player opts into by tapping, and it already rises
+     over its neighbours on purpose (see .k-seat.hand-fanned's z-index). The
+     bug was the RESTING hand covering the bar with no interaction at all. */
+  transform-origin: top center;
 }
 /* "Raise up a bit" -- lifted clear of its resting position, same easing as
    the card spacing below so the whole hand reads as one motion. */
@@ -1210,22 +1227,6 @@ body:has(.k-fit) {
   .k-reaction.is-side {
     animation: none;
     transform: translateY(-50%);
-  }
-}
-
-/* Counter-scaled exactly like .k-plate-name, and for the same reason: a
-   reaction rendered inside the scaled stage arrives at ~9px on a landscape
-   phone ("not even readable"). The floor is the original flat 14px so desktop
-   is unchanged. */
-@media (max-width: 520px), (max-height: 440px) {
-  .k-reaction {
-    /* Sized against .k-plate-name, which is the calibrated reference on this
-       table -- it lands at 9.5 REAL px on a landscape phone and an older
-       player already asked for that to stay legible. A reaction is transient
-       (10s) and often Hebrew, so it gets a shade more, not less: 10 real px
-       here at the same stage scale. */
-    font-size: clamp(12px, calc(10px / var(--stage-scale, 1)), 16px);
-    padding: 2px 8px;
   }
 }
 
@@ -2712,6 +2713,48 @@ body:has(.k-fit) {
   z-index: 45;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 14px rgba(230, 164, 75, 0.28);
   animation: reactionLife 10s ease-out forwards;
+}
+
+/* Counter-scaled exactly like .k-plate-name, and for the same reason: a
+   reaction rendered inside the scaled stage arrives at ~9px on a landscape
+   phone ("not even readable"). The floor is the original flat 14px so desktop
+   is unchanged.
+
+   THIS BLOCK MUST STAY BELOW THE BASE RULE ABOVE. A media query adds no
+   specificity, so `.k-reaction` here and `.k-reaction` there are equally
+   specific and the later one simply wins. It used to live ~1500 lines further
+   up the file, which meant the base rule overrode it and this override had
+   never once applied -- on any phone, since the day it was written. It read as
+   correct in isolation, which is exactly why nothing caught it.
+
+   Proven at runtime rather than by eye, on a 854x384 landscape phone where the
+   query matches and --stage-scale resolves to 0.667: a freshly attached
+   .k-reaction still computed font-size 14px and padding 3px 10px -- the base
+   values, not these. That is a 14px glyph inside a stage scaled to two thirds,
+   i.e. a bubble measuring 21x13 REAL px, which is what the report "can't
+   really see the emoji" describes. With the rule live it resolves to 15px,
+   landing on the 10 real px this block always intended. */
+@media (max-width: 520px), (max-height: 440px) {
+  .k-reaction {
+    /* Sized against .k-plate-name, which is the calibrated reference on this
+       table -- it lands at 9.5 REAL px on a landscape phone and an older
+       player already asked for that to stay legible. A reaction is transient
+       (10s) and often Hebrew, so it gets a shade more, not less: 10 real px
+       here at the same stage scale.
+
+       The ceiling is 34px, not 16px, and the difference is the whole fix. The
+       middle term is not a font size, it is the instruction "be 10 REAL px" --
+       dividing by --stage-scale is what converts real px into the stage's own
+       units. A ceiling therefore does not cap how big this looks, it caps how
+       small a stage the compensation still works on, and 16px stopped working
+       below a stage scale of 0.625. Measured on a 390x844 portrait phone,
+       where --stage-scale is 0.3047 and the term wants 32.8px: the clamp
+       handed back 16px, so the glyph rendered 4.88 real px in a 12x8 px
+       bubble. 34px covers the smallest stage this table draws at and still
+       resolves to the same 10 real px it always meant to. */
+    font-size: clamp(12px, calc(10px / var(--stage-scale, 1)), 34px);
+    padding: 2px 8px;
+  }
 }
 /* The tail, pointing down at whoever said it. Two stacked triangles so it
    keeps the same gold edge as the bubble -- a single one would be borderless. */
