@@ -31,13 +31,19 @@ describe("StatsModal", () => {
     expect(screen.getByText("Bank stats")).toBeInTheDocument();
   });
 
+  // The shades are the DIALOG palette, not the felt's: the panel behind this
+  // is now the dark surface every popover shares, so 700-weight ink that read
+  // fine on white does not read on it. selectors.ts still emits the felt's own
+  // 700s for round history; those are lifted by a .k-dialog-scoped rule in
+  // index.css instead, because that string is built where this file cannot
+  // reach it.
   it("shows a signed net total, green for positive and red for negative", () => {
     const { rerender } = render(<StatsModal data={baseData} onClose={vi.fn()} />);
     expect(screen.getByText("Net won/lost")).toBeInTheDocument();
-    expect(screen.getByText("+$10")).toHaveClass("text-emerald-700");
+    expect(screen.getByText("+$10")).toHaveClass("text-emerald-300");
 
     rerender(<StatsModal data={{ ...baseData, netTotal: -25 }} onClose={vi.fn()} />);
-    expect(screen.getByText("-$25")).toHaveClass("text-rose-700");
+    expect(screen.getByText("-$25")).toHaveClass("text-rose-300");
   });
 
   it("labels the banker's net total distinctly", () => {

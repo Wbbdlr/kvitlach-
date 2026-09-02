@@ -49,7 +49,7 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
   return (
     <StageOverlay>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+        className="k-dialog-scrim"
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
@@ -63,18 +63,18 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
           // edges instead of scrolling. Confirmed live at 780x360: the panel
           // (397px tall, uncapped) sat from y-18 to y378 against a 360px-tall
           // viewport -- clipped on both ends, close button included.
-          className="relative w-full max-w-xs max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
+          className="k-dialog max-w-xs"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-base font-semibold text-slate-800">
-              <Icon name="list" size={16} className="text-amber-700" />
+            <div className="flex items-center gap-1.5 text-base font-semibold k-dialog-strong">
+              <Icon name="list" size={16} className="text-amber-300" />
               {/* "Discarded" reads like a player chose to fold these -- this
                   is just what's already come out of the shoe (every round
                   since the last reshuffle), so "used" is the honest word. */}
               Used this shoe
             </div>
-            <button type="button" className="text-slate-400 hover:text-slate-600" onClick={onClose} aria-label="Close">
+            <button type="button" className="k-dialog-sub hover:text-amber-200" onClick={onClose} aria-label="Close">
               ✕
             </button>
           </div>

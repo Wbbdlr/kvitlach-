@@ -119,33 +119,33 @@ export function RoomInfoDrawer({
   return (
     <StageOverlay>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+        className="k-dialog-scrim"
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         onClick={onClose}
       >
         <div
-          className="relative w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
+          className="k-dialog max-w-sm"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-base font-semibold text-slate-800 min-w-0">
-              <Icon name="info" size={16} className="text-blue-600 flex-none" />
+            <div className="flex items-center gap-1.5 text-base font-semibold k-dialog-strong min-w-0">
+              <Icon name="info" size={16} className="text-sky-300 flex-none" />
               <span className="truncate">{roomName || "Kvitlach table"}</span>
             </div>
-            <button type="button" className="text-slate-400 hover:text-slate-600 flex-none" onClick={onClose} aria-label="Close">
+            <button type="button" className="k-dialog-sub hover:text-amber-200 flex-none" onClick={onClose} aria-label="Close">
               ✕
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <div className="flex items-center justify-between gap-2 rounded-lg border k-dialog-line k-dialog-inset px-3 py-2">
             <div className="text-sm">
               Game ID: <code className="font-semibold">{roomId}</code>
             </div>
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-full border border-amber-300 bg-amber-50 p-1.5 text-amber-700 shadow-sm transition-colors hover:bg-amber-100"
+              className="inline-flex items-center justify-center rounded-full border border-amber-400/40 bg-amber-400/10 p-1.5 text-amber-300 shadow-sm transition-colors hover:bg-amber-400/20"
               onClick={() => void copy(roomId, "id")}
               title="Copy game ID"
               aria-label="Copy game ID"
@@ -157,33 +157,33 @@ export function RoomInfoDrawer({
           <div className="flex flex-wrap gap-2 text-xs font-semibold">
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 shadow-sm transition-colors hover:bg-slate-50"
+              className="inline-flex items-center gap-1 rounded-full border k-dialog-line bg-white/5 px-3 py-1.5 shadow-sm transition-colors hover:bg-white/10"
               onClick={() => void copy(inviteLink, "link")}
             >
               <Icon name="link" size={13} />
               {copied === "link" ? "Copied!" : copyFailed === "link" ? "Copy it manually" : "Copy invite link"}
             </button>
             <a
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 shadow-sm transition-colors hover:bg-emerald-100"
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-500/12 px-3 py-1.5 shadow-sm transition-colors hover:bg-emerald-500/25"
               href={`https://wa.me/?text=${encodeURIComponent(`Join our Kvitlach game: ${roomName || roomId} (ID: ${roomId}) ${inviteLink}`)}`}
               target="_blank"
               rel="noreferrer"
             >
-              <Icon name="share" size={13} className="text-emerald-600" />
+              <Icon name="share" size={13} className="text-emerald-300" />
               Share via WhatsApp
             </a>
           </div>
-          {copied === "id" && <div className="text-xs text-emerald-700 -mt-2">Game ID copied.</div>}
+          {copied === "id" && <div className="text-xs text-emerald-300 -mt-2">Game ID copied.</div>}
           {copyFailed === "id" && (
-            <div className="text-xs text-amber-700 -mt-2">Couldn't copy automatically — select the ID above and copy it.</div>
+            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically — select the ID above and copy it.</div>
           )}
           {copyFailed === "link" && (
-            <div className="text-xs text-amber-700 -mt-2">Couldn't copy automatically — the invite link is {inviteLink}</div>
+            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically — the invite link is {inviteLink}</div>
           )}
 
           {typeof buyIn === "number" && (
-            <div className="text-xs text-slate-500 -mt-1">
-              Buy-in per player: <span className="font-semibold text-slate-700">${buyIn.toLocaleString()}</span>
+            <div className="text-xs k-dialog-sub -mt-1">
+              Buy-in per player: <span className="font-semibold k-dialog-strong">${buyIn.toLocaleString()}</span>
             </div>
           )}
 
@@ -193,9 +193,9 @@ export function RoomInfoDrawer({
               of it. Hidden until a round has actually finished -- an empty
               keepsake is worse than no button. */}
           {onExportHistory && completedRounds > 0 && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="rounded-lg border k-dialog-line k-dialog-inset px-3 py-2">
               <div className="text-sm font-semibold text-ink">Keep the game</div>
-              <div className="text-xs text-slate-500 mt-0.5">
+              <div className="text-xs k-dialog-sub mt-0.5">
                 {completedRounds} round{completedRounds === 1 ? "" : "s"} played so far.
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -208,7 +208,7 @@ export function RoomInfoDrawer({
                 </button>
                 <button
                   type="button"
-                  className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  className="rounded-full border k-dialog-line px-3 py-1.5 text-xs font-semibold k-dialog-strong"
                   onClick={() => onExportHistory()}
                 >
                   Whole table
@@ -220,13 +220,13 @@ export function RoomInfoDrawer({
           {/* Banker-only: the password is what they read out to late joiners,
               so it has to live somewhere reachable from the table itself. */}
           {isAdmin && roomPassword && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-400/30 bg-rose-500/12 px-3 py-2 text-sm text-rose-300">
               <div>
                 Password: <code className="font-semibold">{roomPassword}</code>
               </div>
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded-full border border-rose-300 bg-white p-1.5 text-rose-700 shadow-sm transition-colors hover:bg-rose-100"
+                className="inline-flex items-center justify-center rounded-full border border-rose-400/40 bg-white/5 p-1.5 text-rose-300 shadow-sm transition-colors hover:bg-rose-500/25"
                 onClick={() => void copy(roomPassword, "password")}
                 title="Copy room password"
                 aria-label="Copy room password"
@@ -235,16 +235,16 @@ export function RoomInfoDrawer({
               </button>
             </div>
           )}
-          {copied === "password" && <div className="text-xs text-emerald-700 -mt-2">Password copied.</div>}
+          {copied === "password" && <div className="text-xs text-emerald-300 -mt-2">Password copied.</div>}
           {copyFailed === "password" && (
-            <div className="text-xs text-amber-700 -mt-2">Couldn't copy automatically — select the password and copy it.</div>
+            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically — select the password and copy it.</div>
           )}
 
           {!isAdmin && (
             <>
-              <div ref={selfServiceRef} className="border-t border-slate-200 pt-3 flex flex-col gap-2">
+              <div ref={selfServiceRef} className="border-t k-dialog-line pt-3 flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-slate-500">Banker approval required for name changes.</span>
+                  <span className="text-xs k-dialog-sub">Banker approval required for name changes.</span>
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 rounded-full border border-accent text-accent px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-accent hover:text-white flex-none"
@@ -254,7 +254,7 @@ export function RoomInfoDrawer({
                   </button>
                 </div>
                 {myRenameRequest && (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
                     Pending banker approval for {myRenameRequest.firstName}
                     {myRenameRequest.lastName ? ` ${myRenameRequest.lastName}` : ""}.
                   </div>
@@ -300,9 +300,9 @@ export function RoomInfoDrawer({
                 )}
               </div>
 
-              <div className="border-t border-dashed border-slate-200 pt-3 flex flex-col gap-2">
+              <div className="border-t border-dashed k-dialog-line pt-3 flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-slate-500">Need more chips? Ask the Banker for a top-up.</span>
+                  <span className="text-xs k-dialog-sub">Need more chips? Ask the Banker for a top-up.</span>
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 rounded-full border border-accent text-accent px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-accent hover:text-white flex-none"
@@ -312,7 +312,7 @@ export function RoomInfoDrawer({
                   </button>
                 </div>
                 {myBuyInRequest && (
-                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
                     Pending banker approval for ${myBuyInRequest.amount}
                     {myBuyInRequest.note ? ` · "${myBuyInRequest.note}"` : ""}.
                   </div>

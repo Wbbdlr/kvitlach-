@@ -1460,10 +1460,11 @@ body:has(.k-fit) {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 8px;
-  background: rgba(10, 20, 14, 0.97);
-  border: 1px solid rgba(230, 164, 75, 0.45);
+  /* The reference surface, now shared with every dialog -- see --k-surface. */
+  background: var(--k-surface);
+  border: 1px solid var(--k-surface-line);
   border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--k-surface-shadow);
 }
 /* Every control in the menu is a full-width row: icon, then words, left
    aligned. 44px minimum, same floor as anywhere else. */
@@ -2130,6 +2131,131 @@ body:has(.k-fit) {
   justify-content: center;
   padding: 16px;
   background: rgba(4, 8, 5, 0.6);
+}
+
+/* ---- One surface for everything that floats over the felt -----------------
+   A player does not distinguish between "the ... menu" and "the dialog the ...
+   menu opened"; they are the same object arriving from the same tap. They did
+   not look like it. The menu is dark felt and gold, and every dialog behind it
+   -- table info and invite, change name, request chips, player stats, how to
+   play -- was still on the light Tailwind palette it was first built with:
+   bg-white panels, bg-slate-50 rows, slate borders. Tapping any of them threw a
+   white sheet over a dark table, which is what was reported.
+
+   These are custom properties rather than one class because .k-chrome-menu had
+   the values first and has to keep them. It now READS them from here, so the
+   menu and the dialogs cannot drift apart again -- which is how seven
+   near-misses of the same surface accumulated in the first place. */
+:root {
+  --k-surface: rgba(10, 20, 14, 0.97);
+  --k-surface-line: rgba(230, 164, 75, 0.45);
+  --k-surface-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  /* Insets INSIDE a surface: the rows that used to be bg-slate-50. Lifted off
+     the surface with light rather than sunk with dark -- on a panel this dark,
+     a darker inset just reads as a hole. */
+  --k-surface-inset: rgba(255, 255, 255, 0.05);
+  --k-surface-inset-line: rgba(230, 164, 75, 0.22);
+  --k-surface-ink: #f4e4c6;
+  --k-surface-ink-dim: rgba(244, 228, 198, 0.7);
+}
+
+/* The scrim behind a dialog. Darker than .k-modal-overlay's 0.6 because the
+   panel above it is no longer white and needs the separation. */
+.k-dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  background: rgba(4, 8, 5, 0.68);
+}
+
+/* No max-width here on purpose: each dialog keeps its own Tailwind max-w-*
+   (xs for the discard pile, xl for the rules), and a value here would be a
+   same-specificity race with those utilities decided by stylesheet order. */
+.k-dialog {
+  position: relative;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: var(--k-surface);
+  border: 1px solid var(--k-surface-line);
+  border-radius: 14px;
+  box-shadow: var(--k-surface-shadow);
+  color: var(--k-surface-ink);
+}
+
+/* A row inside a dialog -- the boxed-out Game ID, the stats strip, a pending
+   request. Replaces `rounded-lg border border-slate-200 bg-slate-50`. */
+.k-dialog-row {
+  border: 1px solid var(--k-surface-inset-line);
+  background: var(--k-surface-inset);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.k-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--k-surface-ink);
+}
+/* The three tokens the dialogs actually use, replacing the slate utilities they
+   were built with: border-slate-100..400 -> k-dialog-line, bg-slate-50 ->
+   k-dialog-inset, text-slate-700/800 -> k-dialog-strong, and everything dimmer
+   -> k-dialog-sub. Named for their role rather than their colour so the next
+   palette change is one edit here. */
+.k-dialog-line {
+  border-color: var(--k-surface-inset-line);
+}
+.k-dialog-inset {
+  background-color: var(--k-surface-inset);
+}
+.k-dialog-strong {
+  color: var(--k-surface-ink);
+}
+.k-dialog-sub {
+  color: var(--k-surface-ink-dim);
+}
+
+/* selectors.ts builds these class strings for FELT content (a seat's WON /
+   FUTCHED! / BEAT 2 - LOST 1), and the same strings are handed to the stats
+   dialog's round history. They cannot be edited at the source without also
+   repainting the felt, which nobody asked for and which has its own contrast
+   calibration. So they are lifted here, scoped to .k-dialog, where the surface
+   changed underneath them. This is a deliberate exception to not styling by
+   Tailwind class name: the call site emits a string this file cannot reach, and
+   the set is small, closed, and listed in one place. */
+.k-dialog .text-emerald-700,
+.k-dialog .text-emerald-600 {
+  color: #6ee7b7;
+}
+.k-dialog .text-rose-700,
+.k-dialog .text-rose-600 {
+  color: #fda4af;
+}
+.k-dialog .text-slate-600,
+.k-dialog .text-slate-500 {
+  color: var(--k-surface-ink-dim);
+}
+/* Same exception, for the two theme tokens (tailwind.config.cjs). Both are
+   correct where they were chosen -- the lobby and the marketing pages are on
+   white -- and both are near-invisible on this surface: measured in the live
+   table-info dialog, text-ink came out at 1.07:1 and text-accent at 2.75:1
+   against it. Lifted only inside a dialog; the light pages keep their tokens. */
+.k-dialog .text-ink {
+  color: var(--k-surface-ink);
+}
+.k-dialog .text-accent {
+  color: #f0c579;
+}
+.k-dialog .border-accent {
+  border-color: var(--k-surface-line);
 }
 .k-bank-confirm {
   width: 100%;

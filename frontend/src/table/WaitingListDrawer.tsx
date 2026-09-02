@@ -38,27 +38,27 @@ export function WaitingListDrawer({ open, onClose, players }: WaitingListDrawerP
   return (
     <StageOverlay>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+        className="k-dialog-scrim"
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         onClick={onClose}
       >
         <div
-          className="relative w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-3"
+          className="k-dialog max-w-sm"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-base font-semibold text-slate-800 min-w-0">
-              <Icon name="users" size={16} className="text-blue-600 flex-none" />
+            <div className="flex items-center gap-1.5 text-base font-semibold k-dialog-strong min-w-0">
+              <Icon name="users" size={16} className="text-sky-300 flex-none" />
               <span className="truncate">Waiting to be seated</span>
             </div>
-            <button type="button" className="text-slate-400 hover:text-slate-600 flex-none" onClick={onClose} aria-label="Close">
+            <button type="button" className="k-dialog-sub hover:text-amber-200 flex-none" onClick={onClose} aria-label="Close">
               ✕
             </button>
           </div>
 
-          <div className="text-xs text-slate-500 -mt-1">
+          <div className="text-xs k-dialog-sub -mt-1">
             One new seat opens each round, in this order -- everyone's guaranteed a turn.
           </div>
 
@@ -68,16 +68,16 @@ export function WaitingListDrawer({ open, onClose, players }: WaitingListDrawerP
                 key={entry.player.id}
                 className={
                   "flex items-center gap-2.5 rounded-lg border px-3 py-2 " +
-                  (entry.isViewer ? "border-accent bg-accent/5" : "border-slate-200 bg-slate-50")
+                  (entry.isViewer ? "border-accent bg-accent/5" : "k-dialog-line k-dialog-inset")
                 }
               >
                 <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-white">
                   {initialsOf(entry.player)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium k-dialog-strong">
                   {entry.isViewer ? "You" : fullName(entry.player) || "New player"}
                 </span>
-                <span className="flex-none text-xs font-semibold text-slate-500">
+                <span className="flex-none text-xs font-semibold k-dialog-sub">
                   {entry.position === 1 ? "Up next" : `~${entry.position} rounds`}
                 </span>
               </li>

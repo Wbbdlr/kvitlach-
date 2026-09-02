@@ -107,36 +107,36 @@ export function ManageDrawer({
   return (
     <StageOverlay>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+      className="k-dialog-scrim"
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
+        className="k-dialog max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-base font-semibold text-slate-800">
-            <Icon name="bank" size={16} className="text-amber-700" />
+          <div className="flex items-center gap-1.5 text-base font-semibold k-dialog-strong">
+            <Icon name="bank" size={16} className="text-amber-300" />
             Manage table
           </div>
-          <button type="button" className="text-slate-400 hover:text-slate-600" onClick={onClose} aria-label="Close">
+          <button type="button" className="k-dialog-sub hover:text-amber-200" onClick={onClose} aria-label="Close">
             ✕
           </button>
         </div>
 
         {pendingCount > 0 && (
           <div className="flex flex-col gap-2">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <div className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">
               Approvals needed ({pendingCount})
             </div>
             {buyInRequests.map((req) => (
-              <div key={`buyin-${req.playerId}`} className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+              <div key={`buyin-${req.playerId}`} className="flex items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm">
                 <div>
                   <div className="font-semibold">{nameOf(req.playerId)}</div>
-                  <div className="text-xs text-amber-700">${req.amount}{req.note ? ` · "${req.note}"` : ""}</div>
+                  <div className="text-xs text-amber-300">${req.amount}{req.note ? ` · "${req.note}"` : ""}</div>
                 </div>
                 <div className="flex gap-1.5">
                   <button type="button" className="rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white" onClick={() => onApproveBuyIn(req.playerId)}>
@@ -149,10 +149,10 @@ export function ManageDrawer({
               </div>
             ))}
             {renameRequests.map((req) => (
-              <div key={`rename-${req.playerId}`} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <div key={`rename-${req.playerId}`} className="flex items-center justify-between gap-2 rounded-lg border k-dialog-line k-dialog-inset px-3 py-2 text-sm">
                 <div>
                   <div className="font-semibold">{nameOf(req.playerId)}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs k-dialog-sub">
                     &rarr; {req.firstName}{req.lastName ? ` ${req.lastName}` : ""}
                   </div>
                 </div>
@@ -169,22 +169,22 @@ export function ManageDrawer({
           </div>
         )}
 
-        <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+        <div className="flex flex-col gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bank</span>
+            <span className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Bank</span>
             <span className="text-sm font-semibold">${bankerWallet.toLocaleString()}</span>
           </div>
           <div className="flex gap-1">
             <button
               type="button"
-              className={`flex-1 rounded px-2 py-1 text-xs font-semibold ${topUpSign === 1 ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-white text-slate-500 border border-slate-200"}`}
+              className={`flex-1 rounded px-2 py-1 text-xs font-semibold ${topUpSign === 1 ? "bg-amber-400/20 text-amber-200 border border-amber-400/40" : "bg-white/5 k-dialog-sub border k-dialog-line"}`}
               onClick={() => setTopUpSign(1)}
             >
               + Add
             </button>
             <button
               type="button"
-              className={`flex-1 rounded px-2 py-1 text-xs font-semibold ${topUpSign === -1 ? "bg-amber-100 text-amber-800 border border-amber-300" : "bg-white text-slate-500 border border-slate-200"}`}
+              className={`flex-1 rounded px-2 py-1 text-xs font-semibold ${topUpSign === -1 ? "bg-amber-400/20 text-amber-200 border border-amber-400/40" : "bg-white/5 k-dialog-sub border k-dialog-line"}`}
               onClick={() => setTopUpSign(-1)}
             >
               &minus; Subtract
@@ -210,11 +210,11 @@ export function ManageDrawer({
               Apply to bank
             </button>
           </div>
-          <div className="text-[11px] text-slate-400">Everyone at the table sees a notification when the bank total changes.</div>
+          <div className="text-[11px] k-dialog-sub">Everyone at the table sees a notification when the bank total changes.</div>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Table label (faint, on the felt)</label>
+          <label className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Table label (faint, on the felt)</label>
           <div className="flex gap-2">
             {/* This app's own default watermark is Hebrew (see TableRoot.tsx's
                 DEFAULT_WATERMARK) and most real values here are family
@@ -241,24 +241,24 @@ export function ManageDrawer({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Deck</label>
+          <label className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Deck</label>
           {!confirmReshuffle ? (
             <button
               type="button"
-              className="self-start text-xs font-semibold text-blue-600 underline"
+              className="self-start text-xs font-semibold text-sky-300 underline"
               onClick={() => setConfirmReshuffle(true)}
             >
               Reshuffle deck
             </button>
           ) : (
-            <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs">
-              <span className="text-amber-800">
+            <div className="flex flex-col gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs">
+              <span className="text-amber-200">
                 {roundActive
                   ? "A hand is in progress. Reshuffling now brings in a completely fresh shoe for any cards still to be dealt this round — everyone's cards already dealt stay exactly as they are. Continue?"
                   : "Shuffle a fresh shoe in before the next round?"}
               </span>
               <div className="flex justify-end gap-2">
-                <button type="button" className="text-slate-500" onClick={() => setConfirmReshuffle(false)}>
+                <button type="button" className="k-dialog-sub" onClick={() => setConfirmReshuffle(false)}>
                   Cancel
                 </button>
                 <button
@@ -277,27 +277,27 @@ export function ManageDrawer({
         </div>
 
         <div className="flex flex-col gap-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Players</div>
-          {nonAdminPlayers.length === 0 && <div className="text-sm text-slate-400">No players yet.</div>}
+          <div className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Players</div>
+          {nonAdminPlayers.length === 0 && <div className="text-sm k-dialog-sub">No players yet.</div>}
           {nonAdminPlayers.map((p) => (
-            <div key={p.id} className="rounded-lg border border-slate-200 px-3 py-2">
+            <div key={p.id} className="rounded-lg border k-dialog-line px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-sm font-semibold">
-                  <span className={`h-2 w-2 rounded-full ${p.presence === "online" ? "bg-emerald-500" : "bg-slate-300"}`} />
+                  <span className={`h-2 w-2 rounded-full ${p.presence === "online" ? "bg-emerald-500/120" : "bg-slate-300"}`} />
                   {[p.firstName, p.lastName].filter(Boolean).join(" ")}
-                  <span className="font-normal text-slate-500">${wallets[p.id] ?? 0}</span>
+                  <span className="font-normal k-dialog-sub">${wallets[p.id] ?? 0}</span>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" className="text-xs font-semibold text-blue-600 underline" onClick={() => setAdjustTarget(p.id)}>
+                  <button type="button" className="text-xs font-semibold text-sky-300 underline" onClick={() => setAdjustTarget(p.id)}>
                     Adjust
                   </button>
-                  <button type="button" className="text-xs font-semibold text-rose-600 underline" onClick={() => setKickTarget(p.id)}>
+                  <button type="button" className="text-xs font-semibold text-rose-300 underline" onClick={() => setKickTarget(p.id)}>
                     Kick
                   </button>
                 </div>
               </div>
               {adjustTarget === p.id && (
-                <div className="mt-2 flex flex-col gap-1.5 border-t border-slate-100 pt-2">
+                <div className="mt-2 flex flex-col gap-1.5 border-t k-dialog-line pt-2">
                   {/* type="text" + inputMode, not type="number": iOS Safari's
                       number-pad keyboard for type="number" doesn't reliably
                       expose a "-" key at all, which would make "negative
@@ -325,7 +325,7 @@ export function ManageDrawer({
                     className="w-full rounded border px-2 py-1 text-sm"
                   />
                   <div className="flex justify-end gap-2">
-                    <button type="button" className="px-2 py-1 text-xs text-slate-500" onClick={() => setAdjustTarget(null)}>
+                    <button type="button" className="px-2 py-1 text-xs k-dialog-sub" onClick={() => setAdjustTarget(null)}>
                       Cancel
                     </button>
                     <button type="button" className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white" onClick={applyAdjust}>
@@ -335,10 +335,10 @@ export function ManageDrawer({
                 </div>
               )}
               {kickTarget === p.id && (
-                <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-xs">
-                  <span className="text-rose-700">Remove {p.firstName} from the table?</span>
+                <div className="mt-2 flex items-center justify-between gap-2 border-t k-dialog-line pt-2 text-xs">
+                  <span className="text-rose-300">Remove {p.firstName} from the table?</span>
                   <div className="flex gap-2">
-                    <button type="button" className="text-slate-500" onClick={() => setKickTarget(null)}>
+                    <button type="button" className="k-dialog-sub" onClick={() => setKickTarget(null)}>
                       Cancel
                     </button>
                     <button
@@ -358,28 +358,28 @@ export function ManageDrawer({
           ))}
         </div>
 
-        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+        <div className="flex items-center justify-between rounded-lg border k-dialog-line px-3 py-2 text-sm">
           <span>Round history ({roundHistoryCount})</span>
           <button
             type="button"
             disabled={!roundHistoryCount}
-            className="text-xs font-semibold text-blue-600 underline disabled:text-slate-300 disabled:no-underline"
+            className="text-xs font-semibold text-sky-300 underline disabled:k-dialog-sub disabled:no-underline"
             onClick={onExportHistory}
           >
             Export the night
           </button>
         </div>
 
-        <div className="border-t border-slate-200 pt-3">
+        <div className="border-t k-dialog-line pt-3">
           {!confirmClose ? (
-            <button type="button" className="text-xs font-semibold text-rose-600 underline" onClick={() => setConfirmClose(true)}>
+            <button type="button" className="text-xs font-semibold text-rose-300 underline" onClick={() => setConfirmClose(true)}>
               Close this room for everyone
             </button>
           ) : (
-            <div className="flex flex-col gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs">
-              <span className="text-rose-800">This disconnects everyone. Export history first if you want a record.</span>
+            <div className="flex flex-col gap-2 rounded-lg border border-rose-400/30 bg-rose-500/12 px-3 py-2 text-xs">
+              <span className="text-rose-300">This disconnects everyone. Export history first if you want a record.</span>
               <div className="flex justify-end gap-2">
-                <button type="button" className="text-slate-500" onClick={() => setConfirmClose(false)}>
+                <button type="button" className="k-dialog-sub" onClick={() => setConfirmClose(false)}>
                   Cancel
                 </button>
                 <button type="button" className="rounded bg-rose-600 px-2.5 py-1 font-semibold text-white" onClick={onCloseRoom}>

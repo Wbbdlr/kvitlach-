@@ -22,11 +22,11 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
     <>
       {showHowTo && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
+          className="k-dialog-scrim"
           onClick={onCloseHowTo}
         >
           <div
-            className="relative w-full max-w-xl max-h-[90vh] card-surface bg-blue-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+            className="k-dialog max-w-xl"
             ref={howToRef}
             role="dialog"
             aria-modal="true"
@@ -41,7 +41,7 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
             >
               <Icon name="close" size={15} />
             </button>
-            <div className="space-y-3 text-sm text-slate-700">
+            <div className="space-y-3 text-sm k-dialog-strong">
               <h2 className="text-lg font-semibold">How To Play Kvitlach</h2>
               <div>
                 <div className="font-semibold">Objective</div>
@@ -109,11 +109,11 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
 
       {showWhatIs && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4"
+          className="k-dialog-scrim"
           onClick={onCloseWhatIs}
         >
           <div
-            className="relative w-full max-w-xl max-h-[85vh] card-surface bg-blue-100 p-6 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent"
+            className="k-dialog max-w-xl"
             ref={whatIsRef}
             role="dialog"
             aria-modal="true"
@@ -128,7 +128,7 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
             >
               <Icon name="close" size={15} />
             </button>
-            <div className="space-y-3 text-sm text-slate-700">
+            <div className="space-y-3 text-sm k-dialog-strong">
               <h2 className="text-lg font-semibold">What Is Kvitlach?</h2>
               <p>
                 Kvitlech (Yiddish: קוויטלעך, lit. &ldquo;notes&rdquo; or &ldquo;slips&rdquo;) is a traditional card game

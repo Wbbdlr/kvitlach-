@@ -21,53 +21,53 @@ export function StatsModal({ data, onClose }: StatsModalProps) {
   return (
     <StageOverlay>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-3"
+        className="k-dialog-scrim"
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         onClick={onClose}
       >
         <div
-          className="relative w-full max-w-sm max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl p-4 flex flex-col gap-4"
+          className="k-dialog max-w-sm"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-xs uppercase tracking-wide text-slate-500">{data.isBanker ? "Bank stats" : "Player stats"}</div>
-              <div className="flex items-center gap-1.5 text-base font-semibold text-slate-800">
-                <Icon name="chart" size={16} className="text-amber-700" />
+              <div className="text-xs uppercase tracking-wide k-dialog-sub">{data.isBanker ? "Bank stats" : "Player stats"}</div>
+              <div className="flex items-center gap-1.5 text-base font-semibold k-dialog-strong">
+                <Icon name="chart" size={16} className="text-amber-300" />
                 {data.name}
               </div>
             </div>
-            <button type="button" className="text-slate-400 hover:text-slate-600" onClick={onClose} aria-label="Close">
+            <button type="button" className="k-dialog-sub hover:text-amber-200" onClick={onClose} aria-label="Close">
               ✕
             </button>
           </div>
 
-          <div className="flex items-center justify-around rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <div className="flex items-center justify-around rounded-lg border k-dialog-line k-dialog-inset px-3 py-2 text-xs">
             <div>
-              Wins: <span className="font-semibold text-emerald-700">{data.wins}</span>
+              Wins: <span className="font-semibold text-emerald-300">{data.wins}</span>
             </div>
             <div>
-              Losses: <span className="font-semibold text-rose-700">{data.losses}</span>
+              Losses: <span className="font-semibold text-rose-300">{data.losses}</span>
             </div>
             <div>
-              Pushes: <span className="font-semibold text-slate-600">{data.pushes}</span>
+              Pushes: <span className="font-semibold k-dialog-sub">{data.pushes}</span>
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <div className="flex items-center justify-between rounded-lg border k-dialog-line k-dialog-inset px-3 py-2 text-xs">
             <span>{data.isBanker ? "Bank net" : "Net won/lost"}</span>
-            <span className={clsx("font-semibold", data.netTotal >= 0 ? "text-emerald-700" : "text-rose-700")}>
+            <span className={clsx("font-semibold", data.netTotal >= 0 ? "text-emerald-300" : "text-rose-300")}>
               {data.netTotal >= 0 ? "+" : "-"}${Math.abs(data.netTotal)}
             </span>
           </div>
 
-          <div className="border border-slate-200 rounded-lg divide-y divide-slate-200 overflow-hidden">
-            {data.entries.length === 0 && <div className="p-3 text-xs text-slate-500">No completed rounds yet.</div>}
+          <div className="border k-dialog-line rounded-lg divide-y divide-slate-200 overflow-hidden">
+            {data.entries.length === 0 && <div className="p-3 text-xs k-dialog-sub">No completed rounds yet.</div>}
             {data.entries.map((entry) => (
               <div key={`stats-entry-${entry.roundNumber}`} className="p-3 flex items-center justify-between text-sm">
-                <div className="text-slate-600">Round {entry.roundNumber}</div>
+                <div className="k-dialog-sub">Round {entry.roundNumber}</div>
                 <div className="flex items-center gap-3">
                   <span className={clsx("text-xs uppercase tracking-wide", entry.statusClass)}>{entry.status}</span>
                   <span className={clsx("text-xs", entry.betClass)}>Bet {entry.bet}</span>
