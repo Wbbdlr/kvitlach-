@@ -25,10 +25,20 @@ import { clickIfAppears } from "./helpers";
 //
 // Viewports are real device sizes, not round numbers: Galaxy-class phones in
 // landscape, which is what the table locks itself to on a handheld.
-const PHONE_LANDSCAPE = [
+// Not only phones any more. The branding-vs-chrome collision above was
+// reported at a maximized desktop window and would have been invisible here:
+// every viewport in this list was a landscape phone, so the widths where that
+// pair actually collided were never rendered. One desktop size, chosen as the
+// one the report came from rather than a round number.
+const VIEWPORTS = [
   { name: "Galaxy S21 landscape", width: 800, height: 360 },
   { name: "Galaxy S22 landscape", width: 854, height: 384 },
   { name: "Galaxy S22 Ultra landscape", width: 915, height: 412 },
+  { name: "maximized desktop", width: 1512, height: 950 },
+  // The branding/chrome report named "every ordinary tablet-portrait and
+  // small-laptop width" as the range where .k-chrome-top's row grew wide enough
+  // to reach the wordmark. 1512 is comfortably past that; this one is inside it.
+  { name: "small laptop", width: 1024, height: 640 },
 ];
 
 // An ALLOWLIST, not a denylist -- the denylist this started as had to grow
@@ -87,6 +97,17 @@ const PHONE_LANDSCAPE = [
 const CHECKED = new Set([
   "k-seat", "k-plate", "k-plate-name", "k-plate-sub",
   "k-turnbar", "k-resv",
+  // The branding cluster and the chrome row. These are the ONE pair in this
+  // file with a documented past collision -- "the felt colour swatches sitting
+  // directly on top of the tagline", reported 2026-08-30 with a screenshot at a
+  // maximized desktop window (see .k-chrome-top in index.css). It was fixed with
+  // a CSS rule, and nothing has asserted it since, because none of the three
+  // classes involved was in this set. A fixed bug with no test is a bug waiting
+  // for its second turn.
+  // .k-topbar and .k-chrome-top themselves stay OUT: both are full-width
+  // containers of these, and a container always intersects its own contents --
+  // that is the false positive .k-topbar produced when it was measured directly.
+  "k-logo-word", "k-logo-tag", "k-chip-btn",
   "k-readout", "k-tag", "k-banktotal", "k-bank-split",
   "k-hand", "k-shoe", "k-discard", "k-reaction", "k-fs-hint", "k-controls",
   // The bottom-left HUD column and both of its occupants. These share one
@@ -219,7 +240,7 @@ async function findOverlaps(page: Page): Promise<Overlap[]> {
   );
 }
 
-for (const vp of PHONE_LANDSCAPE) {
+for (const vp of VIEWPORTS) {
   test(`felt has no overlapping elements on ${vp.name} (${vp.width}x${vp.height})`, async ({ browser }) => {
     const context = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },

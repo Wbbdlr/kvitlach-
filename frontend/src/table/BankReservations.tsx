@@ -27,21 +27,37 @@ export interface BankReservationsProps {
 // that anchor moves in Dealer.tsx, move it here.
 const DEALER_ANCHOR_Y_COEF = 160;
 
-// Where the lines start: the dealer, because the dealer IS the bank.
+// How far BELOW the dealer's anchor the bank readout sits, in stage px.
 //
-// These used to originate at the BANK pill's own floating position, tracking it
-// through bankPanelPlacement() so the lines followed it when it slid out to the
-// rail. The pill has now left the felt entirely for the HUD frame (see
-// BankPanel.tsx), and connector lines cannot follow it there -- an SVG line
-// drawn to a point outside the stage would leave the felt and point at chrome.
+// The paragraph that used to be here said the BANK pill "has left the felt
+// entirely for the HUD frame", and justified starting the lines at the dealer
+// on those grounds. That stopped being true at T5, which put the bank's money
+// back on the table as the last child of the dealer's column -- the comment
+// outlived the layout it described, and nothing re-read it.
 //
-// Anchoring to the dealer is not a fallback, it is what this always meant: a
-// reservation is money the BANK is holding, and the bank sits at the top of the
-// oval. Lines now emerge from behind the dealer's own box (.k-resv-lines is a
-// lower tier than .k-seat, so the dealer paints over the origin), which reads
-// as chips pushed out from the bank rather than trailing a floating badge.
+// The consequence was visible and was reported as such: Dealer.tsx anchors with
+// `translate(-50%, -50%)`, so `playTop + 160 * vf` is the centre of the dealer's
+// whole BOX, and the thing sitting at that centre is the face-down deck. Every
+// connector therefore appeared to come out of the deck rather than out of the
+// money. Measured live at 854x384: origin screen y 108.7 against a dealer box
+// whose centre is 108.7, with the "BANK $x / reserved $y free $z" row 34 screen
+// px lower at 142.7 -- 50.9 stage px at that scale.
+//
+// NOT multiplied by vf. vf flattens where seats sit on the ellipse; it does not
+// compress the dealer column's own internals, which are plain stage px (its
+// cards are 72px at every vf -- see .k-hand.is-dealer).
+const BANK_READOUT_Y_OFFSET = 51;
+
+// Where the lines start: the bank's own money readout, because that is the pot
+// the wagers are being covered from. A reservation is the bank holding funds
+// against a specific wager, so the line has to leave the place a player reads
+// that balance off, not the place the cards come from.
+//
+// Lines still emerge from BEHIND the readout rather than touching its edge --
+// .k-resv-lines is a lower tier than .k-seat, so the dealer's column paints
+// over the origin -- which reads as chips pushed out from under the bank.
 function potPoint(playTop: number, vf: number): { x: number; y: number } {
-  return { x: STAGE_WIDTH / 2, y: playTop + DEALER_ANCHOR_Y_COEF * vf };
+  return { x: STAGE_WIDTH / 2, y: playTop + DEALER_ANCHOR_Y_COEF * vf + BANK_READOUT_Y_OFFSET };
 }
 
 // The old line-placement machinery -- SEAT_CLEARANCE, T_MIN, T_MAX,
