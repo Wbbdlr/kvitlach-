@@ -110,8 +110,18 @@ export function Dealer({
             {reactionEmoji}
           </div>
         )}
-        {/* The bank's money, on the banker's own seat -- FIRST child, so it
-            sits directly above the plate it belongs to.
+        {/* The bank's money, on the banker's own seat -- LAST child, so it sits
+            below the hand rather than above the plate.
+
+            It was the first child, which put it directly above the plate it
+            belongs to and was right about the association. What it got wrong is
+            where that lands: the dealer's column is centred on its anchor, so
+            hanging a panel off the top pushed the whole readout ABOVE the
+            oval's rail and out onto the dark surround, where it read as chrome
+            rather than as money on the table. Reported by a tester as the
+            bank's total and the reserved/free line being too high up and
+            wanting to be nearer the middle of the table. Same association,
+            opposite end of the same column.
 
             It spent one step in the top chrome row, which was right about
             leaving the felt's centre column and wrong about where it landed:
@@ -125,24 +135,6 @@ export function Dealer({
             stage.ts's DEALER_SEAT_OVERHANG_PX rather than absorbed silently --
             and step 2 hands ~39px straight back when the status row below folds
             into the plate. */}
-        {bankerWallet !== undefined && (
-          <BankPanel
-            bankerWallet={bankerWallet}
-            reserved={reserved}
-            // The banker's turn status rides on the SAME line as their total.
-            // That line is already allocated, so carrying the tag here costs
-            // the column nothing -- which is the whole reason the status row
-            // below the hand could be deleted rather than relocated again.
-            status={
-              statusInfo.label ? (
-                <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
-                  {isActive ? "Bank playing" : statusInfo.label}
-                </div>
-              ) : null
-            }
-          />
-        )}
-
         <button
           type="button"
           className={clsx("k-plate", isActive && "is-active", isOffline && "is-offline")}
@@ -236,6 +228,24 @@ export function Dealer({
             and the status tag rides in the header row above it -- both rows
             that already existed, so the column is a whole row shorter than it
             was. See docs/mobile-ui.md Part 2 rule 3. */}
+
+        {bankerWallet !== undefined && (
+          <BankPanel
+            bankerWallet={bankerWallet}
+            reserved={reserved}
+            // The banker's turn status rides on the SAME line as their total.
+            // That line is already allocated, so carrying the tag here costs
+            // the column nothing -- which is the whole reason the status row
+            // below the hand could be deleted rather than relocated again.
+            status={
+              statusInfo.label ? (
+                <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
+                  {isActive ? "Bank playing" : statusInfo.label}
+                </div>
+              ) : null
+            }
+          />
+        )}
 
         {canAct && (
           <div className="flex gap-2">
