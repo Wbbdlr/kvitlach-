@@ -25,7 +25,17 @@ export const FELTS: Record<FeltName, Felt> = {
   navy: { hi: "#24405e", lo: "#0d1a2b", rail: "#3a3320", label: "Navy", bet: "#d9a441", hit: "#c2622a", stand: "#5a3d7a" },
 };
 
-export const DEFAULT_FELT: FeltName = "green";
+// Navy, not the green this shipped with. Green is also the felt every one of
+// the twelve capture viewports photographs, and the felt-contrast audit
+// (e2e/tests/felt-contrast.spec.ts) measures it as the WORST of the three for
+// text sitting on the felt -- 3.1:1 for the shoe/discard captions against
+// navy's 3.5:1. Changing the default does not fix that (the fix is that those
+// captions carry their own background), but it is worth knowing the default
+// and the worst case were the same colour.
+//
+// Only affects clients with nothing saved: loadFelt() below prefers
+// localStorage, so anyone who has ever picked a felt keeps theirs.
+export const DEFAULT_FELT: FeltName = "navy";
 
 const STORAGE_KEY = "kvitlach.felt";
 

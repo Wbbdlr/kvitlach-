@@ -82,6 +82,29 @@ holds four such constants (`VIEWER_PLATE_TOP_CONST = 205.75 / 2`,
 A longer name, a wrapped tag or a fifth card invalidates them silently. Put the
 element in a container that bounds it instead.
 
+**2b. Contrast is containment too: anything over the felt owns its own
+background.**
+Same rule, other property. The felt is a *user preference* — `theme.ts`'s
+`FELTS` is green / burgundy / navy, per-client, in `localStorage`, never synced
+— so text reading straight off it has its legibility decided by a value it does
+not control, in someone else's browser. Never measure contrast once against
+"the background"; there are three, and the player picks.
+
+An element therefore paints `var(--felt-scrim)` behind itself, and any state
+tint composites **over the scrim**, not over the felt (`.k-tag` does this with
+`--tag-tint`). A scrim is fine where a solid slab reads as chrome bolted to the
+table; a 6% wash is not a background.
+
+Found by audit, not by eye: the shoe and discard captions had no background at
+all and ran **3.1:1 on green, 3.8:1 on burgundy** — a 23% swing, both under AA —
+and `.k-tag.muted`, on every idle seat, ran 4.3:1. Green was the default at the
+time, so the worst case was what most players actually saw. Pinned by
+`e2e/tests/felt-contrast.spec.ts` across all three felts.
+
+`--felt-scrim` is **one token**. If some element ever wants a different value,
+change the token or write down why that element genuinely differs — forking it
+quietly is how one constant becomes the eight measured ones Part 6 records.
+
 **3. Per-entity state rides on its entity, in a fixed-size box.**
 The dealer's total and status belong *on* the dealer's plate as badges, not in a
 sibling row beneath it that pushes everything below. A component whose height

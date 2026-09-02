@@ -51,6 +51,19 @@ const VIEWPORTS = [
   { name: "854x384-galaxy-s22", width: 854, height: 384, dpr: 3 },
   { name: "915x412-galaxy-s22-ultra", width: 915, height: 412, dpr: 3 },
   { name: "1512x950-desktop", width: 1512, height: 950, dpr: 2 },
+  // The felt is a user preference (theme.ts's FELTS), and every capture above
+  // takes whatever is default -- navy. Green went unphotographed for the whole
+  // life of the project while it WAS the default, which is how three elements
+  // reading straight off the felt at 3.1:1 survived twelve viewports.
+  //
+  // The other two felts get one viewport each rather than twelve, because the
+  // two axes are independent: layout is a function of viewport and does not
+  // change with colour, colour is a function of felt and does not change with
+  // viewport. Twelve times three would cost ~10.5 minutes to re-photograph the
+  // same geometry in different hues. The felt-contrast spec asserts all three
+  // on every element anyway; these exist so a human sees them.
+  { name: "854x384-burgundy", width: 854, height: 384, dpr: 3, felt: "burgundy" },
+  { name: "854x384-green", width: 854, height: 384, dpr: 3, felt: "green" },
 ];
 
 // WORST-CASE content, not placeholders -- most overlap bugs only show with
@@ -118,6 +131,13 @@ for (const vp of VIEWPORTS) {
       hasTouch: vp.width < 900,
     });
     const page = await context.newPage();
+    if ("felt" in vp && vp.felt) {
+      // theme.ts reads this on mount, so it must be set before the first
+      // paint -- otherwise the capture catches the default mid-swap.
+      await page.addInitScript((name) => {
+        window.localStorage.setItem("kvitlach.felt", name);
+      }, vp.felt);
+    }
     const dir = join(OUT, vp.name);
     // try/finally, not a close on the happy path: a capture that throws
     // (or a run killed partway) otherwise leaves the context -- and its
