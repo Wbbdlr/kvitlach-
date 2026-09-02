@@ -2083,8 +2083,19 @@ body:has(.k-fit) {
      k-futch-flash's own explanatory half above. (The Beta badge used to be
      dropped here too; removed outright in TableRoot.tsx, not just hidden
      at this breakpoint, so this rule no longer needs to mention it.) */
+  /* NOT hidden any more. The rule above is the reasoning that put it here and
+     it is kept because the measurements are still true -- but its premise is
+     gone. .k-chrome-top was an unbounded wrapping row of eight-plus controls
+     when that was written; it is now `⋯` + Leave at this breakpoint, because
+     ChromeMenu collapses the rest behind one button and the row is nowrap
+     (ledger #2, step 3b). The swatches and the "?" that were landing on the
+     tagline are not in the row at all.
+     Reported by a tester who noticed the tagline had gone from their phone --
+     it had, deliberately, to solve a crowding problem that no longer exists.
+     If the row ever grows again this is the first thing to give, exactly as
+     the note above says. */
   .k-logo-tag {
-    display: none;
+    letter-spacing: 0.18em;
   }
   /* ChipSwitcher used to be hidden outright here: as a persistent 124px
      cluster in .k-chrome-top it blew a razor-thin row budget (~2px of spare

@@ -346,6 +346,43 @@ run that confirmed the fix.
 |---|---|---|
 | F1 | **The banker's reactions have never appeared.** `Dealer.tsx` renders no `.k-reaction` at all — `Seat.tsx` does, `Dealer.tsx` does not | Functional, not layout: the feature has never worked for one participant. Must not be absorbed into step 3 and quietly closed as "reactions refactored" — it needs its own fix and its own test |
 
+### Reported by testers — a category of its own
+
+One live session with real players found things twelve screenshot viewports and
+three test suites did not. That is not a gap to close by adding viewports; it is
+a different **kind** of observation, and it is worth naming so it keeps its own
+weight in triage:
+
+- A sweep photographs **one moment, one viewpoint, one preference set**. It
+  cannot see anything that only appears over time (backgrounding, reconnect),
+  anything that depends on who is looking (T7), or anything that is *present and
+  wrong* rather than absent.
+- A test asserts what somebody already thought to assert. Every item below was
+  in code that passed its suite.
+- Testers report **symptoms, not causes**, and the symptom often names the wrong
+  layer — "players are shifting seats" was a turn-order variable, "the lines are
+  gone" is a collinear anchor, and "no alert when the banker wins" may not be a
+  layout bug at all.
+
+Findings, kept separate from the sweep ledger above so their provenance is not
+lost:
+
+| # | Reported as | Diagnosis | State |
+|---|---|---|---|
+| T1 | Players visibly change seats between rounds | Seat geometry was derived from `round.turns`, which the server rotates every round on purpose — one array doing two jobs | **Fixed** — `orderTurnsBySeat`, `seatOrder.test.ts` |
+| T2 | Backgrounding the browser gives a black screen and a slow reload | Two failures, one symptom. (a) tab discarded → cold reload; state *is* recovered by `room:resume`, so this is paint + speed, and the black is `index.html` having no shell and no inline critical CSS. (b) tab kept, socket dead, and the reconnect backoff counts down while the tab is frozen → up to 15s of looking broken **after** returning | Diagnosed, not built |
+| T3 | Banker's chip controls overlap other elements | Not yet diagnosed | Open |
+| T4 | Pinch-to-zoom missing or broken | Not yet diagnosed. Interacts with the fixed-scale stage — whatever it does must compose with `--stage-scale`, not fight it | Open |
+| T5 | Bank total and reserved/free sit too high; viewer's readout is stranded in a corner; empty band between felt and dock | Every placement decision in this refactor was driven by phone landscape, where the centre column is over-subscribed. On a desktop the problem is **inverted** — the middle is empty and the extremes are far away. `COMPACT_QUERY` already distinguishes the two cases; placement should say so out loud rather than pretending one position serves both | Open |
+| T6 | Reservation connector lines and the chip have disappeared | Not disappeared — collapsed. The pot anchor moved to `STAGE_WIDTH / 2` when the bank pill left the felt, and the viewer's own seat is bottom-**centre**, so the line to the one wager that always exists has no horizontal run and hides behind the dealer's cards at one end and the viewer's at the other. On a phone the seats fan wide enough to make it diagonal, which is why the sweep never showed it | Open — regression, introduced by step 1 |
+| T7 | Tagline gone from the top of the phone screen | Deliberately hidden at the compact breakpoint, to solve crowding in a chrome row that no longer exists — 3b collapsed that row to `⋯` + Leave | **Fixed** — the rule's reasoning is kept, its `display: none` is not |
+| T8 | Own cards are tiny at a nine-player table and hard to read | `seatScale()` returns ONE scale for every player seat, set by the tightest pair anywhere on the arc; the dealer is exempt and renders full size. The viewer's seat now carries only cards (its plate moved to the HUD in step 1), so it has room the others do not | Open |
+| T9 | Bots bust on every 11 — they never claim Eleveroon | Backend bot policy, not layout. Independent of everything else here | Open |
+| T10 | No alert when the banker wins / futches | Possibly the same shape as F1: a participant the UI treats as "not a seat" missing an affordance every seat gets | Open — diagnose before fixing |
+| T12 | Toasts are still bottom-left, sharing the corner with the viewer's readout | The both-corners split was agreed and never built — it is step 3's compact path, which was deferred behind 3b and then behind the scrim. The right corner is empty at every phone size (confirmed in the eleven-seat captures) | Open — agreed design, unbuilt |
+| T13 | Reactions are tiny and unreadable at a crowded table | Ledger #4 and #5, still on their patched path. Both were logged as "closed properly by step 3", and step 3 has not landed. Same root cause as T8: `seatScale` shrinks a seat's *information* along with its geometry, and a reaction is the one thing on the felt whose whole purpose is to be read from across the table | Open — the case step 3 exists for |
+| T11 | The viewer's own readout should be draggable and resizable on mobile, and stay where it is put | A product decision that cuts against Part 2: a player-positioned box can cover anything, so it needs its own bounds (stay on screen, persist, and never occlude the dock or the felt's centre). Worth doing, but it does not remove the need for a sensible default position — T5 still has to be answered | Open |
+
 ---
 
 ## Part 7 — The refactor
