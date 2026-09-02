@@ -166,6 +166,38 @@ showing, exactly as on a seat.
 
 ---
 
+### Rule 5 — reserve the space, don't rely on the gap
+
+Two failures, one shape, both found on a build that passed everything.
+
+**A transform is invisible to layout.** `--k-hand-scale` above 1 grew the
+viewer's hand upward into the turn timer; nothing in flow moved, so nothing in
+flow protected the bar. Measured on live v9.5 at 854x384: bar 193-194, hand
+starting at 190. Fixed by pinning `transform-origin: top center` so the top edge
+cannot move at any scale — not by widening a gap, which only holds at the scale
+it was measured at.
+
+**Space that exists only while something is running is not reserved.** The timer
+row was mounted only during a timed turn, so the column had one height with a
+timer and another without, and a dealt card had nothing holding the bar's place.
+Anything belonging to a player is now a permanent row in that player's seat,
+painted only when live. If a row's presence is conditional, its space must not
+be.
+
+When a permanent row changes a seat's real height, the constants calibrated to
+that height move with it — `SEAT_HEIGHT` 200 -> 210, `VIEWER_SEAT_HEIGHT`
+224 -> 233. A constant that no longer describes what renders is worse than none.
+
+### Rule 6 — a comment can outlive the layout it describes
+
+The reservation connector lines started at the dealer's deck, defended by a
+comment explaining that the bank pill had "left the felt entirely for the HUD
+frame". T5 had put it back on the felt. The reasoning read as sound while the
+thing it justified had become wrong, and nothing re-read it.
+
+When you move an element, grep for its name in comments, not just in code.
+
+
 ## Part 3 — Z-index tiers
 
 Eighteen ad-hoc values (1, 2, 9, 10, 11, 12, 20, 25, 30, 40, 42, 45, 46, 48, 50,
@@ -427,6 +459,49 @@ spacing on the 4/8/12/16/24/32/48 scale or commented · tap targets ≥ 44×44 �
 rendering crisp · no raw `z-index` values · nothing breaks at any tested size.
 
 ---
+
+### An allowlist entry is not coverage
+
+`phone-layout.spec.ts` checks an allowlist of classes. Naming a class in it does
+nothing unless a phase actually renders that class, and nothing said so.
+
+- **The discard pile** sat in the list while no phase produced it.
+- **`k-bank-split`** had been listed since it was added and has never rendered in
+  any phase.
+- **`turn-bar-track`** could not have been caught even if listed: the sweep finds
+  elements via `[class*='k-']` and keeps only `k-`-prefixed classes, and the bar
+  did not follow the convention. Renamed `k-turnbar`. A second filter dropped
+  anything under 8px, which a 110x3 bar is; that floor is now 1px, because the
+  allowlist is already the judgement about what matters.
+
+Each run now reports which listed classes never rendered. Printed, not failed —
+some absences are legitimate — but nobody being told is not.
+
+### Choose the list by positioning independence
+
+Only elements that can move independently can collide. An element out of flow
+can; in-flow siblings in one container cannot, by construction. Of 41 visible
+classes, 11 are independently positioned and 30 are flow-bound.
+
+Three of the 11 are absolute but positioned relative to a listed ancestor, so
+they move with it and add noise. Three are full-width containers, which must stay
+out: a container always intersects its own contents, which is the false positive
+`.k-topbar` and `.k-hud-row` each produced once. Ancestor/descendant pairs are
+skipped by the sweep, so a parent standing in for its children is correct.
+
+The gap that remains is elements that ARE independently positioned over the felt
+but conditionally rendered: `k-bank-banner`, `k-bank-decision`, `k-elev-badge`,
+`k-preround`. `bank-prompt.spec.ts` exercises the first two by assigning
+`innerHTML` into injected divs, which proves the CSS and not that the game ever
+puts them there.
+
+### Sizes, not just phones
+
+Every viewport in the sweep was a landscape phone, so the widths where the
+branding cluster and the chrome row collided — reported with a screenshot at a
+maximized desktop window — were never rendered. The list now includes 1512x950
+and 1024x640.
+
 
 ## Part 7 — Stage geometry
 

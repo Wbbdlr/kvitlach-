@@ -203,6 +203,20 @@ assertions.
   need forgiving hitboxes and real separation.
 - Respect safe-area insets — `viewport-fit=cover` is already set.
 
+## Context economy
+
+Context is the scarce resource in a long session, not tokens on a bill.
+
+- **Default to concise reports.** Lead with what changed, what it fixed, and the
+  verification result. Keep reasoning to what the reader needs to make a
+  decision; offer the detail rather than including it.
+- **Never paste large tool output into chat** — measurement dumps, element
+  enumerations, whole files, long logs. Write them to a file and summarise in a
+  few lines. A number and its meaning beat the table it came from.
+- **Read the part of the file you need**, not the whole file, when a targeted
+  read will do. Grep for the anchor, then read the range.
+- **Say when context is getting long**, and say what is safe to drop.
+
 ## Constraints
 
 - **Never `docker compose down -v`** — it destroys the Postgres volume.

@@ -190,3 +190,31 @@ The z-index tiers (Part 3) land **as part of** this work, not as a later cleanup
 the first three and carries the single-source enforcement for both query strings.
 
 ---
+
+## 3 — Closed after the refactor (v9.5 -> v9.6)
+
+Reported against the live v9.5 build, all measured before and after.
+
+| # | Report | Cause | Result |
+|---|---|---|---|
+| H1 | Cards cover the turn timer, mobile only | `--k-hand-scale` > 1 with centre `transform-origin` grew the hand upward; a transform is invisible to layout. Exactly 1 on desktop, which is why it was mobile-only | −4.7px → **+2.9px** at 854×384 |
+| H2 | Reserved chips "nowhere near the player's spot" | Placed at a fraction along the bank→seat line, so derived from where the *bank* is. `isPlaceable` then dropped any chip whose seat was too close to the bank — which is the viewer's own seat, by construction | Anchored above its own seat; viewer's beside their cards |
+| H3 | Reaction emoji unreadable | The compact sizing rule sat ~1500 lines above the base rule; a media query adds no specificity, so it had never applied on any phone. The 16px clamp ceiling then capped the counter-scale | 4.88 → **10.0 real px** at 390×844 |
+| H4 | `…` menu pushed around during play | Anchored to its own button inside a `justify-content: flex-end` row, so any control to its right changing width dragged it | −67px → **0px** |
+| H5 | Dialogs look nothing like the menu | They were still on the light Tailwind palette — `bg-white` panels over a dark table. Seven near-duplicate surface strings | One `--k-surface`; worst contrast 5.28:1 |
+| H6 | Connector lines come out of the dealer's deck | The anchor is the dealer box's centre, and the deck sits at that centre. Defended by a comment describing a layout T5 had already changed | Origin inside the bank readout |
+| H7 | Readout stranded in the bottom-left corner | Anchored to the stage's left edge while the controls panel is centred and content-width — the two had no relationship | `hud.x == dock.x`, 8px above |
+| H8 | Maker's mark not in Cinzel | `JSON.stringify()` used to quote the font stack; HTML does not understand `\"`, so one attribute parsed as seven and `font-family` resolved to a backslash. Never rendered in Cinzel on any platform | Fixed; face loads |
+
+**H8 is the one worth re-reading.** It survived because the fallback is
+metrically almost identical for this one string — 724px vs 722.5px at 100px/600,
+0.2% apart — so nothing shifted and no frame misfit gave it away. In lowercase
+the same comparison is 655 vs 472. A defect with no visual tell needs a test that
+parses, not one that eyeballs.
+
+**Two were introduced during these fixes and caught by the sweep**, which is the
+argument for the sweep: `k-reaction` × `k-resv` at 63/52/40% when the chip moved
+above the seat, and `k-hand` × `k-viewer-hud` at 800×360 when the readout moved
+above the dock. A third — the readout collapsing to 36px wide in round states
+with no dock — was caught only by a screenshot, because a wrapped panel is ugly,
+not overlapping.
