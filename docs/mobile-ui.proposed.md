@@ -1,26 +1,21 @@
 # Mobile UI & layout — the design contract
 
-What goes where, why, and how it is verified. **Read Part 1 before writing any
-layout code**; the rest is reference.
+The rules. What produced them is in [mobile-ui-history.md](mobile-ui-history.md) —
+every constant here was measured, and the measurement lives there.
 
-This file holds only what constrains NEW work. The bug ledger and the refactor
-that closed it moved to [mobile-ui-history.md](mobile-ui-history.md) — worth
-reading once, not worth carrying in every session. Six of that ledger's ten
-bugs were one structural bug wearing six hats, and Part 1 is what stops the
-seventh.
-
----
+Most players are on a phone, in landscape. Minimum supported: **360px wide
+portrait**, **640×360 landscape** for the table.
 
 ## Part 1 — The scene / HUD frame split
 
-The table renders in **two layers that must never be mixed**.
+**A landscape phone has room for three rows: the dealer, the cards, and you.**
+Everything else must live in the HUD frame or not exist. That budget is the
+reason for the split, and it is not negotiable by making something smaller.
 
 ### Scene — inside the scaled stage
 
-A fixed **1280×760** virtual stage, uniformly scaled to the viewport
-(`table/stage.ts`), flattened vertically by `--vf`. Positioned in stage units.
+Positioned in 1280×760 stage units, scaled to the viewport.
 
-Only things whose **position carries meaning** belong here:
 
 | In the scene | Why |
 |---|---|
@@ -32,10 +27,8 @@ Only things whose **position carries meaning** belong here:
 
 ### HUD frame — outside the stage, viewport-anchored
 
-True viewport pixels. Never scaled. Anchored to the viewport's edges and safe
-areas, laid out in **flow** (flex with `gap`), with real tap targets.
+Flat px, never scaled. Chrome, not table.
 
-Everything else belongs here — **every number, every status, every button**:
 
 | In the frame | Where |
 |---|---|
@@ -46,112 +39,33 @@ Everything else belongs here — **every number, every status, every button**:
 | reactions | the reaction lane (Part 3) |
 | every drawer, modal and menu | overlay tiers |
 
-### Why the split is absolute
+**Which is it?** A place on the table goes in the scene; a thing being told to
+the player goes in the frame; anything answering "both" is two elements. Nothing
+in the frame may be positioned from a scene measurement, or the reverse.
 
-Overlap inside a flow container is *structurally impossible*. You don't tune
-it, verify it, or guard it — it cannot happen. Every recurring bug in Part 6
-came from a readout living in the scene and being positioned by arithmetic
-instead of by flow.
+## Part 2 — The six rules
 
-The arithmetic is unwinnable, and here is the proof. At 844×390 — a real
-landscape phone — subtract the top chrome (44px) and the dock (54–66px) and
-**~280px of vertical play space remains**. The design puts three stacked rows
-in it: the dealer's box (~75px), the bank cluster (24px), and the viewer's own
-seat (132–205px depending on crowding). Dealer + viewer alone is 207–280px. At
-a full table that is the entire budget, exactly.
+**Rule 1 — one owner per axis.** Each element's x and y come from exactly one
+source: a stage coordinate, a flow container, or a viewport anchor. Never two.
 
-**A landscape phone card table has room for three rows: dealer, cards, you.
-There is no fourth row.** `bankPanelTop()` is a function computing the gap
-between two walls that already touch; it has no correct answer, and every past
-fix was a better wrong one.
+**Rule 2 — position by containment, never by measuring a sibling.** If B must sit
+below A, put B *inside* something that ends where A ends. Do not read A's height
+and offset B by it. A shared stage coordinate is containment; a rendered
+measurement is not.
 
----
+**Rule 2b — contrast is containment too.** Anything over the felt owns its own
+background. Text on raw felt is not legible at every felt colour, and the felt is
+player-chosen. Composite scrim → tint → ink, in that order, and hold **4.5:1**.
 
-## Part 2 — The four rules
+**Rule 3 — the scene scales, the frame does not.** Nothing in the frame may
+inherit `--stage-scale`. Anything in the scene that must stay legible
+counter-scales with `clamp(min, calc(target / var(--stage-scale)), max)` — and the
+ceiling must be high enough to still reach `target` at the smallest stage the
+table draws at, or the clamp silently cancels the compensation.
 
-**1. Nothing persistent floats in the vertical centre of the felt.**
-The centre column holds cards and nothing else. Persistent numbers live at the
-frame's edges. This is universal in shipped mobile games — Hearthstone's mana,
-Balatro's score, every poker app's pot and blinds sit on the chrome, never on
-the board. A readout on the felt is competing with the only content that has
-to be there.
+**Rule 4 — one reaction slot per seat, with a queue.** Bubbles are anchored to
+their seat and never float. Compact fallback policy:
 
-**2. Position by containment, never by measuring a sibling's rendered height.**
-If a layout formula references another component's measured size, the layout is
-already broken — it just hasn't been photographed yet. A longer name, a wrapped
-tag or a fifth card invalidates it silently, and the failure shows up on
-somebody's phone rather than in a suite.
-
-Every constant of this kind has now been deleted rather than corrected —
-`BankPanel.tsx` once held four (`VIEWER_PLATE_TOP_CONST`, `DEALER_BOTTOM_CONST`,
-`DEALER_STATUS_ROW_H`, `BANK_PILL_HEIGHT`) and searched for a gap between them;
-there was no gap. `--controls-band: 84px` was the last one, a guessed dock
-height that the dock had already outgrown. Both are gone, so this rule now has
-no live counter-example — which is the point, and also why it is worth stating:
-the next one will look reasonable too.
-
-The same rule reaches past pixels. `seatScale()` is a nameplate-collision
-number, and applying it to a whole seat shrank the cards, the reaction bubbles
-and the bank's badges along with it — three things that collide with nothing.
-**Ask what a number MEANS before reusing it, not just what it is currently
-equal to.**
-
-**2b. Contrast is containment too: anything over the felt owns its own
-background.**
-Same rule, other property. The felt is a *user preference* — `theme.ts`'s
-`FELTS` is green / burgundy / navy, per-client, in `localStorage`, never synced
-— so text reading straight off it has its legibility decided by a value it does
-not control, in someone else's browser. Never measure contrast once against
-"the background"; there are three, and the player picks.
-
-An element therefore paints `var(--felt-scrim)` behind itself, and any state
-tint composites **over the scrim**, not over the felt (`.k-tag` does this with
-`--tag-tint`). A scrim is fine where a solid slab reads as chrome bolted to the
-table; a 6% wash is not a background.
-
-Found by audit, not by eye: the shoe and discard captions had no background at
-all and ran **3.1:1 on green, 3.8:1 on burgundy** — a 23% swing, both under AA —
-and `.k-tag.muted`, on every idle seat, ran 4.3:1. Green was the default at the
-time, so the worst case was what most players actually saw. Pinned by
-`e2e/tests/felt-contrast.spec.ts` across all three felts.
-
-`--felt-scrim` is **one token**. If some element ever wants a different value,
-change the token or write down why that element genuinely differs — forking it
-quietly is how one constant becomes the eight measured ones Part 6 records.
-
-**3. Per-entity state rides on its entity, in a fixed-size box.**
-The dealer's total and status belong *on* the dealer's plate as badges, not in a
-sibling row beneath it that pushes everything below. A component whose height
-varies with its content must not be something another component is anchored to.
-
-**4. A transient message stays attached to whoever sent it, and its space is
-reserved before it arrives.**
-
-A reaction bubble points at the player who sent it, with a tail, always — at a
-table of eleven, the tail is the only thing saying *who spoke*. That rules out
-the single fixed lane an earlier draft of this rule called for: a lane cannot
-point at anyone.
-
-It also rules out the obvious alternative — anchoring to the seat and then
-positioning the bubble "somewhere it does not cover anything". That is
-position-by-knowing-your-neighbours, the exact class of rule this document
-exists to delete, and it is how bug #4 happened (the bottom-centre seat's
-"above" turned out to be the dealer's row).
-
-The containment answer is a **reserved slot**: every seat allocates a
-fixed-size bubble band whether or not a bubble is showing. A bubble that appears
-occupies space that was already accounted for, so it cannot displace or cover
-anything, and nothing has to be measured or avoided. The cost is that the band
-is empty most of the time — see [mobile-ui-history.md](mobile-ui-history.md)
-for what that cost at 640×360 and what happened where the budget would not
-carry it.
-
-**The reservation applies inside the HUD too, not just on the felt.** Where the
-compact fallback puts the bubble in the bottom-left HUD column, that column
-already holds the viewer's own plate. A bubble that *grows* the column and
-pushes the plate is the corridor problem rebuilt somewhere new — the same shape
-as ledger #6 and #7. The slot is allocated there whether or not a bubble is
-showing, exactly as on a seat.
 
 **Queue policy** (an unstated queue is a bug waiting for a full table):
 
@@ -166,43 +80,23 @@ showing, exactly as on a seat.
 
 ---
 
-### Rule 5 — reserve the space, don't rely on the gap
 
-Two failures, one shape, both found on a build that passed everything.
+**Rule 5 — reserve the space, don't rely on the gap.** A transform is invisible to
+layout: pin `transform-origin` so a scaled element cannot grow into its
+neighbour, rather than widening a gap that only holds at the scale it was
+measured at. And space that exists only while something is running is not
+reserved — if a row's *presence* is conditional, its *space* must not be. When a
+permanent row changes a seat's real height, move the constants calibrated to that
+height with it.
 
-**A transform is invisible to layout.** `--k-hand-scale` above 1 grew the
-viewer's hand upward into the turn timer; nothing in flow moved, so nothing in
-flow protected the bar. Measured on live v9.5 at 854x384: bar 193-194, hand
-starting at 190. Fixed by pinning `transform-origin: top center` so the top edge
-cannot move at any scale — not by widening a gap, which only holds at the scale
-it was measured at.
-
-**Space that exists only while something is running is not reserved.** The timer
-row was mounted only during a timed turn, so the column had one height with a
-timer and another without, and a dealt card had nothing holding the bar's place.
-Anything belonging to a player is now a permanent row in that player's seat,
-painted only when live. If a row's presence is conditional, its space must not
-be.
-
-When a permanent row changes a seat's real height, the constants calibrated to
-that height move with it — `SEAT_HEIGHT` 200 -> 210, `VIEWER_SEAT_HEIGHT`
-224 -> 233. A constant that no longer describes what renders is worse than none.
-
-### Rule 6 — a comment can outlive the layout it describes
-
-The reservation connector lines started at the dealer's deck, defended by a
-comment explaining that the bank pill had "left the felt entirely for the HUD
-frame". T5 had put it back on the felt. The reasoning read as sound while the
-thing it justified had become wrong, and nothing re-read it.
-
-When you move an element, grep for its name in comments, not just in code.
-
+**Rule 6 — a comment can outlive the layout it describes.** When you move an
+element, grep for its name in comments, not just in code. A stale justification
+reads as sound while the thing it defends has become wrong.
 
 ## Part 3 — Z-index tiers
 
-Eighteen ad-hoc values (1, 2, 9, 10, 11, 12, 20, 25, 30, 40, 42, 45, 46, 48, 50,
-60, 70, 80) collapse to **twelve named tiers**, declared once as custom
-properties on `:root`. Gaps of 10 and 100 leave room to insert without renumbering.
+One scale, named, in `index.css`. Never a bare number, never a local `+1`.
+
 
 Use the token. **A raw `z-index` number in new code is a bug**, as is a Tailwind
 `z-[n]` / `z-30` utility.
@@ -237,81 +131,26 @@ Three deliberate ordering changes, called out so they aren't read as accidents:
 
 ---
 
+
+Cross-tier overlap must be deliberate and commented; two things overlapping
+*within* a tier is a Rule 1 problem, not a tier problem.
+
 ## Part 4 — Orientation is per-surface, and fixed
 
-Settled product design, not a stopgap. Kvitlach is played on phones, in
-landscape, one device per player.
+The table **requires landscape on a handheld** and is gated in portrait there.
+**Larger viewports render the table in any orientation** — the stage scales to
+fit, so a 768×1024 portrait tablet is a supported surface, not a broken one. The
+lobby, landing and About/Contact/Disclaimer pages are portrait, ordinary
+responsive pages.
 
-State the constraint precisely — the short version ("the table is landscape
-only") is false, and a false simplification in a contract is how the next
-orientation bug gets built:
+**The gate must be total.** When it is up the table is not rendered, measured or
+animated behind it — a covered table still runs its layout, and a stage measured
+while hidden produces a stale `--stage-scale` on the first paint after rotation.
 
-| Surface | Constraint | Architecture |
-|---|---|---|
-| **Table, handheld** (`isHandheld()`, short edge ≤ 820px) | **Requires landscape.** Portrait is gated, not laid out | scaled stage + HUD frame |
-| **Table, larger viewports** (tablet, desktop) | **Any orientation.** The stage scales to fit and a 768px portrait tablet has vertical room to spare | same |
-| **Lobby, landing, About/Contact/Disclaimer** | **Portrait** | ordinary responsive page (`PageShell`) |
+### The three portrait predicates
 
-A portrait tablet playing the table is **the stage working as designed**, not a
-half-supported orientation state. It is a supported surface, so it is
-photographed on every sweep (Part 8), not spot-checked.
+Three different questions. Never collapse them into one helper.
 
-**Do not build, stub, or leave hooks for a portrait *phone* table layout** — that
-is the case the gate exists to refuse. Do not pull the lobby into the stage
-architecture or its landscape assumptions. They are separate surfaces with
-separate rules.
-
-### Where the boundary sits
-
-`App.tsx:419` — the `room ? <TableRoot/> : <lobby + footer/>` branch. That
-ternary *is* the orientation boundary. Everything under `TableRoot` is
-landscape; everything in the other arm is portrait.
-
-The transition is driven by `table/immersive.ts`:
-
-- `enterImmersive()` — called synchronously from the Join / Create / Play tap
-  handlers (`App.tsx:355, 370, 383, 898`); requests fullscreen, then locks
-  landscape. Must stay inside the gesture or the browser refuses it.
-- `exitImmersive()` — called when leaving the room (`App.tsx:344`); unlocks and
-  exits, so nobody lands back on the portrait lobby still locked sideways.
-- `isHandheld()` — coarse pointer **and** short edge ≤ 820px. Phones only.
-
-Both are **best-effort by design**: iOS Safari implements fullscreen for
-`<video>` only, so every iPhone takes the refusal path and never rotates
-programmatically. The gate below is therefore not a fallback — for iOS it is
-the only mechanism, and it must work on its own merits.
-
-### The gate must be total
-
-Bug #1 came from a *half-handled* orientation state: `.k-rotate-hint` is a
-`pointer-events: none` banner pinned top-centre, and **the whole table renders
-underneath it**. On a 360px-wide portrait phone the chrome row wraps to three
-rows (measured 136px tall at 375×812) and lands mid-felt over the dealer's plate
-and a seat.
-
-The compensation code this spawned is itself a symptom, and all of it goes:
-`.k-chrome-top`'s portrait `+88px` offset (`index.css:1931`), `rotateHintShowing`
-in `TableRoot.tsx:261`, and the `useMediaQuery` string that has to be kept
-byte-identical to a CSS rule.
-
-**The replacement is opaque, full-screen, at `--z-gate`, and nothing else paints
-underneath it.** Not a banner over a broken layout — a door.
-
-**The gate keeps its own `max-width: 540px` bound. It is NOT keyed to
-`isHandheld()`.** `isHandheld()` matches a 768px portrait tablet (768 ≤ 820), so
-reusing it here would gate exactly the device that is meant to keep playing.
-This is the Part 2 rule #2 failure in predicate form: reusing a predicate that
-answers a different question. Which brings us to —
-
-### The three portrait predicates, and the question each one owns
-
-The portrait-lobby → landscape-table handoff carries three independent
-definitions of "small screen in portrait." They **answer different questions and
-are allowed to differ.** What must never happen is one being reused for
-another's question. Bug #9 was exactly that: a width-only test used for a
-question whose answer lives on the height axis.
-
-Each name below is repeated as a comment at its own definition site. If you add
 a fourth, name its question here first.
 
 | Predicate | Owns the question | Test | Why that test |
@@ -320,43 +159,21 @@ a fourth, name its question here first.
 | `GATE_QUERY` (the rotate gate) | *"Is this viewport too small to render the table in portrait at all?"* | `(orientation: portrait) and (max-width: 540px)` | Measures the **rendered viewport**. In portrait, width *is* the short edge. 540 keeps a 768px tablet playing — the one number that must not become 820 |
 | `COMPACT_QUERY` (`stage.ts`) | *"Is the rendered table cramped enough to need compact chrome and dock styling?"* | `(max-width: 520px), (max-height: 440px)` | An **OR across both axes**. The height arm is the one that catches a landscape phone, which is wide (854) but short (384). A width-only test here was bug #9 |
 
-### One source for each string
 
-A JS string that must stay byte-identical to a CSS rule, with nothing enforcing
-it, is the same failure mode as the measured constants Part 2 deletes — silent
-until a screenshot catches it. `frontend/src/table/breakpoints.ts` owns both
-query strings. Two different enforcement mechanisms, because the two queries do
-different jobs:
-
-- **`GATE_QUERY` has no CSS rule at all.** The gate controls *rendering* — the
-  table must not paint underneath it — which is a React decision, not a style.
-  `TableRoot` reads `useMediaQuery(GATE_QUERY)` and returns the gate instead of
-  the table. `.k-rotate-hint`'s media query is deleted outright, so there is
-  nothing left to drift from.
-- **`COMPACT_QUERY` keeps its CSS media queries** (it styles many rules across
-  `index.css`; driving them from JS would be worse). The TS constant is pinned to
-  the CSS by a test that reads `index.css` and compares — the same technique
-  `cardMark.test.ts` already uses to pin a TS constant to `tools/card-mark.py`.
-  Drift becomes a red test instead of a screenshot nobody took.
-
----
+**One source for each string.** Two copies of player-facing orientation copy
+drift, and the second is always the one a player reads.
 
 ## Part 5 — Safe areas are already correct. Do not regress them.
 
-`env(safe-area-inset-*)` is handled properly throughout `index.css`, **including
-the landscape left/right case that most builds miss** (`index.css:1495, 1578–1579,
-2191`) and the `viewport-fit=cover` in `index.html` that activates `env()` at all.
-Every use is `max(Npx, env(...))`, so browsers without `env()` fall back to the
-plain pixel value rather than to zero.
-
-The one subtlety worth preserving: inside the scaled stage, insets are divided by
-`--stage-scale` (`index.css:389, 393`) so a real-pixel inset stays a real-pixel
-inset after scaling. New frame-layer code is outside the stage and must **not**
-do that division.
-
----
+`viewport-fit=cover` is set. Every edge-anchored element already reads
+`env(safe-area-inset-*)` through a `max()`. Adding a new one means adding the
+inset too — and the right/left insets are not interchangeable, because a notch
+swaps sides with rotation.
 
 ## Part 6 — Verification
+
+**Never call a layout change done from reading code. Render it and look.**
+
 
 **While iterating**, capture ONE viewport — `854x384`, the size most of the
 reported bugs arrived at:
@@ -382,77 +199,13 @@ npm --prefix e2e run shot:menu         # the phone chrome menu, open
 ```
 
 **Browser concurrency is capped deliberately and must stay capped.** The sweep
-runs `workers: 1`, which also means ONE Chrome — Playwright's `browser` fixture
-is worker-scoped, so each viewport is a new BrowserContext inside one process,
-not a new process. Raising it multiplies Chrome processes, not throughput. The
-regression suite runs `workers: 2` for the same reason: `seat-cap.spec.ts`
-alone drives thirteen live contexts.
+runs `workers: 1`, the regression suite `workers: 2`. Playwright's `browser`
+fixture is worker-scoped, so each viewport is a new BrowserContext inside one
+process — raising the count multiplies Chrome processes, not throughput.
 
-**The E2E frontend serves a built bundle, not the dev server**, and should stay
-that way. The dev server serves every module as its own request and a fresh
-BrowserContext has an empty HTTP cache, so every new context paid for hundreds
-of round trips before its page was usable. Serving `dist` cut the suite from
-5.2m to 2.1m and exercises the artefact that actually ships.
-
-**Every timeout is bounded — `navigationTimeout` and `actionTimeout` included.**
-Playwright's navigation default is infinite. Leaving it there is what turned a
-stalled click into a bare "test timeout exceeded" naming no assertion, and cost
-three sessions of chasing a layout bug that did not exist.
-
-Portrait viewports split, exactly along Part 4's constraint — the capture keys
-off the same `(portrait and width ≤ 540)` bound the gate does, so the two cannot
-disagree about which devices are supported:
-
-- **360×640, 390×844, 414×896** — gated. One shot of the gate, then stop. There
-  is no playable portrait felt on a phone to photograph.
-- **768×1024** — **supported, so it plays a full round like any landscape
-  viewport.** A portrait tablet is a real surface; it gets photographed every
-  sweep rather than spot-checked.
-
-The capture drives real rounds through a real WebSocket, so it exercises
-**worst-case content**, not placeholders — this is the part that finds bugs:
-
-| worst case | how it gets there |
-|---|---|
-| longest plausible name | `LONG_NAME` fills the practice form ("Menachem Mendel") |
-| widest reaction bubble | picks the longest phrase in the picker; bubbles are `nowrap` |
-| fullest felt | `3-table-reaction` — dealt hand *and* a live bubble |
-| longest tags, discard pile | `4-table-resolved` — the pile does not render before this |
-| largest bank figures | reserved/free split only exists against a live wager |
-
-Add a state here rather than eyeballing it once. A screenshot nobody re-renders
-is worth less than the spec that keeps it honest.
-
-### Per-viewpoint state — screenshots are blind to this by construction
-
-**Anything that renders differently for "you" than for "them" needs an explicit
-test. A screenshot cannot catch it, ever.** Every capture is taken from one
-player's seat, so a thing that is correct from that seat and broken from every
-other one photographs perfectly.
-
-This is not hypothetical. Moving the viewer's identity into the HUD dropped
-their own Eleveroon star, which had lived on the seat avatar: every other player
-at the table could see that someone was calling it, and the one person who
-needed to see it could not. Twelve viewports of screenshots showed nothing,
-because the capture *is* that player. `App.tableView.test.tsx` caught it in
-seconds.
-
-The same shape is still open as ledger F1 — the banker's reactions have never
-rendered at all.
-
-When you change anything gated on `isMe`, `viewerId`, `isOwnerView`,
-`isViewerBanker`, or card concealment, write the test. Assert the **behaviour**
-("the player can see their own call"), not the location — the Eleveroon tests
-originally asserted the mark was inside `.k-seat`, which made them fail for the
-right reason but for the wrong stated cause.
-
-### What the images cannot tell you
-
-`e2e/tests/phone-layout.spec.ts` is the automated half: it asserts no two
-information-carrying elements overlap, at three real Galaxy landscape sizes,
-across three phases of a round. Screenshots catch what it is not looking at
-(anything outside its allowlist, anything at a viewport it does not cover); the
-spec catches what an eye skims past. Use both.
+**The E2E frontend serves a built bundle, not the dev server.** Keep it that way:
+a fresh BrowserContext has an empty HTTP cache, and the dev server serves every
+module as its own request.
 
 **Done checklist:** no unintended overlap · no clipped or truncated text ·
 spacing on the 4/8/12/16/24/32/48 scale or commented · tap targets ≥ 44×44 ·
@@ -460,48 +213,29 @@ rendering crisp · no raw `z-index` values · nothing breaks at any tested size.
 
 ---
 
+
 ### An allowlist entry is not coverage
 
-`phone-layout.spec.ts` checks an allowlist of classes. Naming a class in it does
-nothing unless a phase actually renders that class, and nothing said so.
+The sweep checks a list of classes; naming one does nothing unless a phase
+renders it. Each run reports which listed classes never appeared — read that
+line. The sweep also only sees classes following the `k-` convention, and only
+above a 1px floor.
 
-- **The discard pile** sat in the list while no phase produced it.
-- **`k-bank-split`** had been listed since it was added and has never rendered in
-  any phase.
-- **`turn-bar-track`** could not have been caught even if listed: the sweep finds
-  elements via `[class*='k-']` and keeps only `k-`-prefixed classes, and the bar
-  did not follow the convention. Renamed `k-turnbar`. A second filter dropped
-  anything under 8px, which a 110x3 bar is; that floor is now 1px, because the
-  allowlist is already the judgement about what matters.
+Choose the list by **positioning independence** — only elements that can move
+independently can collide:
 
-Each run now reports which listed classes never rendered. Printed, not failed —
-some absences are legitimate — but nobody being told is not.
+- **In:** independently positioned things carrying a player's information.
+- **Out:** containers (a container always intersects its own contents) and
+  elements absolutely positioned relative to something already listed.
+- Ancestor/descendant pairs are skipped, so a parent stands in for its children.
 
-### Choose the list by positioning independence
+Check desktop and tablet widths, not only phones: two independently-anchored
+chrome clusters collide at the widths where one grows wide enough to reach the
+other.
 
-Only elements that can move independently can collide. An element out of flow
-can; in-flow siblings in one container cannot, by construction. Of 41 visible
-classes, 11 are independently positioned and 30 are flow-bound.
-
-Three of the 11 are absolute but positioned relative to a listed ancestor, so
-they move with it and add noise. Three are full-width containers, which must stay
-out: a container always intersects its own contents, which is the false positive
-`.k-topbar` and `.k-hud-row` each produced once. Ancestor/descendant pairs are
-skipped by the sweep, so a parent standing in for its children is correct.
-
-The gap that remains is elements that ARE independently positioned over the felt
-but conditionally rendered: `k-bank-banner`, `k-bank-decision`, `k-elev-badge`,
-`k-preround`. `bank-prompt.spec.ts` exercises the first two by assigning
-`innerHTML` into injected divs, which proves the CSS and not that the game ever
-puts them there.
-
-### Sizes, not just phones
-
-Every viewport in the sweep was a landscape phone, so the widths where the
-branding cluster and the chrome row collided — reported with a screenshot at a
-maximized desktop window — were never rendered. The list now includes 1512x950
-and 1024x640.
-
+**Screenshots are blind to conditional state.** Anything conditionally rendered
+— banners, prompts, badges, the discard pile — needs a phase that produces it, or
+it is untested however it is listed.
 
 ## Part 7 — Stage geometry
 
