@@ -39,7 +39,13 @@ test("three clients agree on whose turn it is, and on how both players finished"
 
     // Server authority, checked on the client that would benefit from cheating:
     // the bank's hole card must already read concealed on a player's screen.
-    await expect(alice.getByText("Total: hidden")).toBeVisible({ timeout: 15_000 });
+    // "Bank " + DOT + " hidden", not "Total: hidden": the dealer's separate
+    // status row was deleted and the concealed total moved onto the banker's
+    // own nameplate (Dealer.tsx, docs/mobile-ui.md step 2). Asserting the
+    // wording, not the element, is the point -- this test is about server
+    // authority over the hole card, and it should follow that fact wherever
+    // it renders.
+    await expect(alice.getByText("Bank · hidden")).toBeVisible({ timeout: 15_000 });
 
     // --- Turn order, the actual point of this test ---
     // Alice is up, so her dock exists. Bob's must NOT -- canPlayerAct gates it

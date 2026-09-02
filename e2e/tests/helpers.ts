@@ -77,11 +77,27 @@ export async function playOutTurn(page: Page) {
 // The player's own resolved tag (WON/LOST/PUSH/FUTCHED!, never blank) as it
 // reads on one specific client's screen.
 export async function seatTag(page: Page, playerName: string): Promise<string> {
-  const text = await page
-    .locator(".k-seat", { hasText: playerName })
-    .locator(".k-tag")
-    .first()
-    .textContent();
+  // A player's OWN seat carries no nameplate and no status tag any more: both
+  // moved into the bottom-left HUD (ViewerHud.tsx, and Seat.tsx's identityInHud
+  // suppressing them on the felt), so on their own screen `.k-seat` filtered by
+  // their name matches nothing at all and this hung until the test timed out.
+  //
+  // Resolved here rather than at each call site, because every caller is asking
+  // the same question -- "what does THIS page say about that player's round?"
+  // -- and the answer spanning two elements is an implementation detail of
+  // where it renders, not of what is being compared. Both read statusInfo.label
+  // from selectors.ts, so the strings are directly comparable across clients.
+  //
+  // Identified positively (the HUD naming that player) rather than by the seat
+  // being absent, so a seat that simply has not rendered yet still waits on
+  // .k-seat instead of silently reading the wrong player's status. Safe at the
+  // desktop viewport these specs run at; the compact breakpoint hides
+  // .k-viewer-hud-name, and a mobile-sized caller would need its own handle.
+  const ownHud = page.locator(".k-viewer-hud", { hasText: playerName });
+  const tag = (await ownHud.count()) > 0
+    ? ownHud.locator(".k-viewer-hud-tag").first()
+    : page.locator(".k-seat", { hasText: playerName }).locator(".k-tag").first();
+  const text = await tag.textContent();
   expect(text).toBeTruthy();
   return text!.trim();
 }

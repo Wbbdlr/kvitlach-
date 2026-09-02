@@ -97,7 +97,17 @@ interface Overlap {
  * which is a property of the harness, not of the layout. Sampling positions
  * until they repeat measures the thing actually being waited for.
  */
-async function settle(page: Page, quietMs = 400, timeoutMs = 20_000): Promise<void> {
+// Waits until the felt stops moving -- and THROWS if it never does.
+//
+// It used to return quietly on timeout, which meant a run slow enough to still
+// be animating at the deadline went on to assert against a half-laid-out felt
+// and reported whatever it caught mid-flight as an overlap. That is the whole
+// explanation of this spec's intermittent failures at 800x360 and 854x384:
+// both pass every time on --workers=1 and only fail under contention, and the
+// pairs they reported were never reproducible. A silent fallthrough turns a
+// slow machine into a fake layout bug, which is worse than a red test, because
+// it sends someone looking for a collision that is not there.
+async function settle(page: Page, quietMs = 400, timeoutMs = 45_000): Promise<void> {
   const snapshot = () =>
     page.evaluate(() =>
       [...document.querySelectorAll(".k-hand img, .k-seat, .k-banktotal")]
@@ -115,6 +125,10 @@ async function settle(page: Page, quietMs = 400, timeoutMs = 20_000): Promise<vo
     if (current === previous && current.length > 0) return;
     previous = current;
   }
+  throw new Error(
+    `Layout never settled within ${timeoutMs}ms -- the felt was still moving, so any ` +
+      `overlap measured now would be an artifact of the animation, not a real collision.`
+  );
 }
 
 async function findOverlaps(page: Page): Promise<Overlap[]> {

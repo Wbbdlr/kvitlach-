@@ -88,7 +88,12 @@ test("the player past the seat cap is queued rather than seated, cannot act, and
 
     // The whole point of a queue rather than a hard cap: the player who sat
     // out is now in, and their own client is the one that has to show it.
-    await expect(queued.page.locator(".k-seat", { hasText: queued.name })).toHaveCount(1, { timeout: 30_000 });
+    // .k-viewer-hud, not their own .k-seat: a player's own seat no longer
+    // carries their name or total -- both moved into the bottom-left HUD
+    // (ViewerHud.tsx / Seat.tsx's identityInHud), so from THEIR view the seat
+    // is cards only and this locator matched nothing. The HUD renders exactly
+    // when they hold a seat in the round, which is what is being asserted.
+    await expect(queued.page.locator(".k-viewer-hud")).toHaveCount(1, { timeout: 30_000 });
     await expect(queued.page.getByText("You're queued")).toHaveCount(0);
 
     // Still exactly one person out -- the cap is a standing rule, not a

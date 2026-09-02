@@ -1,4 +1,5 @@
 import { test, expect, Locator } from "@playwright/test";
+import { seatTag } from "./helpers";
 
 // The one thing unit/component coverage structurally can't reach: two real
 // browsers, two real WebSocket connections, one real table -- see TASKS.md's
@@ -90,7 +91,13 @@ test("banker deals, a real second player plays a hand, banker resolves, both sid
     // own hand must already read concealed on the PLAYER's screen (server
     // authority -- sanitizeRound/totalDisplay -- never routed around
     // client-side).
-    await expect(player.getByText("Total: hidden")).toBeVisible({ timeout: 15_000 });
+    // "Bank " + DOT + " hidden", not "Total: hidden": the dealer's separate
+    // status row was deleted and the concealed total moved onto the banker's
+    // own nameplate (Dealer.tsx, docs/mobile-ui.md step 2). Asserting the
+    // wording, not the element, is the point -- this test is about server
+    // authority over the hole card, and it should follow that fact wherever
+    // it renders.
+    await expect(player.getByText("Bank · hidden")).toBeVisible({ timeout: 15_000 });
 
     // --- Player bets, then plays out whatever their real hand calls for ---
     await expect(player.getByRole("button", { name: "Bet", exact: true })).toBeVisible({ timeout: 15_000 });
@@ -115,15 +122,14 @@ test("banker deals, a real second player plays a hand, banker resolves, both sid
     // identically on both screens -- the banker's copy comes off the SAME
     // round:state broadcast as the player's own, so a mismatch here would
     // mean the two clients disagree about money, not just cosmetics.
-    const playerOutcomeOnOwnScreen = await player
-      .locator(".k-seat", { hasText: "Playerone" })
-      .locator(".k-tag")
-      .first()
-      .textContent();
-    expect(playerOutcomeOnOwnScreen).toBeTruthy();
+    // Through seatTag, not by hand: on the player's OWN screen their status no
+    // longer lives on the seat at all (it moved to the bottom-left HUD -- see
+    // the helper), and this spec had its own copy of the lookup that went on
+    // reading .k-seat and hung. One helper, one place to fix.
+    const playerOutcomeOnOwnScreen = await seatTag(player, "Playerone");
     await expect(
       banker.locator(".k-seat", { hasText: "Playerone" }).locator(".k-tag").first()
-    ).toHaveText(playerOutcomeOnOwnScreen!.trim());
+    ).toHaveText(playerOutcomeOnOwnScreen);
   } finally {
     await bankerContext.close();
     await playerContext.close();

@@ -21,7 +21,10 @@ export default defineConfig({
   // blew the 30s budget on contention alone -- the pre-existing full-round
   // spec included, which passes comfortably when run by itself. Raised rather
   // than worked around: the waits are legitimate, not a symptom.
-  timeout: 90_000,
+  // Raised again from 90s: with workers: 2 the three-browser specs can be
+  // paired with seat-cap's thirteen contexts, and two-players spent its whole
+  // budget on contention rather than on anything it was testing.
+  timeout: 120_000,
   fullyParallel: true,
   // Capped deliberately, and not just to be tidy: seat-cap.spec.ts drives 13
   // live browser contexts on its own, and at the default worker count it ran
@@ -47,6 +50,13 @@ export default defineConfig({
       env: { PORT: String(HTTP_PORT), WS_PORT: String(WS_PORT) },
       reuseExistingServer: false,
       timeout: 30_000,
+      // Playwright kills a webServer by killing the process GROUP on exit,
+      // but only for a run it gets to finish. SIGINT'ing it on Windows can
+      // leave the tsx/vite child alive holding the port, which then makes the
+      // NEXT run fail on --strictPort or silently reuse a stale backend.
+      // Asking for a graceful signal first, with a bounded wait before the
+      // hard kill, closes both.
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     },
     {
       // --strictPort: fail loudly instead of silently drifting to a free
@@ -64,6 +74,7 @@ export default defineConfig({
       env: { VITE_WS_URL: `ws://localhost:${WS_PORT}` },
       reuseExistingServer: false,
       timeout: 30_000,
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     },
   ],
 });

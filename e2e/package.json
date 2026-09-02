@@ -7,7 +7,9 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "install-browsers": "playwright install --with-deps chromium",
-    "screenshots": "playwright test --config screenshots.config.ts"
+    "screenshots": "playwright test --config screenshots.config.ts --project full",
+    "shot": "playwright test --config screenshots.config.ts --project quick --grep \"capture 854x384\"",
+    "shot:full-table": "playwright test --config screenshots.config.ts --project full --grep \"full table\""
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0"

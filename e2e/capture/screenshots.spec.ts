@@ -7,6 +7,18 @@ import { fileURLToPath } from "node:url";
 //
 //     npm --prefix e2e run screenshots
 //
+// Twelve viewports, each playing a real round over a live socket, is minutes
+// of wall clock -- too heavy to run on every edit. While ITERATING, take one
+// viewport instead:
+//
+//     npm --prefix e2e run shot          # 854x384 only, the reference phone
+//
+// and keep the full sweep for the end of a step, before reporting it done.
+// Filtering is Playwright's own --grep against the test titles below (they are
+// named for the viewport), so any subset works without new plumbing:
+//
+//     npx playwright test --config screenshots.config.ts --grep "640x360|854x384"
+//
 // Not a test -- nothing here asserts. It exists because the layout rule in
 // CLAUDE.md is "render it and look at it", and that is only realistic if
 // looking costs one command instead of: start two dev servers, open a
@@ -107,79 +119,90 @@ for (const vp of VIEWPORTS) {
     });
     const page = await context.newPage();
     const dir = join(OUT, vp.name);
-    resetDir(dir);
+    // try/finally, not a close on the happy path: a capture that throws
+    // (or a run killed partway) otherwise leaves the context -- and its
+    // renderer processes -- alive until the whole worker tears down.
+    try {
+      resetDir(dir);
 
-    await page.goto("/");
-    await page.waitForTimeout(600);
-    await shot(page, dir, "1-lobby");
+      await page.goto("/");
+      await page.waitForTimeout(600);
+      await shot(page, dir, "1-lobby");
 
-    // Longest plausible name, so every nameplate downstream is worst-case.
-    await page
-      .getByLabel(/First name/i)
-      .last()
-      .fill(LONG_NAME, { timeout: 4000 })
-      .catch(() => undefined);
+      // Longest plausible name, so every nameplate downstream is worst-case.
+      await page
+        .getByLabel(/First name/i)
+        .last()
+        .fill(LONG_NAME, { timeout: 4000 })
+        .catch(() => undefined);
 
-    await page.getByRole("button", { name: /Practice Against the Computer/i }).click();
-    // Attempt-and-ignore rather than check-then-click: the first-run hint
-    // dismisses itself on a timer, so isVisible() could report true and the
-    // element be gone a tick later -- which failed 4 of 12 viewports on the
-    // first run of this script.
-    await page
-      .getByRole("button", { name: "Got it", exact: true })
-      .click({ timeout: 2500 })
-      .catch(() => undefined);
+      await page.getByRole("button", { name: /Practice Against the Computer/i }).click();
+      // Attempt-and-ignore rather than check-then-click: the first-run hint
+      // dismisses itself on a timer, so isVisible() could report true and the
+      // element be gone a tick later -- which failed 4 of 12 viewports on the
+      // first run of this script.
+      await page
+        .getByRole("button", { name: "Got it", exact: true })
+        .click({ timeout: 2500 })
+        .catch(() => undefined);
 
-    // A gated viewport has no playable felt to photograph -- capture the gate
-    // and stop, rather than driving a round nobody can see.
-    if (gated) {
-      await page.waitForTimeout(1500);
-      await shot(page, dir, "2-table-rotate-gate");
-      await context.close();
-      return;
-    }
+      // A gated viewport has no playable felt to photograph -- capture the gate
+      // and stop, rather than driving a round nobody can see.
+      if (gated) {
+        await page.waitForTimeout(1500);
+        await shot(page, dir, "2-table-rotate-gate");
+        return;
+      }
 
-    const bet = page.getByRole("button", { name: "Bet", exact: true });
-    await bet.waitFor({ state: "visible", timeout: 30_000 });
-    await bet.click();
-    await page.locator(".k-hand img").first().waitFor({ timeout: 20_000 });
-    await settle(page);
-    await shot(page, dir, "2-table-dealt");
-
-    // Fullest realistic felt: a live reaction bubble (longest phrase) on top
-    // of a dealt hand -- the state the "muddled over the banker's total"
-    // report came from.
-    await page.getByRole("button", { name: "React" }).click();
-    await page.waitForTimeout(300);
-    await page.evaluate(() => {
-      const panel = [...document.querySelectorAll("div")].find((d) =>
-        (d.className || "").toString().includes("bottom-full")
-      );
-      const buttons = [...(panel?.querySelectorAll("button") ?? [])];
-      buttons.sort((a, b) => (b.textContent ?? "").length - (a.textContent ?? "").length)[0]?.click();
-    });
-    await page.waitForTimeout(900);
-    await shot(page, dir, "3-table-reaction");
-
-    // Resolved round: the discard pile only exists from here, and the bank's
-    // reserved/free split and every status tag are at their longest.
-    const stood = await page
-      .getByRole("button", { name: "Stand", exact: true })
-      .click({ timeout: 5000 })
-      .then(() => true)
-      .catch(() => false);
-    if (stood) {
-      await page.locator(".k-discard").waitFor({ timeout: 30_000 }).catch(() => undefined);
-      // Resolving also raises an outcome toast, which shares the bottom-left
-      // HUD column with the viewer's own readout -- the one corner where two
-      // independent things stack. Wait for it so the sweep actually photographs
-      // them together instead of catching the column half-empty; state.ts
-      // auto-dismisses toasts at 18s and keeps up to 5.
-      await page.locator(".k-toast").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+      const bet = page.getByRole("button", { name: "Bet", exact: true });
+      await bet.waitFor({ state: "visible", timeout: 30_000 });
+      await bet.click();
+      await page.locator(".k-hand img").first().waitFor({ timeout: 20_000 });
       await settle(page);
-      await shot(page, dir, "4-table-resolved");
-    }
+      await shot(page, dir, "2-table-dealt");
 
-    await context.close();
+      // --project quick stops here: the two phases below are most of the wall
+      // clock per viewport and neither shows anything about SPACING that the
+      // dealt felt does not. See screenshots.config.ts.
+      if (test.info().project.name === "quick") {
+        return;
+      }
+
+      // Fullest realistic felt: a live reaction bubble (longest phrase) on top
+      // of a dealt hand -- the state the "muddled over the banker's total"
+      // report came from.
+      await page.getByRole("button", { name: "React" }).click();
+      await page.waitForTimeout(300);
+      await page.evaluate(() => {
+        const panel = [...document.querySelectorAll("div")].find((d) =>
+          (d.className || "").toString().includes("bottom-full")
+        );
+        const buttons = [...(panel?.querySelectorAll("button") ?? [])];
+        buttons.sort((a, b) => (b.textContent ?? "").length - (a.textContent ?? "").length)[0]?.click();
+      });
+      await page.waitForTimeout(900);
+      await shot(page, dir, "3-table-reaction");
+
+      // Resolved round: the discard pile only exists from here, and the bank's
+      // reserved/free split and every status tag are at their longest.
+      const stood = await page
+        .getByRole("button", { name: "Stand", exact: true })
+        .click({ timeout: 5000 })
+        .then(() => true)
+        .catch(() => false);
+      if (stood) {
+        await page.locator(".k-discard").waitFor({ timeout: 30_000 }).catch(() => undefined);
+        // Resolving also raises an outcome toast, which shares the bottom-left
+        // HUD column with the viewer's own readout -- the one corner where two
+        // independent things stack. Wait for it so the sweep actually photographs
+        // them together instead of catching the column half-empty; state.ts
+        // auto-dismisses toasts at 18s and keeps up to 5.
+        await page.locator(".k-toast").first().waitFor({ timeout: 15_000 }).catch(() => undefined);
+        await settle(page);
+        await shot(page, dir, "4-table-resolved");
+      }
+    } finally {
+      await context.close();
+    }
   });
 }

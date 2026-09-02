@@ -1526,15 +1526,53 @@ body:has(.k-fit) {
    Raised clear of the controls tray's band -- both are anchored to the same
    felt edge now, and on a narrow desktop window the centered tray reaches
    far enough left to touch a bottom-corner toast. */
+/* The bottom band -- the viewer's own HUD column and the controls tray, as one
+   bottom-anchored flow column. The HUD used to clear the dock with a hardcoded
+   `--controls-band: 84px`: a guessed sibling height (Part 2 rule 2), and a
+   wrong one -- the dock's tallest MEASURED state is 79px, and it swaps states
+   mid-round. Stacked in flow, the HUD simply sits one gap above whatever the
+   dock actually is, and neither element knows the other's height. The dock's
+   real height is measured in exactly one place, by stage.ts's ResizeObserver
+   on dockRef, and it is measured there for the STAGE's benefit -- nothing in
+   this corner reads it.
+
+   Deliberately NO z-index: an absolutely positioned box with `z-index: auto`
+   does not create a stacking context, so the tray (25) and the toasts (45)
+   keep competing globally exactly as they did. That matters beyond today --
+   the Part 3 tiers put them in different tiers (--z-hud vs --z-announce), and
+   a stacking context here would silently trap both.
+
+   pointer-events: none so the band's own full-width box never swallows a tap
+   meant for the felt behind it; its children take theirs back. .k-controls is
+   full-width and centred, so before this it was eating taps across the whole
+   width of its band. */
+.k-bottom-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* Anchored to the felt's bottom edge (see .k-fit's --stage-h), not the
+     window's. They coincide whenever the felt fills the viewport; when it
+     letterboxes, the band follows the table down instead of floating alone in
+     the surround. */
+  bottom: calc((100% - var(--stage-h)) / 2 + max(10px, env(safe-area-inset-bottom)));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
 /* The bottom-left HUD column owns the corner; the toast stack and the viewer's
    own readout are simply its children, stacked with a gap. The anchoring that
    used to live on .k-toast-stack lives here now, once, so a second element in
    this corner did not have to be positioned by measuring the first. */
 .k-hud-bottom-left {
-  position: absolute;
-  --controls-band: 84px;
-  bottom: calc((100% - var(--stage-h)) / 2 + var(--controls-band) + max(8px, env(safe-area-inset-bottom)));
-  left: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-left)));
+  /* relative, not absolute: it is the band's first child and the dock is its
+     second, so "above the dock" is flow, not arithmetic. Positioned only so
+     its own z-index still applies. */
+  position: relative;
+  align-self: flex-start;
+  margin-left: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-left)));
+  pointer-events: auto;
   /* This column sits outside the scaled stage (position is computed from the
      felt's true rendered box, not inherited from it -- see above), so its
      own text stayed a flat 12px regardless of how big the felt itself was
@@ -1699,23 +1737,16 @@ body:has(.k-fit) {
    viewer's own seat (layout.ts's viewerSlotIndex puts them bottom-center),
    which is where their attention already is. */
 .k-controls {
-  position: absolute;
-  /* Spans the full width and centres its children, rather than being pinned
-     at left:50%. That looks equivalent and is not: an absolutely positioned
-     box with `left: 50%` and no `right` gets a shrink-to-fit width whose
-     available space is only what remains to the RIGHT of the anchor -- half
-     the container. The `max-width: calc(100% - 20px)` that used to sit here
-     was therefore unreachable, and on a 360px phone the dock was laid out
-     into 175px, wrapping its controls into a narrow six-row column with the
-     felt squeezed to a strip above it. With left/right both pinned, the
-     available width is the whole container and the tray uses it. */
-  left: 0;
-  right: 0;
-  /* Anchored to the felt's bottom edge (see .k-fit's --stage-h), not the
-     window's. They coincide whenever the felt fills the viewport; when it
-     letterboxes the tray follows the table down instead of floating alone
-     in the surround. */
-  bottom: calc((100% - var(--stage-h)) / 2 + max(10px, env(safe-area-inset-bottom)));
+  /* The band's last child, stretched to its full width -- so the tray centres
+     in the whole viewport rather than in whatever is left to one side of an
+     anchor point. It used to be `position: absolute; left: 0; right: 0` for
+     the same reason, and that detail is worth keeping written down: with
+     `left: 50%` and no `right` it got a shrink-to-fit width measured against
+     only the space to the RIGHT of the anchor -- half the container -- so on
+     a 360px phone the dock was laid out into 175px and wrapped its controls
+     into a narrow six-row column with the felt squeezed to a strip above it.
+     Positioned (relative) only so its own z-index still applies. */
+  position: relative;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -1723,6 +1754,11 @@ body:has(.k-fit) {
   padding-left: max(10px, env(safe-area-inset-left));
   padding-right: max(10px, env(safe-area-inset-right));
   z-index: 25;
+}
+/* The tray inherits the band's pointer-events: none -- only the real controls
+   inside it take taps, so its full-width box stops covering the felt. */
+.k-controls > * {
+  pointer-events: auto;
 }
 
 /* Control dock -- a floating tray on the felt with a gold edge.

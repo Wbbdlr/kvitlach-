@@ -482,6 +482,151 @@ export function TableRoot({
     [room.players]
   );
 
+  // The top chrome's controls, defined ONCE. On a landscape phone they render
+  // inside ChromeMenu's panel; anywhere else, inline in the row. Same nodes,
+  // same handlers, same order -- the only difference is what wraps them. This
+  // was briefly written out in both arms of the ternary below, which is 131
+  // lines of JSX kept in sync by hand and exactly the drift ChromeMenu takes
+  // `children` to avoid.
+  //
+  // A fragment rather than an array: these are heterogeneous one-off controls,
+  // not a list, so there is no honest key for each and no reordering to track.
+  const chromeControls = (
+    <>
+      <span className="relative inline-flex items-center gap-1">
+        <AppearanceMenu
+          felt={felt}
+          chip={chip}
+          onFeltChange={(name) => {
+            setFelt(name);
+            dismissThemeHint();
+          }}
+          onChipChange={(name) => {
+            setChip(name);
+            dismissThemeHint();
+          }}
+        />
+        {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
+          <div className="k-fs-hint k-fs-hint--left">
+            Table colors live here -- change your felt or chips, just for your view.
+            <button type="button" onClick={dismissThemeHint}>
+              Got it
+            </button>
+          </div>
+        )}
+      </span>
+      <button
+        type="button"
+        className="k-chip-btn"
+        onClick={onShowHowTo}
+        title="How to play Kvitlach"
+        aria-label="How to play Kvitlach"
+      >
+        ?
+      </button>
+      <button
+        type="button"
+        className="k-chip-btn"
+        onClick={onToggleMusic}
+        aria-pressed={musicEnabled}
+        style={!musicEnabled ? { opacity: 0.45 } : undefined}
+        title={musicEnabled ? "Mute background music" : "Play background music"}
+        aria-label={musicEnabled ? "Mute background music" : "Play background music"}
+      >
+        <Icon name="music" size={13} />
+      </button>
+      <button
+        type="button"
+        className="k-chip-btn"
+        onClick={onToggleSfx}
+        aria-pressed={sfxEnabled}
+        style={!sfxEnabled ? { opacity: 0.45 } : undefined}
+        title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+        aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
+      >
+        <Icon name="speaker" size={13} />
+      </button>
+      <button
+        type="button"
+        className="k-chip-btn"
+        onClick={onToggleMotion}
+        aria-pressed={motionEnabled}
+        style={!motionEnabled ? { opacity: 0.45 } : undefined}
+        title={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+        aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
+      >
+        <Icon name="motion" size={13} />
+      </button>
+      {fullscreenSupported && (
+        <span className="relative inline-flex">
+          <button
+            type="button"
+            className="k-chip-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
+          </button>
+          {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
+            <div className="k-fs-hint">
+              Tap for fullscreen -- best in landscape.
+              <button type="button" onClick={dismissFullscreenHint}>
+                Got it
+              </button>
+            </div>
+          )}
+        </span>
+      )}
+      {showIOSInstallHint && (
+        <span className="relative inline-flex">
+          <span className="k-chip-btn" style={{ cursor: "default" }}>
+            <Icon name="share" size={13} />
+          </span>
+          <div className="k-fs-hint">
+            Add to Home Screen (tap Share, then "Add to Home Screen") for a full-screen table.
+            <button type="button" onClick={dismissIOSInstallHint}>
+              Got it
+            </button>
+          </div>
+        </span>
+      )}
+      {isAdmin && (
+        <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
+          <Icon name="users" size={13} />
+          Manage
+        </button>
+      )}
+      {/* Real bankers reach reshuffle through Manage -> Deck. A practice
+          room's banker is a bot with no session (see store.ts's
+          reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
+          gated and out of reach -- this gives the one human at a practice
+          table the same direct, no-confirmation access onPracticeTopUp
+          already gets, rather than exposing the entire admin drawer
+          (kick/rename/close-room) just to reach one control. */}
+      {room.practice && (
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={onReshuffleDeck}
+          title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
+          aria-label="Reshuffle deck"
+        >
+          <Icon name="shuffle" size={13} />
+          Reshuffle
+        </button>
+      )}
+      <button
+        type="button"
+        className="k-room"
+        onClick={() => setRoomInfoOpen(true)}
+        title="Table info and sharing"
+      >
+        {room.name || room.roomId}
+      </button>
+    </>
+  );
+
   return (
     <div
       className="k-fit"
@@ -699,275 +844,7 @@ export function TableRoot({
           phone -- see ChromeMenu, which takes children for exactly this
           reason. Two renderings of one list is how they drift. */}
       <div className="k-chrome-top">
-        {compact ? (
-          <ChromeMenu>
-            <span className="relative inline-flex items-center gap-1">
-              <AppearanceMenu
-                felt={felt}
-                chip={chip}
-                onFeltChange={(name) => {
-                  setFelt(name);
-                  dismissThemeHint();
-                }}
-                onChipChange={(name) => {
-                  setChip(name);
-                  dismissThemeHint();
-                }}
-              />
-              {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
-                <div className="k-fs-hint k-fs-hint--left">
-                  Table colors live here -- change your felt or chips, just for your view.
-                  <button type="button" onClick={dismissThemeHint}>
-                    Got it
-                  </button>
-                </div>
-              )}
-            </span>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onShowHowTo}
-              title="How to play Kvitlach"
-              aria-label="How to play Kvitlach"
-            >
-              ?
-            </button>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onToggleMusic}
-              aria-pressed={musicEnabled}
-              style={!musicEnabled ? { opacity: 0.45 } : undefined}
-              title={musicEnabled ? "Mute background music" : "Play background music"}
-              aria-label={musicEnabled ? "Mute background music" : "Play background music"}
-            >
-              <Icon name="music" size={13} />
-            </button>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onToggleSfx}
-              aria-pressed={sfxEnabled}
-              style={!sfxEnabled ? { opacity: 0.45 } : undefined}
-              title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
-              aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
-            >
-              <Icon name="speaker" size={13} />
-            </button>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onToggleMotion}
-              aria-pressed={motionEnabled}
-              style={!motionEnabled ? { opacity: 0.45 } : undefined}
-              title={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
-              aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
-            >
-              <Icon name="motion" size={13} />
-            </button>
-            {fullscreenSupported && (
-              <span className="relative inline-flex">
-                <button
-                  type="button"
-                  className="k-chip-btn"
-                  onClick={toggleFullscreen}
-                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
-                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                >
-                  <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
-                </button>
-                {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
-                  <div className="k-fs-hint">
-                    Tap for fullscreen -- best in landscape.
-                    <button type="button" onClick={dismissFullscreenHint}>
-                      Got it
-                    </button>
-                  </div>
-                )}
-              </span>
-            )}
-            {showIOSInstallHint && (
-              <span className="relative inline-flex">
-                <span className="k-chip-btn" style={{ cursor: "default" }}>
-                  <Icon name="share" size={13} />
-                </span>
-                <div className="k-fs-hint">
-                  Add to Home Screen (tap Share, then "Add to Home Screen") for a full-screen table.
-                  <button type="button" onClick={dismissIOSInstallHint}>
-                    Got it
-                  </button>
-                </div>
-              </span>
-            )}
-            {isAdmin && (
-              <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
-                <Icon name="users" size={13} />
-                Manage
-              </button>
-            )}
-            {/* Real bankers reach reshuffle through Manage -> Deck. A practice
-                room's banker is a bot with no session (see store.ts's
-                reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
-                gated and out of reach -- this gives the one human at a practice
-                table the same direct, no-confirmation access onPracticeTopUp
-                already gets, rather than exposing the entire admin drawer
-                (kick/rename/close-room) just to reach one control. */}
-            {room.practice && (
-              <button
-                type="button"
-                className="k-chip-btn"
-                onClick={onReshuffleDeck}
-                title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
-                aria-label="Reshuffle deck"
-              >
-                <Icon name="shuffle" size={13} />
-                Reshuffle
-              </button>
-            )}
-            <button
-              type="button"
-              className="k-room"
-              onClick={() => setRoomInfoOpen(true)}
-              title="Table info and sharing"
-            >
-              {room.name || room.roomId}
-            </button>
-          </ChromeMenu>
-        ) : (
-          <>
-            <span className="relative inline-flex items-center gap-1">
-              <AppearanceMenu
-                felt={felt}
-                chip={chip}
-                onFeltChange={(name) => {
-                  setFelt(name);
-                  dismissThemeHint();
-                }}
-                onChipChange={(name) => {
-                  setChip(name);
-                  dismissThemeHint();
-                }}
-              />
-              {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
-                <div className="k-fs-hint k-fs-hint--left">
-                  Table colors live here -- change your felt or chips, just for your view.
-                  <button type="button" onClick={dismissThemeHint}>
-                    Got it
-                  </button>
-                </div>
-              )}
-            </span>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onShowHowTo}
-              title="How to play Kvitlach"
-              aria-label="How to play Kvitlach"
-            >
-              ?
-            </button>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onToggleMusic}
-              aria-pressed={musicEnabled}
-              style={!musicEnabled ? { opacity: 0.45 } : undefined}
-              title={musicEnabled ? "Mute background music" : "Play background music"}
-              aria-label={musicEnabled ? "Mute background music" : "Play background music"}
-            >
-              <Icon name="music" size={13} />
-            </button>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onToggleSfx}
-              aria-pressed={sfxEnabled}
-              style={!sfxEnabled ? { opacity: 0.45 } : undefined}
-              title={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
-              aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
-            >
-              <Icon name="speaker" size={13} />
-            </button>
-            <button
-              type="button"
-              className="k-chip-btn"
-              onClick={onToggleMotion}
-              aria-pressed={motionEnabled}
-              style={!motionEnabled ? { opacity: 0.45 } : undefined}
-              title={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
-              aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
-            >
-              <Icon name="motion" size={13} />
-            </button>
-            {fullscreenSupported && (
-              <span className="relative inline-flex">
-                <button
-                  type="button"
-                  className="k-chip-btn"
-                  onClick={toggleFullscreen}
-                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
-                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                >
-                  <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
-                </button>
-                {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
-                  <div className="k-fs-hint">
-                    Tap for fullscreen -- best in landscape.
-                    <button type="button" onClick={dismissFullscreenHint}>
-                      Got it
-                    </button>
-                  </div>
-                )}
-              </span>
-            )}
-            {showIOSInstallHint && (
-              <span className="relative inline-flex">
-                <span className="k-chip-btn" style={{ cursor: "default" }}>
-                  <Icon name="share" size={13} />
-                </span>
-                <div className="k-fs-hint">
-                  Add to Home Screen (tap Share, then "Add to Home Screen") for a full-screen table.
-                  <button type="button" onClick={dismissIOSInstallHint}>
-                    Got it
-                  </button>
-                </div>
-              </span>
-            )}
-            {isAdmin && (
-              <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
-                <Icon name="users" size={13} />
-                Manage
-              </button>
-            )}
-            {/* Real bankers reach reshuffle through Manage -> Deck. A practice
-                room's banker is a bot with no session (see store.ts's
-                reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
-                gated and out of reach -- this gives the one human at a practice
-                table the same direct, no-confirmation access onPracticeTopUp
-                already gets, rather than exposing the entire admin drawer
-                (kick/rename/close-room) just to reach one control. */}
-            {room.practice && (
-              <button
-                type="button"
-                className="k-chip-btn"
-                onClick={onReshuffleDeck}
-                title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
-                aria-label="Reshuffle deck"
-              >
-                <Icon name="shuffle" size={13} />
-                Reshuffle
-              </button>
-            )}
-            <button
-              type="button"
-              className="k-room"
-              onClick={() => setRoomInfoOpen(true)}
-              title="Table info and sharing"
-            >
-              {room.name || room.roomId}
-            </button>
-          </>
-        )}
+        {compact ? <ChromeMenu>{chromeControls}</ChromeMenu> : chromeControls}
         {bankIsEmpty && (
           <button
             type="button"
@@ -1034,119 +911,123 @@ export function TableRoot({
         </button>
       </div>
 
-      {/* Bottom-left HUD column: transient toasts stacked above the viewer's own
-          persistent readout. ONE container, flow-laid, so neither element has to
-          know the other's height -- the toast stack used to hard-code an 84px
-          `--controls-band` to clear the dock, and adding a second element below
-          it by measurement would have been exactly the pattern this refactor
-          exists to delete. See docs/mobile-ui.md Part 2 rule 2. */}
-      <div className="k-hud-bottom-left">
-        {notifications.length > 0 && (
-          <div className="k-toast-stack">
-            {notifications.map((note) => (
-              <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
-                <span>{note.message}</span>
-                <button type="button" onClick={() => onDismissNotification(note.id)}>
-                  Dismiss
-                </button>
-              </div>
-            ))}
+      {/* The bottom band: the viewer's own HUD column, then the controls tray,
+          in ONE bottom-anchored flow column. Nothing here knows anything else's
+          height -- the HUD used to clear the dock by a hardcoded 84px
+          `--controls-band`, which is a guessed sibling height (rule 2) and was
+          under the dock's tallest measured state. See docs/mobile-ui.md Part 2
+          rule 2 and .k-bottom-band. */}
+      <div className="k-bottom-band">
+        {/* Bottom-left HUD column: transient toasts stacked above the viewer's
+            own persistent readout. */}
+        <div className="k-hud-bottom-left">
+          {notifications.length > 0 && (
+            <div className="k-toast-stack">
+              {notifications.map((note) => (
+                <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
+                  <span>{note.message}</span>
+                  <button type="button" onClick={() => onDismissNotification(note.id)}>
+                    Dismiss
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {myPlayerTurn && (
+            <ViewerHud
+              turn={myPlayerTurn}
+              viewerId={playerId}
+              roundState={round?.state}
+              walletAmount={myWallet}
+            />
+          )}
+        </div>
+
+        <div className="k-controls" ref={dockRef}>
+        {/* The banker has dropped and the table is waiting on them. Nothing else
+            can move this round: the banker is the dealer, not a seat, so no turn
+            timer covers them, and every other action is theirs to take. Rather
+            than settle on the half-played hand they left behind -- letting a
+            dead phone decide who won money -- any player can throw the round
+            away and get every wager back. */}
+        {abandonedBanker && !roundOver && (
+          <div className="k-dock">
+            <span className="k-tag muted">{abandonedBanker.name} has dropped out.</span>
+            {abandonedBanker.canVoid ? (
+              <button
+                type="button"
+                className="k-btn stand sm"
+                onClick={onVoidAbandonedRound}
+                title="End this round with no winners or losers -- every wager is returned"
+              >
+                Void the round, refund all bets
+              </button>
+            ) : (
+              <span className="k-tag muted k-pulse-attn">
+                Waiting {abandonedBanker.secondsLeft}s for them to reconnect…
+              </span>
+            )}
           </div>
         )}
-        {myPlayerTurn && (
-          <ViewerHud
+
+        {canPlayerAct && myPlayerTurn && !roundOver && (
+          <PlayerDock
             turn={myPlayerTurn}
-            viewerId={playerId}
-            roundState={round?.state}
-            walletAmount={myWallet}
+            wallet={room.wallets?.[playerId ?? ""] ?? 0}
+            bankAvailable={bankInfo?.available}
+            bankIncrement={bankIncrement}
+            canBank={canBank}
+            bankDisabledReason={bankDisabledReason}
+            onBet={onBet}
+            onHit={onHit}
+            onStand={onStand}
           />
         )}
-      </div>
 
-      <div className="k-controls" ref={dockRef}>
-      {/* The banker has dropped and the table is waiting on them. Nothing else
-          can move this round: the banker is the dealer, not a seat, so no turn
-          timer covers them, and every other action is theirs to take. Rather
-          than settle on the half-played hand they left behind -- letting a
-          dead phone decide who won money -- any player can throw the round
-          away and get every wager back. */}
-      {abandonedBanker && !roundOver && (
-        <div className="k-dock">
-          <span className="k-tag muted">{abandonedBanker.name} has dropped out.</span>
-          {abandonedBanker.canVoid ? (
-            <button
-              type="button"
-              className="k-btn stand sm"
-              onClick={onVoidAbandonedRound}
-              title="End this round with no winners or losers -- every wager is returned"
-            >
-              Void the round, refund all bets
-            </button>
-          ) : (
-            <span className="k-tag muted k-pulse-attn">
-              Waiting {abandonedBanker.secondsLeft}s for them to reconnect…
-            </span>
-          )}
-        </div>
-      )}
-
-      {canPlayerAct && myPlayerTurn && !roundOver && (
-        <PlayerDock
-          turn={myPlayerTurn}
-          wallet={room.wallets?.[playerId ?? ""] ?? 0}
-          bankAvailable={bankInfo?.available}
-          bankIncrement={bankIncrement}
-          canBank={canBank}
-          bankDisabledReason={bankDisabledReason}
-          onBet={onBet}
-          onHit={onHit}
-          onStand={onStand}
-        />
-      )}
-
-      {(roundOver || preRound) && (
-        <div className="k-dock">
-          {/* A busted banker always terminates the round (getGameState: the
-              banker acts last, so their turn resolving leaves nothing
-              pending), so this dock is guaranteed to be on screen whenever
-              bankBusted is true -- which is what lets the celebration live
-              here instead of floating over the felt. It replaces the
-              "Round complete" label rather than joining it, so the dock
-              gains no extra row on a phone. */}
-          {bankBusted ? (
-            <span className="k-futch-flash" role="status" aria-live="polite">
-              <Icon name="bank" size={15} />
-              <b>THE BANK FUTCHED!</b>
-              <span>everyone still in the hand wins</span>
-            </span>
-          ) : (
-            <span className="k-banktotal">{preRound ? "Table ready" : "Round complete"}</span>
-          )}
-          {/* A practice room's banker is a bot, so isAdmin never fires for its one
-              human -- they used to just get outrun by a fixed 4s auto-restart
-              timer instead, which cut into reading the round they just played.
-              room.practice hands them this exact button (there is only ever
-              one human at that table, so it can't reach anyone else's game),
-              same as a real banker choosing their own moment. */}
-          {/* A watcher must fall through both branches. room.practice hands
-              its button to "the one human here", which is true of a player at
-              a practice table and false of an operator watching one -- they
-              would have been able to deal a hand into someone else's game. */}
-          {watching ? (
-            <span className="k-tag muted">Watching &middot; the table can&rsquo;t see you</span>
-          ) : isAdmin || room.practice ? (
-            <button type="button" className="k-btn bet k-pulse-attn" onClick={onStartNextRound}>
-              {!preRound ? "Start next round" : firstDeal ? "Deal the first round" : "Deal the next round"}
-            </button>
-          ) : (
-            <span className="k-tag muted k-pulse-attn">
-              Waiting for the banker to {preRound ? "deal" : "start the next round"}…
-            </span>
-          )}
-        </div>
-      )}
-        <div className="k-chrome-react">
-          <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
+        {(roundOver || preRound) && (
+          <div className="k-dock">
+            {/* A busted banker always terminates the round (getGameState: the
+                banker acts last, so their turn resolving leaves nothing
+                pending), so this dock is guaranteed to be on screen whenever
+                bankBusted is true -- which is what lets the celebration live
+                here instead of floating over the felt. It replaces the
+                "Round complete" label rather than joining it, so the dock
+                gains no extra row on a phone. */}
+            {bankBusted ? (
+              <span className="k-futch-flash" role="status" aria-live="polite">
+                <Icon name="bank" size={15} />
+                <b>THE BANK FUTCHED!</b>
+                <span>everyone still in the hand wins</span>
+              </span>
+            ) : (
+              <span className="k-banktotal">{preRound ? "Table ready" : "Round complete"}</span>
+            )}
+            {/* A practice room's banker is a bot, so isAdmin never fires for its one
+                human -- they used to just get outrun by a fixed 4s auto-restart
+                timer instead, which cut into reading the round they just played.
+                room.practice hands them this exact button (there is only ever
+                one human at that table, so it can't reach anyone else's game),
+                same as a real banker choosing their own moment. */}
+            {/* A watcher must fall through both branches. room.practice hands
+                its button to "the one human here", which is true of a player at
+                a practice table and false of an operator watching one -- they
+                would have been able to deal a hand into someone else's game. */}
+            {watching ? (
+              <span className="k-tag muted">Watching &middot; the table can&rsquo;t see you</span>
+            ) : isAdmin || room.practice ? (
+              <button type="button" className="k-btn bet k-pulse-attn" onClick={onStartNextRound}>
+                {!preRound ? "Start next round" : firstDeal ? "Deal the first round" : "Deal the next round"}
+              </button>
+            ) : (
+              <span className="k-tag muted k-pulse-attn">
+                Waiting for the banker to {preRound ? "deal" : "start the next round"}…
+              </span>
+            )}
+          </div>
+        )}
+          <div className="k-chrome-react">
+            <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
+          </div>
         </div>
       </div>
 

@@ -48,10 +48,16 @@ test("a player who reloads mid-round resumes the same seat, once, with their wag
     // separate broadcasts, and until the ROUND lands TableRoot renders the
     // pre-round "Table ready" roster instead of any .k-seat at all. Waiting
     // only 5s made this fail roughly one run in three purely on that window.
-    // toHaveCount(1) keeps its teeth through the wait -- it retries until the
-    // count IS one, so a resume that duplicated the seat would sit at 2 and
-    // still fail rather than being papered over by the longer timeout.
-    await expect(player.locator(".k-seat", { hasText: "Reconnie" })).toHaveCount(1, { timeout: 20_000 });
+    // toHaveCount, not toBeVisible, so it retries until the count IS one
+    // rather than being papered over by the longer timeout. The duplicate-seat
+    // teeth are on the banker's side below, where a second Reconnie would
+    // actually be visible.
+    // .k-viewer-hud, not their own .k-seat: a player's own seat no longer
+    // carries their name or total -- both moved into the bottom-left HUD
+    // (ViewerHud.tsx / Seat.tsx's identityInHud), so from THEIR view the seat
+    // is cards only and this locator matched nothing. The HUD renders exactly
+    // when they hold a seat in the round, which is what is being asserted.
+    await expect(player.locator(".k-viewer-hud")).toHaveCount(1, { timeout: 20_000 });
 
     // The failure this really guards against: a resume that registers a NEW
     // player instead of reclaiming the existing session leaves the table with
