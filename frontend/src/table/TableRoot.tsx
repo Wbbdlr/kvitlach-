@@ -414,6 +414,11 @@ export function TableRoot({
   const isSeatedPlayer = Boolean(playerId && room.players.some((p) => p.id === playerId && p.type === "player"));
   const showOutOfChips = Boolean(!isAdmin && isSeatedPlayer && myWallet === 0);
   const myBuyInRequest = playerId ? (room.buyInRequests ?? []).find((r) => r.playerId === playerId) : undefined;
+  // Banker-only: how many player requests are waiting on them. Mirrors
+  // ManageDrawer's own pendingCount, which is the list this number opens.
+  const pendingApprovals = isAdmin
+    ? (room.renameRequests ?? []).length + (room.buyInRequests ?? []).length
+    : 0;
 
   // Seat order is NOT turn order -- see layout.ts's orderTurnsBySeat for why
   // deriving one from the other made players visibly change chairs each round.
@@ -671,9 +676,21 @@ export function TableRoot({
         </span>
       )}
       {isAdmin && (
-        <button type="button" className="k-chip-btn" onClick={() => setManageOpen(true)} title="Manage table">
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={() => setManageOpen(true)}
+          title={pendingApprovals > 0 ? `Manage table -- ${pendingApprovals} waiting for approval` : "Manage table"}
+        >
           <Icon name="users" size={13} />
           Manage
+          {/* The requests themselves live one level in, inside Manage's
+              "Approvals needed" block. Until this count was here, nothing on
+              the banker's screen changed when a player asked for chips -- the
+              request simply sat there until the banker happened to open the
+              drawer. The toast in state.ts is the other half: it fires once,
+              this stays until the queue is empty. */}
+          {pendingApprovals > 0 && <span className="k-badge-count">{pendingApprovals}</span>}
         </button>
       )}
       {/* Real bankers reach reshuffle through Manage -> Deck. A practice
@@ -1021,7 +1038,7 @@ export function TableRoot({
           phone -- see ChromeMenu, which takes children for exactly this
           reason. Two renderings of one list is how they drift. */}
       <div className="k-chrome-top">
-        {compact ? <ChromeMenu>{chromeControls}</ChromeMenu> : chromeControls}
+        {compact ? <ChromeMenu badge={pendingApprovals}>{chromeControls}</ChromeMenu> : chromeControls}
         {bankIsEmpty && (
           <button
             type="button"

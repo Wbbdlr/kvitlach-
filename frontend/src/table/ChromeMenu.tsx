@@ -4,6 +4,14 @@ import { Icon } from "./icons";
 
 export interface ChromeMenuProps {
   children: ReactNode;
+  /**
+   * How many things behind this button need the viewer's attention right now.
+   * Collapsing the chrome hides its contents by design -- but it also hid the
+   * banker's only signal that a player had asked for chips or a name change,
+   * because that count lives inside Manage, which lives inside here. A number
+   * on the trigger is what makes "one tap away" different from "invisible".
+   */
+  badge?: number;
 }
 
 // The top chrome's controls, behind one button on a landscape phone.
@@ -29,7 +37,7 @@ export interface ChromeMenuProps {
 // Takes children rather than knowing what the controls are, so the SAME JSX
 // renders inline on a desktop and inside this panel on a phone. Two renderings
 // of one list is how they drift.
-export function ChromeMenu({ children }: ChromeMenuProps) {
+export function ChromeMenu({ children, badge = 0 }: ChromeMenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
 
@@ -71,10 +79,11 @@ export function ChromeMenu({ children }: ChromeMenuProps) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title="Table controls"
-        aria-label="Table controls"
+        title={badge > 0 ? `Table controls -- ${badge} waiting for you` : "Table controls"}
+        aria-label={badge > 0 ? `Table controls, ${badge} waiting for you` : "Table controls"}
       >
         <Icon name="more" size={15} />
+        {badge > 0 && <span className="k-badge-count">{badge}</span>}
       </button>
       {open && (
         <div className="k-chrome-menu" role="dialog" aria-label="Table controls">

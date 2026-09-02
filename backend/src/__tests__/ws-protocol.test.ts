@@ -318,3 +318,98 @@ describe("WS protocol -- what an unexpected failure tells the client", () => {
     await expect(send(ws, "room:join", { roomId, firstName: "" })).rejects.toThrow("invalid_payload");
   });
 });
+
+// The banker's own socket, not the store. Everything above proves the store
+// ends up right; this proves the person who has to ACT on it is told, which is
+// a different guarantee and the one that was missing -- a request that lands
+// correctly in room.buyInRequests and never reaches the banker's screen is
+// indistinguishable, from the player's side, from one that was ignored.
+// Takes a PREDICATE, not just a type. The first version resolved on the next
+// room:state of any kind and failed: send() resolves on the ack to the sender,
+// and the banker's broadcast for the player's own join is still in flight at
+// that moment -- so it caught the join and asserted against a room with no
+// requests in it yet. Waiting for the broadcast that actually carries the
+// thing under test is the honest version, and a timeout is still a failure.
+function broadcastMatching(
+  ws: WebSocket,
+  type: string,
+  match: (payload: any) => boolean,
+  timeoutMs = 2000
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.off("message", onMessage);
+      reject(new Error(`no matching ${type} broadcast within ${timeoutMs}ms`));
+    }, timeoutMs);
+    const onMessage = (data: WebSocket.RawData) => {
+      const msg = JSON.parse(data.toString());
+      // Broadcasts carry no requestId -- an ack to the sender does, and the
+      // banker is not the sender here, but the guard keeps this honest if a
+      // later change makes them one.
+      if (msg.type !== type || msg.requestId || !match(msg.payload)) return;
+      clearTimeout(timer);
+      ws.off("message", onMessage);
+      resolve(msg.payload);
+    };
+    ws.on("message", onMessage);
+  });
+}
+
+describe("WS protocol -- the banker is actually told a request arrived", () => {
+  it("pushes a chip request to the banker's socket, unasked", async () => {
+    const { bankerWs, playerWs, roomId, playerId } = await makeTable();
+
+    const broadcast = broadcastMatching(bankerWs, "room:state", (r) => r.buyInRequests?.length > 0);
+    await send(playerWs, "player:buyin-request", { roomId, amount: 75, note: "Lost last round" });
+    const room = await broadcast;
+
+    expect(room.buyInRequests).toContainEqual(
+      expect.objectContaining({ playerId, amount: 75, note: "Lost last round" })
+    );
+  });
+
+  it("pushes a rename request the same way", async () => {
+    const { bankerWs, playerWs, roomId, playerId } = await makeTable();
+
+    const broadcast = broadcastMatching(bankerWs, "room:state", (r) => r.renameRequests?.length > 0);
+    await send(playerWs, "player:rename-request", { roomId, firstName: "Shaya", lastName: "W" });
+    const room = await broadcast;
+
+    expect(room.renameRequests).toContainEqual(
+      expect.objectContaining({ playerId, firstName: "Shaya", lastName: "W" })
+    );
+  });
+
+  it("clears it from the banker's copy once acted on, so the count empties", async () => {
+    const { bankerWs, playerWs, roomId, playerId } = await makeTable();
+    await send(playerWs, "player:buyin-request", { roomId, amount: 40 });
+
+    const afterApproval = broadcastMatching(bankerWs, "room:state", (r) => r.buyInRequests?.length === 0);
+    await send(bankerWs, "player:buyin-approve", { roomId, playerId });
+    const room = await afterApproval;
+
+    expect(room.buyInRequests.some((r: { playerId: string }) => r.playerId === playerId)).toBe(false);
+    expect(room.wallets[playerId]).toBe(140); // 100 buy-in + 40 approved
+  });
+
+  // Asking again after a decline has to read as a NEW arrival, or a banker who
+  // dismissed the first one never sees the second. The store replaces the row
+  // rather than keeping both, so the only thing distinguishing them is
+  // requestedAt -- which is what the client's arrival check keys on.
+  it("stamps a re-request with a fresh requestedAt", async () => {
+    const { bankerWs, playerWs, roomId, playerId } = await makeTable();
+
+    await send(playerWs, "player:buyin-request", { roomId, amount: 40 });
+    const first = store.getRoom(roomId)!.buyInRequests.find((r) => r.playerId === playerId)!.requestedAt;
+    await send(bankerWs, "player:buyin-reject", { roomId, playerId });
+
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 5_000);
+    await send(playerWs, "player:buyin-request", { roomId, amount: 60 });
+    vi.useRealTimers();
+
+    const rows = store.getRoom(roomId)!.buyInRequests.filter((r) => r.playerId === playerId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].requestedAt).toBeGreaterThan(first);
+  });
+});

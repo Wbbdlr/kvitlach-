@@ -782,6 +782,47 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     let notifications = state.notifications;
     let mutated = false;
 
+    // The BANKER's side of the same two queues. Everything below this block
+    // tells a player what happened to the request they made; nothing told the
+    // banker one had arrived. The request landed in room.renameRequests /
+    // buyInRequests and waited there silently until they happened to open
+    // Manage -- which on a phone is itself inside the collapsed chrome menu.
+    // A player watching their "pending banker approval" line had no way to
+    // know the banker had never been told.
+    //
+    // Fires once per arrival; the count on the Manage button (TableRoot's
+    // pendingApprovals) is the part that persists until the queue is empty.
+    // Named rather than counted -- "Sara wants chips" is actionable in a way
+    // that "1 request" is not, and both queues are short by construction.
+    const viewer = nextRoom.players.find((p) => p.id === playerId);
+    if (viewer?.type === "admin") {
+      const nameOf = (id: string) => {
+        const p = nextRoom.players.find((player) => player.id === id);
+        return [p?.firstName, p?.lastName].filter(Boolean).join(" ").trim() || "A player";
+      };
+      const arrived = <T extends { playerId: string; requestedAt: number }>(prev: T[], next: T[]) =>
+        // requestedAt as well as playerId: re-requesting REPLACES the row for
+        // that player (store.ts filters the old one out), so a second ask
+        // after a decline is a new arrival with the same id.
+        next.filter((n) => !prev.some((p) => p.playerId === n.playerId && p.requestedAt === n.requestedAt));
+
+      for (const req of arrived(prevRoom.buyInRequests, nextRoom.buyInRequests)) {
+        notifications = [
+          ...notifications,
+          makeNotification(`${nameOf(req.playerId)} is asking for $${req.amount} in chips.`, "info"),
+        ];
+        mutated = true;
+      }
+      for (const req of arrived(prevRoom.renameRequests, nextRoom.renameRequests)) {
+        const to = [req.firstName, req.lastName].filter(Boolean).join(" ").trim();
+        notifications = [
+          ...notifications,
+          makeNotification(`${nameOf(req.playerId)} wants to be called ${to}.`, "info"),
+        ];
+        mutated = true;
+      }
+    }
+
     const prevRename = prevRoom.renameRequests.find((req) => req.playerId === playerId);
     const nextRename = nextRoom.renameRequests.find((req) => req.playerId === playerId);
     if (prevRename && !nextRename) {

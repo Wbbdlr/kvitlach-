@@ -2943,6 +2943,35 @@ body:has(.k-fit) {
   background: rgba(16, 30, 21, 0.85);
   color: var(--chip-ink-hover, #f3e6c8);
 }
+/* "N things are waiting on you", on the button that opens them.
+   Nothing on the banker's screen used to change when a player asked for chips
+   or a name change: the request landed in room.renameRequests/buyInRequests,
+   which are only rendered inside Manage's "Approvals needed" block -- and on a
+   phone Manage is itself inside the collapsed chrome menu, so the signal was
+   two taps deep in a drawer nobody had a reason to open.
+   Not a bare dot: the count is the useful part, and a banker who has already
+   approved one of two needs to see that one is still there.
+   Warm red rather than the chrome's amber, which is the surface's own colour
+   and would read as decoration on it. Flow-laid inside the button rather than
+   pinned to a corner -- the chrome row is `flex-wrap` with one row of budget
+   (see ChromeMenu), and an absolutely-positioned badge would hang outside the
+   row's measured box. */
+.k-badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  margin-left: 1px;
+  border-radius: 999px;
+  background: #b4342c;
+  color: #fff2ea;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1;
+  flex: none;
+}
 
 /* Reaction floating above a seat -- shaped as a speech bubble so it reads as
    somebody SAYING something rather than as another status pill, of which the

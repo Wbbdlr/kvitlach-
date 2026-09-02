@@ -1200,3 +1200,129 @@ describe("bank outcome notification", () => {
     expect(texts(useGameStore).some((t: string) => /bank stood/i.test(t))).toBe(false);
   });
 });
+
+// Everything the store already did on a room:state told a PLAYER what became
+// of the request they made. Nothing told the banker one had arrived: it landed
+// in room.buyInRequests / renameRequests and sat there until they happened to
+// open Manage -- which on a phone is itself inside the collapsed chrome menu.
+// From the player's side that is indistinguishable from being ignored.
+describe("the banker is told when a request arrives", () => {
+  // Each describe in this file clears the shared instance list -- without it
+  // MockWebSocket.instances[0] is a socket left over from an earlier describe,
+  // wired to a store this test never touches, and every push lands nowhere.
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+    // @ts-expect-error test stub, only the members WSClient touches are implemented
+    global.WebSocket = MockWebSocket;
+  });
+
+  const banker = { id: "bank", firstName: "Banker", lastName: "", type: "admin", presence: "online" };
+  const sara = { id: "p2", firstName: "Sara", lastName: "K", type: "player", presence: "online" };
+
+  const room = (over: Record<string, unknown> = {}) =>
+    ({
+      roomId: "ROOM1",
+      players: [banker, sara],
+      wallets: { bank: 500, p2: 100 },
+      renameRequests: [],
+      buyInRequests: [],
+      ...over,
+    }) as any;
+
+  async function asBanker() {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({ room: room(), playerId: banker.id });
+    return { useGameStore, socket };
+  }
+
+  const push = (socket: MockWebSocket, payload: unknown) =>
+    socket.onmessage?.({ data: JSON.stringify({ type: "room:state", payload }) });
+
+  it("names the player and the amount, rather than counting", async () => {
+    const { useGameStore, socket } = await asBanker();
+    push(socket, room({ buyInRequests: [{ playerId: "p2", amount: 250, requestedAt: 1 }] }));
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts).toContain("Sara K is asking for $250 in chips.");
+  });
+
+  it("says who wants to be called what", async () => {
+    const { useGameStore, socket } = await asBanker();
+    push(socket, room({ renameRequests: [{ playerId: "p2", firstName: "Sarah", lastName: "K", requestedAt: 1 }] }));
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts).toContain("Sara K wants to be called Sarah K.");
+  });
+
+  it("does not re-toast a request that is merely still pending", async () => {
+    const { useGameStore, socket } = await asBanker();
+    const withRequest = room({ buyInRequests: [{ playerId: "p2", amount: 250, requestedAt: 1 }] });
+    push(socket, withRequest);
+    // Any other change to the room -- a wallet, a seat, presence -- re-sends
+    // the whole room. The pending request rides along on every one of them.
+    push(socket, { ...withRequest, wallets: { bank: 500, p2: 90 } });
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts.filter((t) => /asking for \$250/.test(t))).toHaveLength(1);
+  });
+
+  // The store REPLACES a player's row rather than keeping both, so a second
+  // ask after a decline carries the same playerId. Only requestedAt separates
+  // them -- and a banker who has just declined someone is exactly who needs to
+  // know they asked again.
+  it("treats a re-request after a decline as a new arrival", async () => {
+    const { useGameStore, socket } = await asBanker();
+    push(socket, room({ buyInRequests: [{ playerId: "p2", amount: 250, requestedAt: 1 }] }));
+    push(socket, room({ buyInRequests: [] })); // declined
+    push(socket, room({ buyInRequests: [{ playerId: "p2", amount: 100, requestedAt: 2 }] }));
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts.filter((t) => /asking for/.test(t))).toHaveLength(2);
+  });
+
+  // The last link in the chain the menus depend on: QuickRequestDialog calls
+  // onRequestBuyIn/onRequestRename, App hands those to the store, and these
+  // are what the store actually puts on the wire. ws-protocol.test.ts (backend)
+  // picks it up from the other side.
+  it("puts a chip request on the wire with the room and a whole-chip amount", async () => {
+    const { useGameStore, socket } = await asBanker();
+    useGameStore.setState({ playerId: "p2" });
+    useGameStore.getState().requestBuyIn(250.4, "Lost last round");
+    expect(socket.sent.at(-1)).toMatchObject({
+      type: "player:buyin-request",
+      payload: { roomId: "ROOM1", amount: 250, note: "Lost last round" },
+    });
+  });
+
+  it("refuses to send a nonsense amount, and says why", async () => {
+    const { useGameStore, socket } = await asBanker();
+    useGameStore.setState({ playerId: "p2" });
+    const before = socket.sent.length;
+    useGameStore.getState().requestBuyIn(0);
+    useGameStore.getState().requestBuyIn(Number.NaN);
+    expect(socket.sent).toHaveLength(before);
+    expect(useGameStore.getState().message).toMatch(/valid amount/i);
+  });
+
+  it("puts a rename on the wire trimmed, and refuses an empty first name", async () => {
+    const { useGameStore, socket } = await asBanker();
+    useGameStore.setState({ playerId: "p2" });
+    useGameStore.getState().requestRename("  Shaya  ", "W");
+    expect(socket.sent.at(-1)).toMatchObject({
+      type: "player:rename-request",
+      payload: { roomId: "ROOM1", firstName: "Shaya", lastName: "W" },
+    });
+    const before = socket.sent.length;
+    useGameStore.getState().requestRename("   ");
+    expect(socket.sent).toHaveLength(before);
+  });
+
+  it("says nothing to an ordinary player about somebody else's request", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({ room: room(), playerId: "p3" });
+    push(socket, room({ buyInRequests: [{ playerId: "p2", amount: 250, requestedAt: 1 }] }));
+    expect(useGameStore.getState().notifications.map((n) => n.message)).toEqual([]);
+  });
+});
