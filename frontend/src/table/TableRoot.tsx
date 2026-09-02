@@ -731,6 +731,7 @@ export function TableRoot({
             discardDy={dealerDiscardDelta.dy}
             bankerWallet={bankerWallet}
             reserved={roundOver ? 0 : totalReserved}
+            reactionEmoji={bankerTurn ? latestReactionByPlayer[bankerTurn.player.id]?.emoji : undefined}
           />
         )}
 

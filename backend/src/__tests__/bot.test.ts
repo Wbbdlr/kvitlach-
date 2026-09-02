@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideBotAction, decideBotBet } from "../bot";
+import { decideBotAction, decideBotBet, decideBotEleveroon } from "../bot";
 import { Card } from "../types";
 
 const card = (values: number[]): Card => ({ name: values.join("/"), attributes: { values } });
@@ -37,5 +37,32 @@ describe("decideBotAction", () => {
 
   it("stands rather than hit again once already busted (nothing left to improve)", () => {
     expect(decideBotAction([card([10]), card([9]), card([9])])).toBe("stand"); // 28, busted
+  });
+});
+
+describe("decideBotEleveroon", () => {
+  it("claims it on a hand readable as exactly 11", () => {
+    // The reported case: a bot sitting on 11 drew an 11 and futched, every
+    // time, because nothing ever opted in on its behalf.
+    expect(decideBotEleveroon([card([3]), card([8])])).toBe(true);
+    expect(decideBotEleveroon([card([11])])).toBe(true);
+  });
+
+  it("claims it when 11 is reachable but is not the best reading of the hand", () => {
+    // The 12 is worth 12, 9 or 10 and is re-read at every evaluation, so
+    // 12+2 is readable as 11 even though winningNumber() would say 14.
+    // Asking winningNumber here instead of getSums would decline protection
+    // on precisely the hands the rule exists for.
+    expect(decideBotEleveroon([card([12, 9, 10]), card([2])])).toBe(true);
+  });
+
+  it("does not claim it on a hand that is not at 11", () => {
+    expect(decideBotEleveroon([card([10]), card([6])])).toBe(false); // 16
+    expect(decideBotEleveroon([card([5])])).toBe(false);
+  });
+
+  it("does not claim it on a busted hand", () => {
+    // Nothing achievable left, so there is no reading of 11 to protect.
+    expect(decideBotEleveroon([card([10]), card([9]), card([9])])).toBe(false);
   });
 });

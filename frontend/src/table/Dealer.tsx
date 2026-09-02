@@ -34,6 +34,17 @@ export interface DealerProps {
   // BankPanel call below.
   bankerWallet?: number;
   reserved?: number;
+  /**
+   * The banker's own reaction bubble.
+   *
+   * ReactionLayer.tsx has always said these are "rendered by Seat.tsx/
+   * Dealer.tsx directly" -- Seat.tsx did, this file never did, and the comment
+   * described an intention rather than the code. So the banker could send a
+   * reaction and be the only person at the table who never appeared to have
+   * said anything. Found while chasing a tester report that the banker's
+   * moments go unannounced; same silence, different cause.
+   */
+  reactionEmoji?: string;
 }
 
 // The Bank's own seat, fixed at the top of the oval, with the shoe sitting
@@ -58,6 +69,7 @@ export function Dealer({
   discardDy = 0,
   bankerWallet,
   reserved = 0,
+  reactionEmoji,
 }: DealerProps) {
   // NOTE: round.state === "final" means the banker's turn has just BEGUN
   // (all other players are resolved), not that the banker is done -- see
@@ -87,6 +99,17 @@ export function Dealer({
         className={clsx("k-seat", canFan && fanned && "hand-fanned")}
         style={{ left: "640px", top: "calc(var(--play-top, 0px) + 160px * var(--vf, 1))", transform: "translate(-50%, -50%)" }}
       >
+        {/* is-side, always: the bank sits at the TOP of the oval, so "above
+            it" is the chrome row, not felt. Seat.tsx picks between the two
+            anchors per seat; here there is only ever one right answer.
+            No --k-rx is set on this element: the dealer is the one box on the
+            felt that never rides seatScale (see layout.ts), so its bubble has
+            nothing to counter-scale out of. */}
+        {reactionEmoji && (
+          <div className="k-reaction is-side" aria-label="Reaction">
+            {reactionEmoji}
+          </div>
+        )}
         {/* The bank's money, on the banker's own seat -- FIRST child, so it
             sits directly above the plate it belongs to.
 

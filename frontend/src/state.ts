@@ -636,6 +636,55 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     return undefined;
   };
 
+  // Public, table-wide, same shape as eleveroonNotification above -- what the
+  // BANK finally did, announced to everyone rather than only to the banker.
+  //
+  // The end of the banker's hand is the moment the whole table is waiting on:
+  // they act last, every unresolved wager settles against them at once, and a
+  // futched bank pays out every player still in the hand. Until now the only
+  // signal was k-futch-flash in TableRoot, which (a) covers the futch and
+  // nothing else -- a bank that simply WON said nothing at all -- and (b) is a
+  // label inside the dock, so on a phone it replaces the words "Round
+  // complete" in a row players have stopped looking at by then. Reported by a
+  // tester as no alert coming up when the banker won or futched. There was no
+  // alert; there was a caption.
+  //
+  // `busted`, not the "lost" turn state: a banker's turn also resolves to lost
+  // when they merely end the round down on money (see CLAUDE.md), and calling
+  // that a futch would be wrong on the one hand players care most about.
+  const bankOutcomeNotification = (
+    prevRound: RoundState | undefined,
+    nextRound: RoundState,
+    playerId: string | undefined
+  ): UINotification | undefined => {
+    // Same fresh-connection guard as eleveroonNotification below: without a
+    // prevRound to diff, a client joining after the fact would replay a
+    // finished round's result as if it had just happened.
+    if (!prevRound || prevRound.roundId !== nextRound.roundId) return undefined;
+    const banker = nextRound.turns.find((t) => t?.player?.type === "admin");
+    if (!banker || (banker.state !== "won" && banker.state !== "lost")) return undefined;
+    const before = prevRound.turns.find((t) => t?.player?.type === "admin");
+    if (before && (before.state === "won" || before.state === "lost")) return undefined;
+    // The banker's own client already had "You won this hand!" from
+    // outcomeNotification a few lines up. Two toasts saying the same thing to
+    // the same person is the exact duplication the bank-frame path was fixed
+    // for once already.
+    if (playerId && banker.player?.id === playerId) return undefined;
+    const { total, bustedTotal } = bestTotal(banker.cards ?? []);
+    if (banker.busted) {
+      // Good news from every seat that is reading this, hence "success" on
+      // what is nominally the bank losing.
+      return makeNotification(
+        `The bank futched with ${bustedTotal ?? "a bust"} -- everyone still in the hand wins!`,
+        "success"
+      );
+    }
+    if (banker.state === "won") {
+      return makeNotification(`The bank stood on ${total ?? "--"} and took the round.`, "info");
+    }
+    return makeNotification(`The bank stood on ${total ?? "--"} and finished down on the round.`, "info");
+  };
+
   // Public, table-wide, same shape as eleveroonNotification above -- a BANK!
   // wager that leaves seats still waiting forces the banker straight into a
   // fresh hand, and the server overwrites their turn with that redeal in the
@@ -766,6 +815,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           deckReshuffleNotification(state.round, nextRound),
           outcomeNotification(state.round, nextRound, state.playerId),
           eleveroonNotification(state.round, nextRound),
+          bankOutcomeNotification(state.round, nextRound, state.playerId),
           bankFrameNotification(state.round, nextRound),
         ].filter((n): n is UINotification => Boolean(n));
         return {

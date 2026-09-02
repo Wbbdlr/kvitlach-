@@ -2,7 +2,7 @@ import { v4 as uuid } from "uuid";
 import { customAlphabet } from "nanoid";
 import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe, buildRoundHistoryEntry, recommendedDeckCount } from "./round.js";
 import { handleHit } from "./round.js";
-import { decideBotAction, decideBotBet } from "./bot.js";
+import { decideBotAction, decideBotBet, decideBotEleveroon } from "./bot.js";
 import { RuntimeLimits } from "./limits.js";
 import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
 import type { RoundContext } from "./round.js";
@@ -361,14 +361,25 @@ export class GameStore {
     if (!turn || !turn.player.isBot || turn.state !== "pending") return;
     try {
       let updated: RoundContext;
+      // Decided once, off the hand as it stands BEFORE this draw -- the same
+      // point a human ticks the checkbox. Both draw paths take it, because
+      // both draw a card and the rule does not care which button did it (see
+      // applyEleveroonRule in round.ts).
+      const eleveroon = decideBotEleveroon(turn.cards);
       if ((turn.bet ?? 0) === 0) {
         const { available } = this.computeBankWindow(round, roomRec.room, playerId);
         const wallet = roomRec.room.wallets[playerId] ?? 0;
         const amount = decideBotBet(wallet, available);
-        updated = amount > 0 ? this.applyBet(roundId, playerId, amount) : this.applyHit(roundId, playerId);
+        updated =
+          amount > 0
+            ? this.applyBet(roundId, playerId, amount, { eleveroon })
+            : this.applyHit(roundId, playerId, { eleveroon });
       } else {
         const action = decideBotAction(turn.cards);
-        updated = action === "stand" ? this.applyStand(roundId, playerId) : this.applyHit(roundId, playerId);
+        updated =
+          action === "stand"
+            ? this.applyStand(roundId, playerId)
+            : this.applyHit(roundId, playerId, { eleveroon });
       }
       if (this.roundUpdateListener) this.roundUpdateListener(updated);
     } catch (err) {
