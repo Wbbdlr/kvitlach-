@@ -1,3 +1,4 @@
+import { AboutContent, AboutRecord } from "./about.js";
 import { createHttpServer } from "./http-server.js";
 import { GameStore } from "./store.js";
 import { WSServer } from "./ws-server.js";
@@ -11,6 +12,7 @@ const PORT_WS = Number(process.env.WS_PORT || 3001);
 const PORT_HTTP = Number(process.env.PORT || 3000);
 const ACCESS_SETTING_KEY = "access";
 const LIMITS_SETTING_KEY = "limits";
+const ABOUT_SETTING_KEY = "about";
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL;
@@ -55,6 +57,20 @@ async function main() {
   console.log(`access mode: ${access.getMode()} (${access.snapshot().codeCount} code(s))`);
   console.log(`limits: ${limits.maxRooms} rooms, ${limits.maxPracticeRooms} practice, ${limits.maxPlayersPerRoom} players/room`);
 
+  // About-page copy. No env default, unlike access and limits: there is no
+  // sensible boot value for someone else's thank-you list, so an unconfigured
+  // server simply shows the built-in About page and nothing extra.
+  const about = new AboutContent((record) => {
+    void db?.putSetting(ABOUT_SETTING_KEY, record).catch((e) => console.error("db putSetting(about)", e));
+  });
+  if (db) {
+    try {
+      about.hydrate(await db.getSetting<AboutRecord>(ABOUT_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(about); About page will show its built-in copy only", e);
+    }
+  }
+
   const auth = adminAuthFromEnv();
   if (!auth.enabled && !process.env.ADMIN_TOKEN) {
     console.warn("admin panel disabled: set ADMIN_USERNAME + ADMIN_PASSWORD_HASH (or ADMIN_TOKEN)");
@@ -70,6 +86,7 @@ async function main() {
   const ws = new WSServer(store, PORT_WS, access);
 
   const app = createHttpServer(store, {
+    about,
     access,
     limits,
     auth,

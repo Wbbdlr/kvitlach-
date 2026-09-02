@@ -43,7 +43,7 @@ Flat px, never scaled. Chrome, not table.
 the player goes in the frame; anything answering "both" is two elements. Nothing
 in the frame may be positioned from a scene measurement, or the reverse.
 
-## Part 2 — The eight rules
+## Part 2 — The nine rules
 
 
 **1. Nothing persistent floats in the vertical centre of the felt.**
@@ -150,6 +150,13 @@ height with it.
 **8. A comment can outlive the layout it describes.** When you move an
 element, grep for its name in comments, not just in code. A stale justification
 reads as sound while the thing it defends has become wrong.
+
+**9. Don't edit prose by line range.** Extracting or replacing a span of lines
+cuts through sentences and leaves something that still parses, so nothing
+flags it. It has silently truncated this file twice and `About.tsx` once —
+a mid-sentence paragraph, a rule that ended on its own colon, and a regex
+literal split into orphan lines. Edit prose by matching the text you mean to
+change, and re-read the whole file afterwards.
 
 ## Part 3 — Z-index tiers
 

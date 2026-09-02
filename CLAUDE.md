@@ -146,7 +146,7 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 
 Most players are on a phone, in landscape.
 **[docs/mobile-ui.md](docs/mobile-ui.md) is the design contract — read Part 1
-(the scene / HUD split) and Part 2 (the six rules) before writing any layout
+(the scene / HUD split) and Part 2 (the nine rules) before writing any layout
 code.** It also holds the z-index tiers, the orientation model and the
 verification loop. It is rules only; what produced each one — the closed bugs,
 the measured constants, the refactor — is in

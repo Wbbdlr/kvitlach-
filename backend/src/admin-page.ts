@@ -1,5 +1,6 @@
 import { AccessControl, GATED_ACTIONS, GatedAction } from "./access.js";
 import { DEFAULT_LIMITS, LIMIT_KEYS, LimitKey, RuntimeLimits, limitBounds } from "./limits.js";
+import { AboutContent, ABOUT_MAX } from "./about.js";
 import { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
 
@@ -137,6 +138,8 @@ export interface AdminPageDeps {
   store: GameStore;
   access: AccessControl;
   limits: RuntimeLimits;
+  /** Operator-authored copy for the public About page. */
+  about: AboutContent;
   /** Appended to every form action so token-authenticated sessions keep working. */
   query: string;
   refresh: boolean;
@@ -149,7 +152,9 @@ export interface AdminPageDeps {
   notice?: string;
 }
 
-export function renderAdminPage({ store, access, limits, query, refresh, appUrl, watchToken, notice }: AdminPageDeps): string {
+export function renderAdminPage({ store, access, limits, about, query, refresh, appUrl, watchToken, notice }: AdminPageDeps): string {
+  const aboutRecord = about.toRecord();
+  const aboutEdited = aboutRecord.updatedAt ? new Date(aboutRecord.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "never";
   const load = store.loadSnapshot();
   const lag = Math.round(metrics.eventLoopLagMs);
   const conns = metrics.currentWsConnections;
@@ -300,6 +305,23 @@ export function renderAdminPage({ store, access, limits, query, refresh, appUrl,
       <form method="post" action="${act("/admin/limits")}" class="row">
         <input type="hidden" name="reset" value="1" />
         <button type="submit">Reset to defaults</button>
+      </form>
+    </fieldset>
+
+    <fieldset>
+      <legend>About page</legend>
+      <p class="meta">Extra copy shown at the foot of the public <b>About</b> page &mdash; beta-tester
+      credits, thanks, a note about the table. Plain text: blank lines start a new paragraph, and
+      HTML is shown as typed rather than rendered. Leave both blank (or use Clear) to show nothing.
+      Last edited: ${aboutEdited}.</p>
+      <form method="post" action="${act("/admin/about")}">
+        <p><input type="text" name="heading" maxlength="${ABOUT_MAX.heading}" style="width:100%"
+          placeholder="With thanks to our beta testers" value="${escapeHtml(aboutRecord.heading)}" /></p>
+        <p><textarea name="body" rows="8" maxlength="${ABOUT_MAX.body}" style="width:100%"
+          placeholder="Sruly, Chaim and Shmuely played the first fifty hands and found the ones we could not."
+          >${escapeHtml(aboutRecord.body)}</textarea></p>
+        <button type="submit" class="save">Save</button>
+        <button type="submit" name="clear" value="1">Clear</button>
       </form>
     </fieldset>
 

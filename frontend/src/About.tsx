@@ -1,6 +1,49 @@
+import { useEffect, useState } from "react";
 import PageShell from "./PageShell";
 
+// Operator-authored copy, edited from /admin and served by the backend through
+// an exact-path nginx proxy (frontend/nginx.conf). Fetched rather than built in
+// so adding a beta tester's name does not need a release.
+//
+// It is rendered as TEXT, never as HTML: paragraphs are split on blank lines
+// and each becomes a <p> with React setting its textContent. That is what makes
+// the field safe to expose to an operator at all -- normalizeAboutText on the
+// server strips control characters and caps length, but it deliberately does
+// not escape markup, because escaping on the way in and trusting on the way out
+// is how stored XSS gets built one refactor later. If this ever grows
+// formatting, it needs a real markdown renderer with HTML disabled, not
+// dangerouslySetInnerHTML.
+interface AboutExtra {
+  heading: string;
+  body: string;
+}
+
+function useAboutExtra(): AboutExtra | null {
+  const [extra, setExtra] = useState<AboutExtra | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    // Failure is silent and total: the page's own copy is the point, this is an
+    // addition to it. A backend that is down, a proxy that is not configured
+    // (local dev without the container) and an empty setting all look the same
+    // to a reader, which is correct -- there is simply no extra section.
+    fetch("/api/about", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const heading = typeof data.heading === "string" ? data.heading : "";
+        const body = typeof data.body === "string" ? data.body : "";
+        if (heading || body) setExtra({ heading, body });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return extra;
+}
+
 export default function About() {
+  const extra = useAboutExtra();
   return (
     <PageShell active="/about">
       <h1 className="text-3xl font-bold text-amber-800">About Kvitlach</h1>
@@ -124,6 +167,23 @@ export default function About() {
           </li>
         </ul>
       </section>
+
+      {extra && (
+        <section className="mt-8">
+          {extra.heading && <h2 className="text-lg font-semibold text-slate-800">{extra.heading}</h2>}
+          {extra.body
+            .split(/\n\s*\n/)
+            .map((para) => para.trim())
+            .filter(Boolean)
+            .map((para, i) => (
+              // Index keys are fine here: this list is derived from one string,
+              // is never reordered, and has no state of its own.
+              <p key={i} className="mt-2 whitespace-pre-line text-slate-700">
+                {para}
+              </p>
+            ))}
+        </section>
+      )}
     </PageShell>
   );
 }

@@ -5,6 +5,7 @@ import { metrics } from "./metrics.js";
 import { AccessControl, isAccessMode, isActionMode, parseCodeList } from "./access.js";
 import type { GatedAction } from "./access.js";
 import { GATED_ACTIONS } from "./access.js";
+import { AboutContent } from "./about.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
 import { renderAdminPage, renderLoginPage } from "./admin-page.js";
@@ -100,6 +101,9 @@ function formatIdle(ms: number): string {
 export interface HttpServerDeps {
   access?: AccessControl;
   limits?: RuntimeLimits;
+  /** Operator-authored About copy. Read by a PUBLIC route, unlike everything
+   *  else on this server -- see GET /api/about. */
+  about?: AboutContent;
   auth?: AdminAuth;
   /** Set by index.ts once the WS server exists; the broadcast form needs it.
    *  `roomId` targets one table; omitted, every table. */
@@ -118,6 +122,7 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   const opts: HttpServerDeps = deps instanceof AccessControl ? { access: deps } : deps;
   const access = opts.access ?? new AccessControl();
   const limits = opts.limits ?? new RuntimeLimits();
+  const about = opts.about ?? new AboutContent();
   const auth = opts.auth ?? new AdminAuth();
   const app = Fastify({
     logger: {
@@ -163,6 +168,20 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
       }
     }
   );
+
+  // The ONE public route on this server. Everything else here is admin or
+  // operator telemetry and is protected by ADMIN_BIND defaulting to localhost;
+  // this is reached from a browser, via an exact-path nginx proxy on the
+  // frontend origin (frontend/nginx.conf). Exact path, GET only, no auth, and
+  // it returns nothing that is not already meant for the About page -- widen
+  // that proxy and the admin panel goes public with it.
+  app.get("/api/about", async (_request, reply) => {
+    const record = about.toRecord();
+    // A minute of caching: the copy changes when an operator edits it, which is
+    // rarely, and the About page should not wait on the backend to paint.
+    reply.header("cache-control", "public, max-age=60");
+    return record;
+  });
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -264,6 +283,7 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
         store,
         access,
         limits,
+        about,
         query: carry(request, how),
         // On unless explicitly stopped. An operator opens this page to watch
         // load, and a stale page is worse than useless -- it is misleading.
@@ -322,6 +342,16 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     if (body.reset === "1") limits.resetToDefaults();
     else if (isLimitKey(body.key)) limits.set(body.key, body.value);
     return reply.redirect(`/admin${carry(request, how)}`);
+  });
+
+  app.post("/admin/about", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const changed = body.clear === "1" ? about.clear() : about.set(body.heading, body.body);
+    const note = changed ? "About page updated." : "No change.";
+    const sep = carry(request, how) ? "&" : "?";
+    return reply.redirect(`/admin${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   app.post("/admin/broadcast", async (request, reply) => {
