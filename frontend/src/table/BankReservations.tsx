@@ -59,10 +59,28 @@ function potPoint(playTop: number, vf: number): { x: number; y: number } {
 // now take `scale` and apply it to this constant, so the gap shrinks in step
 // with the seat instead of growing relatively bigger as the table fills up.
 const SEAT_CLEARANCE = 130;
-// ...but never so far back that a badge lands on the pot itself, nor so far
-// out that it drifts into the seat's own hand.
+// ...but never so far back that a badge lands on the pot itself.
 const T_MIN = 0.34;
-const T_MAX = 0.7;
+// There is deliberately no T_MAX any more.
+//
+// It was 0.7 -- "never more than seven tenths of the way to the seat" -- and it
+// is what put the chips nowhere near the players they belong to. The two rules
+// disagreed about what they were measuring: SEAT_CLEARANCE says "rest a fixed
+// distance BACK from the seat", which is a statement about the seat end, while
+// a fraction of the total is a statement about the pot end. They only agree at
+// one distance. Past it the fraction wins and the badge stops tracking the
+// seat at all -- at a 1300px diagonal the clearance rule asks for 130px short
+// of the seat and T_MAX delivered 390px short, stranding it in open felt.
+//
+// Reported as the reserved chips being "nowhere near the player's spot", and
+// measured on a live desktop table at 2560x1440: the badge sat at (1280, 638)
+// with the viewer's own seat at (1112..1448, 797..999) -- 160px above the top
+// of their own seat box, on empty felt, connected to nothing it was about.
+//
+// SEAT_CLEARANCE is the guard that was always doing the real work, and it
+// scales with the seat, so it keeps a badge off the plate at every table size.
+// T_MIN stays: the pot end still needs a floor, because the dealer's box is
+// there and a badge must not land on it.
 
 // Below this, there is no straight-line point that clears both ends at once:
 // the pot-side floor (T_MIN) and the seat-side clearance (SEAT_CLEARANCE)
@@ -95,7 +113,7 @@ function restPoint(position: SeatPosition, pot: { x: number; y: number }, scale:
   const dy = position.y - pot.y;
   const distance = Math.hypot(dx, dy);
   const clearance = SEAT_CLEARANCE * scale;
-  const t = distance > 0 ? Math.min(T_MAX, Math.max(T_MIN, (distance - clearance) / distance)) : T_MIN;
+  const t = distance > 0 ? Math.max(T_MIN, (distance - clearance) / distance) : T_MIN;
   return { x: pot.x + dx * t, y: pot.y + dy * t };
 }
 
