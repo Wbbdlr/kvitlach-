@@ -85,3 +85,85 @@ export function useInstallPrompt() {
 
   return { canInstall, promptInstall };
 }
+
+// ---------------------------------------------------------------------------
+// "Ask once, then leave it alone for a while."
+//
+// Both install nudges (the lobby banner in InstallPrompt.tsx and the in-table
+// iOS hint in TableRoot.tsx) used to write a flat "1" on dismissal, which
+// silenced them FOREVER. One "not now" on the day someone first opened the
+// site meant they were never offered it again -- including the people who
+// tapped it to get the banner out of the way mid-join and would happily have
+// installed it a week later. Browsers themselves work the way the nudge should
+// have: Chrome re-offers a dismissed install on a later visit rather than
+// treating one decline as permanent.
+//
+// So a dismissal is a snooze with a backoff, not a tombstone. Each "not now"
+// pushes the next ask further out, and after the fourth the answer is taken as
+// final -- somebody who has declined four times over two months has answered.
+
+const SNOOZE_DAYS = [7, 30, 90];
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+interface NudgeState {
+  at: number; // when it was last dismissed
+  n: number; // how many times
+}
+
+function read(key: string): NudgeState | undefined {
+  if (typeof window === "undefined" || !window.localStorage) return { at: Date.now(), n: 99 };
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(key);
+  } catch {
+    // Private mode and "block site data" both throw. Showing the nudge is the
+    // safe failure: it is dismissible, it just will not stay dismissed.
+    return undefined;
+  }
+  if (!raw) return undefined;
+  // "1" is what every build before this wrote. Migrated as a dismissal that
+  // happened NOW rather than one that happened at the epoch: the alternative
+  // re-asks every existing player the moment they load this build, which is
+  // the nagging this whole change exists to avoid.
+  if (raw === "1") {
+    const migrated = { at: Date.now(), n: 1 };
+    write(key, migrated);
+    return migrated;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<NudgeState>;
+    if (typeof parsed?.at !== "number" || typeof parsed?.n !== "number") return undefined;
+    return { at: parsed.at, n: parsed.n };
+  } catch {
+    return undefined;
+  }
+}
+
+function write(key: string, state: NudgeState): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(state));
+  } catch {
+    /* ignore -- reappears next visit, not worth failing over */
+  }
+}
+
+/** Whether an install nudge stored under `key` is allowed to show right now. */
+export function installNudgeDue(key: string, now = Date.now()): boolean {
+  const state = read(key);
+  if (!state) return true;
+  if (state.n > SNOOZE_DAYS.length) return false; // asked and answered
+  const wait = SNOOZE_DAYS[Math.min(state.n, SNOOZE_DAYS.length) - 1] ?? SNOOZE_DAYS[0];
+  return now - state.at >= wait * DAY_MS;
+}
+
+/** Records a "not now": silences the nudge for a while, longer each time. */
+export function snoozeInstallNudge(key: string, now = Date.now()): void {
+  const previous = read(key)?.n ?? 0;
+  write(key, { at: now, n: previous + 1 });
+}
+
+/** Records an outcome there is no coming back from -- they installed it. */
+export function silenceInstallNudge(key: string): void {
+  write(key, { at: Date.now(), n: SNOOZE_DAYS.length + 1 });
+}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useInstallPrompt } from "./pwa";
+import { installNudgeDue, silenceInstallNudge, snoozeInstallNudge, useInstallPrompt } from "./pwa";
 import { isIOS, isStandaloneDisplay } from "./table/platform";
 
 // Lobby nudge toward installing the site as an app.
@@ -16,31 +16,14 @@ import { isIOS, isStandaloneDisplay } from "./table/platform";
 const IOS_HINT_KEY = "kvitlach.iosInstallHintSeen";
 const INSTALL_HINT_KEY = "kvitlach.installHintSeen";
 
-function readDismissed(key: string): boolean {
-  if (typeof window === "undefined" || !window.localStorage) return true;
-  try {
-    return window.localStorage.getItem(key) === "1";
-  } catch {
-    // Private mode and "block site data" both throw here. Showing the banner
-    // is the safe failure: it is dismissible, it just will not stay dismissed.
-    return false;
-  }
-}
-
-function markDismissed(key: string): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(key, "1");
-  } catch {
-    /* ignore -- reappears next visit, not worth failing over */
-  }
-}
-
 export default function InstallPrompt() {
   const { canInstall, promptInstall } = useInstallPrompt();
   const iosCandidate = isIOS() && !isStandaloneDisplay();
   const storageKey = canInstall ? INSTALL_HINT_KEY : IOS_HINT_KEY;
-  const [dismissed, setDismissed] = useState(() => readDismissed(storageKey));
+  // "Not now" is a snooze, not a tombstone -- see pwa.ts. Read once on mount,
+  // because a due date that flipped mid-session would pop the banner back up
+  // under someone who had just closed it.
+  const [dismissed, setDismissed] = useState(() => !installNudgeDue(storageKey));
 
   // Already installed and launched from the home screen: nothing to offer.
   if (isStandaloneDisplay()) return null;
@@ -49,7 +32,7 @@ export default function InstallPrompt() {
 
   const dismiss = () => {
     setDismissed(true);
-    markDismissed(storageKey);
+    snoozeInstallNudge(storageKey);
   };
 
   return (
@@ -71,9 +54,13 @@ export default function InstallPrompt() {
           className="rounded-full bg-accent px-4 py-2 text-xs font-semibold tracking-wide text-white shadow-sm transition-colors duration-200 hover:bg-accent/90"
           onClick={async () => {
             const outcome = await promptInstall();
-            // "dismissed" is not a no -- Chrome re-offers on a later visit, so
-            // the banner is only silenced for good once they accept.
-            if (outcome === "accepted") dismiss();
+            // "dismissed" here is the outcome of the BROWSER's own dialog, not
+            // our banner. Chrome re-offers that on a later visit, so it is not
+            // a no -- only an accept silences this for good.
+            if (outcome === "accepted") {
+              setDismissed(true);
+              silenceInstallNudge(storageKey);
+            }
           }}
         >
           Install

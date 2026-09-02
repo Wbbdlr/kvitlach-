@@ -8,6 +8,7 @@ import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTu
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { useMediaQuery } from "../useMediaQuery";
+import { installNudgeDue, snoozeInstallNudge } from "../pwa";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
 import { PlayerDock } from "./PlayerDock";
@@ -303,24 +304,17 @@ export function TableRoot({
   // false there) -- the only real chrome-free path on an iPhone is adding the
   // page to the home screen, so give those visitors a different, one-time
   // nudge toward that instead of just silently having no fullscreen control.
+  // Shares its snooze with the lobby banner (InstallPrompt.tsx) on purpose:
+  // the two say the same thing from different places, and someone who has
+  // declined one should not meet the other. Dismissal is a snooze with a
+  // backoff rather than a permanent silence -- see pwa.ts.
   const IOS_HINT_KEY = "kvitlach.iosInstallHintSeen";
-  const [showIOSInstallHint, setShowIOSInstallHint] = useState(() => {
-    if (typeof window === "undefined" || !window.localStorage) return false;
-    if (!isIOS() || isStandaloneDisplay()) return false;
-    try {
-      return window.localStorage.getItem(IOS_HINT_KEY) !== "1";
-    } catch {
-      return false;
-    }
-  });
+  const [showIOSInstallHint, setShowIOSInstallHint] = useState(
+    () => isIOS() && !isStandaloneDisplay() && installNudgeDue(IOS_HINT_KEY)
+  );
   const dismissIOSInstallHint = () => {
     setShowIOSInstallHint(false);
-    if (typeof window === "undefined" || !window.localStorage) return;
-    try {
-      window.localStorage.setItem(IOS_HINT_KEY, "1");
-    } catch {
-      /* ignore -- the hint just reappears next visit, not worth failing over */
-    }
+    snoozeInstallNudge(IOS_HINT_KEY);
   };
 
   useEffect(() => {
@@ -940,29 +934,37 @@ export function TableRoot({
           under the dock's tallest measured state. See docs/mobile-ui.md Part 2
           rule 2 and .k-bottom-band. */}
       <div className="k-bottom-band">
-        {/* Bottom-left HUD column: transient toasts stacked above the viewer's
-            own persistent readout. */}
-        <div className="k-hud-bottom-left">
-          {notifications.length > 0 && (
-            <div className="k-toast-stack">
-              {notifications.map((note) => (
-                <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
-                  <span>{note.message}</span>
-                  <button type="button" onClick={() => onDismissNotification(note.id)}>
-                    Dismiss
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {myPlayerTurn && (
-            <ViewerHud
-              turn={myPlayerTurn}
-              viewerId={playerId}
-              roundState={round?.state}
-              walletAmount={myWallet}
-            />
-          )}
+        {/* Both bottom corners on one row. The persistent readout keeps the
+            left; transient toasts take the right, which was empty felt.
+            They used to share the left column, so every announcement pushed
+            the one panel a player checks mid-hand up the screen and then
+            dropped it again -- reported by a tester, who was also the one who
+            pointed out the other corner was going spare. */}
+        <div className="k-hud-row">
+          <div className="k-hud-bottom-left">
+            {myPlayerTurn && (
+              <ViewerHud
+                turn={myPlayerTurn}
+                viewerId={playerId}
+                roundState={round?.state}
+                walletAmount={myWallet}
+              />
+            )}
+          </div>
+          <div className="k-hud-bottom-right">
+            {notifications.length > 0 && (
+              <div className="k-toast-stack">
+                {notifications.map((note) => (
+                  <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
+                    <span>{note.message}</span>
+                    <button type="button" onClick={() => onDismissNotification(note.id)}>
+                      Dismiss
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="k-controls" ref={dockRef}>

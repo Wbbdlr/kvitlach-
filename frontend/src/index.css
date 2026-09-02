@@ -1616,17 +1616,31 @@ body:has(.k-fit) {
   pointer-events: none;
 }
 
-/* The bottom-left HUD column owns the corner; the toast stack and the viewer's
-   own readout are simply its children, stacked with a gap. The anchoring that
+/* Both bottom corners, on one row above the tray.
+   The readout keeps the left; toasts moved to the right, which was empty --
+   they were stacking on top of the one panel a player checks mid-hand, in the
+   only corner of the screen that had anything in it. Reported by a tester.
+   A row, not two absolutely-positioned boxes: "opposite corners of the same
+   line, above the dock" is a containment relationship, and space-between says
+   it without either corner knowing the other exists. */
+.k-hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* Each corner column owns its corner; the toast stack and the viewer's own
+   readout are simply children of one, stacked with a gap. The anchoring that
    used to live on .k-toast-stack lives here now, once, so a second element in
-   this corner did not have to be positioned by measuring the first. */
-.k-hud-bottom-left {
-  /* relative, not absolute: it is the band's first child and the dock is its
-     second, so "above the dock" is flow, not arithmetic. Positioned only so
-     its own z-index still applies. */
+   a corner does not have to be positioned by measuring the first. */
+.k-hud-bottom-left,
+.k-hud-bottom-right {
+  /* relative, not absolute: these are the row's children and the dock is the
+     band's next child, so "above the dock" is flow, not arithmetic. Positioned
+     only so their own z-index still applies. */
   position: relative;
-  align-self: flex-start;
-  margin-left: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-left)));
   pointer-events: auto;
   /* This column sits outside the scaled stage (position is computed from the
      felt's true rendered box, not inherited from it -- see above), so its
@@ -1638,16 +1652,28 @@ body:has(.k-fit) {
      tuned 1x (the compact override below already covers small screens in
      its own right), only grows past it in step with the stage. */
   transform: scale(max(1, var(--stage-scale, 1)));
-  transform-origin: bottom left;
   z-index: 45;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  /* Toasts above, the persistent readout pinned at the bottom of the column --
-     so the viewer's own total never moves when a toast arrives or leaves. */
+  /* The persistent readout pinned to the bottom of its column -- so the
+     viewer's own total never moves, whatever else arrives or leaves. */
   justify-content: flex-end;
   gap: 8px;
   max-width: min(280px, calc(100vw - 16px));
+}
+.k-hud-bottom-left {
+  margin-left: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-left)));
+  transform-origin: bottom left;
+  align-items: flex-start;
+}
+/* Mirrored, including the safe-area edge it respects: a notch is on one side
+   in one rotation and the other side in the other, so the right column must
+   read inset-right rather than share the left's. */
+.k-hud-bottom-right {
+  margin-right: calc((100% - var(--stage-w)) / 2 + max(8px, env(safe-area-inset-right)));
+  transform-origin: bottom right;
+  align-items: flex-end;
+  text-align: right;
 }
 .k-toast-stack {
   display: flex;
@@ -2450,7 +2476,8 @@ body:has(.k-fit) {
      needs. If a toast does crowd the dock at this size the sweep will show it,
      and the fix is this column's own width or gap -- not moving it back on top
      of the readout it now shares a corner with. */
-  .k-hud-bottom-left {
+  .k-hud-bottom-left,
+  .k-hud-bottom-right {
     max-width: min(190px, 46vw);
   }
   /* Your own name is the first thing to go on a phone. It was truncating to
