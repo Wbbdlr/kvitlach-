@@ -57,7 +57,21 @@ test("a player who reloads mid-round resumes the same seat, once, with their wag
     // (ViewerHud.tsx / Seat.tsx's identityInHud), so from THEIR view the seat
     // is cards only and this locator matched nothing. The HUD renders exactly
     // when they hold a seat in the round, which is what is being asserted.
-    await expect(player.locator(".k-viewer-hud")).toHaveCount(1, { timeout: 20_000 });
+    // Checked in two stages so a failure says WHICH half broke. A bare
+    // "expected 1, received 0" on the HUD cannot distinguish "the socket never
+    // came back" from "it did and the round never arrived", and those are a
+    // connection bug and a resume bug respectively. Under a loaded full-suite
+    // run this has timed out intermittently while passing every time on its
+    // own; the split is what will say whether that is slowness or a real
+    // resume failure the next time it happens.
+    await expect(
+      player.getByText(/Connection lost|Connecting/i),
+      "socket did not come back after the reload"
+    ).toHaveCount(0, { timeout: 20_000 });
+    await expect(
+      player.locator(".k-viewer-hud"),
+      "socket reconnected but the round never restored this player's seat"
+    ).toHaveCount(1, { timeout: 20_000 });
 
     // The failure this really guards against: a resume that registers a NEW
     // player instead of reclaiming the existing session leaves the table with

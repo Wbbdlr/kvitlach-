@@ -1,4 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
+import { clickIfAppears } from "./helpers";
 
 // Nothing here checks a feature. It checks that the felt's elements do not sit
 // on top of each other, which is a thing unit tests structurally cannot see:
@@ -242,10 +243,19 @@ for (const vp of PHONE_LANDSCAPE) {
     // on it and passed for the wrong reason.
     await expect(page.locator(".k-reaction")).toBeVisible();
 
-    await page.getByRole("button", { name: "Stand", exact: true }).click();
+    // Tolerant, because Stand may not be there to click: the bet or a hit can
+    // have already resolved this turn, and the round:state saying so can land
+    // between the button appearing and the click. Clicking it blind spent the
+    // whole test budget waiting for a button that was never coming back, which
+    // is the same race clickIfAppears documents -- this call site simply
+    // predated the helper. What the round actually needs to reach is the
+    // discard pile, and that is asserted on the next line either way.
+    await clickIfAppears(page.getByRole("button", { name: "Stand", exact: true }), 10_000);
     await expect(page.locator(".k-discard")).toBeVisible({ timeout: 30_000 });
     // Resolving the round also raises an outcome toast, which lands in the
-    // bottom-left HUD column directly above the viewer's own readout. Waiting
+    // bottom-RIGHT HUD column now -- it shared the left one with the viewer's
+    // readout until that was reported as every announcement shoving the one
+    // panel a player checks mid-hand up the screen. Waiting
     // for it is what makes .k-toast/.k-viewer-hud in CHECKED mean anything --
     // an allowlist entry for an element that never rendered is inert, which is
     // exactly how .k-discard sat in here measuring a felt the pile had never
