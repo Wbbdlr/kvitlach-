@@ -10,6 +10,17 @@ export interface AppearanceMenuProps {
   chip: ChipName;
   onFeltChange: (name: FeltName) => void;
   onChipChange: (name: ChipName) => void;
+  /**
+   * Render the rows directly, with no trigger button of their own.
+   *
+   * Set when this is already inside the chrome menu on a phone. Collapsing
+   * nine swatches behind a button is right in a horizontal chrome ROW, where
+   * space is the binding constraint; inside a vertical popover it just made a
+   * menu open a menu, behind an unlabelled swatch icon, to reach the felt
+   * colour. Reported by a tester as too nested to find. Same component either
+   * way -- a second copy of these rows is how the two would drift.
+   */
+  inline?: boolean;
 }
 
 // The felt and chip pickers, behind one button.
@@ -25,7 +36,7 @@ export interface AppearanceMenuProps {
 // desktop and silently vanishes on a phone is worse than one that is one tap
 // away everywhere, and the two switchers keep their own sizing and
 // selection-ring treatment unchanged inside the panel.
-export function AppearanceMenu({ felt, chip, onFeltChange, onChipChange }: AppearanceMenuProps) {
+export function AppearanceMenu({ felt, chip, onFeltChange, onChipChange, inline = false }: AppearanceMenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
 
@@ -42,6 +53,22 @@ export function AppearanceMenu({ felt, chip, onFeltChange, onChipChange }: Appea
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
+
+  const rows = (
+    <>
+      <div className="k-appearance-row">
+        <span className="k-appearance-label">Felt</span>
+        <FeltSwitcher felt={felt} onChange={onFeltChange} />
+      </div>
+      <div className="k-appearance-row">
+        <span className="k-appearance-label">Chips</span>
+        <ChipSwitcher chip={chip} onChange={onChipChange} />
+      </div>
+      <p className="k-appearance-note">Just for your view &mdash; nobody else sees the change.</p>
+    </>
+  );
+
+  if (inline) return <div className="k-appearance-inline">{rows}</div>;
 
   return (
     <span ref={wrapRef} className="relative inline-flex">
@@ -63,15 +90,7 @@ export function AppearanceMenu({ felt, chip, onFeltChange, onChipChange }: Appea
         // transform. Right-aligned so a panel opening near the row's left
         // edge still lands on screen.
         <div className="k-appearance-panel" role="dialog" aria-label="Table colors">
-          <div className="k-appearance-row">
-            <span className="k-appearance-label">Felt</span>
-            <FeltSwitcher felt={felt} onChange={onFeltChange} />
-          </div>
-          <div className="k-appearance-row">
-            <span className="k-appearance-label">Chips</span>
-            <ChipSwitcher chip={chip} onChange={onChipChange} />
-          </div>
-          <p className="k-appearance-note">Just for your view &mdash; nobody else sees the change.</p>
+          {rows}
         </div>
       )}
     </span>

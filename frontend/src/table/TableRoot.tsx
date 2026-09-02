@@ -8,7 +8,7 @@ import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTu
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
 import { useMediaQuery } from "../useMediaQuery";
-import { installNudgeDue, snoozeInstallNudge } from "../pwa";
+import { installNudgeDue, snoozeInstallNudge, useInstallPrompt } from "../pwa";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
 import { PlayerDock } from "./PlayerDock";
@@ -198,9 +198,17 @@ export function TableRoot({
   const [chip, setChip] = useChip(); // applies the viewer's .k-chip-btn accent color on mount
   const [manageOpen, setManageOpen] = useState(false);
   const [roomInfoOpen, setRoomInfoOpen] = useState(false);
+  // Which self-service form the drawer should open on, if any -- see
+  // RoomInfoDrawer's `focus`. Undefined means "just the drawer".
+  const [roomInfoFocus, setRoomInfoFocus] = useState<"rename" | "chips" | undefined>();
+  const openRoomInfo = (section?: "rename" | "chips") => {
+    setRoomInfoFocus(section);
+    setRoomInfoOpen(true);
+  };
   const [waitingListOpen, setWaitingListOpen] = useState(false);
   const [discardPileOpen, setDiscardPileOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
+  const { canInstall, promptInstall } = useInstallPrompt();
   // playerTurns.length, not room.players.length: it's exactly the count that
   // feeds seatPositions()/seatScale() below (the dealer never shrinks, see
   // dealDeltaFor's own comment), so computeFit's crowding correction shrinks
@@ -500,12 +508,27 @@ export function TableRoot({
   //
   // A fragment rather than an array: these are heterogeneous one-off controls,
   // not a list, so there is no honest key for each and no reordering to track.
+  // ONE list, rendered inline in the chrome row on a desktop and inside the
+  // ChromeMenu popover on a phone -- two renderings of one list is how they
+  // drift. What differs between the two is presentation only, and it is CSS
+  // that differs it: .k-ctl-label is hidden in the row (there is no space for
+  // words, and hover titles carry it there) and shown in the popover (there is
+  // space, and a column of unlabelled icons is not a menu).
+  //
+  // Reported by a tester: "the mobile menu for players is not intuitive on how
+  // to request chips and name changes and change felt colours -- things are a
+  // bit too nested". They were. Chips and name changes lived two levels down
+  // behind a button whose only label was the room's NAME, and the felt colours
+  // lived behind an unlabelled swatch icon inside an unlabelled "..." icon.
   const chromeControls = (
     <>
       <span className="relative inline-flex items-center gap-1">
         <AppearanceMenu
           felt={felt}
           chip={chip}
+          // Inside the popover the swatches show as rows rather than behind
+          // another button -- a menu opening a menu to reach a colour.
+          inline={compact}
           onFeltChange={(name) => {
             setFelt(name);
             dismissThemeHint();
@@ -515,7 +538,11 @@ export function TableRoot({
             dismissThemeHint();
           }}
         />
-        {showThemeHint && !rotateHintShowing && !showFullscreenHint && (
+        {/* The hint exists to say "the colours are behind this button". In the
+            phone menu they are not behind anything any more -- they are the
+            first two rows -- so it would be pointing at itself, and it was
+            landing on top of the swatches while doing it. */}
+        {showThemeHint && !compact && !rotateHintShowing && !showFullscreenHint && (
           <div className="k-fs-hint k-fs-hint--left">
             Table colors live here -- change your felt or chips, just for your view.
             <button type="button" onClick={dismissThemeHint}>
@@ -532,6 +559,7 @@ export function TableRoot({
         aria-label="How to play Kvitlach"
       >
         ?
+        <span className="k-ctl-label">How to play</span>
       </button>
       <button
         type="button"
@@ -543,6 +571,7 @@ export function TableRoot({
         aria-label={musicEnabled ? "Mute background music" : "Play background music"}
       >
         <Icon name="music" size={13} />
+        <span className="k-ctl-label">Music {musicEnabled ? "on" : "off"}</span>
       </button>
       <button
         type="button"
@@ -554,6 +583,7 @@ export function TableRoot({
         aria-label={sfxEnabled ? "Mute sound effects" : "Enable sound effects"}
       >
         <Icon name="speaker" size={13} />
+        <span className="k-ctl-label">Sound {sfxEnabled ? "on" : "off"}</span>
       </button>
       <button
         type="button"
@@ -565,6 +595,7 @@ export function TableRoot({
         aria-label={motionEnabled ? "Turn off card/table animations" : "Turn on card/table animations"}
       >
         <Icon name="motion" size={13} />
+        <span className="k-ctl-label">Animations {motionEnabled ? "on" : "off"}</span>
       </button>
       {fullscreenSupported && (
         <span className="relative inline-flex">
@@ -576,6 +607,7 @@ export function TableRoot({
             aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
           >
             <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
+            <span className="k-ctl-label">{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</span>
           </button>
           {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
             <div className="k-fs-hint">
@@ -625,13 +657,57 @@ export function TableRoot({
           Reshuffle
         </button>
       )}
+      {/* The two things a player actually needs mid-game, named. Both open the
+          same drawer these already lived in -- the forms and the pending-
+          request state are there and belong together -- but they now say
+          which one they want instead of hiding behind the room's name.
+          Banker-side equivalents live in Manage, hence !isAdmin. */}
+      {!isAdmin && (
+        <>
+          <button
+            type="button"
+            className="k-chip-btn k-ctl-primary"
+            onClick={() => openRoomInfo("chips")}
+            title="Ask the banker for more chips"
+          >
+            <Icon name="coins" size={13} />
+            <span className="k-ctl-label">Ask for chips</span>
+          </button>
+          <button
+            type="button"
+            className="k-chip-btn k-ctl-primary"
+            onClick={() => openRoomInfo("rename")}
+            title="Request a name change"
+          >
+            <Icon name="pencil" size={13} />
+            <span className="k-ctl-label">Change my name</span>
+          </button>
+        </>
+      )}
+      {/* Only when the browser has actually offered one. Chrome fires
+          beforeinstallprompt once and will not re-fire it, so pwa.ts parks the
+          event at module scope and this row appears the moment it arrives --
+          the lobby banner (InstallPrompt.tsx) is unreachable from in here, and
+          a player who joined by tapping an invite link has never seen it. */}
+      {canInstall && (
+        <button
+          type="button"
+          className="k-chip-btn k-ctl-last"
+          onClick={() => void promptInstall()}
+          title="Install Kvitlach as an app"
+        >
+          <Icon name="share" size={13} />
+          <span className="k-ctl-label">Install as an app</span>
+        </button>
+      )}
       <button
         type="button"
         className="k-room"
-        onClick={() => setRoomInfoOpen(true)}
+        onClick={() => openRoomInfo()}
         title="Table info and sharing"
       >
-        {room.name || room.roomId}
+        <span className="k-room-name">{room.name || room.roomId}</span>
+        <span className="k-ctl-label">Table info &amp; invite</span>
       </button>
     </>
   );
@@ -1089,6 +1165,7 @@ export function TableRoot({
 
       <RoomInfoDrawer
         open={roomInfoOpen}
+        focus={roomInfoFocus}
         onClose={() => setRoomInfoOpen(false)}
         roomName={room.name}
         roomId={room.roomId}

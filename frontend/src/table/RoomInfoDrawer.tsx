@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BuyInRequest, RenameRequest } from "../types";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
@@ -21,6 +21,18 @@ export interface RoomInfoDrawerProps {
   /** Called with the player's own id for a personal copy, or nothing for the whole table. */
   onExportHistory?: (focusPlayerId?: string) => void;
   completedRounds?: number;
+  /**
+   * Open with one of the self-service forms already expanded and scrolled to.
+   *
+   * The two things a player needs from this drawer mid-game -- more chips, and
+   * a name that is spelled right -- used to be reachable only by opening a
+   * drawer whose only label was the room's NAME, then finding a collapsed
+   * "Request..." button inside it. Reported by a tester as things being too
+   * nested to work out. The chrome menu now names both actions directly and
+   * says which one it wants; the drawer is still where they live, because
+   * that is where the forms and the pending-request state already are.
+   */
+  focus?: "rename" | "chips";
 }
 
 // Room name/ID chip -> this drawer, reachable by every seated player (not
@@ -43,6 +55,7 @@ export function RoomInfoDrawer({
   onRequestBuyIn,
   onExportHistory,
   completedRounds = 0,
+  focus,
 }: RoomInfoDrawerProps) {
   const [showRenameForm, setShowRenameForm] = useState(false);
   const [renameFirst, setRenameFirst] = useState("");
@@ -52,6 +65,23 @@ export function RoomInfoDrawer({
   const [buyInNote, setBuyInNote] = useState("");
   const [copied, setCopied] = useState<"id" | "link" | "password" | null>(null);
   const [copyFailed, setCopyFailed] = useState<"id" | "link" | "password" | null>(null);
+  const selfServiceRef = useRef<HTMLDivElement>(null);
+
+  // Keyed on `open` as well as `focus` so asking for the same section twice
+  // in a row still expands it -- otherwise reopening the drawer from the same
+  // menu row would show it collapsed, which is exactly the dead end this
+  // prop exists to remove.
+  useEffect(() => {
+    if (!open || !focus) return;
+    setShowRenameForm(focus === "rename");
+    setShowBuyInForm(focus === "chips");
+    // The drawer animates in; scrolling on the same frame lands on the
+    // pre-animation position.
+    const id = window.setTimeout(() => {
+      selfServiceRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 120);
+    return () => window.clearTimeout(id);
+  }, [open, focus]);
 
   useEscapeKey(onClose, open);
   const dialogRef = useDialogFocus<HTMLDivElement>(open);
@@ -212,7 +242,7 @@ export function RoomInfoDrawer({
 
           {!isAdmin && (
             <>
-              <div className="border-t border-slate-200 pt-3 flex flex-col gap-2">
+              <div ref={selfServiceRef} className="border-t border-slate-200 pt-3 flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-slate-500">Banker approval required for name changes.</span>
                   <button

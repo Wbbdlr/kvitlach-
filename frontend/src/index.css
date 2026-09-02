@@ -1428,22 +1428,91 @@ body:has(.k-fit) {
   z-index: 60;
   width: max-content;
   max-width: min(300px, calc(100vw - 24px));
+  /* A COLUMN of labelled rows, not a wrapped grid of icons.
+     It was the latter, which is what a phone player met when they went looking
+     for "request chips": a block of unlabelled glyphs, two of which opened
+     further unlabelled panels. A menu is a list of named things you can do --
+     it can afford to be, because nothing sits below a popover and it is on the
+     HUD popover tier, so growing downward is free. */
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 10px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  /* Nothing sits below a popover on this tier, so it may use most of the
+     screen; on a 384px-tall landscape phone the alternative is hiding the rows
+     players came here for. It scrolls past that rather than clipping. */
+  max-height: min(84vh, 460px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
   background: rgba(10, 20, 14, 0.97);
   border: 1px solid rgba(230, 164, 75, 0.45);
   border-radius: 10px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
 }
-/* Inside the panel the controls wrap freely -- it is a panel, growing is what
-   it is for. This is the opposite of the row it came out of, where wrapping was
-   the bug: nothing sits below a popover, and it is on the HUD popover tier. */
+/* Every control in the menu is a full-width row: icon, then words, left
+   aligned. 44px minimum, same floor as anywhere else. */
+.k-chrome-menu .k-chip-btn,
 .k-chrome-menu .k-room {
+  width: 100%;
   max-width: 100%;
+  min-height: 44px;
+  justify-content: flex-start;
+  gap: 10px;
+  text-align: left;
+}
+/* The words. Hidden in the chrome ROW, where there is no space for them and
+   the hover title carries the same information; shown here, where a column of
+   bare icons is not a menu. One JSX tree, two presentations -- see
+   TableRoot's chromeControls. */
+.k-ctl-label {
+  display: none;
+}
+.k-chrome-menu .k-ctl-label {
+  display: inline;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+/* Inside the menu the room's NAME is the caption and the action is the label;
+   in the row the name IS the control, so they swap. */
+.k-chrome-menu .k-room-name {
+  display: none;
+}
+/* Order is presentation, and presentation is exactly what differs between the
+   chrome row and this menu -- so it is set here rather than by reordering the
+   shared JSX and disturbing the desktop row. The rows a player opens this menu
+   FOR go first: they were the ones below the fold, which is the same as being
+   nested for someone who does not know to scroll. */
+.k-chrome-menu .k-ctl-primary {
+  order: -2;
+}
+.k-chrome-menu .k-room {
+  order: -1;
+}
+.k-chrome-menu .k-ctl-last {
+  order: 3;
+}
+
+/* Separates the appearance rows from the actions below them. */
+.k-appearance-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 6px 6px;
+  border-bottom: 1px solid rgba(230, 164, 75, 0.22);
+  margin-bottom: 2px;
+}
+/* The "just for your view" caption earns its line but not a full one. */
+.k-appearance-inline .k-appearance-note {
+  font-size: 10px;
+  line-height: 1.3;
+}
+/* The wrapper AppearanceMenu shares with the theme hint is an inline-flex row;
+   inline mode needs the full width of the menu instead. */
+.k-chrome-menu > span:has(.k-appearance-inline) {
+  display: block;
+  width: 100%;
 }
 
 .k-appearance-panel {
