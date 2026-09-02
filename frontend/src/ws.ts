@@ -11,6 +11,25 @@ export type ErrorListener = (err: Event) => void;
 const BASE_RECONNECT_DELAY_MS = 1500;
 const MAX_RECONNECT_DELAY_MS = 15000;
 
+// How long the page can be hidden before we stop trusting the socket it went
+// away with, even if that socket still claims to be OPEN.
+//
+// Phones do not politely close a WebSocket when you switch apps. Android
+// freezes the tab and the connection dies from the server's ping timeout
+// minutes later; iOS tears it down and the tab may not learn about it until it
+// is foregrounded again. Either way the tab comes back holding a socket in one
+// of two states, and both looked identical to a player: genuinely closed, with
+// a reconnect timer that was FROZEN alongside the rest of the page and now
+// wants up to 15s more before it tries; or half-open -- readyState OPEN over a
+// connection the server hung up on long ago, which connect()'s own
+// already-open guard then treats as nothing to do, forever.
+//
+// 45s is chosen against the two things it trades off: shorter starts costing
+// desktop users a reconnect for an ordinary alt-tab, and longer leaves the
+// half-open case sitting there. A reconnect is one round trip and room:resume
+// restores the hand, so the cost of being wrong in this direction is a blink.
+const STALE_AFTER_HIDDEN_MS = 45_000;
+
 // Doubles per consecutive failed attempt, capped, with +/-20% jitter so a
 // pile of clients that dropped together (e.g. a server restart) don't all
 // hammer it back open in lockstep. Exported so its bounds/growth can be unit
@@ -32,16 +51,125 @@ export class WSClient {
   private errorListeners = new Set<ErrorListener>();
   private queue: Array<{ type: string; payload?: MessagePayload; requestId: string }> = [];
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private hiddenAt?: number;
+  private lifecycleBound = false;
+  private unbindLifecycle?: () => void;
+  // Set by close(), cleared by the next explicit connect(). Without it the
+  // lifecycle listeners below would undo a deliberate Leave: close() leaves no
+  // socket and no timer, which is indistinguishable from a drop, so the first
+  // tab switch afterwards would helpfully reopen the session the player had
+  // just walked away from. This is the same guarantee close()'s own comment
+  // claims, extended to cover a caller it did not previously have.
+  private closedDeliberately = false;
 
   constructor(private url: string) {}
 
+  // Reconnect NOW rather than whenever the backoff happens to come due.
+  //
+  // Everything in here already worked for the case it was written for -- a
+  // network blip while someone is looking at the table. It did not work for
+  // the case players actually hit, which is leaving the app and coming back:
+  // reported as backgrounding the browser breaking the game outright. The
+  // reconnect machinery is not broken so much as asleep, and the backoff it
+  // wakes up holding is a measure of how many times it has failed, which after
+  // a two-minute phone call says nothing useful about whether the network is
+  // there NOW.
+  //
+  // So the attempt counter is reset, not merely the timer cancelled: coming
+  // back to the app is new information about the world, and the next attempt
+  // deserves to be immediate rather than inheriting a 15s ceiling earned while
+  // the radio was off.
+  wake() {
+    if (this.closedDeliberately) return;
+    if (this.socket?.readyState === WebSocket.OPEN) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+    this.reconnectAttempts = 0;
+    // A socket in CLOSING, or one whose close event never got dispatched while
+    // the tab was frozen, would block connect()'s guard without ever
+    // completing. Drop it and let onOpen's room:resume rebuild the state.
+    if (this.socket && this.socket.readyState !== WebSocket.OPEN) this.discardSocket();
+    this.reconnectListeners.forEach((fn) => fn());
+    this.connect();
+  }
+
+  // Detaches a socket without going through close(): close() is the deliberate
+  // "the player pressed Leave" path and empties the send queue, which is
+  // exactly wrong here -- a queued action from before the drop should still go
+  // out on the socket that replaces this one.
+  private discardSocket() {
+    if (!this.socket) return;
+    this.socket.onopen = null;
+    this.socket.onmessage = null;
+    this.socket.onerror = null;
+    this.socket.onclose = null;
+    try {
+      this.socket.close();
+    } catch {
+      /* already dead; nothing to do and nothing to report */
+    }
+    this.socket = undefined;
+    this.connecting = false;
+  }
+
+  // Bound on connect(), released on close(). In production this client is a
+  // module-level singleton that lives as long as the page, so the release path
+  // is mostly symmetry -- but a class that reaches out and attaches handlers
+  // to a shared document should be able to let go of them again, and without
+  // that these listeners outlive every client that ever existed.
+  private bindLifecycle() {
+    if (this.lifecycleBound || typeof document === "undefined") return;
+    this.lifecycleBound = true;
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        this.hiddenAt = Date.now();
+        return;
+      }
+      const away = this.hiddenAt ? Date.now() - this.hiddenAt : 0;
+      this.hiddenAt = undefined;
+      // A socket that claims OPEN after a long absence has to be treated as
+      // suspect rather than trusted -- see STALE_AFTER_HIDDEN_MS. There is no
+      // way to ask a half-open WebSocket whether it is real without inventing
+      // a protocol-level ping the server does not speak, and the cost of
+      // being wrong here is one round trip.
+      if (away >= STALE_AFTER_HIDDEN_MS) this.discardSocket();
+      this.wake();
+    };
+    // The radio coming back is the same news as the app coming back, and on a
+    // phone the two usually arrive seconds apart in either order.
+    const onOnline = () => this.wake();
+    // bfcache restore. An open WebSocket makes a page ineligible for bfcache
+    // in both Safari and Chrome, so this only ever fires for a page that was
+    // frozen with its socket ALREADY closed -- which is precisely the case
+    // that comes back with no live connection and no pending timer.
+    const onPageShow = (event: Event) => {
+      if ((event as PageTransitionEvent).persisted) this.wake();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("pageshow", onPageShow);
+    this.unbindLifecycle = () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("pageshow", onPageShow);
+      this.unbindLifecycle = undefined;
+      this.lifecycleBound = false;
+    };
+  }
+
   connect(onReconnect?: ReconnectListener) {
     if (onReconnect) this.reconnectListeners.add(onReconnect);
+    this.closedDeliberately = false;
     // Guard against duplicate concurrent sockets (e.g. React StrictMode's dev-only
     // double-invoked effects calling connect() twice in quick succession) — a second
     // live socket would race the first to resume the same session token, and the
     // loser's invalid_session error would wipe out the winner's just-restored state.
     if (this.connecting || this.socket?.readyState === WebSocket.OPEN) return;
+    this.bindLifecycle();
     this.connecting = true;
     try {
       this.socket = new WebSocket(this.url);
@@ -167,5 +295,8 @@ export class WSClient {
     }
     this.connecting = false;
     this.reconnectAttempts = 0;
+    this.closedDeliberately = true;
+    this.hiddenAt = undefined;
+    this.unbindLifecycle?.();
   }
 }

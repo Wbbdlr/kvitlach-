@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { WSClient, computeReconnectDelay } from "./ws";
 
 class MockWebSocket {
@@ -40,8 +40,31 @@ class MockWebSocket {
 }
 
 describe("WSClient", () => {
+  // Every client is registered so it can be torn down: WSClient attaches
+  // visibilitychange/online/pageshow handlers to the shared jsdom document
+  // (see bindLifecycle), so a client left alive by one test goes on opening
+  // sockets in response to the NEXT test's events. Harmless in a browser,
+  // where there is one client for the life of the page; not harmless here.
+  const created: WSClient[] = [];
+  function newClient(url = "ws://test") {
+    const client = new WSClient(url);
+    created.push(client);
+    return client;
+  }
+  afterEach(() => {
+    while (created.length) created.pop()!.close();
+  });
+
   beforeEach(() => {
     MockWebSocket.instances = [];
+    // The backoff tests below spy on global.setTimeout and swap in fake
+    // timers. Neither was being undone, so both leaked into whatever ran
+    // next -- harmless while they were the last tests in the file, and a
+    // "setTimeout is not defined" in every test added after them. Restored
+    // here rather than in each test: this is the state every test in this
+    // file wants to start from.
+    vi.restoreAllMocks();
+    vi.useRealTimers();
     // @ts-expect-error test stub, only the members WSClient touches are implemented
     global.WebSocket = MockWebSocket;
   });
@@ -51,14 +74,14 @@ describe("WSClient", () => {
     // client.connect() twice in a row. Two live sockets both attempted to resume the
     // same session token; the loser's invalid_session error wiped the winner's
     // just-restored room/round state. connect() must be a no-op while already connecting.
-    const client = new WSClient("ws://test");
+    const client = newClient();
     client.connect();
     client.connect();
     expect(MockWebSocket.instances).toHaveLength(1);
   });
 
   it("allows a fresh connect() once the previous socket has opened and later closed", () => {
-    const client = new WSClient("ws://test");
+    const client = newClient();
     client.connect();
     MockWebSocket.instances[0].triggerOpen();
     MockWebSocket.instances[0].triggerClose();
@@ -70,7 +93,7 @@ describe("WSClient", () => {
   });
 
   it("fires onOpen only once per socket even when connect() is called redundantly", () => {
-    const client = new WSClient("ws://test");
+    const client = newClient();
     const openSpy = vi.fn();
     client.onOpen(openSpy);
     client.connect();
@@ -83,7 +106,7 @@ describe("WSClient", () => {
   describe("close()", () => {
     it("closes the underlying socket and does not schedule a reconnect", () => {
       vi.useFakeTimers();
-      const client = new WSClient("ws://test");
+      const client = newClient();
       const reconnectSpy = vi.fn();
       client.connect(reconnectSpy);
       MockWebSocket.instances[0].triggerOpen();
@@ -111,7 +134,7 @@ describe("WSClient", () => {
       // teardownRoomSession calls close() specifically to prevent a late
       // resume from undoing a leave, so this gap defeated that guarantee.
       vi.useFakeTimers();
-      const client = new WSClient("ws://test");
+      const client = newClient();
       const reconnectSpy = vi.fn();
       client.connect(reconnectSpy);
       MockWebSocket.instances[0].triggerOpen();
@@ -127,7 +150,7 @@ describe("WSClient", () => {
     });
 
     it("delivers no further messages after close(), even if one was already in flight", () => {
-      const client = new WSClient("ws://test");
+      const client = newClient();
       const messageSpy = vi.fn();
       client.onMessage(messageSpy);
       client.connect();
@@ -152,7 +175,7 @@ describe("WSClient", () => {
     // message, with no chance to recover, rather than just dropping the one
     // malformed message and carrying on.
     it("drops a malformed message without throwing, and still delivers the next valid one", () => {
-      const client = new WSClient("ws://test");
+      const client = newClient();
       const messageSpy = vi.fn();
       client.onMessage(messageSpy);
       client.connect();
@@ -169,7 +192,7 @@ describe("WSClient", () => {
   });
 
   it("allows a fresh connect() after close()", () => {
-    const client = new WSClient("ws://test");
+    const client = newClient();
     client.connect();
     MockWebSocket.instances[0].triggerOpen();
     client.close();
@@ -196,7 +219,7 @@ describe("WSClient", () => {
     it("schedules each successive failed reconnect with a growing delay", () => {
       vi.useFakeTimers();
       const setTimeoutSpy = vi.spyOn(global, "setTimeout");
-      const client = new WSClient("ws://test");
+      const client = newClient();
       client.connect();
       MockWebSocket.instances[0].triggerClose(); // 1st failure -> attempt 0
       vi.advanceTimersByTime(computeReconnectDelay(0, () => 0.5) * 2); // generously clear jitter range
@@ -214,7 +237,7 @@ describe("WSClient", () => {
     it("resets the backoff once a connection successfully opens", () => {
       vi.useFakeTimers();
       const setTimeoutSpy = vi.spyOn(global, "setTimeout");
-      const client = new WSClient("ws://test");
+      const client = newClient();
       client.connect();
       MockWebSocket.instances[0].triggerClose(); // attempt 0 used up
       vi.advanceTimersByTime(2000);
@@ -225,6 +248,125 @@ describe("WSClient", () => {
       expect(lastDelay).toBeGreaterThanOrEqual(1200);
       expect(lastDelay).toBeLessThanOrEqual(1800);
       vi.useRealTimers();
+    });
+  });
+
+  // Backgrounding the browser was reported as breaking the game outright: a
+  // player leaves the app mid-hand, comes back, and the table is dead. None of
+  // the reconnect machinery is broken -- it is asleep, and it wakes up holding
+  // a backoff earned while the radio was off.
+  describe("waking from a backgrounded tab", () => {
+    function hide() {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+    function show() {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+    }
+
+    it("reconnects immediately instead of waiting out a backoff it earned while asleep", () => {
+      vi.useFakeTimers();
+      try {
+        const client = newClient();
+        client.connect();
+        // Four failed attempts puts the next retry at the 15s ceiling.
+        for (let i = 0; i < 4; i += 1) {
+          MockWebSocket.instances[MockWebSocket.instances.length - 1].triggerClose();
+          vi.advanceTimersByTime(30_000);
+        }
+        const beforeWake = MockWebSocket.instances.length;
+        MockWebSocket.instances[beforeWake - 1].triggerClose();
+
+        hide();
+        show();
+
+        // A new socket NOW, with no timer advanced at all -- the point of the
+        // fix. Before it, this player waited up to 15 more seconds.
+        expect(MockWebSocket.instances.length).toBe(beforeWake + 1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("leaves a healthy socket alone on an ordinary tab switch", () => {
+      const client = newClient();
+      client.connect();
+      MockWebSocket.instances[0].triggerOpen();
+      hide();
+      show();
+      // No reconnect, no flash of "connecting": nothing was wrong.
+      expect(MockWebSocket.instances.length).toBe(1);
+      expect(MockWebSocket.instances[0].closeCalls).toBe(0);
+    });
+
+    it("replaces a socket that still claims OPEN after a long absence", () => {
+      // The half-open case: the phone was away long enough for the server to
+      // have hung up, but this tab was frozen and never saw the close. It
+      // cannot be detected, only assumed -- see STALE_AFTER_HIDDEN_MS.
+      vi.useFakeTimers();
+      try {
+        const client = newClient();
+        client.connect();
+        MockWebSocket.instances[0].triggerOpen();
+        hide();
+        vi.advanceTimersByTime(60_000);
+        show();
+        expect(MockWebSocket.instances.length).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps queued messages across the wake", () => {
+      // discardSocket(), not close(): an action taken just before the drop
+      // should still go out on the socket that replaces the dead one.
+      const client = newClient();
+      client.connect();
+      MockWebSocket.instances[0].triggerClose();
+      client.send("turn:stand");
+      hide();
+      show();
+      const fresh = MockWebSocket.instances[MockWebSocket.instances.length - 1];
+      const sent = vi.spyOn(fresh, "send");
+      fresh.triggerOpen();
+      expect(sent).toHaveBeenCalledTimes(1);
+      expect(sent.mock.calls[0][0]).toContain("turn:stand");
+    });
+
+    it("does not resurrect a session the player deliberately left", () => {
+      // close() is the Leave button. It leaves no socket and no timer, which
+      // is indistinguishable from a drop -- so without an explicit guard the
+      // first tab switch afterwards would reopen the room they walked out of.
+      const client = newClient();
+      client.connect();
+      MockWebSocket.instances[0].triggerOpen();
+      client.close();
+      const afterClose = MockWebSocket.instances.length;
+      hide();
+      show();
+      window.dispatchEvent(new Event("online"));
+      expect(MockWebSocket.instances.length).toBe(afterClose);
+    });
+
+    it("reconnects when the network comes back, without a tab switch", () => {
+      const client = newClient();
+      client.connect();
+      MockWebSocket.instances[0].triggerClose();
+      const before = MockWebSocket.instances.length;
+      window.dispatchEvent(new Event("online"));
+      expect(MockWebSocket.instances.length).toBe(before + 1);
+    });
+
+    it("tells the UI it is reconnecting rather than silently reopening", () => {
+      const client = newClient();
+      const onReconnect = vi.fn();
+      client.connect(onReconnect);
+      MockWebSocket.instances[0].triggerClose();
+      onReconnect.mockClear();
+      hide();
+      show();
+      expect(onReconnect).toHaveBeenCalled();
     });
   });
 });
