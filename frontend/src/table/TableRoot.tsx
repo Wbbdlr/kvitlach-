@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cardImages } from "./selectors";
 import { clsx } from "clsx";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
@@ -7,6 +7,7 @@ import { useChip, useFelt } from "../theme";
 import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTurnsBySeat, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH, viewerHandScale } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
 import { useStageScale } from "./stage";
+import { usePinchZoom } from "./pinchZoom";
 import { useMediaQuery } from "../useMediaQuery";
 import { installNudgeDue, snoozeInstallNudge, useInstallPrompt } from "../pwa";
 import { Seat } from "./Seat";
@@ -209,11 +210,16 @@ export function TableRoot({
   const [discardPileOpen, setDiscardPileOpen] = useState(false);
   const { supported: fullscreenSupported, isFullscreen, toggleFullscreen } = useFullscreen();
   const { canInstall, promptInstall } = useInstallPrompt();
+  // Two-finger zoom, applied on top of the fit-to-viewport scale rather than
+  // instead of it -- see pinchZoom.ts. feltRef is only ever written to by that
+  // hook (CSS custom properties, no React state per frame).
+  const feltRef = useRef<HTMLDivElement>(null);
   // playerTurns.length, not room.players.length: it's exactly the count that
   // feeds seatPositions()/seatScale() below (the dealer never shrinks, see
   // dealDeltaFor's own comment), so computeFit's crowding correction shrinks
   // its reservation by the same amount the seats themselves actually shrink.
   const { wrapRef, dockRef, scale, stageHeight, vf, playTop, compact } = useStageScale(playerTurns.length);
+  const { zoomed, reset: resetZoom } = usePinchZoom(wrapRef, feltRef, scale);
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
   // Shoe-scoped discard tally: earlier rounds' resolved cards (shoeDiscards,
@@ -734,6 +740,7 @@ export function TableRoot({
         </div>
       </StageOverlay>
       <div
+        ref={feltRef}
         className="felt-table"
         // Whether the in-felt reservation chips are legible depends on how far
         // the stage is scaled down, which is not the same question as how wide
@@ -744,7 +751,11 @@ export function TableRoot({
         data-stage={scale < TINY_STAGE_SCALE ? "tiny" : undefined}
         style={
           {
-            transform: `scale(${scale})`,
+            // --user-zoom and --pan-x/y are the pinch gesture's, defaulted
+            // here so the felt renders identically when nothing has touched
+            // them. Multiplied, not replaced: `scale` is the size at which the
+            // whole table fits, and is the floor a reset returns to.
+            transform: `translate(var(--pan-x, 0px), var(--pan-y, 0px)) scale(calc(${scale} * var(--user-zoom, 1)))`,
             width: STAGE_WIDTH,
             height: stageHeight,
             "--vf": vf,
@@ -1028,6 +1039,17 @@ export function TableRoot({
             )}
           </div>
           <div className="k-hud-bottom-right">
+            {/* The only way back to the fitted view. A gesture that can be
+                entered but not left is a trap, and "pinch back out to exactly
+                1.00" is not something anyone manages on a phone -- the
+                zoomed-in table is missing the seats you would need to see to
+                know you had. */}
+            {zoomed && (
+              <button type="button" className="k-chip-btn k-zoom-reset" onClick={resetZoom}>
+                <Icon name="compress" size={13} />
+                Reset zoom
+              </button>
+            )}
             {notifications.length > 0 && (
               <div className="k-toast-stack">
                 {notifications.map((note) => (

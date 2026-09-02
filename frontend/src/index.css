@@ -215,6 +215,20 @@ body {
   touch-action: manipulation;
 }
 
+/* The felt handles its own pinch and drag (pinchZoom.ts), so the browser must
+   not also act on the same fingers -- without this, a two-finger gesture is
+   claimed by the compositor before any touchmove listener sees it and the
+   table never moves. Scoped to the felt: the rule above is more specific for
+   buttons, so taps on controls keep `manipulation` and stay instant. */
+.felt-table {
+  touch-action: none;
+}
+
+/* Sits above the toasts in the right-hand column, and only while zoomed. */
+.k-zoom-reset {
+  align-self: flex-end;
+}
+
 /* iOS Safari zooms the whole page in when focusing any text input under
    16px -- jarring mid-round on the Manage drawer's amount/note/watermark
    fields. A blanket floor on mobile fixes every current and future input
