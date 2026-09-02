@@ -363,6 +363,30 @@ export function TableRoot({
   // round still being live -- there's nothing left to decide once the results
   // are already on the table.
   const bankDecisionPending = bankLockStage === "decision" && round?.state !== "terminate";
+
+  // The shoe has run dry. Nothing can be dealt and nothing can be drawn, so
+  // the table simply stops -- and until now it stopped SILENTLY: the reshuffle
+  // lives behind Manage -> Deck -> confirm for a real banker, and behind the
+  // collapsed chrome menu in a practice room. Reported twice, from both sides:
+  // a banker having to go looking for the button, and a solo player against the
+  // computer with no idea why the game had stopped at all.
+  //
+  // Deliberately the same shape as the bank-depleted prompt above, because it
+  // is the same situation: a blocking condition only one person can clear, so
+  // the choice belongs on the felt rather than in a drawer. Whoever cannot
+  // clear it gets told what is being waited on, for the same reason.
+  //
+  // `?? 1` so an absent round never reads as an empty shoe -- deckRemaining is
+  // undefined before the first deal, and a prompt on the lobby-side of a fresh
+  // table would be nonsense.
+  const shoeEmpty = (round?.deckRemaining ?? 1) === 0;
+  // Mirrors the server's own allowance (store.ts reshuffleDeck): the banker,
+  // or the single human in a practice room, whose banker is a bot with no
+  // session to authenticate as.
+  const canReshuffle = isAdmin || room.practice === true;
+  // One centred prompt at a time -- they share a position, and an empty bank
+  // is the more urgent of the two because it is the one with money on it.
+  const shoeDecisionPending = shoeEmpty && !bankDecisionPending;
   const bankerDecisionRequired = Boolean(isAdmin && bankDecisionPending);
   const waitingOnBankDecision = Boolean(!isAdmin && bankDecisionPending);
 
@@ -905,6 +929,33 @@ export function TableRoot({
         <div className="k-bank-banner" role="status" aria-live="polite">
           <Icon name="bank" size={14} />
           <span>{bankBannerText}</span>
+        </div>
+      )}
+      {shoeDecisionPending && (
+        <div className="k-bank-decision" role="status" aria-live="polite">
+          <div className="headline">The shoe is empty</div>
+          {canReshuffle ? (
+            <>
+              <div className="subline">
+                There are no cards left to deal. Shuffle a fresh shoe to keep the table going.
+              </div>
+              <div className="flex gap-2">
+                {/* No confirmation step. The drawer's Reshuffle asks first,
+                    which is right when someone reaches for it mid-shoe and
+                    might be discarding a known count -- there is nothing to
+                    discard here, and an "are you sure" on the only available
+                    action is just another tap between a stuck table and a
+                    playable one. */}
+                <button type="button" className="k-btn bet sm" onClick={onReshuffleDeck}>
+                  Shuffle a fresh shoe
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="subline">
+              Waiting for the banker to shuffle a fresh shoe.
+            </div>
+          )}
         </div>
       )}
       {(bankerDecisionRequired || waitingOnBankDecision) && (

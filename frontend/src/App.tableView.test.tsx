@@ -220,6 +220,60 @@ describe("the felt table is the only in-room view", () => {
   // banker's own plate and cards -- the one hand everybody wants to see when
   // the bank busts. It lives in the dock now precisely because no seat can
   // reach into a flex child of the dock, however many cards a hand wraps to.
+  // Reported from both sides of the same silence: a banker having to go looking
+  // for the reshuffle button when the shoe ran dry, and a solo player against
+  // the computer with no idea why the game had stopped at all. The shoe
+  // emptying blocks the whole table and only one person can clear it, which is
+  // the same situation as an emptied bank -- so it gets the same treatment, a
+  // prompt on the felt rather than a control in a drawer.
+  describe("when the shoe runs out", () => {
+    it("prompts the banker to shuffle, without making them find the button", () => {
+      mockState.playerId = bankerId;
+      const { getByRole, getByText } = render(<App />);
+      expect(getByText(/shoe is empty/i)).toBeTruthy();
+      // No confirm step: there is nothing to discard, and an "are you sure" on
+      // the only available action is another tap between a stuck table and a
+      // playable one.
+      expect(getByRole("button", { name: /shuffle a fresh shoe/i })).toBeTruthy();
+    });
+
+    it("prompts the human in a practice room, whose banker is a bot", () => {
+      // isAdmin never fires for them, so gating this on isAdmin alone would
+      // leave the one person who CAN fix it looking at somebody else's message.
+      mockState.room = { ...room, practice: true };
+      mockState.playerId = playerAId;
+      const { getByRole } = render(<App />);
+      expect(getByRole("button", { name: /shuffle a fresh shoe/i })).toBeTruthy();
+    });
+
+    it("tells everyone else what is being waited on, rather than nothing", () => {
+      mockState.playerId = playerAId; // ordinary player at a real table
+      const { getByText, queryByRole } = render(<App />);
+      expect(getByText(/waiting for the banker to shuffle/i)).toBeTruthy();
+      expect(queryByRole("button", { name: /shuffle a fresh shoe/i })).toBeNull();
+    });
+
+    it("says nothing when the shoe still has cards", () => {
+      mockState.round = { ...round, deckRemaining: 12 };
+      mockState.playerId = bankerId;
+      const { queryByText } = render(<App />);
+      expect(queryByText(/shoe is empty/i)).toBeNull();
+    });
+
+    it("stays out of the way of the bank-depleted prompt, which shares its spot", () => {
+      // Both are centred blocking prompts. An empty bank is the more urgent of
+      // the two -- it is the one with money on it -- so it wins the position.
+      mockState.playerId = bankerId;
+      mockState.round = {
+        ...round,
+        bankLock: { playerId: playerAId, stage: "decision", exposure: 100 },
+      } as typeof round;
+      const { queryByText, getByText } = render(<App />);
+      expect(getByText(/bank depleted/i)).toBeTruthy();
+      expect(queryByText(/shoe is empty/i)).toBeNull();
+    });
+  });
+
   describe("when the bank futches", () => {
     const bustedBankerTurn: Turn = {
       ...adminTurn,
