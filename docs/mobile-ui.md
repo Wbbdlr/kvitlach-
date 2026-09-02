@@ -158,6 +158,32 @@ a mid-sentence paragraph, a rule that ended on its own colon, and a regex
 literal split into orphan lines. Edit prose by matching the text you mean to
 change, and re-read the whole file afterwards.
 
+### The hard nevers
+
+These lived in `CLAUDE.md` and nowhere else until the trim of 2026-09-02. They
+are prohibitions rather than principles, which is why they sit under the rules
+instead of among them.
+
+- **Never `100vh`** for full-height mobile — `dvh`/`svh` or a JS-set property.
+  `.k-fit` already does `height: 100vh; height: 100dvh`, in that order.
+- **Never "fix" overflow or overlap with `overflow: hidden`, a negative margin,
+  `!important`, or a smaller font.** Those hide it. Find the rule causing it.
+- **Account for device pixel ratio.** Card art ships at 946×1438 and
+  `blank.png` is deliberately oversized so a 3x screen stays crisp; captures
+  run at dpr 2–3.
+- **If the same layout bug survives two fix attempts, stop patching and report
+  the structural cause.** Ledger #3/#5/#7 in the history file are one bug: a
+  crowded centre column wearing three hats.
+
+### Standing defaults (deviate only with a one-line why)
+
+- Adaptive layout for anything responding to screen size. Absolute positioning
+  is legitimate *inside* the stage — that is what stage units are for — but
+  mark genuinely pinned chrome as intentional.
+- The 4/8/12/16/24/32/48 spacing scale in the Part 6 checklist governs chrome,
+  HUD and menus. **Felt geometry is exempt**: derive it from the 1280×760 stage
+  and `--vf`, and say which.
+
 ## Part 3 — Z-index tiers
 
 One scale, named, in `index.css`. Never a bare number, never a local `+1`.
@@ -278,6 +304,13 @@ on a crowded one:
 ```bash
 npm --prefix e2e run shot:full-table   # eleven seats, both bottom corners
 npm --prefix e2e run shot:menu         # the phone chrome menu, open
+```
+
+The captures are for looking at. The assertions are separate and run without
+you:
+
+```bash
+npx playwright test tests/phone-layout.spec.ts
 ```
 
 **Browser concurrency is capped deliberately and must stay capped.** The sweep
