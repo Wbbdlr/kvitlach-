@@ -183,6 +183,9 @@ instead of among them.
 - The 4/8/12/16/24/32/48 spacing scale in the Part 6 checklist governs chrome,
   HUD and menus. **Felt geometry is exempt**: derive it from the 1280×760 stage
   and `--vf`, and say which.
+- The checklist's **≥44×44 tap targets** govern controls. Cards are the
+  exception and may be smaller when the felt demands it — but then they need
+  forgiving hitboxes and real separation, not just a smaller box.
 
 ## Part 3 — Z-index tiers
 
