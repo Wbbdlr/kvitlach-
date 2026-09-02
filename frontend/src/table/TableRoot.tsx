@@ -1089,20 +1089,6 @@ export function TableRoot({
             dropped it again -- reported by a tester, who was also the one who
             pointed out the other corner was going spare. */}
         <div className="k-hud-row">
-          <div className="k-hud-bottom-left">
-            {myPlayerTurn && (
-              <ViewerHud
-                turn={myPlayerTurn}
-                viewerId={playerId}
-                roundState={round?.state}
-                walletAmount={myWallet}
-                // .k-hud-bottom-left counter-scales itself against the stage on
-                // a large monitor; the drag has to know, or it would move by a
-                // fraction of the distance the finger travelled.
-                hostScale={Math.max(1, scale)}
-              />
-            )}
-          </div>
           <div className="k-hud-bottom-right">
             {/* The only way back to the fitted view. A gesture that can be
                 entered but not left is a trap, and "pinch back out to exactly
@@ -1131,6 +1117,31 @@ export function TableRoot({
         </div>
 
         <div className="k-controls" ref={dockRef}>
+        {/* One box holding the dock, so the readout below can be anchored to
+            the DOCK's own left edge rather than to the viewport's. .k-controls
+            is full-width and centres this stack; the stack's width is its
+            content, so `left: 0` on the readout is the same x the dock starts
+            at, at every viewport, with nothing measured. */}
+        <div className="k-dock-stack">
+          {/* The viewer's own readout, out of flow (position: absolute) so it
+              cannot widen the stack it is aligning itself to. */}
+          {myPlayerTurn && (
+            <ViewerHud
+              turn={myPlayerTurn}
+              viewerId={playerId}
+              roundState={round?.state}
+              walletAmount={myWallet}
+              // Flat 1 now, not max(1, scale). It used to counter-scale against
+              // the stage because it sat alone in a corner outside it, where a
+              // flat 12px read as tiny beside a felt rendering everything a
+              // third bigger. It now sits directly on top of the dock, which is
+              // flat-px chrome, so it takes the dock's treatment -- and a
+              // counter-scale here would be actively harmful: at --stage-scale 2
+              // a 169px readout becomes 338px and reaches from the dock's left
+              // edge into the viewer's own cards.
+              hostScale={1}
+            />
+          )}
         {/* The banker has dropped and the table is waiting on them. Nothing else
             can move this round: the banker is the dealer, not a seat, so no turn
             timer covers them, and every other action is theirs to take. Rather
@@ -1215,6 +1226,7 @@ export function TableRoot({
           <div className="k-chrome-react">
             <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
           </div>
+        </div>
         </div>
       </div>
 

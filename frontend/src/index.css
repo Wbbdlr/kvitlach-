@@ -1708,12 +1708,70 @@ body:has(.k-fit) {
    A row, not two absolutely-positioned boxes: "opposite corners of the same
    line, above the dock" is a containment relationship, and space-between says
    it without either corner knowing the other exists. */
+/* flex-end, not space-between. This row held two corner columns; the viewer's
+   own readout has left the bottom-LEFT one for the dock stack below, so the
+   toast column is the only occupant and space-between would have parked it on
+   the left -- the very corner the readout just vacated. */
 .k-hud-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: flex-end;
   gap: 8px;
   pointer-events: none;
+}
+
+/* The dock and the viewer's readout, as one box.
+   .k-controls is full-width and centres this, so the stack's own left edge IS
+   the dock's left edge -- which is what the readout anchors to. "Start where
+   the controls panel starts" is a containment relationship, not a number
+   computed from the dock's rendered width. The readout is position:absolute so
+   it cannot widen the stack it is aligning itself to, which would move the very
+   edge it is aligning to. */
+.k-dock-stack {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+}
+.k-dock-stack > .k-viewer-hud {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 8px;
+  z-index: 45;
+  pointer-events: auto;
+  /* An absolutely-positioned box with `left` and no `width` shrink-to-fits
+     against its CONTAINING BLOCK, not its content -- and the stack is only as
+     wide as whatever the round is currently showing. In states with no dock at
+     all (waiting on another player, say) the stack is just the react button, so
+     the readout collapsed to 36px and wrapped one character per line. Caught in
+     a screenshot, not by the overlap spec: a wrapped panel is ugly, not
+     overlapping. max-content sizes it to its own text at every table state. */
+  width: max-content;
+  max-width: min(280px, calc(100vw - 24px));
+  /* No transform: scale() here, unlike the corner column it came from -- see
+     TableRoot's hostScale note. Counter-scaling against the stage would send a
+     169px readout to 338px on a wide monitor and drive it from the dock's left
+     edge straight into the viewer's own cards. */
+  transform-origin: bottom left;
+}
+
+/* On the smallest landscape phones the readout does not FIT above the dock, and
+   that is a measurement, not a taste: the overlap spec caught it at 800x360 as
+   k-hand X k-viewer-hud, 46% / 36x36px, with 854x384 and 915x412 both clear. The
+   band is anchored to the felt's bottom edge, so at 360px tall the seats hang
+   into the space the readout wants.
+   Beside the dock instead of above it -- still attached to the controls panel,
+   still nowhere near the corner it came from, and out of the cards' column
+   entirely rather than squeezed under it. `position: static` is all it takes:
+   the readout is already the stack's first child, so it simply rejoins the row
+   to the dock's left. */
+@media (max-width: 520px), (max-height: 440px) {
+  .k-dock-stack > .k-viewer-hud {
+    position: static;
+    margin-bottom: 0;
+  }
 }
 
 /* Each corner column owns its corner; the toast stack and the viewer's own
