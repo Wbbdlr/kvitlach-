@@ -167,7 +167,7 @@ describe("the About routes", () => {
     });
   });
 
-  it("shows the current copy in the admin form", async () => {
+  it("shows the current copy on the panel and links to the editor", async () => {
     process.env.ADMIN_TOKEN = "correct-secret";
     const about = new AboutContent();
     about.set("Beta testers", "Sara and Yossi");
@@ -175,6 +175,44 @@ describe("the About routes", () => {
     const res = await app.inject({ method: "GET", url: "/admin?token=correct-secret" });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("Beta testers");
-    expect(res.body).toContain("Sara and Yossi");
+    expect(res.body).toContain("/admin/about");
+  });
+
+  // The whole point of the separate page. /admin carries a <meta refresh>,
+  // which cannot be cancelled without script, so a 15-second reload eats
+  // whatever is half-typed in a field. The editor must never carry one.
+  it("serves the editor with no auto-refresh, unlike the panel", async () => {
+    process.env.ADMIN_TOKEN = "correct-secret";
+    const about = new AboutContent();
+    about.set("Beta testers", "Sara and Yossi");
+    const app = createHttpServer(new GameStore(), { about });
+
+    const panel = await app.inject({ method: "GET", url: "/admin?token=correct-secret" });
+    expect(panel.body, "the panel still refreshes -- that is deliberate").toContain("http-equiv=\"refresh\"");
+
+    const editor = await app.inject({ method: "GET", url: "/admin/about?token=correct-secret" });
+    expect(editor.statusCode).toBe(200);
+    expect(editor.body).not.toContain("http-equiv=\"refresh\"");
+    expect(editor.body).toContain("<textarea");
+    expect(editor.body).toContain("Sara and Yossi");
+  });
+
+  it("keeps the editor behind the admin guard", async () => {
+    process.env.ADMIN_TOKEN = "correct-secret";
+    const app = createHttpServer(new GameStore(), { about: new AboutContent() });
+    expect((await app.inject({ method: "GET", url: "/admin/about" })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/admin/about?token=wrong" })).statusCode).toBe(404);
+  });
+
+  it("returns to the editor after a save, not to the panel", async () => {
+    process.env.ADMIN_TOKEN = "correct-secret";
+    const app = createHttpServer(new GameStore(), { about: new AboutContent() });
+    const res = await app.inject({
+      method: "POST",
+      url: "/admin/about?token=correct-secret",
+      payload: { heading: "Beta testers", body: "Sara" },
+    });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toContain("/admin/about");
   });
 });

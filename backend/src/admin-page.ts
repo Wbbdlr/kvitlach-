@@ -152,6 +152,63 @@ export interface AdminPageDeps {
   notice?: string;
 }
 
+/**
+ * The About copy gets its own page for one reason: this panel auto-refreshes
+ * every 15 seconds, and a <meta refresh> cannot be cancelled without script.
+ *
+ * A refresh mid-typing eats what you have written. That was already known --
+ * the access-codes field carries a warning telling the operator to stop the
+ * refresh first -- and the About body is a much longer field to lose, so it was
+ * reported within a day of shipping. A warning is a workaround pushed onto the
+ * person; taking the field off the refreshing page is the fix.
+ *
+ * Deliberately still no JavaScript (see the note at the top of this file): the
+ * alternative was a script cancelling the reload while a field is dirty, which
+ * is a second concession to solve what a second page solves for free. Any other
+ * long-text field belongs here for the same reason.
+ */
+export function renderAboutEditor({
+  about,
+  query,
+  notice,
+}: {
+  about: AboutContent;
+  query: string;
+  notice?: string;
+}): string {
+  const record = about.toRecord();
+  const edited = record.updatedAt
+    ? new Date(record.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+    : "never";
+  const act = (path: string) => `${path}${query}`;
+  return shell(
+    "About page — Kvitlach admin",
+    `<h1>About page</h1>
+    ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
+    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <fieldset>
+      <legend>Extra copy for the public About page</legend>
+      <p class="meta">Shown at the foot of <b>/about</b> &mdash; beta-tester credits, thanks, a note
+      about the table. Plain text: a blank line starts a new paragraph, and HTML is shown as typed
+      rather than rendered. Leave both blank, or use Clear, to show nothing at all.
+      Last edited: ${edited}.</p>
+      <form method="post" action="${act("/admin/about")}">
+        <p><label>Heading<br />
+          <input type="text" name="heading" maxlength="${ABOUT_MAX.heading}" style="width:100%"
+            placeholder="With thanks to our beta testers" value="${escapeHtml(record.heading)}" /></label></p>
+        <p><label>Body<br />
+          <textarea name="body" rows="18" maxlength="${ABOUT_MAX.body}" style="width:100%"
+            placeholder="Sruly, Chaim and Shmuely played the first fifty hands and found the ones we could not."
+            >${escapeHtml(record.body)}</textarea></label></p>
+        <button type="submit" class="save">Save</button>
+        <button type="submit" name="clear" value="1">Clear</button>
+      </form>
+    </fieldset>`,
+    false
+  );
+}
+
 export function renderAdminPage({ store, access, limits, about, query, refresh, appUrl, watchToken, notice }: AdminPageDeps): string {
   const aboutRecord = about.toRecord();
   const aboutEdited = aboutRecord.updatedAt ? new Date(aboutRecord.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "never";
@@ -311,18 +368,12 @@ export function renderAdminPage({ store, access, limits, about, query, refresh, 
     <fieldset>
       <legend>About page</legend>
       <p class="meta">Extra copy shown at the foot of the public <b>About</b> page &mdash; beta-tester
-      credits, thanks, a note about the table. Plain text: blank lines start a new paragraph, and
-      HTML is shown as typed rather than rendered. Leave both blank (or use Clear) to show nothing.
-      Last edited: ${aboutEdited}.</p>
-      <form method="post" action="${act("/admin/about")}">
-        <p><input type="text" name="heading" maxlength="${ABOUT_MAX.heading}" style="width:100%"
-          placeholder="With thanks to our beta testers" value="${escapeHtml(aboutRecord.heading)}" /></p>
-        <p><textarea name="body" rows="8" maxlength="${ABOUT_MAX.body}" style="width:100%"
-          placeholder="Sruly, Chaim and Shmuely played the first fifty hands and found the ones we could not."
-          >${escapeHtml(aboutRecord.body)}</textarea></p>
-        <button type="submit" class="save">Save</button>
-        <button type="submit" name="clear" value="1">Clear</button>
-      </form>
+      credits, thanks, a note about the table. Last edited: ${aboutEdited}.</p>
+      <p>${aboutRecord.heading || aboutRecord.body
+          ? `<b>${escapeHtml(aboutRecord.heading) || "(no heading)"}</b><br />
+             <span class="meta">${escapeHtml(aboutRecord.body.slice(0, 160))}${aboutRecord.body.length > 160 ? "&hellip;" : ""}</span>`
+          : `<span class="meta">Nothing set &mdash; the About page shows only its built-in copy.</span>`}</p>
+      <p><a href="${act("/admin/about")}">Edit the About copy&hellip;</a></p>
     </fieldset>
 
     <fieldset>

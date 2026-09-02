@@ -8,7 +8,7 @@ import { GATED_ACTIONS } from "./access.js";
 import { AboutContent } from "./about.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAdminPage, renderLoginPage } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderLoginPage } from "./admin-page.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
 // interpolating into a <script> or an inline event handler: the HTML parser
@@ -344,6 +344,21 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     return reply.redirect(`/admin${carry(request, how)}`);
   });
 
+  // Its own page, because /admin auto-refreshes every 15s and a <meta refresh>
+  // mid-typing eats the field. See renderAboutEditor.
+  app.get("/admin/about", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderAboutEditor({
+        about,
+        query: carry(request, how),
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
   app.post("/admin/about", async (request, reply) => {
     const how = guard(request, reply);
     if (!how) return reply;
@@ -351,7 +366,9 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     const changed = body.clear === "1" ? about.clear() : about.set(body.heading, body.body);
     const note = changed ? "About page updated." : "No change.";
     const sep = carry(request, how) ? "&" : "?";
-    return reply.redirect(`/admin${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
+    // Back to the editor, not the panel: an operator who just saved a credits
+    // list is usually about to add another name.
+    return reply.redirect(`/admin/about${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   app.post("/admin/broadcast", async (request, reply) => {
