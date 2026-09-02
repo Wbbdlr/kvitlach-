@@ -753,7 +753,7 @@ body:has(.k-fit) {
      below still applies -- an inline transform would have silently killed it. */
   transform: scale(var(--k-hand-scale, 1));
   /* The hand grows DOWNWARD from a fixed top edge, never outward from its
-     middle. .turn-bar-track sits immediately above this box in flow, and a
+     middle. .k-turnbar sits immediately above this box in flow, and a
      transform does not move it: with the default centre origin, any
      --k-hand-scale above 1 grew the hand UP into the bar and painted over it.
      Reported on mobile, and mobile-only for a reason -- --k-hand-scale is
@@ -2957,19 +2957,25 @@ body:has(.k-fit) {
 /* Turn countdown bar — depletes as the auto-skip timer runs down.
    Width is driven by the existing activeTurnTimer.percent; these classes
    handle the color escalation and urgency pulse. */
-.turn-bar-track {
-  background: rgba(0, 0, 0, 0.35);
+/* The track is always in the seat column (Seat.tsx explains why), so it has to
+   be invisible when no turn is being timed while still occupying its row. The
+   space is the point; the paint is only for a live turn. */
+.k-turnbar {
+  background: transparent;
   border-radius: 999px;
   overflow: hidden;
 }
-.turn-bar-fill {
+.k-turnbar.is-live {
+  background: rgba(0, 0, 0, 0.35);
+}
+.k-turnbar-fill {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--gold), #d97706);
   transition: width 0.25s linear, background-color 0.3s ease;
 }
-.turn-bar-fill.is-warning { background: linear-gradient(90deg, #f0b24a, #d97706); }
-.turn-bar-fill.is-urgent {
+.k-turnbar-fill.is-warning { background: linear-gradient(90deg, #f0b24a, #d97706); }
+.k-turnbar-fill.is-urgent {
   background: linear-gradient(90deg, #ef4444, #b91c1c);
   animation: turnBarPulse 0.8s ease-in-out infinite;
 }
@@ -2979,7 +2985,7 @@ body:has(.k-fit) {
 }
 /* Shakes the whole track (not just the shrinking fill) so the widget reads
    as "panicking" as a unit in the final seconds before an auto-skip. */
-.turn-bar-track.is-urgent {
+.k-turnbar.is-urgent {
   animation: turnBarShake 0.35s ease-in-out infinite;
 }
 @keyframes turnBarShake {
@@ -2999,8 +3005,8 @@ body:has(.k-fit) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .turn-bar-fill.is-urgent,
-  .turn-bar-track.is-urgent,
+  .k-turnbar-fill.is-urgent,
+  .k-turnbar.is-urgent,
   .your-move-alert {
     animation: none;
   }

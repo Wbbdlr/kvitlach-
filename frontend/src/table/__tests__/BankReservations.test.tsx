@@ -100,22 +100,44 @@ describe("BankReservations placement", () => {
     expect(getByText("$42")).toBeInTheDocument();
   });
 
-  // Regression: found live, on a landscape phone. The viewer's own bottom-
-  // centre seat is closest to the pot by construction, and gets closer still
-  // as the table flattens -- at vf 0.54 (six players, a common phone size) it
-  // sits only ~140px from the pot, well under what a straight line needs to
-  // clear both the "BANK $x" pill and the seat's own plate. The badge for the
-  // viewer's OWN wager landed 20-30px inside their own plate, invisible
-  // behind it (seats paint over badges) -- exactly the one reservation a
-  // player is most likely to go looking for.
-  it("skips a seat too close to the pot to place a badge without a collision, rather than force one", () => {
+  // This used to assert the OPPOSITE: that a seat too close to the pot had its
+  // badge SKIPPED rather than forced into a collision. That was the right call
+  // while a badge lived on the line between the bank and the seat, where a
+  // short line genuinely has nowhere to put one -- but it meant the seat
+  // closest to the pot never showed a badge, and the seat closest to the pot
+  // is the viewer's own, by construction. The one reservation a player goes
+  // looking for was the one guaranteed to be missing.
+  //
+  // A badge is now anchored above its own seat and never on that line, so
+  // "there is no room" cannot arise: there is no seat whose own top edge is
+  // unreachable. The old behaviour is inverted deliberately, not lost.
+  it("places a badge even for a seat close to the pot, where it used to skip one", () => {
     const flattenedPositions = seatPositions(6, 0.54, 0);
     const closeSeat = flattenedPositions[Math.floor(flattenedPositions.length / 2)];
     const flattenedReservations = [{ playerId: "close", amount: 5, position: closeSeat }];
 
-    const { container } = render(<BankReservations reservations={flattenedReservations} />);
-    expect(container.querySelectorAll(".k-resv")).toHaveLength(0);
-    expect(container.querySelector(".k-resv-lines")).toBeNull();
+    const { container, getByText } = render(<BankReservations reservations={flattenedReservations} />);
+    expect(container.querySelectorAll(".k-resv")).toHaveLength(1);
+    expect(getByText("$5")).toBeInTheDocument();
+  });
+
+  // The anchoring contract itself: a badge sits directly above the seat it
+  // belongs to. Asserted as a relationship to the seat rather than as
+  // coordinates, so it keeps meaning if the ellipse or the offset changes.
+  it("anchors every badge above its own seat, on that seat's centre line", () => {
+    const positions = seatPositions(5, 1, 0);
+    const reservations = positions.map((position, i) => ({ playerId: `p${i}`, amount: (i + 1) * 5, position }));
+
+    const { container } = render(<BankReservations reservations={reservations} />);
+    const badges = [...container.querySelectorAll<HTMLElement>(".k-resv")];
+    expect(badges).toHaveLength(positions.length);
+
+    badges.forEach((badge, i) => {
+      const left = parseFloat(badge.style.left);
+      const top = parseFloat(badge.style.top);
+      expect(left, `badge ${i} should share its seat's x`).toBeCloseTo(positions[i].x, 5);
+      expect(top, `badge ${i} should sit ABOVE its seat`).toBeLessThan(positions[i].y);
+    });
   });
 
   it("still places a badge for a seat that has room, even on the same flattened table", () => {

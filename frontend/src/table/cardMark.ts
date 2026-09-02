@@ -119,7 +119,23 @@ export function markSvgBody(card: number, s: MarkSettings): string {
   // wider on the right. Nudging by half puts the ink back on centre.
   const x = cx + s.tracking / 2;
   const common =
-    `font-family=${JSON.stringify(s.fontFamily)} ` +
+    // esc(), not JSON.stringify(). JSON escapes an inner quote as \" and HTML
+    // has no idea what that means, so the parser closed the attribute at the
+    // first quote and read the REST of the stack as more attributes. What
+    // actually shipped, live on kvitlach.us, was:
+    //   font-family="\" cinzel\",="" georgia,="" \"times="" new="" ...
+    // -- one attribute shredded into seven, with font-family itself resolving
+    // to a single backslash. So the mark has never rendered in Cinzel on any
+    // platform; the browser fell back to its default serif everywhere.
+    //
+    // It survived because the fallback is metrically almost identical for this
+    // one string: measured, "SCHLESINGER" is 724px in Cinzel and 722.5px in
+    // the default serif at 100px/600 -- 0.2% apart, so nothing moved and no
+    // frame misfit gave it away. In lowercase the same comparison is 655 vs
+    // 472, which is how it was finally cornered. The font itself was always
+    // fine: /cinzel-subset.woff2 serves 200, 25,296 bytes, and an explicit
+    // document.fonts.load() resolves it.
+    `font-family="${esc(s.fontFamily)}" ` +
     `font-size="${card === 1 ? HEAD.size : s.size}" ` +
     `letter-spacing="${card === 1 ? HEAD.tracking : s.tracking}" ` +
     `style="font-variation-settings:'wght' ${s.weight}" ` +

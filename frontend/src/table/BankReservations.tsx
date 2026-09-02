@@ -1,5 +1,5 @@
 import { SeatPosition } from "./layout";
-import { STAGE_HEIGHT, STAGE_WIDTH, VIEWER_HAND_WIDTH } from "./layout";
+import { SEAT_HEIGHT, STAGE_HEIGHT, STAGE_WIDTH, VIEWER_HAND_WIDTH } from "./layout";
 import { Icon } from "./icons";
 
 export interface Reservation {
@@ -44,85 +44,40 @@ function potPoint(playTop: number, vf: number): { x: number; y: number } {
   return { x: STAGE_WIDTH / 2, y: playTop + DEALER_ANCHOR_Y_COEF * vf };
 }
 
-// Chips rest a fixed distance BACK from the seat rather than at a fixed
-// fraction of the way there: seats sit at very different distances from the
-// pot on an ellipse this eccentric (the flanks are ~350px out, the viewer's
-// own bottom-centre seat as little as ~140px at a flattened vf), so a single
-// fraction either crowded the near seat or stranded the far ones by the pot.
-// Measuring back from the seat gives every badge the same clearance -- seats
-// paint over these (z-index 10 vs 9), so grazing one clips it.
-//
-// This constant is in NOMINAL (unscaled) stage-px, matching seatPositions()'s
-// own output -- but the SEAT ITSELF shrinks at higher player counts
-// (TableRoot's seatShrink, passed in here as `scale`), while this number
-// didn't. Reported live: at 6-7 players the real seat measured ~60px half-
-// extent on screen, but the clearance stayed a flat 130, so every badge
-// floated a measured ~70px past the seat's own edge -- reading as "not near
-// their names" because, proportionally, it wasn't. restPoint/isPlaceable
-// now take `scale` and apply it to this constant, so the gap shrinks in step
-// with the seat instead of growing relatively bigger as the table fills up.
-const SEAT_CLEARANCE = 130;
-// ...but never so far back that a badge lands on the pot itself.
-const T_MIN = 0.34;
-// There is deliberately no T_MAX any more.
-//
-// It was 0.7 -- "never more than seven tenths of the way to the seat" -- and it
-// is what put the chips nowhere near the players they belong to. The two rules
-// disagreed about what they were measuring: SEAT_CLEARANCE says "rest a fixed
-// distance BACK from the seat", which is a statement about the seat end, while
-// a fraction of the total is a statement about the pot end. They only agree at
-// one distance. Past it the fraction wins and the badge stops tracking the
-// seat at all -- at a 1300px diagonal the clearance rule asks for 130px short
-// of the seat and T_MAX delivered 390px short, stranding it in open felt.
-//
-// Reported as the reserved chips being "nowhere near the player's spot", and
-// measured on a live desktop table at 2560x1440: the badge sat at (1280, 638)
-// with the viewer's own seat at (1112..1448, 797..999) -- 160px above the top
-// of their own seat box, on empty felt, connected to nothing it was about.
-//
-// SEAT_CLEARANCE is the guard that was always doing the real work, and it
-// scales with the seat, so it keeps a badge off the plate at every table size.
-// T_MIN stays: the pot end still needs a floor, because the dealer's box is
-// there and a badge must not land on it.
+// The old line-placement machinery -- SEAT_CLEARANCE, T_MIN, T_MAX,
+// minViableDistance() and isPlaceable() -- is gone with it. Every one of those
+// existed to answer "where on the bank-to-seat line does this chip fit", and
+// once the chip is anchored to the seat itself there is no such question and
+// no seat a chip cannot be placed at. isPlaceable in particular used to DROP a
+// chip whose seat was too close to the bank, which is how the viewer -- the
+// closest seat to the bank by construction -- ended up being the one player who
+// could not see their own wager.
 
-// Below this, there is no straight-line point that clears both ends at once:
-// the pot-side floor (T_MIN) and the seat-side clearance (SEAT_CLEARANCE)
-// overlap. Measured on a live table: the viewer's own bottom-centre seat is
-// the one this actually happens to (it is closest to the pot by construction,
-// and gets closer still as the table flattens) -- at a distance of 142px, the
-// T_MIN-clamped point landed 20-30px INSIDE the viewer's own plate, hidden
-// behind it (seats paint over badges), on exactly the seat a player looks at
-// first to check the bank is showing their bet at all. There is no constant
-// that fixes this without breaking something else: more SEAT_CLEARANCE just
-// pushes the badge further past T_MIN with no effect (T_MIN is already what's
-// binding), and loosening T_MIN would drop it onto the pot end instead --
-// which is now the dealer's own box, since the BANK pill it used to be has
-// left the felt. So below this threshold the badge is skipped rather than forced
-// into a collision.
+// Daylight between the top of a seat's own box and its chip, in stage px.
+const CHIP_GAP = 16;
+
+// A seat's chip sits directly ABOVE that seat, not somewhere along the line
+// from the bank to it.
 //
-// This used to be justified with "every seat's plate already prints
-// $wallet · $bet, so the information survives". That stopped being true for the
-// VIEWER in step 1, which moved their plate off the felt into the HUD -- and
-// the viewer's own seat is precisely the one this threshold fires on. The
-// information does still survive, but in the HUD readout (ViewerHud.tsx), not
-// in a plate. Corrected rather than deleted: the behaviour is still right, the
-// reason given for it had gone stale underneath it.
-function minViableDistance(scale: number): number {
-  return (SEAT_CLEARANCE * scale) / (1 - T_MIN);
+// Everything before this placed the chip at a FRACTION of the way down that
+// line, which is a position derived from where the bank is -- so the chip
+// tracked the geometry between two things rather than the player it belongs
+// to, and on an ordinary four-seat desktop table it came to rest in open felt
+// with the seat still 130px further on. That is the whole of "nowhere near the
+// player's spot", and no choice of fraction or clearance fixes it, because a
+// point on that line is only near the seat at one particular table shape.
+//
+// Anchored to the seat instead: same x, a fixed offset above its top edge.
+// SEAT_HEIGHT is the reserved half-height (it carries a few px of slack over
+// the real box on purpose), so this clears the seat's own topmost row -- which
+// since the timer became a permanent row is the timer, not the plate. The chip
+// therefore sits above the name card with the timer between them, and the two
+// cannot collide because neither is placed relative to the other: one is a row
+// in the seat's flex column, the other a fixed offset from the seat's centre.
+function restPoint(position: SeatPosition, _pot: { x: number; y: number }, scale: number): { x: number; y: number } {
+  return { x: position.x, y: position.y - (SEAT_HEIGHT / 2) * scale - CHIP_GAP };
 }
 
-function restPoint(position: SeatPosition, pot: { x: number; y: number }, scale: number): { x: number; y: number } {
-  const dx = position.x - pot.x;
-  const dy = position.y - pot.y;
-  const distance = Math.hypot(dx, dy);
-  const clearance = SEAT_CLEARANCE * scale;
-  const t = distance > 0 ? Math.max(T_MIN, (distance - clearance) / distance) : T_MIN;
-  return { x: pot.x + dx * t, y: pot.y + dy * t };
-}
-
-function isPlaceable(position: SeatPosition, pot: { x: number; y: number }, scale: number): boolean {
-  return Math.hypot(position.x - pot.x, position.y - pot.y) >= minViableDistance(scale);
-}
 
 // How far out from the viewer's own seat centre their badge sits, in nominal
 // stage px. Half a full-width hand plus enough daylight for the badge itself.
@@ -151,10 +106,16 @@ const STAGE_EDGE_MARGIN = 40;
 // Beside the cards instead, at the same height, where there is open felt on
 // both sides of the bottom-centre seat. The connector line still runs from the
 // bank to it, so it is still visibly the bank's money.
+// LEFT by default, and that side is not arbitrary: a reaction bubble anchors
+// to the RIGHT of its seat (.k-reaction.is-side), so the two things that both
+// want "beside this seat" get opposite sides by rule rather than by luck. The
+// overlap spec found them stacked when both went right -- k-reaction X k-resv
+// at 63%, 52% and 40% across the three phone widths -- which is the same class
+// of collision as the chip-vs-seat one, just one level in.
 function viewerRestPoint(position: SeatPosition): { x: number; y: number } {
-  const right = position.x + VIEWER_BADGE_OFFSET;
-  const onRight = right <= STAGE_WIDTH - STAGE_EDGE_MARGIN;
-  return { x: onRight ? right : position.x - VIEWER_BADGE_OFFSET, y: position.y };
+  const left = position.x - VIEWER_BADGE_OFFSET;
+  const onLeft = left >= STAGE_EDGE_MARGIN;
+  return { x: onLeft ? left : position.x + VIEWER_BADGE_OFFSET, y: position.y };
 }
 
 // How far the BADGE itself is allowed to shrink, as opposed to how far back
@@ -179,13 +140,8 @@ const MIN_BADGE_SCALE = 0.8;
 export function BankReservations({ reservations, viewerId, scale = 1, playTop = 0, vf = 1 }: BankReservationsProps) {
   const pot = potPoint(playTop, vf);
   const badgeScale = Math.max(scale, MIN_BADGE_SCALE);
-  // The viewer is never filtered out. isPlaceable asks "is there room on the
-  // line between the bank and this seat", and for the viewer the answer is
-  // always no -- that is exactly why they get their own rule below, rather than
-  // being dropped as unplaceable and leaving the one player who is looking for
-  // their own wager with nothing to look at.
   const at = (r: Reservation) => (r.playerId === viewerId ? viewerRestPoint(r.position) : restPoint(r.position, pot, scale));
-  const placeable = reservations.filter((r) => r.playerId === viewerId || isPlaceable(r.position, pot, scale));
+  const placeable = reservations;
   if (placeable.length === 0) return null;
 
   return (

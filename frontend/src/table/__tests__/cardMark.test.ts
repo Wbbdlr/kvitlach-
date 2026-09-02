@@ -67,3 +67,53 @@ describe("card mark defaults", () => {
     expect(plain).toContain('y="1350"');
   });
 });
+
+// The mark's markup is assembled as a STRING and injected with
+// dangerouslySetInnerHTML, so every attribute has to survive an HTML parser --
+// which is a different thing from being valid JavaScript.
+//
+// font-family did not. It was built with JSON.stringify(), which escapes an
+// inner quote as \" -- correct JSON, meaningless to HTML. The parser closed
+// the attribute at the first quote and read the remainder of the font stack as
+// further attributes. What shipped live on kvitlach.us was:
+//
+//   font-family="\" cinzel\",="" georgia,="" \"times="" new="" roman\",=""
+//
+// one attribute shredded into seven, with font-family itself resolving to a
+// single backslash, so the mark fell back to the browser's default serif on
+// every platform. Nothing caught it because the fallback is metrically almost
+// identical for this one string: "SCHLESINGER" measures 724px in Cinzel and
+// 722.5px in the default serif at 100px/600, 0.2% apart. Nothing shifted, no
+// frame misfit, no visual tell.
+//
+// So this parses the output rather than pattern-matching it. A string
+// assertion would have passed on the broken markup too -- the bytes were all
+// present, they were just in seven attributes instead of one.
+describe("mark markup survives an HTML parser", () => {
+  const parseMark = (card: number): Element => {
+    const body = markSvgBody(card, DEFAULT_MARK);
+    expect(body, `card ${card} should render a mark`).not.toBe("");
+    const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${body}</svg>`, "image/svg+xml");
+    expect(doc.querySelector("parsererror")).toBeNull();
+    const text = doc.querySelector("text");
+    expect(text).not.toBeNull();
+    return text!;
+  };
+
+  it.each(DEFAULT_MARK.cards)("card %i asks for the real font stack", (card) => {
+    expect(parseMark(card).getAttribute("font-family")).toBe(DEFAULT_MARK.fontFamily);
+  });
+
+  it("does not shed the stack into extra attributes", () => {
+    // The specific failure: the tail of the stack became attribute NAMES.
+    const names = [...parseMark(DEFAULT_MARK.cards[0]).attributes].map((a) => a.name.toLowerCase());
+    for (const junk of ["cinzel", "georgia,", "new", "roman", "serif"]) {
+      expect(names, `"${junk}" parsed as an attribute name -- the stack was shredded`).not.toContain(junk);
+    }
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("keeps the text itself intact", () => {
+    expect(parseMark(DEFAULT_MARK.cards[0]).textContent).toBe(DEFAULT_MARK.text);
+  });
+});

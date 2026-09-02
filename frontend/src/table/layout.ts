@@ -25,9 +25,17 @@ export const SEAT_WIDTH = 168;
 // pair -- so undercounting the tallest seat meant a 6-7 player table's
 // tightest pair (always the viewer against a neighbour) computed scale=1
 // while the real, taller box actually overlapped its neighbour by several
-// px. 200 covers the measured 197px with a few px to spare for box-shadow/
+// px. 200 covered the measured 197px with a few px to spare for box-shadow/
 // border spillover getBoundingClientRect includes.
-export const SEAT_HEIGHT = 200;
+//
+// Now 210. The turn timer's 3px track is a PERMANENT row in every player seat
+// rather than one that appears only while a turn is being timed (see Seat.tsx
+// for why), and .k-seat's flex gap is 6px -- so every seat is 9px taller than
+// it was when 200 was measured. Left at 200 this would be the same undercount
+// the paragraph above describes: a real box overlapping its neighbour while
+// seatScale() computes 1 from a nominal height that no longer matches anything
+// on screen. The height moved, so the constant calibrated to it moves too.
+export const SEAT_HEIGHT = 210;
 
 export interface SeatPosition {
   angleDeg: number; // degrees clockwise from 12 o'clock
@@ -277,9 +285,15 @@ const DEALER_SEAT_HEIGHT = 160;
 // 91 stage px above its centre and 92 below at seatShrink 0.84, i.e. 218
 // unscaled against SEAT_HEIGHT's 200. Reserving 200 left a 7px overlap --
 // small, but visible as the dealer's plate touching the viewer's name.
-// 224 covers the measured 218 with the same few px of slack SEAT_HEIGHT
+// 224 covered the measured 218 with the same few px of slack SEAT_HEIGHT
 // allows itself for box-shadow spill.
-const VIEWER_SEAT_HEIGHT = 224;
+//
+// Now 233, for the same reason SEAT_HEIGHT went 200 -> 210: the turn timer's
+// 3px track plus .k-seat's 6px gap is a permanent row in every player seat
+// now, and the viewer's seat is a player seat. This is the one that actually
+// meets the dealer, so under-reserving it is exactly the 7px plate-on-name
+// overlap described above.
+const VIEWER_SEAT_HEIGHT = 233;
 
 /**
  * How much to shrink the player seats so none of them collides with the

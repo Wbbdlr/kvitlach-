@@ -37,8 +37,9 @@ const PHONE_LANDSCAPE = [
 //   - cards within one hand overlap deliberately (the fan, see .k-hand's
 //     negative margin), so card-vs-card is meaningless;
 //   - toasts are floating overlays whose whole job is to sit above the felt;
-//   - reservation chips REST against a seat, and their connector line's
-//     bounding box necessarily spans from the bank pill it leaves;
+//   - a reservation chip's CONNECTOR LINE is one SVG whose bounding box spans
+//     the whole felt by construction, so the line is exempt -- but the CHIP is
+//     not, and used to be exempt with it. See k-resv in CHECKED below;
 //   - the felt oval and the full-stage SVG layer contain everything.
 //
 // These are the elements that carry a player's information -- nameplates,
@@ -59,8 +60,33 @@ const PHONE_LANDSCAPE = [
 // (measured x404-450 y154-166 against the dealer's readout x356-435 y145-167)
 // -- "muddled ... not even readable". It is information covering information,
 // which is exactly what this file is for.
+// k-turnbar and k-resv were BOTH absent from this set, and they failed in
+// the two different ways a checked set fails.
+//
+// k-turnbar was simply never listed. It carries a player's own
+// information -- how long is left on their turn -- and on a phone the viewer's
+// cards sat straight on top of it (measured -4.7px on live v9.5 at 854x384).
+// Nothing here compared it against anything, so the suite was green while the
+// bug was on screen. It is also why the fix has to RESERVE its row rather than
+// dodge: a conditionally-mounted element is one this file cannot see at all
+// when it is unmounted.
+//
+// k-resv was worse: it was deliberately excluded, on the stated grounds that
+// chips "REST against a seat". That was the assumption the bug was made of.
+// They did not rest against a seat -- they were placed at a fraction along the
+// bank-to-seat line and floated in open felt, which is the whole of the report
+// "nowhere near the player's spot". An exemption justified by an unchecked
+// claim about layout is the one thing this file exists to refuse; the
+// exemption belongs to the connector LINE, which really does span the felt,
+// not to the chip riding on it.
+//
+// The shared lesson, and it is the same one that let a discard entry sit inert:
+// an element is not exempt because it is small, transient, or believed to be
+// attached to something. If it carries a player's information it goes in here,
+// and if it is believed to be anchored, that belief is what gets measured.
 const CHECKED = new Set([
   "k-seat", "k-plate", "k-plate-name", "k-plate-sub",
+  "k-turnbar", "k-resv",
   "k-readout", "k-tag", "k-banktotal", "k-bank-split",
   "k-hand", "k-shoe", "k-discard", "k-reaction", "k-fs-hint", "k-controls",
   // The bottom-left HUD column and both of its occupants. These share one
@@ -136,6 +162,13 @@ async function findOverlaps(page: Page): Promise<Overlap[]> {
   return page.evaluate(
     ({ checked, minFraction, minPx }) => {
       const allowed = new Set(checked);
+      // Both the selector below and nameOf() key on the `k-` prefix, so an
+      // element that does not follow the convention is invisible to this file
+      // no matter what CHECKED says. The turn timer was the one felt element
+      // that did not: it was `turn-bar-track`, matched neither gate, and so
+      // could never have been caught here. It has been renamed k-turnbar
+      // rather than special-cased, so the convention stays the single rule for
+      // what this spec can see.
       const nameOf = (el: Element) => {
         const raw = (el as HTMLElement).className;
         const str = typeof raw === "string" ? raw : (raw as unknown as SVGAnimatedString)?.baseVal ?? "";
@@ -145,8 +178,16 @@ async function findOverlaps(page: Page): Promise<Overlap[]> {
         const r = el.getBoundingClientRect();
         const cs = getComputedStyle(el);
         const name = nameOf(el);
+        // 1px, not 8px. The 8px floor was a cheap way to skip decorative
+        // slivers back when this walked EVERY k- element, but CHECKED is an
+        // allowlist -- membership already means "this carries a player's
+        // information", so a second filter guessing at importance by size can
+        // only overrule it wrongly. It did: k-turnbar is 110x3, so the turn
+        // timer would have been dropped here even once it was named in
+        // CHECKED, and adding it there would have looked like a fix and
+        // changed nothing.
         return (
-          r.width > 8 && r.height > 8 &&
+          r.width > 1 && r.height > 1 &&
           cs.visibility !== "hidden" && cs.display !== "none" && cs.opacity !== "0" &&
           name && allowed.has(name.split(".")[0])
         );

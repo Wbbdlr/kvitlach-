@@ -880,7 +880,17 @@ export function TableRoot({
               // position rather than "is this me", because it is a fact about
               // WHERE the seat sits, and an 11-player arc puts other seats low
               // too; those still have empty felt above them.
-              sideReaction={compact && positions[idx]?.y >= bottomSeatY}
+              // Always to the side now, not just for the crowded bottom row.
+              // The condition used to be "is the space above this seat somebody
+              // else's" -- true only for the centre column, where a bubble rose
+              // onto the banker's total. That space is now the seat's OWN: the
+              // reserved chip sits above it and the timer row above the plate,
+              // so a bubble anchored above any seat lands on one of them. The
+              // overlap spec caught exactly that the first time it ran with
+              // k-resv in its CHECKED set -- k-reaction X k-resv, 51%, at
+              // 854x384 -- which is the collision this prop already existed to
+              // prevent, generalised to every seat because the cause now is.
+              sideReaction
               // "Is this me", not "is this the bottom seat": this is about whose
               // information it is, not where the seat sits. The viewer's plate,
               // total and status render in the bottom-left HUD instead; their

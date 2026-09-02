@@ -192,6 +192,46 @@ export function Seat({
         </div>
       )}
 
+      {/* The turn timer's own row, ALWAYS rendered for a player seat and never
+          only while it is running.
+
+          It used to be mounted only when showTurnTimer was true. That made its
+          space conditional, so the seat column was one height with a timer and
+          another without -- and a card dealt into the shorter column had
+          nothing holding the bar's place. Reserving it unconditionally is what
+          makes "a card can never land on the timer" a property of the layout
+          rather than something re-checked every time the column changes.
+
+          First in the column, so it sits ABOVE the nameplate rather than
+          between the plate and the cards. The hand is the only thing here that
+          grows -- it scales by --k-hand-scale, and a transform is invisible to
+          layout -- so the further the bar is from the hand, the less there is
+          to reason about. Above the plate it is separated from the hand by the
+          whole plate, at every seat count.
+
+          The banker never takes a timed turn (showTurnTimer excludes them), so
+          they get no row and no reserved space for one. */}
+      {!isBanker && (
+        <div
+          className={clsx(
+            "k-turnbar w-[110px] h-[3px]",
+            showTurnTimer && "is-live",
+            showTurnTimer && timerTone === "urgent" && "is-urgent"
+          )}
+          aria-hidden={!showTurnTimer}
+        >
+          {showTurnTimer && (
+            <div
+              className={clsx(
+                "k-turnbar-fill",
+                timerTone === "urgent" ? "is-urgent" : timerTone === "warning" ? "is-warning" : ""
+              )}
+              style={{ width: `${turnTimer?.percent ?? 0}%` }}
+            />
+          )}
+        </div>
+      )}
+
       {/* The viewer's own identity is not rendered here -- it lives in the
           bottom-left HUD instead (ViewerHud.tsx, rendered by TableRoot). Only
           their CARDS stay on the felt, because only the cards are play.
@@ -249,18 +289,6 @@ export function Seat({
           title={isOffline ? "Offline" : "Online"}
         />
       </button>
-      )}
-
-      {showTurnTimer && (
-        <div className={clsx("turn-bar-track w-[110px] h-[3px]", timerTone === "urgent" && "is-urgent")}>
-          <div
-            className={clsx(
-              "turn-bar-fill",
-              timerTone === "urgent" ? "is-urgent" : timerTone === "warning" ? "is-warning" : ""
-            )}
-            style={{ width: `${turnTimer?.percent ?? 0}%` }}
-          />
-        </div>
       )}
 
       <div
