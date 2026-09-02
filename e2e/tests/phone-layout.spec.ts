@@ -108,6 +108,12 @@ const CHECKED = new Set([
   // containers of these, and a container always intersects its own contents --
   // that is the false positive .k-topbar produced when it was measured directly.
   "k-logo-word", "k-logo-tag", "k-chip-btn",
+  // Felt-level, independently positioned, and CONDITIONALLY rendered -- the
+  // class this file is worst at. Each is listed here so it is checked in any
+  // phase that does produce it; none of them is produced by the phases below
+  // yet, and the reporter at the end of each run says so rather than letting
+  // the entry sit here looking like coverage.
+  "k-bank-banner", "k-bank-decision", "k-elev-badge", "k-preround",
   "k-readout", "k-tag", "k-banktotal", "k-bank-split",
   "k-hand", "k-shoe", "k-discard", "k-reaction", "k-fs-hint", "k-controls",
   // The bottom-left HUD column and both of its occupants. These share one
@@ -177,6 +183,27 @@ async function settle(page: Page, quietMs = 400, timeoutMs = 45_000): Promise<vo
     `Layout never settled within ${timeoutMs}ms -- the felt was still moving, so any ` +
       `overlap measured now would be an artifact of the animation, not a real collision.`
   );
+}
+
+/** Which CHECKED classes were actually on the page -- see the reporter below. */
+async function presentClasses(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const nameOf = (el: Element) => {
+      const raw = (el as HTMLElement).className;
+      const str = typeof raw === "string" ? raw : (raw as unknown as SVGAnimatedString)?.baseVal ?? "";
+      return str.split(/\s+/).filter((c) => c.startsWith("k-"))[0] ?? "";
+    };
+    const out = new Set<string>();
+    for (const el of document.querySelectorAll("[class*='k-']")) {
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      if (cs.visibility === "hidden" || cs.display === "none" || cs.opacity === "0") continue;
+      if (r.width <= 1 || r.height <= 1) continue;
+      const n = nameOf(el);
+      if (n) out.add(n);
+    }
+    return [...out];
+  });
 }
 
 async function findOverlaps(page: Page): Promise<Overlap[]> {
@@ -255,8 +282,10 @@ for (const vp of VIEWPORTS) {
     // so the arc is populated, which is what makes the seats collide at all.
     await page.getByRole("button", { name: /Practice Against the Computer/i }).click();
 
+    const everSeen = new Set<string>();
     const check = async (phase: string) => {
       await settle(page);
+      for (const c of await presentClasses(page)) everSeen.add(c);
       const overlaps = await findOverlaps(page);
       expect(
         overlaps,
@@ -326,6 +355,22 @@ for (const vp of VIEWPORTS) {
     await expect(page.locator(".k-toast").first()).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(".k-viewer-hud")).toBeVisible();
     await check("round resolved, discard pile up, outcome toast over the viewer readout");
+
+    // The inert-entry report. A name in CHECKED that no phase ever renders is
+    // not coverage, it is the appearance of coverage -- which is exactly how a
+    // discard entry sat in this list while the pile itself was never on screen,
+    // and how k-turnbar would have looked handled had it merely been named.
+    // Printed rather than failed: some entries are legitimately absent at a
+    // given viewport (k-fs-hint is mobile-only), so the judgement is a human's.
+    // What must not happen is nobody being told.
+    const inert = [...CHECKED].filter((c) => !everSeen.has(c)).sort();
+    if (inert.length) {
+      console.log(
+        `  ${vp.width}x${vp.height}: ${inert.length} CHECKED entries never rendered in any phase -- ` +
+          `not checked here, whatever the allowlist says:
+    ${inert.join(", ")}`
+      );
+    }
 
     await context.close();
   });
