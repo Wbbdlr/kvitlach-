@@ -254,7 +254,7 @@ export function Seat({
           )}
           {showEleveroonCall && (
             <span className="k-elev-mark" title={`${displayName} is calling Eleveroon`} aria-label="Calling Eleveroon">
-              <Icon name="star" size={8} />
+              <Icon name="magen" size={8} />
             </span>
           )}
         </span>

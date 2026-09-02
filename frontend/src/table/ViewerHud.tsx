@@ -93,7 +93,7 @@ export function ViewerHud({
       <div className="k-viewer-hud-top">
         {showEleveroonCall && (
           <span className="k-elev-mark is-inline" title="You are calling Eleveroon" aria-label="Calling Eleveroon">
-            <Icon name="star" size={9} />
+            <Icon name="magen" size={9} />
           </span>
         )}
         <span className="k-viewer-hud-name">{name}</span>

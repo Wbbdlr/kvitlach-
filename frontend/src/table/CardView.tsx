@@ -165,7 +165,7 @@ export function CardView({
       )}
       {ignored && !hidden && (
         <span className={clsx("absolute inset-0 flex flex-col items-center justify-center gap-0.5 k-elev-badge", animate && "k-elev-badge-in")}>
-          <Icon name="star" size={12} className="k-elev-badge-icon" />
+          <Icon name="magen" size={12} className="k-elev-badge-icon" />
           <span className="k-elev-badge-label">Eleveroon</span>
         </span>
       )}

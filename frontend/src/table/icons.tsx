@@ -31,6 +31,7 @@ export type IconName =
   | "fire"
   | "wow"
   | "star"
+  | "magen"
   | "laugh"
   | "heart"
   | "chevron-up"
@@ -74,7 +75,19 @@ const ICON_PATHS: Record<IconName, string> = {
   "thumbs-down": '<path d="M7 13V4H4v9h3z"/><path d="M7 13l2.8 6.6a1.8 1.8 0 0 0 1.7-1.8V14h5.3a2 2 0 0 0 2-2.3l-1.1-5.5a2 2 0 0 0-2-1.7H9a2 2 0 0 0-2 2v6z"/>',
   fire: '<path d="M12 3s-4.5 4.5-4.5 9a4.5 4.5 0 0 0 9 0c0-1.7-.8-2.6-.8-2.6s-.2 1.6-1.4 2c1-2.3-.5-4-2.3-8.4z"/>',
   wow: '<circle cx="12" cy="12" r="8.5"/><circle cx="8.7" cy="10" r=".9"/><circle cx="15.3" cy="10" r=".9"/><circle cx="12" cy="15" r="2"/>',
+  // Reaction glyph. Kept for the reaction row; the Eleveroon marks use `magen`
+  // -- a five-point star was never the right symbol for this game's one
+  // signature move.
   star: '<path d="M12 3l2.6 5.9 6.4.6-4.8 4.3 1.4 6.3L12 17l-5.6 3.1 1.4-6.3-4.8-4.3 6.4-.6z"/>',
+  // Magen David, for the Eleveroon marks. FILLED rather than stroked, unlike
+  // every other icon here, and the reason is size: this renders at 8px in a
+  // seat plate's corner badge, where two overlapping outlined triangles at
+  // 1.8 stroke are a smudge. A solid hexagram is still unmistakably itself at
+  // that size. The two triangles are one path with nonzero fill, so the
+  // centre reads solid rather than as a hollow hexagon -- interlacing is
+  // detail that only survives at sizes this never renders at.
+  magen:
+    '<path fill="currentColor" stroke="none" d="M12 3.2l7.36 12.75H4.64zM12 20.8L4.64 8.05h14.72z"/>',
   laugh: '<circle cx="12" cy="12" r="8.5"/><path d="M7.5 13.5s2 3 4.5 3 4.5-3 4.5-3"/><path d="M8 9.3l2 1.4M16 9.3l-2 1.4"/>',
   heart: '<path d="M12 19.5s-7.5-4.3-7.5-10a4.5 4.5 0 0 1 7.5-3.4 4.5 4.5 0 0 1 7.5 3.4c0 5.7-7.5 10-7.5 10z"/>',
   "chevron-up": '<path d="M5 15l7-7 7 7"/>',

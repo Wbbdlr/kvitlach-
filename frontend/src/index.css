@@ -614,7 +614,7 @@ body:has(.k-fit) {
   justify-content: center;
   border: 1.5px solid rgba(20, 15, 5, 0.9);
 }
-/* "I'm calling Eleveroon!" -- same gold star as the card's own
+/* "I'm calling Eleveroon!" -- the same gold Magen David as the card's own
    k-elev-badge-icon (CardView.tsx), so the two read as one visual language.
    Top-right rather than k-bankmark's bottom-right: the two are mutually
    exclusive (this never shows for the banker -- Seat.tsx), but keeping them
@@ -1906,9 +1906,11 @@ body:has(.k-fit) {
 /* The viewer's own name, money and total -- their corner of the HUD. Compact by
    design and deliberately unlike an on-table .k-plate: see ViewerHud.tsx. */
 .k-viewer-hud {
-  /* Draggable and resizable (draggablePanel.ts). The offset is a transform,
-     not top/left, so an untouched panel is exactly the flow-laid box it always
-     was and only a player who has actually moved it pays for the feature.
+  /* Draggable and resizable (draggablePanel.ts). An untouched panel gets no
+     positioning from that hook at all, so it is exactly the box this rule
+     lays out and only a player who has actually moved it pays for the feature
+     -- at which point the hook takes over with an inline position: fixed and
+     nothing below matters to it any more.
      `relative` is for the grip and the reset button below, which hang off its
      corners. */
   position: relative;
@@ -3197,10 +3199,37 @@ body:has(.k-fit) {
   color: #f0c579;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
 }
+/* Cinzel, at the weight and with the tracking cardMark.ts stamps SCHLESINGER
+   in -- asked for directly, and right: this word sits ON a card, and it was
+   the only text there set in the UI's own sans. Two typefaces on one card read
+   as an overlay that belongs to the app rather than to the game.
+   Tracking is the mark's own 9/1000 em, converted: cardMark stamps at 58px, so
+   0.522px there, and this renders around 9px, giving 0.08px -- which rounds to
+   nothing at these sizes. 0.6px is the same LOOK at a tenth the size, and the
+   look is the point; matching the number would just be precision about the
+   wrong quantity.
+   Inherits @font-face's font-display: block (see the top of this file), so the
+   word paints nothing until Cinzel loads rather than flashing in Georgia at
+   the wrong width. For a decorative badge that is the better half-second.
+
+   THE SIZE IS A MEASUREMENT, not a taste. Cinzel is a wide Trajan-style face
+   and the swap cannot keep the old 8px: at wght 700 "Eleveroon" advances
+   5.937em, so 8px sets 48px against a 41px card (--k-card-w) and crosses onto
+   the neighbouring one. The word has to stay ON the card -- asked for directly
+   after a proof sheet showed exactly that overhang.
+   6px with 0.15px tracking sets 36.8px: inside the 41px face with ~2px of air
+   each side, where the old Inter 8px sat at ~40px with almost none. Weight 700
+   rather than the mark's 600 buys back some of the presence the smaller size
+   costs -- and note Cinzel is VARIABLE (wght 400-900), so the advance has to
+   be read at the weight actually used, not at the file's default 400 (5.822em,
+   which is what a naive measurement gives and is 2% narrow).
+   Recompute if the face, the string, the weight or --k-card-w changes -- do
+   not nudge it by eye. Pinned by eleveroonMark.test.tsx. */
 .k-elev-badge-label {
-  font-size: 8px;
+  font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
+  font-size: 6px;
   font-weight: 700;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.15px;
   line-height: 1;
   color: #fff3dd;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
