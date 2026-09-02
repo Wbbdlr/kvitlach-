@@ -146,10 +146,12 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 
 Most players are on a phone, in landscape.
 **[docs/mobile-ui.md](docs/mobile-ui.md) is the design contract — read Part 1
-(the scene / HUD split) and Part 6 (the bug ledger) before writing any layout
-code.** It also holds the four rules, the z-index tiers, the orientation model,
-the verification loop and the refactor plan. Six of the ledger's ten bugs were
-one structural bug wearing six hats; Part 1 is what stops the seventh.
+(the scene / HUD split) and Part 2 (the six rules) before writing any layout
+code.** It also holds the z-index tiers, the orientation model and the
+verification loop. It is rules only; what produced each one — the closed bugs,
+the measured constants, the refactor — is in
+[docs/mobile-ui-history.md](docs/mobile-ui-history.md), which you need only when
+a rule looks arbitrary.
 
 **Stack:** plain DOM + CSS. React 18 + Tailwind, no canvas, no WebGL, no engine
 — so z-index, flex/grid and media queries are the real tools, and DevTools sees
