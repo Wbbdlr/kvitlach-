@@ -1658,47 +1658,97 @@ body:has(.k-fit) {
   }
 }
 
-/* Rotate-to-landscape nudge. Table is landscape-first by design (see
-   fullscreen.ts's screen.orientation.lock("landscape")), but that lock only
-   ever fires once someone taps the fullscreen button -- .k-fs-hint points at
-   that button once, ever, and gets dismissed forever the moment it's tapped
-   OR closed. This is a different, ongoing signal ("you're in a cramped
-   orientation right now"), so it's plain CSS with no dismiss state of its
-   own: it reappears any time the device is actually portrait and disappears
-   the instant it isn't, same as an offline banner would. Rendered via
-   StageOverlay (TableRoot.tsx) so it sits at true viewport scale, not
-   shrunk by --stage-scale. pointer-events: none -- purely informational,
-   must never be able to sit on top of and block a real tap.
-   max-width caps this to phones; a portrait iPad (768px+) plays the table
-   fine at that size and shouldn't be told to rotate. */
-.k-rotate-hint {
+/* Portrait gate. The table is landscape-first by design (fullscreen.ts locks
+   the orientation the moment anyone taps fullscreen), and a portrait phone
+   does not render it -- it renders a squashed caricature of it: at 390x844 the
+   stage scales to ~0.30, which puts the seat nameplates under 4px and stacks
+   the chrome row, the felt and the dock into a column with no room for any of
+   them. This used to be a small pill at the top saying "turn your phone
+   sideways" ON TOP of that mess, which told the truth and then made the player
+   look at the mess anyway. Reported as exactly that: don't show the whole
+   screen squished together, just show the notice.
+
+   So it covers, rather than annotates. .k-fit is hidden behind it
+   (is-portrait-blocked) rather than unmounted -- the socket, the round and the
+   player's own turn all keep running underneath, so rotating comes back to a
+   live table rather than a rejoin.
+
+   Gated in JS (TableRoot's rotateHintShowing), NOT by a media query here.
+   There used to be a copy of "(orientation: portrait) and (max-width: 540px)"
+   in this file and another in TableRoot.tsx with nothing enforcing the match,
+   flagged in both places as owed work. Now that one predicate hides the whole
+   table, two copies of it that could disagree is a blank screen waiting to
+   happen, so this rule has no query left to drift from. 540 is still the
+   number, and it still lives in TableRoot.tsx -- see docs/mobile-ui.md Part 4
+   for why it must not become 820. */
+.k-fit.is-portrait-blocked {
   display: none;
 }
-@media (orientation: portrait) and (max-width: 540px) {
-  .k-rotate-hint {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    position: fixed;
-    top: max(10px, env(safe-area-inset-top));
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 42;
-    max-width: calc(100vw - 24px);
-    background: rgba(10, 20, 14, 0.92);
-    border: 1px solid rgba(230, 164, 75, 0.35);
-    border-radius: 999px;
-    padding: 7px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #eef2ea;
-    text-align: center;
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
-    pointer-events: none;
+.k-rotate-gate {
+  position: fixed;
+  inset: 0;
+  /* Above the dialog scrim: a drawer left open on the last rotation must not
+     be able to sit on top of the reason the screen is blank. */
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px 26px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 38%, #16321f 0%, #0b1a12 62%, #060d09 100%);
+  color: #eef2ea;
+}
+.k-rotate-gate .k-rotate-icon {
+  color: #e6a44b;
+  animation: k-rotate-nudge 2.6s ease-in-out infinite;
+}
+/* Honour the same preference the felt does -- a looping icon is exactly the
+   kind of motion this setting exists to stop. */
+@media (prefers-reduced-motion: reduce) {
+  .k-rotate-gate .k-rotate-icon {
+    animation: none;
   }
 }
-.k-rotate-hint svg {
-  flex: none;
+@keyframes k-rotate-nudge {
+  0%,
+  55%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25%,
+  40% {
+    transform: rotate(-90deg);
+  }
+}
+.k-rotate-gate h2 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.k-rotate-gate p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #b9c6bb;
+  max-width: 26em;
+}
+/* The escape hatch, and it is not optional. Plenty of people play with
+   rotation lock on, and for them "turn your phone" is advice they cannot
+   take -- without this the gate is a dead end with their money on the table
+   and no way back to it. Deliberately quiet: it is the wrong way to play,
+   just not a forbidden one. */
+.k-rotate-gate .k-rotate-anyway {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9aa79c;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 8px 12px;
+  /* 44px tap target via padding rather than height -- see the tap-target
+     scan's exception list. */
+  min-height: 44px;
 }
 
 /* Toast stack -- round outcomes (won/lost/futched/push), deck reshuffles,
@@ -2688,25 +2738,13 @@ body:has(.k-fit) {
   }
 }
 
-/* .k-rotate-hint is position:fixed at the top-centre of the SCREEN, while
-   .k-chrome-top is absolutely positioned at the top of the stage -- two more
-   elements with no awareness of each other, the same class of bug as the
-   topbar/chrome-top collision above. On a portrait phone chrome-top wraps to
-   three rows (measured 136px tall at 375x812) and the rotate banner landed
-   squarely on the first two of them: 187x70px of overlap. It has
-   pointer-events:none so it never blocked a tap, but it covered the controls
-   it was sitting on.
-   Pushing chrome-top below the banner rather than moving the banner: the
-   banner is the more important message (the table is genuinely cramped in
-   portrait and rotating fixes it properly), and this only costs vertical
-   room in the one orientation we are actively asking the player to leave --
-   rotate, the query stops matching, and the row returns to its normal spot.
-   88px = the banner's own 70px box at top:10px, plus 8px of air. */
-@media (orientation: portrait) and (max-width: 540px) {
-  .k-chrome-top {
-    top: calc(max(8px, env(safe-area-inset-top)) + 88px);
-  }
-}
+/* The portrait chrome-top offset is GONE, not relocated. It existed to push
+   the top row 88px down so the old rotate BANNER did not sit on it -- and
+   there is no banner any more: the portrait gate (.k-rotate-gate) covers the
+   screen and .k-fit, chrome-top included, is hidden behind it. A rule that
+   only ever fires in an orientation where its subject is display:none is dead
+   weight, and worse, it was the file's last copy of the gate's own breakpoint
+   -- the thing portraitGate.test.ts exists to keep at one. */
 
 /* The bank busting is THE big moment -- every player still in reads it as a
    win at once -- but the thing everyone actually wants to look at is the

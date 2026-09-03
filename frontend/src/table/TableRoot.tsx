@@ -297,6 +297,14 @@ export function TableRoot({
   // grep for the literal before changing either copy.
   const rotateHintShowing = useMediaQuery("(orientation: portrait) and (max-width: 540px)");
 
+  // The one-way escape hatch for a phone with rotation lock on, who cannot
+  // take the gate's advice. Session state on purpose -- not localStorage: it
+  // is an override for right now, not a preference, and a player who dismissed
+  // it once on a friend's phone should not be silently handed the squashed
+  // table forever after.
+  const [portraitOverride, setPortraitOverride] = useState(false);
+  const portraitBlocked = rotateHintShowing && !portraitOverride;
+
   // The felt/chip swatches are the only chrome-top controls that carry no
   // shape-based icon of their own -- everything else there (music note,
   // speaker, expand arrows) suggests its function at a glance; a bare color
@@ -593,6 +601,62 @@ export function TableRoot({
     </span>
   );
 
+  // The controls a player or banker actually reaches for MID-HAND, hoisted out
+  // of chromeControls so the compact row can render them itself.
+  //
+  // Reported as the top menus not using the top bar space on a phone the way
+  // they do on desktop, and that is exactly what was happening: on compact the
+  // entire chrome collapsed behind one "..." button, so a 539px-wide bar at
+  // 667x375 carried three chips and ~350px of nothing while "Ask for chips"
+  // sat two taps away. Desktop lays every control out in the row; the phone
+  // has room for the two or three that matter and should spend it.
+  //
+  // Defined ONCE and placed by the render, never duplicated per branch -- the
+  // note below about two renderings of one list is what this is avoiding. In
+  // the row they are icon-only (.k-ctl-label is hidden on compact), so each
+  // costs a single 36px chip.
+  const manageControl = isAdmin && (
+    <button
+      type="button"
+      className="k-chip-btn"
+      onClick={() => setManageOpen(true)}
+      title={pendingApprovals > 0 ? `Manage table -- ${pendingApprovals} waiting for approval` : "Manage table"}
+    >
+      <Icon name="users" size={13} />
+      <span className="k-ctl-label">Manage</span>
+      {/* The requests themselves live one level in, inside Manage's
+          "Approvals needed" block. Until this count was here, nothing on the
+          banker's screen changed when a player asked for chips -- the request
+          simply sat there until the banker happened to open the drawer. The
+          toast in state.ts is the other half: it fires once, this stays until
+          the queue is empty. */}
+      {pendingApprovals > 0 && <span className="k-badge-count">{pendingApprovals}</span>}
+    </button>
+  );
+
+  const quickRequestControls = !isAdmin && (
+    <>
+      <button
+        type="button"
+        className="k-chip-btn k-ctl-primary"
+        onClick={() => setQuickRequest("chips")}
+        title="Ask the banker for more chips"
+      >
+        <Icon name="coins-plus" size={13} />
+        <span className="k-ctl-label">Ask for chips</span>
+      </button>
+      <button
+        type="button"
+        className="k-chip-btn k-ctl-primary"
+        onClick={() => setQuickRequest("rename")}
+        title="Request a name change"
+      >
+        <Icon name="user-pencil" size={13} />
+        <span className="k-ctl-label">Change my name</span>
+      </button>
+    </>
+  );
+
   const chromeControls = (
     <>
       <span className="relative inline-flex items-center gap-1">
@@ -683,24 +747,7 @@ export function TableRoot({
           </div>
         </span>
       )}
-      {isAdmin && (
-        <button
-          type="button"
-          className="k-chip-btn"
-          onClick={() => setManageOpen(true)}
-          title={pendingApprovals > 0 ? `Manage table -- ${pendingApprovals} waiting for approval` : "Manage table"}
-        >
-          <Icon name="users" size={13} />
-          Manage
-          {/* The requests themselves live one level in, inside Manage's
-              "Approvals needed" block. Until this count was here, nothing on
-              the banker's screen changed when a player asked for chips -- the
-              request simply sat there until the banker happened to open the
-              drawer. The toast in state.ts is the other half: it fires once,
-              this stays until the queue is empty. */}
-          {pendingApprovals > 0 && <span className="k-badge-count">{pendingApprovals}</span>}
-        </button>
-      )}
+      {!compact && manageControl}
       {/* Real bankers reach reshuffle through Manage -> Deck. A practice
           room's banker is a bot with no session (see store.ts's
           reshuffleDeck comment), so the ManageDrawer above stays isAdmin-
@@ -730,28 +777,7 @@ export function TableRoot({
           Icons carry a second glyph for the same reason the labels exist: a
           stack of chips alone is "money" and a pencil alone is "edit".
           Banker-side equivalents live in Manage, hence !isAdmin. */}
-      {!isAdmin && (
-        <>
-          <button
-            type="button"
-            className="k-chip-btn k-ctl-primary"
-            onClick={() => setQuickRequest("chips")}
-            title="Ask the banker for more chips"
-          >
-            <Icon name="coins-plus" size={13} />
-            <span className="k-ctl-label">Ask for chips</span>
-          </button>
-          <button
-            type="button"
-            className="k-chip-btn k-ctl-primary"
-            onClick={() => setQuickRequest("rename")}
-            title="Request a name change"
-          >
-            <Icon name="user-pencil" size={13} />
-            <span className="k-ctl-label">Change my name</span>
-          </button>
-        </>
-      )}
+      {!compact && quickRequestControls}
       {/* Only when the browser has actually offered one. Chrome fires
           beforeinstallprompt once and will not re-fire it, so pwa.ts parks the
           event at module scope and this row appears the moment it arrives --
@@ -782,7 +808,10 @@ export function TableRoot({
 
   return (
     <div
-      className="k-fit"
+      // Hidden, not unmounted: the socket, the round and this player's own
+      // turn keep running behind the gate, so rotating lands back on a live
+      // table instead of a rejoin.
+      className={clsx("k-fit", portraitBlocked && "is-portrait-blocked")}
       ref={wrapRef}
       style={
         {
@@ -791,16 +820,26 @@ export function TableRoot({
         } as React.CSSProperties
       }
     >
-      {/* Pure-CSS (see .k-rotate-hint) -- only .k-fit's own presence gates
-          this to the table view; orientation/width gate it to a portrait
-          phone. No JS orientation state to keep in sync, no dismiss button
-          to wire up. */}
-      <StageOverlay>
-        <div className="k-rotate-hint">
-          <Icon name="rotate" size={16} />
-          Turn your phone sideways for the full table
-        </div>
-      </StageOverlay>
+      {/* The portrait gate, not a banner over the squashed table -- see
+          .k-rotate-gate. Portalled to the body so it is not itself scaled to
+          ~0.30 by the stage transform it exists to hide. */}
+      {portraitBlocked && (
+        <StageOverlay>
+          <div className="k-rotate-gate" role="alertdialog" aria-label="Turn your phone sideways">
+            <span className="k-rotate-icon">
+              <Icon name="rotate" size={54} />
+            </span>
+            <h2>Turn your phone sideways</h2>
+            <p>
+              Kvitlach deals across a wide table. Rotate to landscape and the felt, your hand and the
+              controls all come back -- you are still in the round, nothing was lost.
+            </p>
+            <button type="button" className="k-rotate-anyway" onClick={() => setPortraitOverride(true)}>
+              Show the table anyway
+            </button>
+          </div>
+        </StageOverlay>
+      )}
       <div
         ref={feltRef}
         className="felt-table"
@@ -1048,8 +1087,15 @@ export function TableRoot({
       <div className="k-chrome-top">
         {compact ? (
           <>
+            {/* Order is deliberate: the things you press DURING a hand first,
+                then fullscreen, then everything else. No badge on the overflow
+                any more -- Manage is out here carrying its own count, and a
+                second badge on a menu that no longer holds the requests would
+                point at nothing. */}
+            {quickRequestControls}
+            {manageControl}
             {fullscreenControl}
-            <ChromeMenu badge={pendingApprovals}>{chromeControls}</ChromeMenu>
+            <ChromeMenu>{chromeControls}</ChromeMenu>
           </>
         ) : (
           <>

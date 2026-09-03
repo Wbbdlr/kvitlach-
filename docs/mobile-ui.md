@@ -212,7 +212,7 @@ Use the token. **A raw `z-index` number in new code is a bug**, as is a Tailwind
 | `--z-fly` | 400 | `.table-fly-card` | 80 |
 | `--z-reaction` | 500 | reaction bubbles (per-seat, in their reserved slots) | 45 (`.k-reaction`), 12 (vacated) |
 | `--z-modal` | 600 | `.k-modal-overlay`, drawers | 70 |
-| `--z-gate` | 700 | the rotate gate (Part 4) | 42 (`.k-rotate-hint`) |
+| `--z-gate` | 700 | the rotate gate (Part 4) | **90** (`.k-rotate-gate`) — above the modal (70) and the fly card (80), which is the ordering this tier asks for |
 
 Three deliberate ordering changes, called out so they aren't read as accidents:
 
@@ -222,7 +222,13 @@ Three deliberate ordering changes, called out so they aren't read as accidents:
   `pointer-events: none` — `.k-bank-decision` is interactive and must stay
   clickable through them. That is a requirement of the tier, not a nicety.
 - **The rotate gate takes its own top tier.** It is opaque and covers everything,
-  which is the whole point of Part 4.
+  which is the whole point of Part 4. Built, 2026-09-02: it was a 12px pill at the
+  top of the squashed table, which told the truth and then made the player look at
+  the mess anyway. Reported as "we shouldn't show the whole screen with elements
+  squished together — just show the notice". It carries a "Show the table anyway"
+  escape, which is not optional: a phone with rotation lock on cannot take the
+  gate's advice, and without a way through the gate is a dead end with the
+  player's money on the table.
 
 `.k-hand > :nth-child(n)` (2–8) is **exempt and stays as is** — it orders cards
 *within* `.k-seat`'s own stacking context and never competes globally.
@@ -272,7 +278,7 @@ re-checks. What is actually true today:
 |---|---|---|
 | Owning module | `table/breakpoints.ts` | **No such file.** `TableRoot.tsx:288` also names it, in a comment describing "step 4 of the refactor" |
 | Gate query | `TableRoot` reads `useMediaQuery(GATE_QUERY)` | `TableRoot.tsx:290` hardcodes the literal `"(orientation: portrait) and (max-width: 540px)"` |
-| Gate's CSS rule | deleted outright | `.k-rotate-hint`'s media query is still at `index.css:1633`, duplicating that string |
+| Gate's CSS rule | deleted outright | **Done.** The gate is rendered conditionally from `portraitBlocked`; `index.css` carries only unconditional `.k-rotate-gate` / `.k-fit.is-portrait-blocked` styling and no copy of the query. `portraitGate.test.ts` keeps it at one |
 | Compact query | `COMPACT_QUERY`, pinned to `index.css` by a test | `COMPACT_MEDIA_QUERY` at `stage.ts:18`, not exported, no pinning test. The string appears in six `index.css` blocks |
 
 The design is still right, and it is what to build: one module owning both
