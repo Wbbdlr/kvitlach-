@@ -3369,7 +3369,13 @@ body:has(.k-fit) {
   font-size: 14px;
   line-height: 1.25;
   white-space: nowrap;
-  z-index: 45;
+  /* Was 45, meaningless outside .k-seat's own stacking context (position +
+     z-index: 10, fanned 20) that this bubble used to render inside. Now
+     portalled straight to document.body (Seat.tsx), the same place
+     .table-fly-card (z-index: 80) is appended -- so this has to clear THAT
+     number specifically, not just "look high enough". Reported as reaction
+     emoji getting covered by dealt cards. */
+  z-index: 85;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 14px rgba(230, 164, 75, 0.28);
   animation: reactionLife 10s ease-out forwards;
 }

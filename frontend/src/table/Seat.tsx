@@ -7,6 +7,7 @@ import { SeatPosition } from "./layout";
 import { Icon } from "./icons";
 import { useClickOutside } from "./clickOutside";
 import { FAN_OUT_MS, useHandFan } from "./handFan";
+import { StageOverlay } from "./StageOverlay";
 
 export interface SeatProps {
   turn: Turn;
@@ -165,8 +166,41 @@ export function Seat({
   const totalIsConcealed = !/^\d/.test(totalInfo.value);
   const totalIsBust = statusInfo.label === "FUTCHED!";
 
+  // The reaction bubble portals to document.body -- see the anchor effect
+  // and the render below for why. seatRef is what that effect measures.
+  const seatRef = useRef<HTMLDivElement>(null);
+  const [reactionAnchor, setReactionAnchor] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+
+  // Real-pixel measurement, the same technique ReactionLayer.tsx's own
+  // picker already uses, and for the same reason: .k-seat is
+  // position + z-index (10, fanned 20) -- its own stacking context -- so
+  // .k-reaction's LOCAL z-index (45) never actually competed against
+  // anything outside the seat. A dealt card (.table-fly-card, z-index: 80,
+  // appended straight to document.body, outside every seat) always won.
+  // Reported as reaction emoji "eventually getting covered by cards."
+  //
+  // Keyed on reactionEmoji, not on scale/handScale, which change on every
+  // render as cards animate: a seat does not itself move during the 10s a
+  // reaction lives, so re-measuring on those would only risk a mid-flight
+  // jitter for no visual gain, not fix anything.
+  useEffect(() => {
+    if (!reactionEmoji) {
+      setReactionAnchor(null);
+      return;
+    }
+    const rect = seatRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setReactionAnchor(
+      sideReaction
+        ? { top: rect.top + rect.height / 2, left: rect.right + 10 }
+        : { bottom: window.innerHeight - rect.top + 8, left: rect.left + rect.width / 2 }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reactionEmoji, sideReaction]);
+
   return (
     <div
+      ref={seatRef}
       // hand-fanned bumps THIS seat's own z-index, not just .k-hand's --
       // .k-seat is a stacking context (position + z-index + transform), so a
       // fanned hand wide enough to reach a neighbour needs its whole seat
@@ -178,18 +212,41 @@ export function Seat({
           top: `${position.y}px`,
           transform: `translate(-50%, -50%) scale(${scale})`,
           // Both of these undo part of the seat's own scale for one child that
-          // should never have been shrinking with it (index.css .k-hand,
-          // .k-reaction). Expressed as ratios so the child needs no knowledge
-          // of the seat's transform: 1 means "shrink with the seat as before".
+          // should never have been shrinking with it (index.css .k-hand).
+          // .k-reaction used to be the other one -- it's portalled out now
+          // (see reactionAnchor above), so --k-rx has no reader left inside
+          // this seat, but stays here as a documented no-op rather than a
+          // silent behaviour change bundled into an unrelated edit: deleting
+          // it is a real cleanup, worth its own look at index.css's
+          // reactionLife/reactionLifeSide keyframes rather than a side effect
+          // of this fix.
           "--k-hand-scale": (handScale ?? scale) / scale,
           "--k-rx": 1 / scale,
         } as React.CSSProperties
       }
     >
-      {reactionEmoji && (
-        <div className={clsx("k-reaction", sideReaction && "is-side")} aria-label="Reaction">
-          {reactionEmoji}
-        </div>
+      {reactionEmoji && reactionAnchor && (
+        // Real viewport px via StageOverlay, same portal every other overlay
+        // in this codebase uses and for the same reason: it needs to escape
+        // an ancestor's stacking context, not just look like it has. Once
+        // portalled there's no ambient --stage-scale left to counter, so no
+        // scale() term here -- unlike the in-seat version this replaces,
+        // which had to keep the bubble legible against the felt's own zoom.
+        <StageOverlay>
+          <div
+            className={clsx("k-reaction", sideReaction && "is-side")}
+            aria-label="Reaction"
+            style={{
+              position: "fixed",
+              top: reactionAnchor.top,
+              bottom: reactionAnchor.bottom,
+              left: reactionAnchor.left,
+              margin: 0,
+            }}
+          >
+            {reactionEmoji}
+          </div>
+        </StageOverlay>
       )}
 
       {/* The turn timer's own row, ALWAYS rendered for a player seat and never

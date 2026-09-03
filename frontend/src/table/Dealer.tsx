@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
 import { totalDisplay, statusDisplay, fullName, tagVariant } from "./selectors";
@@ -7,6 +7,7 @@ import { BankPanel } from "./BankPanel";
 import { Icon } from "./icons";
 import { initialsOf } from "./Seat";
 import { useHandFan } from "./handFan";
+import { StageOverlay } from "./StageOverlay";
 
 export interface DealerProps {
   turn: Turn;
@@ -92,9 +93,31 @@ export function Dealer({
   const handRef = useRef<HTMLDivElement>(null);
   const { fanned, toggle } = useHandFan(handRef, roundId);
 
+  // See Seat.tsx's own reactionAnchor effect -- identical bug, identical
+  // fix, same root cause: this wrapper is `.k-seat` too (position + z-index:
+  // 10/20, its own stacking context), so the bubble's LOCAL z-index never
+  // competed against .table-fly-card (z-index: 80, appended straight to
+  // document.body). Dealer.reaction.test.tsx pins that a seat and the bank
+  // render reactions identically -- portal both or neither, not one.
+  const dealerRef = useRef<HTMLDivElement>(null);
+  const [reactionAnchor, setReactionAnchor] = useState<{ top: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!reactionEmoji) {
+      setReactionAnchor(null);
+      return;
+    }
+    const rect = dealerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Always the side anchor -- see the comment this replaces: the bank sits
+    // at the top of the oval, so there is only one right answer here.
+    setReactionAnchor({ top: rect.top + rect.height / 2, left: rect.right + 10 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reactionEmoji]);
+
   return (
     <>
       <div
+        ref={dealerRef}
         // See Seat.tsx's hand-fanned comment -- same stacking-context reason.
         className={clsx("k-seat", canFan && fanned && "hand-fanned")}
         style={{ left: "640px", top: "calc(var(--play-top, 0px) + 160px * var(--vf, 1))", transform: "translate(-50%, -50%)" }}
@@ -102,13 +125,18 @@ export function Dealer({
         {/* is-side, always: the bank sits at the TOP of the oval, so "above
             it" is the chrome row, not felt. Seat.tsx picks between the two
             anchors per seat; here there is only ever one right answer.
-            No --k-rx is set on this element: the dealer is the one box on the
-            felt that never rides seatScale (see layout.ts), so its bubble has
-            nothing to counter-scale out of. */}
-        {reactionEmoji && (
-          <div className="k-reaction is-side" aria-label="Reaction">
-            {reactionEmoji}
-          </div>
+            No --k-rx term needed, portalled or not: the dealer is the one box
+            on the felt that never rides seatScale (see layout.ts). */}
+        {reactionEmoji && reactionAnchor && (
+          <StageOverlay>
+            <div
+              className="k-reaction is-side"
+              aria-label="Reaction"
+              style={{ position: "fixed", top: reactionAnchor.top, left: reactionAnchor.left, margin: 0 }}
+            >
+              {reactionEmoji}
+            </div>
+          </StageOverlay>
         )}
         {/* The bank's money, on the banker's own seat -- LAST child, so it sits
             below the hand rather than above the plate.
