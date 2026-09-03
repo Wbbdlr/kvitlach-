@@ -116,6 +116,93 @@ export interface DraggablePanel {
  *             resting position the first time it is dragged
  * @param key  storage key, scoped per panel
  */
+/**
+ * Resize-only sibling of useDraggablePanel, for a panel that should be
+ * scalable where it sits rather than draggable somewhere else.
+ *
+ * Asked for after the readout got its grip: "perhaps we should make the
+ * player control panel resizeable too." The dock is a different problem from
+ * the readout, though, and the difference is why this is a separate hook
+ * rather than an option on that one. The readout is decoration a player may
+ * want anywhere; the dock is where every action in the game is taken, and it
+ * is anchored to the bottom of the screen because that is where a thumb is.
+ * Letting it be dragged would mostly be a way to lose it.
+ *
+ * Shares this file's storage format, bounds and slop deliberately -- two
+ * panels writing subtly different shapes into kvitlach.panel.* is how the
+ * next person ends up reading one with the other's loader.
+ */
+export function useScaleGrip(
+  key: string,
+  bounds?: { min?: number; max?: number }
+): { scale: number; gripProps: { onPointerDown: (event: ReactPointerEvent) => void }; reset: () => void; scaled: boolean } {
+  const [scale, setScale] = useState(() => load(key).placement.scale);
+  const live = useRef(scale);
+  live.current = scale;
+
+  const bound = useCallback(
+    (value: number) => Math.min(bounds?.max ?? MAX_SCALE, Math.max(bounds?.min ?? MIN_SCALE, Number(value) || 1)),
+    [bounds?.max, bounds?.min]
+  );
+
+  // Re-clamped on mount, not just on write: a value saved before these bounds
+  // were tightened is still sitting in localStorage on somebody's phone.
+  useEffect(() => {
+    setScale((current) => bound(current));
+  }, [bound]);
+
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const from = live.current;
+      const target = event.currentTarget as HTMLElement;
+      let dragging = false;
+      // The gesture's own running value, NOT live.current. live.current is
+      // refreshed on render, and React batches the state updates a fast drag
+      // produces -- so at pointerup it can still hold the scale from before
+      // the gesture. Measured in a real browser: the dock visibly sat at 0.7
+      // and localStorage said 1, so the size survived until the next reload
+      // and then silently vanished. Nothing in jsdom reproduces it, because
+      // fireEvent flushes between events.
+      let latest = from;
+      target.setPointerCapture?.(event.pointerId);
+
+      const onMove = (moveEvent: PointerEvent) => {
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        if (!dragging && Math.hypot(dx, dy) < DRAG_SLOP_PX) return;
+        dragging = true;
+        // Down-right grows it, same gesture and same 200px-per-step as the
+        // readout's grip -- a player who has learned one has learned both.
+        latest = bound(from + (dx + dy) / 200);
+        setScale(latest);
+        moveEvent.preventDefault();
+      };
+      const onUp = () => {
+        target.releasePointerCapture?.(event.pointerId);
+        target.removeEventListener("pointermove", onMove);
+        target.removeEventListener("pointerup", onUp);
+        target.removeEventListener("pointercancel", onUp);
+        if (dragging) save(key, { x: null, y: null, scale: latest });
+      };
+      target.addEventListener("pointermove", onMove);
+      target.addEventListener("pointerup", onUp);
+      target.addEventListener("pointercancel", onUp);
+    },
+    [bound, key]
+  );
+
+  const reset = useCallback(() => {
+    setScale(1);
+    save(key, { x: null, y: null, scale: 1 });
+  }, [key]);
+
+  return { scale, gripProps: { onPointerDown }, reset, scaled: scale !== 1 };
+}
+
 export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): DraggablePanel {
   const initial = useRef(load(key));
   const [placement, setPlacement] = useState<Placement>(initial.current.placement);

@@ -1,7 +1,7 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { useDraggablePanel } from "../draggablePanel";
+import { useDraggablePanel, useScaleGrip } from "../draggablePanel";
 
 const KEY = "kvitlach.panel.testpanel";
 
@@ -176,5 +176,80 @@ describe("useDraggablePanel", () => {
     expect(panel.style.position).toBe("");
     expect(panel.style.transform).toBe("translate(0px, 0px) scale(1.6)");
     expect(panel.dataset.moved).toBe("yes");
+  });
+});
+
+
+// The dock's resize-only grip. Shares this file's storage format and slop
+// deliberately, so the things worth asserting are the ways it DIFFERS from the
+// panel hook -- and the one way it must not.
+function ScalePanel({ min, max }: { min?: number; max?: number } = {}) {
+  const { scale, gripProps, reset, scaled } = useScaleGrip("dock", { min, max });
+  return (
+    <div data-testid="dock" data-scale={String(scale)} data-scaled={scaled ? "yes" : "no"}>
+      <span data-testid="dock-grip" onPointerDown={gripProps.onPointerDown} />
+      <button data-testid="dock-reset" onClick={reset} />
+    </div>
+  );
+}
+
+const DOCK_KEY = "kvitlach.panel.dock";
+const dockScale = (el: HTMLElement) => Number(el.getAttribute("data-scale"));
+
+describe("useScaleGrip", () => {
+  it("resizes on a grip drag and never moves the panel", () => {
+    // The whole reason this is a separate hook: the dock is where every action
+    // in the game is taken and it is anchored to the bottom of the screen
+    // because that is where a thumb is. It must not acquire a position.
+    const { getByTestId } = render(<ScalePanel />);
+    drag(getByTestId("dock-grip"), 100, 100);
+    expect(dockScale(getByTestId("dock"))).toBeGreaterThan(1);
+    expect(getByTestId("dock").style.position).toBe("");
+    expect(getByTestId("dock").style.left).toBe("");
+  });
+
+  it("honours tighter bounds than the panel's own", () => {
+    // The dock only just fits one row on a 640px phone, so growth is what has
+    // to be bounded here -- and it is bounded differently from the readout.
+    const { getByTestId } = render(<ScalePanel min={0.7} max={1.25} />);
+    drag(getByTestId("dock-grip"), 500, 500);
+    expect(dockScale(getByTestId("dock"))).toBe(1.25);
+    drag(getByTestId("dock-grip"), -500, -500);
+    expect(dockScale(getByTestId("dock"))).toBe(0.7);
+  });
+
+  it("re-clamps a value saved before the bounds were tightened", () => {
+    // 1.8 was legal when this storage format was the readout's alone, and it
+    // is still sitting in localStorage on somebody's phone. Reading it back
+    // unclamped would hand them a dock wider than their screen with the grip
+    // that would fix it off the edge.
+    window.localStorage.setItem(DOCK_KEY, JSON.stringify({ x: null, y: null, scale: 1.8 }));
+    const { getByTestId } = render(<ScalePanel min={0.7} max={1.25} />);
+    expect(dockScale(getByTestId("dock"))).toBe(1.25);
+  });
+
+  it("persists a resize and offers a reset only once there is one", () => {
+    const { getByTestId, unmount } = render(<ScalePanel />);
+    expect(getByTestId("dock").getAttribute("data-scaled")).toBe("no");
+    drag(getByTestId("dock-grip"), 100, 100);
+    expect(getByTestId("dock").getAttribute("data-scaled")).toBe("yes");
+    // Compared against what is RENDERED, not just "greater than 1". The save
+    // read a ref React had not refreshed yet, so the dock sat at 0.7 while
+    // storage said 1 -- an assertion on the stored value alone was true of
+    // both the bug and the fix.
+    expect(JSON.parse(window.localStorage.getItem(DOCK_KEY) as string).scale).toBe(
+      dockScale(getByTestId("dock"))
+    );
+    unmount();
+    const second = render(<ScalePanel />);
+    expect(dockScale(second.getByTestId("dock"))).toBeGreaterThan(1);
+  });
+
+  it("puts it back", () => {
+    const { getByTestId } = render(<ScalePanel />);
+    drag(getByTestId("dock-grip"), 100, 100);
+    fireEvent.click(getByTestId("dock-reset"));
+    expect(dockScale(getByTestId("dock"))).toBe(1);
+    expect(JSON.parse(window.localStorage.getItem(DOCK_KEY) as string).scale).toBe(1);
   });
 });

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Turn } from "../types";
 import { Icon } from "./icons";
+import { useScaleGrip } from "./draggablePanel";
+import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
 import { useDialogFocus } from "../useDialogFocus";
 
@@ -115,8 +117,24 @@ export function PlayerDock({
     setBetError(undefined);
   };
 
+  // 0.7 to 1.25 rather than this file's default 0.75-1.8. The dock is a row
+  // that already only just fits one line on a 640px phone (index.css's compact
+  // block is a measured 428 of 433 available), so growth is what has to be
+  // bounded tightly here -- and shrinking is what was actually asked for.
+  const { scale: dockScale, gripProps: dockGripProps, reset: resetDockScale, scaled: dockScaled } = useScaleGrip(
+    "dock",
+    { min: 0.7, max: 1.25 }
+  );
+
   return (
-    <div className="k-dock">
+    <div
+      className="k-dock"
+      // Scaled where it sits, never moved -- see useScaleGrip. A transform
+      // here would normally trap any position:fixed descendant, which is
+      // exactly what the BANK! confirmation used to be; it is portalled out
+      // through StageOverlay below for that reason.
+      style={dockScale === 1 ? undefined : { transform: `scale(${dockScale})`, transformOrigin: "bottom center" }}
+    >
       <div className="k-betbox">
         <span className="k-cur">$</span>
         <input
@@ -199,7 +217,15 @@ export function PlayerDock({
           branch when they press BANK! anyway. */}
       {betError && <span className="k-tag bust">{betError}</span>}
 
+      {/* Portalled to the body. It is a position:fixed overlay and it lives
+          inside .k-dock, which now carries a scale transform whenever the
+          player has resized the dock -- and a transformed ancestor becomes the
+          containing block for fixed descendants, so left here it would be
+          scaled into the dock and its backdrop clipped to it instead of
+          covering the screen. Same reason every other modal in this codebase
+          goes through StageOverlay. */}
       {bankConfirmOpen && (
+        <StageOverlay>
         <div
           className="k-modal-overlay"
           ref={dialogRef}
@@ -240,6 +266,29 @@ export function PlayerDock({
             )}
           </div>
         </div>
+        </StageOverlay>
+      )}
+
+      {/* The resize grip. Its own pointer handler, and it stops the event
+          reaching anything else -- the dock is full of buttons and a press
+          that starts on the grip must not also press one of them. Sits in the
+          dock's own corner rather than floating: there is exactly one thing it
+          resizes and it should look attached to it. */}
+      <span className="k-dock-grip" {...dockGripProps} title="Drag to resize the controls" aria-hidden="true" />
+      {/* Only once it has actually been resized -- an always-visible "put it
+          back" on a dock nobody has touched is clutter that explains a feature
+          by apologising for it. Same rule as the readout's own reset. */}
+      {dockScaled && (
+        <button
+          type="button"
+          className="k-dock-reset"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={resetDockScale}
+          title="Put the controls back to their normal size"
+          aria-label="Reset the controls to their normal size"
+        >
+          <Icon name="rotate" size={9} />
+        </button>
       )}
     </div>
   );
