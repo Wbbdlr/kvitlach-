@@ -123,6 +123,16 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 8. **Operator-authored text is stored raw and rendered as text.** Never escape
    on the way in and never assign it as HTML on the way out (`about.ts`).
 
+**Open, not yet enforced — for the next security pass:** `applyBet` has no
+`isAdmin` guard. The banker never wagers (see the rules above), but nothing at
+the store rejects a bet *from* the banker; only the callers happen not to send
+one. Found the day the bot banker bug was fixed: the first tests for that fix
+passed with the fix reverted, because the bot's stray wager sometimes SUCCEEDED
+and the round looked normal. A client that sends `bet` on the admin's turn is
+currently unopposed, and `calculateEndState` then overwrites that `bet` with the
+round's net, so the evidence is gone by the time anyone reads the round back.
+Reject it at the store; do not rely on bot logic avoiding it.
+
 ## Development rules
 
 - Understand the request, inspect the relevant code, make the **smallest change

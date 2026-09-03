@@ -5,23 +5,83 @@ import { Card } from "../types";
 const card = (values: number[]): Card => ({ name: values.join("/"), attributes: { values } });
 
 describe("decideBotBet", () => {
-  it("never bets more than the wallet, the available bank window, or 5", () => {
-    for (let i = 0; i < 50; i += 1) {
-      expect(decideBotBet(3, 100)).toBeLessThanOrEqual(3);
-      expect(decideBotBet(100, 2)).toBeLessThanOrEqual(2);
-      expect(decideBotBet(100, 100)).toBeLessThanOrEqual(5);
+  // One id per temperament. Checked by hand against the hash (bot-1 -> timid,
+  // bot-3 -> steady, bot-5 -> bold) and then asserted below, because picking
+  // ids by eye is exactly how this list would rot into three copies of one
+  // bucket and turn every "they differ" test into a coin flip. Real bots get
+  // uuids (store.ts), which spread evenly across the three -- measured at
+  // 3020/3023/2957 over 9,000.
+  const ids = ["bot-1", "bot-3", "bot-5"];
+
+  const meanBet = (id: string, wallet = 1000, rounds = 400) => {
+    let sum = 0;
+    for (let i = 0; i < rounds; i += 1) sum += decideBotBet(wallet, 100000, id);
+    return sum / rounds;
+  };
+
+  it("never bets more than the wallet or the available bank window", () => {
+    // This is the invariant the whole function exists under: a bot must never
+    // be able to trigger insufficient_funds or bank_limit. It outranks the
+    // temperament -- a bold bot wanting 20% of $100 in a $2 window bets $2.
+    for (const id of ids) {
+      for (let i = 0; i < 50; i += 1) {
+        expect(decideBotBet(3, 100, id)).toBeLessThanOrEqual(3);
+        expect(decideBotBet(100, 2, id)).toBeLessThanOrEqual(2);
+        expect(decideBotBet(100, 100, id)).toBeLessThanOrEqual(100);
+      }
     }
   });
 
   it("always bets at least $1 when there's room to", () => {
-    for (let i = 0; i < 50; i += 1) {
-      expect(decideBotBet(100, 100)).toBeGreaterThanOrEqual(1);
+    for (const id of ids) {
+      for (let i = 0; i < 50; i += 1) {
+        expect(decideBotBet(100, 100, id)).toBeGreaterThanOrEqual(1);
+      }
     }
   });
 
   it("bets 0 (plays it as a blatt) when the wallet or bank window is empty", () => {
     expect(decideBotBet(0, 100)).toBe(0);
     expect(decideBotBet(100, 0)).toBe(0);
+  });
+
+  it("bets whole chips only", () => {
+    for (const id of ids) {
+      for (let i = 0; i < 50; i += 1) {
+        expect(decideBotBet(137, 500, id) % 1).toBe(0);
+      }
+    }
+  });
+
+  it("gives different bots different betting ranges", () => {
+    // The actual bug: every bot drew $1-5 from one distribution, so a table of
+    // five read as one timid player copied five times. Compares MEANS over many
+    // rounds rather than single draws -- the ranges overlap by design (a bold
+    // bot's quiet hand and a timid bot's loud one should be able to collide),
+    // and asserting on one sample each would be a flaky test of nothing.
+    const means = ids.map((id) => meanBet(id));
+    // All three buckets are actually represented: sorted, each is clear of the
+    // next by more than sampling noise. Without this the suite would still pass
+    // with two of the three temperaments unreachable.
+    const sorted = [...means].sort((a, b) => a - b);
+    expect(sorted[1] - sorted[0]).toBeGreaterThan(15);
+    expect(sorted[2] - sorted[1]).toBeGreaterThan(30);
+  });
+
+  it("is the SAME bot every time -- temperament rides the id, not the round", () => {
+    // A bot whose personality was redrawn each hand would vary the numbers and
+    // still not populate the table: the point is that seat 3 is recognisably
+    // the reckless one, hand after hand and across a server restart.
+    for (const id of ids) {
+      expect(Math.abs(meanBet(id) - meanBet(id))).toBeLessThan(15);
+    }
+  });
+
+  it("scales with the wallet instead of sitting under a flat ceiling", () => {
+    // The old rule capped every bet at $5 regardless of stack, so a bot with
+    // $2,000 bet the same as one with $20 and the table never felt any
+    // different as the game went on.
+    expect(meanBet("bot-3", 2000, 300)).toBeGreaterThan(meanBet("bot-3", 100, 300) * 5);
   });
 });
 

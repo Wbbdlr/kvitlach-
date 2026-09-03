@@ -379,7 +379,7 @@ export class GameStore {
       if (!isBanker && (turn.bet ?? 0) === 0) {
         const { available } = this.computeBankWindow(round, roomRec.room, playerId);
         const wallet = roomRec.room.wallets[playerId] ?? 0;
-        const amount = decideBotBet(wallet, available);
+        const amount = decideBotBet(wallet, available, playerId);
         updated =
           amount > 0
             ? this.applyBet(roundId, playerId, amount, { eleveroon })
