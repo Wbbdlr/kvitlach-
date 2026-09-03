@@ -158,15 +158,15 @@ export function Dealer({
               )}
               {isViewerBanker && <span className="k-plate-sub"> (you)</span>}
             </span>
-            {/* The bank's own total, on the sub-line rather than in a row of
-                its own below the hand. A word and a number replacing a word
-                costs the column nothing; a row cost it ~39px it did not have.
-                is-muted carries the concealed case ("hidden", "--") the same
-                way the old .k-readout did -- selectors.ts encodes that
-                distinction in the value, and it has to survive the move. */}
-            <span className={clsx("k-plate-sub", !/^\d/.test(totalInfo.value) && "is-muted")}>
-              Bank · {totalInfo.value}
-            </span>
+            {/* The bank's total is NOT here. It spent a release on this
+                sub-line -- 8px grey parchment text reading "Bank · 17" --
+                and a tester reported it as simply GONE: "I don't see the
+                banker's total tally any more, other players have it still."
+                Fair. Every player seat renders its total as a .k-readout pill
+                (dark, 11px counter-scaled, bold amber value); folding the
+                banker's into the plate caption made it a different kind of
+                thing, in a different place, at a third of the weight.
+                It is a .k-readout on .k-bank-hud-row now, below the hand. */}
           </span>
           {bankerPlayer && (
             <span
@@ -237,6 +237,24 @@ export function Dealer({
             // That line is already allocated, so carrying the tag here costs
             // the column nothing -- which is the whole reason the status row
             // below the hand could be deleted rather than relocated again.
+            // Same pill, same classes, same concealed/bust encoding as every
+            // player seat (Seat.tsx) -- deliberately NOT a bank-specific
+            // variant, because "the banker's total looks like everyone
+            // else's" is the whole point of it being back. Bust comes off
+            // selectors' own rose classname rather than Seat's
+            // `label === "FUTCHED!"`, which is a player-only label: the
+            // banker's bust reads "BANK BUST"/"BEAT n - LOST n" instead.
+            total={
+              <div
+                className={clsx(
+                  "k-readout",
+                  !/^\d/.test(totalInfo.value) && "is-muted",
+                  totalInfo.valueClassName?.includes("rose") && "is-bust",
+                )}
+              >
+                {totalInfo.prefix} <b>{totalInfo.value}</b>
+              </div>
+            }
             status={
               statusInfo.label ? (
                 <div className={clsx("k-tag", tagVariant(statusInfo.label, isActive))}>
