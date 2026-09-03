@@ -366,7 +366,17 @@ export class GameStore {
       // both draw a card and the rule does not care which button did it (see
       // applyEleveroonRule in round.ts).
       const eleveroon = decideBotEleveroon(turn.cards);
-      if ((turn.bet ?? 0) === 0) {
+      // "Have I wagered yet?" is the right question for a SEAT and a
+      // meaningless one for the banker, who never wagers -- so `bet === 0`
+      // was permanently true on the banker's turn and the bot banker tried to
+      // place a bet every single time. applyBet then threw, the catch below
+      // swallowed it, and nothing rescheduled: the bank was left standing on
+      // whatever its first card happened to be, having never acted at all.
+      // Reported as the dealer standing on a 3; reproduced here as a 4, one
+      // card, paying out every seat at the table.
+      // The banker's branch is the play branch, always.
+      const isBanker = turn.player.type === "admin";
+      if (!isBanker && (turn.bet ?? 0) === 0) {
         const { available } = this.computeBankWindow(round, roomRec.room, playerId);
         const wallet = roomRec.room.wallets[playerId] ?? 0;
         const amount = decideBotBet(wallet, available);

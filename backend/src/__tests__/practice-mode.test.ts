@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { GameStore } from "../store";
 import type { Database } from "../db";
+import { winningNumber } from "../round";
 
 function makeDbSpy() {
   return {
@@ -488,5 +489,111 @@ describe("bot banker deciding after the bank goes broke", () => {
     // second (incorrect) resolution of an already-terminated round.
     expect(() => vi.advanceTimersByTime(1500)).not.toThrow();
     expect(store.getRound(round.roundId)!.state).toBe("terminate");
+  });
+});
+
+// The bot banker never played.
+//
+// playBotTurn decides "have I wagered yet?" from `turn.bet === 0`, which is a
+// sound question for a SEAT and a meaningless one for the banker -- the banker
+// never wagers, so it was permanently true on their turn. The bot banker tried
+// to place a bet every time, applyBet threw, the catch swallowed it and nothing
+// rescheduled: the bank stood on whatever its first card happened to be, having
+// never acted at all. Reported as the dealer standing on a 3; first reproduced
+// here as a 4, one card, paying out every seat at the table.
+describe("the bot banker actually plays its hand", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Plays one practice round to the end and returns the banker's final turn. */
+  function playARound(store: GameStore) {
+    const { room, player } = store.createPracticeRoom({ firstName: "Alice" });
+    const roundId = room.roomId ? store.getRoom(room.roomId)!.roundId! : room.roundId!;
+    // The human stands at once so the table is entirely bot-driven from here.
+    store.applyStand(roundId, player.id);
+    for (let i = 0; i < 40 && store.getRound(roundId)!.state !== "terminate"; i++) {
+      vi.advanceTimersByTime(3000);
+    }
+    const round = store.getRound(roundId)!;
+    return { round, banker: round.turns.find((t) => t.player.type === "admin")! };
+  }
+
+  it("draws rather than standing on its first card", () => {
+    const store = new GameStore();
+    // Over enough rounds a bank that never acts shows up as a hand that is
+    // always exactly one card. One round could legitimately deal a 17+ opener.
+    let drewAtLeastOnce = 0;
+    for (let i = 0; i < 12; i++) {
+      const { banker } = playARound(store);
+      if (banker.cards.length > 1) drewAtLeastOnce += 1;
+    }
+    expect(drewAtLeastOnce).toBeGreaterThan(0);
+  });
+
+  it("stands only at 17 or better, or because it futched", () => {
+    const store = new GameStore();
+    let asserted = 0;
+    for (let i = 0; i < 20; i++) {
+      const { round, banker } = playARound(store);
+      expect(round.state).toBe("terminate");
+      // A seat that futched or hit exactly 21 is paid out the moment it
+      // happens (settleImmediateTurn), so a round where EVERY wagering seat
+      // settled that way never reaches the banker's turn at all -- there is
+      // nothing left for the bank's hand to decide. That is correct, and it is
+      // a genuinely common outcome at a three-seat table, so it has to be
+      // excluded rather than assumed away.
+      const liveSeats = round.turns.filter(
+        (t) => t.player.type !== "admin" && !t.settled && (t.settledBet ?? t.bet ?? 0) > 0
+      );
+      if (liveSeats.length === 0) continue;
+      const total = winningNumber(banker.cards);
+      // undefined means every reading of the hand is over 21 -- it futched,
+      // which is a reason to stop that has nothing to do with the threshold.
+      if (total === undefined) continue;
+      // The one other way to stop early: the shoe ran out mid-hand.
+      if (round.deck.length === 0) continue;
+      asserted += 1;
+      expect(total, `banker stood on ${total} with ${banker.cards.map((c) => c.name).join("+")}`).toBeGreaterThanOrEqual(17);
+    }
+    // Guards the guard: if the exclusions above ever swallowed every round,
+    // this test would pass by asserting nothing at all.
+    expect(asserted, "no round actually reached the banker's turn").toBeGreaterThan(0);
+  });
+
+  // The invariant, stated where it can actually be observed.
+  //
+  // Asserting on the finished round is not enough and that is worth writing
+  // down: applyBet has no admin guard, so with the bug the banker's wager
+  // sometimes SUCCEEDS -- it draws a card, `bet` becomes non-zero, and every
+  // later turn then routes through decideBotAction and looks perfectly normal.
+  // A first pass at these tests checked the banker's final hand and passed
+  // with the fix reverted for exactly that reason. What never happens with a
+  // correct banker, in any outcome, is the call itself.
+  it("never calls applyBet for the banker -- the banker has nothing to wager against", () => {
+    const store = new GameStore();
+    const { room, player } = store.createPracticeRoom({ firstName: "Alice" });
+    const bankerId = room.players.find((p) => p.type === "admin")!.id;
+    const roundId = store.getRoom(room.roomId)!.roundId!;
+
+    const bets: string[] = [];
+    const realBet = store.applyBet.bind(store);
+    store.applyBet = ((rid: string, pid: string, amount: number, opts?: unknown) => {
+      bets.push(pid);
+      return realBet(rid, pid, amount, opts as never);
+    }) as typeof store.applyBet;
+
+    store.applyStand(roundId, player.id);
+    for (let i = 0; i < 40 && store.getRound(roundId)!.state !== "terminate"; i++) {
+      vi.advanceTimersByTime(3000);
+    }
+
+    // The seats must still be betting -- otherwise this passes because nothing
+    // wagered at all.
+    expect(bets.length, "no seat wagered, so this proves nothing").toBeGreaterThan(0);
+    expect(bets).not.toContain(bankerId);
   });
 });
