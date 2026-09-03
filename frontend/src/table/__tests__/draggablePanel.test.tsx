@@ -53,6 +53,43 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+describe("the switch from flow to floating", () => {
+  // The panel is laid out in flow by .k-dock-stack > .k-viewer-hud, which
+  // anchors it with `bottom: 100%`. Going floating sets position: fixed plus
+  // `top` and `left` -- and does NOT remove that `bottom`, because an inline
+  // style only overrides the properties it names.
+  //
+  // A fixed box with `top` AND `bottom` set and height:auto is over-constrained:
+  // the used height becomes viewport - top - bottom. So the first drag turned a
+  // 160x60 readout into a wide empty strip with its own name and total spilling
+  // out below it, and the panel's gradient painted over the wrong box. Reported
+  // as dragging "destroying the background", which is what it looks like from
+  // the outside, and as the panel being "broken" on both desktop and mobile.
+  //
+  // jsdom will not compute the over-constrained height for us, so this asserts
+  // the cause rather than the symptom: the inline style must neutralise both
+  // offsets it does not own.
+  it("clears the offsets the flow layout set, not just the ones it sets itself", () => {
+    const { getByTestId } = render(<Panel />);
+    const panel = getByTestId("panel");
+    drag(panel, 40, -30);
+    expect(panel.style.position).toBe("fixed");
+    expect(panel.style.bottom).toBe("auto");
+    expect(panel.style.right).toBe("auto");
+  });
+
+  it("leaves a panel in flow alone -- no offsets, no fixed positioning", () => {
+    // The other half of the same rule: an untouched panel must inherit the
+    // layout's anchoring untouched, so clearing bottom/right unconditionally
+    // would break the resting state to fix the dragged one.
+    const { getByTestId } = render(<Panel />);
+    const panel = getByTestId("panel");
+    expect(panel.style.position).toBe("");
+    expect(panel.style.bottom).toBe("");
+    expect(panel.style.right).toBe("");
+  });
+});
+
 describe("useDraggablePanel", () => {
   it("adds no positioning at all to a panel nobody has touched", () => {
     const { getByTestId } = render(<Panel />);

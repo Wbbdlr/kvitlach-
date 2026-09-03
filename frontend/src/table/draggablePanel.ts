@@ -275,6 +275,19 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): Dra
         position: "fixed",
         left: placement.x as number,
         top: placement.y as number,
+        // The layout rule that places this panel in flow anchors it with
+        // `bottom: 100%` (.k-dock-stack > .k-viewer-hud). Switching to
+        // position: fixed does NOT clear that, and a fixed box with both `top`
+        // and `bottom` set and height:auto is over-constrained -- the used
+        // height becomes viewport - top - bottom, so the moment the panel was
+        // dragged it stretched into a wide empty strip with its own contents
+        // spilling out below it and the gradient painted over the wrong box.
+        // Reported as dragging "destroying the background", which is exactly
+        // what it looks like from outside.
+        // Both axes cleared, not just the one that bites today: this hook is
+        // generic and the next panel to use it may well be anchored right.
+        right: "auto",
+        bottom: "auto",
         margin: 0,
         transform: `scale(${placement.scale})`,
         transformOrigin: "top left",

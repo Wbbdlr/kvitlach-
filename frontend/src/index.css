@@ -1163,8 +1163,22 @@ body:has(.k-fit) {
    see that comment for why it's 145, not the original 110. */
 .k-shoe {
   position: absolute;
-  top: calc(var(--play-top, 0px) + 116px * var(--vf, 1));
-  left: calc(50% + 145px);
+  /* 88, not the 116 this pair sat at since it was placed. The bank's own row
+     (.k-bank-hud) gained the hand-total pill, which widened it from one pill
+     to two-plus-a-tag, and both of these flank it at exactly its new height:
+     measured at 640x360 the shoe overlapped the row by 10x3px, clipping the
+     right end of the status tag, with the discard pile mirroring it on the
+     left. Reported as the pile and the deck count covering the bank's total
+     and status.
+     Raising them rather than narrowing the row: the row is what has to stay
+     readable, and there is empty felt above these two -- the dealer's plate
+     sits well clear at this x, since the hand is centred on 50% and these are
+     145px out. Changed as a PAIR on purpose; they are mirrored and a nudge to
+     one alone would leave the table visibly lopsided.
+     96 was tried first and cleared the row by 2px at 640x360 -- true, and far
+     too thin to survive a different viewport's stage scale. 88 leaves ~6. */
+  top: calc(var(--play-top, 0px) + 88px * var(--vf, 1));
+  left: calc(50% + 175px);
   width: 30px;
   z-index: 11;
   display: flex;
@@ -1894,19 +1908,50 @@ body:has(.k-fit) {
     width: 100%;
   }
   .k-dock-stack > .k-dock {
-    /* Grows into the space the readout and the react button leave.
-       `auto` was the bug: a wrapping flex container used as a flex item is
-       sized from its MIN-content width, so the dock collapsed and then wrapped
-       to fit the collapsed box. `0 1 max-content` was tried next and is the
-       tidier idea -- ask for exactly one row of the current controls -- but
-       Chrome does not resolve max-content to the unwrapped sum for a wrap
-       container: measured at 640x360 it returned 433px for content that needs
-       roughly 500, and the dock wrapped anyway inside a box that had 442
-       available. So: grow. The controls stay centred inside it, which is what
-       keeps a sparse between-rounds dock from reading as a stretched empty
-       bar. */
-    flex: 1 1 auto;
+    /* Two goes at this, and the second was the wrong lever.
+       The original bug: a WRAPPING flex container used as a flex item is sized
+       from its MIN-content width, so the dock collapsed to roughly its widest
+       single control and then wrapped to fit the box it had just collapsed
+       into. Measured at 640x360: 620px of row, of which the stack claimed 446
+       and the dock 268, for content that needed 545 in one row.
+       `flex: 1 1 auto` fixed that by letting it grow -- and bought two new
+       reports. Between rounds the dock holds one button, and growing made that
+       button's panel span the whole bottom of the phone; and it still wrapped,
+       because growing the box never told it not to. Eleveroon kept landing on
+       a line of its own under everything else.
+       The actual fix is to stop it wrapping. With nowrap, max-content IS the
+       one-row sum (the measurement Chrome would not give for a wrap container:
+       433px for content needing ~500), so `0 1 auto` sizes the dock to exactly
+       one row of whatever the round is currently showing, shrinking only if
+       the viewport is genuinely narrower. Sparse states stay narrow; full
+       states stay on one line. */
+    flex: 0 1 auto;
     min-width: 0;
+    flex-wrap: nowrap;
+  }
+  /* Explicitly NOT shrinkable. `min-width: 0` was tried here first, to let
+     nowrap degrade by tightening instead of overflowing -- and flex spent the
+     shortfall on the two controls that could least afford it. Measured at
+     640x360: the bet box wanted 146px and got 116, so MAX rendered out to
+     x310 and straight under the Bet button at x287, and the Eleveroon label
+     was clipped at 63 of the 70px it needs. Reported as the panel still being
+     too large and the checkbox landing under everything else.
+     Controls keep their natural width; the row is made to fit by making the
+     controls genuinely smaller (below), which is what "scale the whole thing
+     down" actually asks for. */
+  .k-dock-stack > .k-dock > * {
+    flex: none;
+  }
+  /* The last-resort net. Below roughly 600px of stack there is no honest way
+     to fit six controls, and a row that scrolls is strictly better than one
+     that overlaps itself -- which is the one failure mode nowrap introduces
+     that wrapping did not have. */
+  .k-dock-stack > .k-dock {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .k-dock-stack > .k-dock::-webkit-scrollbar {
+    display: none;
   }
 
   /* And the row still has to FIT once it has the width. These are the same
@@ -1915,16 +1960,33 @@ body:has(.k-fit) {
      Measured saving at 640x360: ~60px of the ~103px shortfall, with the stack
      change covering the rest. */
   .k-dock {
-    gap: 6px;
-    padding: 6px 9px;
+    gap: 4px;
+    padding: 6px 6px;
+    /* `safe center` and not plain `center`. A centred flex row that overflows
+       spills equally out of BOTH ends, and the half that goes off the left is
+       unreachable -- no scroll position can bring it back, because the scroll
+       origin is already past it. Measured mid-fix at 640x360: the row needed
+       453 in a 425 box and the bet box started at x140 against a dock at x159,
+       i.e. 19px of it permanently gone. `safe` falls back to flex-start the
+       moment the content does not fit, so the overflow becomes scrollable
+       instead of lost. */
+    justify-content: safe center;
   }
+  /* Sized to FIT one row, measured rather than guessed. Naturally the six
+     controls want 146+45+51+55+53+70 = 420px, plus 30 of gaps and 18 of
+     padding = 468, against the 433 the stack leaves once the readout (135)
+     and the react button (36) have taken theirs at 640x360. These take it to
+     ~428. Horizontal padding only -- min-height stays 40px, because the
+     shortfall must not come out of a tap target. */
+  /* The controls are sized DOWN to fit in the second compact block near the
+     end of this file, not here. Both blocks carry the same query and a media
+     query adds no specificity, so the later one wins outright -- writing the
+     sizes here and the overrides there is how the first attempt at this ended
+     up measuring a bet box it was not actually resizing (44px stood, and the
+     row stayed 19px too wide). See cssOverrideOrder.test.ts. */
   .k-betbox {
     gap: 3px;
     padding: 4px 6px;
-  }
-  .k-betbox .k-amt {
-    width: 34px;
-    font-size: 14px;
   }
   .k-dock .k-toggle {
     gap: 5px;
@@ -2910,26 +2972,45 @@ body:has(.k-fit) {
     padding: 6px 8px;
   }
   .k-betbox {
-    padding: 3px 5px;
-    gap: 5px;
+    padding: 3px 4px;
+    gap: 3px;
+  }
+  /* The stepper was being handed 30px for chevrons that need 33 and clipping
+     them -- a control does not get made to fit by shaving the arrows off it.
+     Costs 3px back out of the row's budget, deliberately. */
+  .k-betbox .k-stepper {
+    width: 33px;
+  }
+  /* The bet box is the widest control in the row by a distance -- 153px
+     against the next-widest 81 -- so the shortfall comes from here. The `$`
+     goes because the field it captions is the only numeric input in the dock,
+     inside a box already labelled MAX: it is the one glyph in this row
+     carrying nothing a player does not already know. */
+  .k-betbox .k-cur {
+    display: none;
   }
   .k-betbox .k-amt {
     /* The iOS anti-zoom rule above forces 16px !important on every input on
        mobile, this one included -- size the box for that, not a smaller
-       font this rule can never actually apply. */
-    width: 44px;
+       font this rule can never actually apply. 38px still holds three digits
+       at 16px; bets run to two in almost every round. */
+    width: 38px;
   }
   .k-btn {
+    /* Horizontal padding only. The row has to lose ~50px at 640x360 to hold
+       six controls on one line, and none of it may come out of min-height --
+       that is the tap target, and it is the thing this dock has already been
+       reported for twice. */
     min-height: 40px;
-    padding: 9px 15px;
-    font-size: 13px;
+    padding: 9px 9px;
+    font-size: 12.5px;
     border-radius: 8px;
   }
   /* BANK! carries `sm`, but it wagers a player's whole available window --
      it is not a secondary control and must not be a 25px sliver. */
   .k-btn.sm {
     min-height: 40px;
-    padding: 8px 12px;
+    padding: 8px 9px;
     font-size: 11.5px;
   }
   /* Each arrow was 18x15. Now the pair fills the bet pill's full height,
@@ -3007,7 +3088,7 @@ body:has(.k-fit) {
     display: none;
   }
   .k-toggle-label {
-    font-size: 11px;
+    font-size: 10px;
     white-space: nowrap;
   }
   /* This corner used to be pushed out to the left-CENTRE on compact, because a
@@ -3520,8 +3601,22 @@ body:has(.k-fit) {
    user report confirmed it was overlapping. */
 .k-discard {
   position: absolute;
-  top: calc(var(--play-top, 0px) + 116px * var(--vf, 1));
-  left: calc(50% - 145px);
+  /* 88, not the 116 this pair sat at since it was placed. The bank's own row
+     (.k-bank-hud) gained the hand-total pill, which widened it from one pill
+     to two-plus-a-tag, and both of these flank it at exactly its new height:
+     measured at 640x360 the shoe overlapped the row by 10x3px, clipping the
+     right end of the status tag, with the discard pile mirroring it on the
+     left. Reported as the pile and the deck count covering the bank's total
+     and status.
+     Raising them rather than narrowing the row: the row is what has to stay
+     readable, and there is empty felt above these two -- the dealer's plate
+     sits well clear at this x, since the hand is centred on 50% and these are
+     145px out. Changed as a PAIR on purpose; they are mirrored and a nudge to
+     one alone would leave the table visibly lopsided.
+     96 was tried first and cleared the row by 2px at 640x360 -- true, and far
+     too thin to survive a different viewport's stage scale. 88 leaves ~6. */
+  top: calc(var(--play-top, 0px) + 88px * var(--vf, 1));
+  left: calc(50% - 175px);
   width: 30px;
   z-index: 11;
   display: flex;

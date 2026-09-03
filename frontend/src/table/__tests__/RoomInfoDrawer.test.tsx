@@ -96,7 +96,7 @@ describe("RoomInfoDrawer", () => {
   // The export was banker-only before, so the one person running the game was
   // the only one who could keep a record of it. These pin that it reaches an
   // ordinary player, and that it stays hidden while there is nothing to keep.
-  describe("keep the game", () => {
+  describe("export game history", () => {
     const base = {
       open: true as const,
       onClose: vi.fn(),
@@ -111,14 +111,14 @@ describe("RoomInfoDrawer", () => {
 
     it("is offered to a non-banker once a round has finished", () => {
       render(<RoomInfoDrawer {...base} onExportHistory={vi.fn()} completedRounds={3} />);
-      expect(screen.getByText(/keep the game/i)).toBeInTheDocument();
+      expect(screen.getByText(/export game history/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /my results/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /whole table/i })).toBeInTheDocument();
     });
 
     it("stays hidden before any round has finished", () => {
       render(<RoomInfoDrawer {...base} onExportHistory={vi.fn()} completedRounds={0} />);
-      expect(screen.queryByText(/keep the game/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/export game history/i)).not.toBeInTheDocument();
     });
 
     // Personal copy passes the player's id; the table-wide one passes nothing.

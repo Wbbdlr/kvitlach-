@@ -191,7 +191,12 @@ export function RoomInfoDrawer({
               keepsake is worse than no button. */}
           {onExportHistory && completedRounds > 0 && (
             <div className="rounded-lg border k-dialog-line k-dialog-inset px-3 py-2">
-              <div className="text-sm font-semibold text-ink">Keep the game</div>
+              {/* "Keep the game" was the section's own name and reads, on a
+                  phone where the heading and the buttons are the only text
+                  anyone actually scans, like a save-my-progress feature. What
+                  it produces is a written record of the rounds already played
+                  -- reported as needing to be described better. */}
+              <div className="text-sm font-semibold text-ink">Export game history</div>
               <div className="text-xs k-dialog-sub mt-0.5">
                 {completedRounds} round{completedRounds === 1 ? "" : "s"} played so far.
               </div>

@@ -386,24 +386,41 @@ export function orderSeatsForViewer<T>(items: T[], isViewer: (item: T) => boolea
 // (see the two functions below, and their CSS counterparts) and the same
 // hand-width risk is symmetric, even though only the discard side got
 // reported.
-const SIDE_OFFSET = 145;
+// 175 since 2026-09-03. The bank's own row (.k-bank-hud) gained the hand-total
+// pill and grows to a second line whenever any wager is reserved; at 640x360
+// that row reached x398 against a shoe starting at x393, so the deck count sat
+// on the end of the bank's status tag and the discard pile mirrored it on the
+// left. Reported as both covering the bank's total and status.
+// Out, not just up: raising the pair alone could not clear a two-line row
+// without pushing the shoe up under the dealer's own plate (13px of gap left
+// at 88, against 3 if it went far enough to clear on the vertical alone).
+// The flanks have room to spare horizontally -- at a full eleven-seat table
+// the nearest seats sit at +/-328 from centre, so 175 is still well inside
+// them.
+const SIDE_OFFSET = 175;
+
+// Vertical offset of BOTH flanks, mirroring the same literal in index.css's
+// .k-shoe / .k-discard. Part of the same 2026-09-03 change.
+const SIDE_TOP = 88;
 
 // Where the shoe sits, in the same nominal stage-px used by seatPositions()
-// -- mirrors .k-shoe's own CSS (index.css: `left: calc(50% + 145px)`,
-// `top: calc(var(--play-top) + 116px * var(--vf))`). Seat.tsx/Dealer.tsx use
+// -- mirrors .k-shoe's own CSS (index.css: `left: calc(50% + 175px)`,
+// `top: calc(var(--play-top) + 88px * var(--vf))`). Pinned by
+// flankOffsets.test.ts, which reads both files -- these four literals have
+// now drifted apart once and the comments alone did not stop it. Seat.tsx/Dealer.tsx use
 // this as the ORIGIN for the card-deal-in animation, so a card visibly
 // travels from the shoe to its resting seat rather than just popping in
 // place -- if the shoe's own CSS position ever changes, this needs to change
 // with it, and vice versa.
 export function shoePosition(playTop: number, vf: number): { x: number; y: number } {
-  return { x: STAGE_WIDTH / 2 + SIDE_OFFSET, y: playTop + 116 * vf };
+  return { x: STAGE_WIDTH / 2 + SIDE_OFFSET, y: playTop + SIDE_TOP * vf };
 }
 
 // Where the discard pile sits -- the shoe's mirror image on the dealer's
-// OTHER side (index.css: `left: calc(50% - 145px)`, same top as the shoe).
+// OTHER side (index.css: `left: calc(50% - 175px)`, same top as the shoe).
 // Seat.tsx/Dealer.tsx use this as the DESTINATION for a rejected card's
 // fly-out (see CardView.tsx's cardDiscardFly), the reverse of the shoe's own
 // role as the deal-in's origin.
 export function discardPilePosition(playTop: number, vf: number): { x: number; y: number } {
-  return { x: STAGE_WIDTH / 2 - SIDE_OFFSET, y: playTop + 116 * vf };
+  return { x: STAGE_WIDTH / 2 - SIDE_OFFSET, y: playTop + SIDE_TOP * vf };
 }

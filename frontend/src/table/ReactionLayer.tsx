@@ -22,9 +22,30 @@ export function ReactionLayer({ onReact, disabled }: ReactionLayerProps) {
 
   return (
     <div ref={ref} className="relative z-30">
+      {/* Sized to actually FIT rather than to a fraction of the screen.
+          `max-h-[42dvh]` is 151px on a 360px-tall landscape phone against
+          ~350px of content, so the scroll boundary landed in the middle of
+          an emoji row and the picker read as cut off -- reported twice now.
+          The popover opens upward from the react button (bottom-full), so
+          the space genuinely available is everything above it, not 42% of
+          anything; 72px covers the button (36), its margin (8) and the top
+          inset, and was measured -- at 80 the content was still 8px over.
+          Known and NOT fixed here: .k-controls carries z-index 25 and
+          position: relative, so it opens a stacking context and everything in
+          this picker is capped below it. The pre-round "Table ready" panel
+          (z 42) therefore draws over the open picker between rounds. Raising
+          the picker cannot reach past its own context, and raising .k-controls
+          would put the whole dock above every announcement -- the one ordering
+          Part 3 of docs/mobile-ui.md deliberately fixes. The real fix is to
+          portal this through StageOverlay like the other overlays, which needs
+          real coordinates instead of bottom-full/right-0.
+          Seven columns rather than five takes 26 emoji from six rows to
+          four, and the wider box lets the phrase chips settle in fewer
+          rows -- together that is ~90px, which is the difference between
+          scrolling and fitting. */}
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-64 max-w-[80vw] max-h-[42dvh] overflow-y-auto rounded-lg border border-amber-500/30 bg-[rgba(12,20,15,0.96)] p-2 shadow-xl">
-          <div className="grid grid-cols-5 gap-1">
+        <div className="absolute bottom-full right-0 mb-2 w-[min(92vw,340px)] max-h-[calc(100dvh_-_72px)] overflow-y-auto overscroll-contain rounded-lg border border-amber-500/30 bg-[rgba(12,20,15,0.96)] p-2 shadow-xl">
+          <div className="grid grid-cols-7 gap-1">
             {REACTION_EMOJIS.map((emoji) => (
               <button
                 key={emoji}
