@@ -19,6 +19,7 @@ export interface ViewerHudProps {
   isNextTurn?: boolean;
   roundState?: RoundPhase;
   walletAmount?: number;
+  onOpenStats?: (playerId: string) => void;
 }
 
 // Your own name, money and total -- in your own corner, not on the table.
@@ -36,7 +37,14 @@ export interface ViewerHudProps {
 // findable at a glance around an oval. This one is you, in a fixed corner you
 // never have to search for, so it is a compact readout rather than a portrait:
 // no avatar (you know who you are), no online dot (you can see the game is
-// running), no stats button (yours is in the dock).
+// running).
+//
+// The NAME is the way into your own stats, and it had to become one. Every
+// other seat opens its history by tapping its plate (Seat.tsx, Dealer.tsx) --
+// and this seat has no plate, because identityInHud suppresses it. So the one
+// player who could not read their own round history was the player reading it
+// about themselves. The comment here used to claim "yours is in the dock",
+// which was true of a dock that no longer exists.
 //
 // Lives in the HUD frame at true viewport pixels -- see docs/mobile-ui.md
 // Part 1. Untouched, it is laid out by .k-dock-stack, above the dock (it left
@@ -50,6 +58,7 @@ export function ViewerHud({
   isNextTurn,
   roundState,
   walletAmount,
+  onOpenStats,
 }: ViewerHudProps) {
   // Draggable and resizable, because there is no one right corner for it --
   // see draggablePanel.ts. Untouched, it renders exactly where it always did.
@@ -96,7 +105,21 @@ export function ViewerHud({
             <Icon name="magen" size={9} />
           </span>
         )}
-        <span className="k-viewer-hud-name">{name}</span>
+        {onOpenStats && viewerId ? (
+          <button
+            type="button"
+            className="k-viewer-hud-name k-viewer-hud-name-btn"
+            // The panel itself is draggable, and a press that starts on this
+            // must not also start a move -- same guard the reset button uses.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => onOpenStats(viewerId)}
+            title="Your rounds and your record"
+          >
+            {name}
+          </button>
+        ) : (
+          <span className="k-viewer-hud-name">{name}</span>
+        )}
         <span className="k-viewer-hud-sub">
           {typeof walletAmount === "number" && <>${walletAmount.toLocaleString()}</>}
           {showBet && (

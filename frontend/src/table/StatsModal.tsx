@@ -1,4 +1,6 @@
 import { clsx } from "clsx";
+import { useMemo } from "react";
+import { readLifetimeRecord } from "../playerRecord";
 import { StatsData } from "./useTableData";
 import { Icon } from "./icons";
 import { StageOverlay } from "./StageOverlay";
@@ -18,6 +20,13 @@ export interface StatsModalProps {
 export function StatsModal({ data, onClose }: StatsModalProps) {
   useEscapeKey(onClose);
   const dialogRef = useDialogFocus<HTMLDivElement>();
+  // Read once per open, not per render, and only when it is going to be shown.
+  // It walks every room this device has history for -- cheap, but not free,
+  // and pointless while looking at somebody else's seat.
+  const lifetime = useMemo(
+    () => (data.isSelf ? readLifetimeRecord(window.localStorage) : undefined),
+    [data.isSelf]
+  );
   return (
     <StageOverlay>
       <div
@@ -62,6 +71,57 @@ export function StatsModal({ data, onClose }: StatsModalProps) {
               {data.netTotal >= 0 ? "+" : "-"}${Math.abs(data.netTotal)}
             </span>
           </div>
+
+          {/* The lifetime record, and only on your own seat.
+              This is the local half of the analytics split: it is derived from
+              the round history state.ts has always kept in this browser, so it
+              needs no server, no account and no retention policy -- and the
+              price, stated plainly to the player rather than buried, is that it
+              is this DEVICE's record. See playerRecord.ts.
+              Below the night's own numbers, not above them: the question
+              someone opens this dialog to answer is about tonight. */}
+          {lifetime && lifetime.rounds > 0 && (
+            <div className="rounded-lg border k-dialog-line k-dialog-inset px-3 py-2">
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs font-semibold k-dialog-strong">Your record</span>
+                <span className="text-[11px] k-dialog-sub">
+                  {lifetime.nights} night{lifetime.nights === 1 ? "" : "s"} on this device
+                </span>
+              </div>
+              <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="k-dialog-sub">Rounds</span>
+                  <span className="font-semibold">{lifetime.rounds}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="k-dialog-sub">Won / lost</span>
+                  <span className="font-semibold">
+                    <span className="text-emerald-300">{lifetime.wins}</span>
+                    <span className="k-dialog-sub"> / </span>
+                    <span className="text-rose-300">{lifetime.losses}</span>
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="k-dialog-sub">Best round</span>
+                  <span className="font-semibold text-emerald-300">+${lifetime.best}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="k-dialog-sub">Worst round</span>
+                  <span className="font-semibold text-rose-300">-${Math.abs(lifetime.worst)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="k-dialog-sub">Best streak</span>
+                  <span className="font-semibold">{lifetime.longestWinStreak}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="k-dialog-sub">All-time net</span>
+                  <span className={clsx("font-semibold", lifetime.net >= 0 ? "text-emerald-300" : "text-rose-300")}>
+                    {lifetime.net >= 0 ? "+" : "-"}${Math.abs(lifetime.net)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Its own scroller, not the dialog's. .k-dialog already scrolls at
               85vh, but letting the whole thing scroll takes the W/L strip and

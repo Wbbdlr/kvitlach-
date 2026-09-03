@@ -24,6 +24,8 @@ export interface StatsData {
   pushes: number;
   isBanker: boolean;
   netTotal: number;
+  /** Whether the person reading this is the person it is about. */
+  isSelf: boolean;
 }
 
 // Mirrors betDisplay's own amount selection (selectors.ts) so the summed
@@ -192,7 +194,8 @@ export function useTableData({
       bet: string;
       betClass: string;
     }[];
-    if (!entries.length) return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false, netTotal: 0 };
+    if (!entries.length)
+      return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false, netTotal: 0, isSelf: statsPlayerId === playerId };
     const wins = entries.filter((e) => e.status === "WON").length;
     const losses = entries.filter((e) => e.status === "LOST" || e.status === "FUTCHED!").length;
     const pushes = entries.filter((e) => e.status === "PUSH").length;
@@ -204,8 +207,8 @@ export function useTableData({
     const isBanker = playerRecord?.type === "admin";
     // Every entry is shown now, not just the last 10 -- already bounded
     // upstream (roundHistory is capped at 50 client-side / 200 server-side).
-    return { name: playerName, entries, wins, losses, pushes, isBanker, netTotal };
-  }, [statsPlayerId, roundHistory, room?.players]);
+    return { name: playerName, entries, wins, losses, pushes, isBanker, netTotal, isSelf: statsPlayerId === playerId };
+  }, [statsPlayerId, roundHistory, room?.players, playerId]);
 
   // The banker has no turn timer -- they're the dealer, not a seat being
   // waited on -- so when they drop while the table is waiting on them, nothing

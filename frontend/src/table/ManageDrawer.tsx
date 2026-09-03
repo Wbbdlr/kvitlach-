@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BuyInRequest, Player, RenameRequest } from "../types";
 import { Icon } from "./icons";
+import { StandingRow } from "../playerRecord";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
 import { useDialogFocus } from "../useDialogFocus";
@@ -13,6 +14,13 @@ export interface ManageDrawerProps {
   renameRequests: RenameRequest[];
   buyInRequests: BuyInRequest[];
   roundHistoryCount: number;
+  /**
+   * Tonight, for everyone. The banker sees every column -- asked and
+   * answered directly ("you can let the banker see everything"), so there is
+   * no redaction and no per-viewer variant. This drawer is isAdmin-gated,
+   * which is what keeps that decision to the banker's own screen.
+   */
+  standings?: StandingRow[];
   bankerWallet: number;
   feltWatermark?: string;
   onTopUp: (amount: number, note?: string) => void;
@@ -47,6 +55,10 @@ export function ManageDrawer({
   renameRequests,
   buyInRequests,
   roundHistoryCount,
+  // Defaulted rather than required: a drawer opened before any round has
+  // finished has nothing to stand, which is the same empty case as a table
+  // that has played none.
+  standings = [],
   bankerWallet,
   feltWatermark,
   onTopUp,
@@ -357,6 +369,38 @@ export function ManageDrawer({
             </div>
           ))}
         </div>
+
+        {/* Tonight's standings, in the drawer rather than only in the export:
+            the banker's usual question at the end of a night is "who owes
+            what", and answering it should not require downloading a file and
+            opening it. Every chip won came from somewhere, so these add up to
+            zero across the table -- pinned by playerRecord.test.ts, because a
+            settlement table that does not balance is worse than none. */}
+        {standings.length > 0 && (
+          <div className="rounded-lg border k-dialog-line px-3 py-2">
+            <div className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Tonight so far</div>
+            <div className="mt-1.5 flex flex-col gap-1">
+              {standings.map((row) => (
+                <div key={row.playerId} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {row.isBanker && <Icon name="bank" size={12} className="flex-none text-amber-300" />}
+                    <span className="truncate">{row.name}</span>
+                  </span>
+                  <span className="flex flex-none items-center gap-3 text-xs">
+                    <span className="k-dialog-sub">
+                      {row.wins}W / {row.losses}L
+                    </span>
+                    <span
+                      className={`w-16 text-right font-semibold ${row.net >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                    >
+                      {row.net >= 0 ? "+" : "-"}${Math.abs(row.net)}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-lg border k-dialog-line px-3 py-2 text-sm">
           <div className="flex items-center justify-between gap-2">

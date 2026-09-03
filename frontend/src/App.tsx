@@ -1,5 +1,6 @@
 ﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
+import { tableStandings } from "./playerRecord";
 import { useGameStore, loadLastRoomId } from "./state";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
@@ -89,6 +90,13 @@ export default function App() {
     waitingInfo,
     abandonedBanker,
   } = useTableData({ room, round, playerId, reactions, nowTs, statsPlayerId, roundHistory });
+
+  // Tonight, for everyone at the table. Derived from the same round history
+  // the export already reads, so there is no second source and nothing new on
+  // the server -- see playerRecord.ts. Only the banker is shown it (the drawer
+  // is isAdmin-gated), which is also the only seat whose local history is
+  // guaranteed complete: they are there for the whole night.
+  const standings = useMemo(() => tableStandings(roundHistory ?? []), [roundHistory]);
 
   useEffect(() => {
     if (prefilledRoomIdRef.current) return;
@@ -467,6 +475,7 @@ export default function App() {
         onTopUp={(amount, note) => store.topUpBanker(amount, note)}
         onSetWatermark={(text) => store.setFeltWatermark(text)}
         roundHistoryCount={roundHistory?.length ?? 0}
+        standings={standings}
         onApproveRename={(id) => store.approveRename(id)}
         onRejectRename={(id) => store.rejectRename(id)}
         onRequestRename={(firstName, lastName) => store.requestRename(firstName, lastName)}

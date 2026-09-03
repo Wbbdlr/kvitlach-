@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cardImages } from "./selectors";
 import { clsx } from "clsx";
+import { StandingRow } from "../playerRecord";
 import { captureElement, snapshotFilename } from "./snapshot";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
@@ -99,6 +100,7 @@ export interface TableRootProps {
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
   roundHistoryCount: number;
+  standings: StandingRow[];
   onApproveRename: (playerId: string) => void;
   onRejectRename: (playerId: string) => void;
   onRequestRename: (firstName: string, lastName?: string) => void;
@@ -164,6 +166,7 @@ export function TableRoot({
   onTopUp,
   onSetWatermark,
   roundHistoryCount,
+  standings,
   onApproveRename,
   onRejectRename,
   onRequestRename,
@@ -1301,6 +1304,7 @@ export function TableRoot({
               isNextTurn={nextTurnId === myPlayerTurn.player.id}
               roundState={round?.state}
               walletAmount={myWallet}
+              onOpenStats={onOpenStats}
             />
           )}
         {/* The banker has dropped and the table is waiting on them. Nothing else
@@ -1400,6 +1404,7 @@ export function TableRoot({
           renameRequests={room.renameRequests ?? []}
           buyInRequests={room.buyInRequests ?? []}
           roundHistoryCount={roundHistoryCount}
+          standings={standings}
           bankerWallet={bankerWallet}
           feltWatermark={room.feltWatermark}
           onTopUp={onTopUp}

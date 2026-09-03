@@ -2163,6 +2163,21 @@ body:has(.k-fit) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The name doubles as the way into your own stats -- see ViewerHud.tsx. It has
+   to still read as a name rather than as a control: no chrome of its own, just
+   the underline on hover that says it is tappable. */
+.k-viewer-hud-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.k-viewer-hud-name-btn:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .k-viewer-hud-sub {
   font-size: 11px;
   color: #c9bfa6;

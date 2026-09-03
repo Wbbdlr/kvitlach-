@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { StandingRow } from "../../playerRecord";
 import { ManageDrawer } from "../ManageDrawer";
 
 // The reshuffle control used to be disabled ("Only available between
@@ -9,7 +10,7 @@ import { ManageDrawer } from "../ManageDrawer";
 // refusing rather than reshuffling), so the button must always be usable --
 // these pin that it's live either way, and that the warning actually
 // changes to reflect what reshuffling mid-hand really does.
-function renderDrawer(overrides: { roundActive?: boolean; onReshuffleDeck?: () => void } = {}) {
+function renderDrawer(overrides: { roundActive?: boolean; onReshuffleDeck?: () => void; standings?: StandingRow[] } = {}) {
   const onReshuffleDeck = overrides.onReshuffleDeck ?? vi.fn();
   render(
     <ManageDrawer
@@ -33,6 +34,7 @@ function renderDrawer(overrides: { roundActive?: boolean; onReshuffleDeck?: () =
       onCloseRoom={vi.fn()}
       roundActive={overrides.roundActive ?? false}
       onReshuffleDeck={onReshuffleDeck}
+      standings={overrides.standings}
     />
   );
   return { onReshuffleDeck };
@@ -162,5 +164,33 @@ describe("the banker's approvals queue", () => {
     expect(h.onRejectRename).toHaveBeenCalledWith("p2");
     expect(h.onApproveBuyIn).not.toHaveBeenCalled();
     expect(h.onRejectBuyIn).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("tonight's standings", () => {
+  // The banker's usual end-of-night question is "who owes what", and it should
+  // not need a downloaded file to answer. Everything is shown -- the table's
+  // own decision, asked and answered: "you can let the banker see everything."
+  const standings = [
+    { playerId: "bk", name: "The Gabbai", isBanker: true, rounds: 3, wins: 1, losses: 2, net: -14 },
+    { playerId: "p1", name: "Shaya", isBanker: false, rounds: 3, wins: 2, losses: 1, net: 9 },
+    { playerId: "p2", name: "Rivky", isBanker: false, rounds: 3, wins: 1, losses: 2, net: -5 },
+  ];
+
+  it("lists every seat with its record and net", () => {
+    renderDrawer({ standings });
+    expect(screen.getByText("Tonight so far")).toBeInTheDocument();
+    expect(screen.getByText("The Gabbai")).toBeInTheDocument();
+    expect(screen.getByText("+$9")).toBeInTheDocument();
+    expect(screen.getByText("-$14")).toBeInTheDocument();
+    expect(screen.getByText("2W / 1L")).toBeInTheDocument();
+  });
+
+  it("shows nothing at all before a round has finished", () => {
+    // Not an empty table with zeroes in it -- there is genuinely nothing to
+    // say yet, and a row of dashes reads like a bug.
+    renderDrawer();
+    expect(screen.queryByText("Tonight so far")).not.toBeInTheDocument();
   });
 });
