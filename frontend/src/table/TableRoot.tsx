@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cardImages } from "./selectors";
 import { clsx } from "clsx";
-import { renderSnapshot, snapshotFilename } from "./snapshot";
+import { captureElement, snapshotFilename } from "./snapshot";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useChip, useFelt } from "../theme";
@@ -618,27 +618,35 @@ export function TableRoot({
   // costs a single 36px chip.
   // A16: a picture of the table to send to the family group chat.
   //
+  // Captures wrapRef -- the .k-fit element, i.e. the whole table view as this
+  // player is looking at it, chrome and dock included. Not a redrawing of it;
+  // see snapshot.ts for why the drawn version was thrown away.
+  //
   // Shares through the OS sheet when the browser offers one -- on a phone that
   // is the difference between the feature working and the feature producing a
   // file in Downloads that nobody can find. Falls back to a download link
-  // everywhere else. `seatedTurns` rather than playerTurns because the drawing
-  // maps turn i onto seatPositions()[i], and those two orders are not the same
-  // (layout.ts's orderTurnsBySeat exists precisely because they are not).
+  // everywhere else.
   const [snapshotBusy, setSnapshotBusy] = useState(false);
+  // Local, not a store notification: this is feedback about a button the
+  // player just pressed on this screen, not an event anyone else at the table
+  // needs to hear about.
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const takeSnapshot = async () => {
-    if (snapshotBusy) return;
+    if (snapshotBusy || !wrapRef.current) return;
     setSnapshotBusy(true);
     try {
-      const blob = await renderSnapshot({
-        turns: seatedTurns,
-        bankerTurn,
-        viewerId: playerId,
-        roundState: round?.state,
-        roomName: room.name || room.roomId,
-        roundNumber: round?.roundNumber,
-        bankerWallet,
-      });
-      if (!blob) return;
+      setSnapshotError(null);
+      // The overflow menu is where this button lives on a phone, and the
+      // toasts are chrome about the app rather than the game -- neither
+      // belongs in a picture of the table.
+      const blob = await captureElement(wrapRef.current, { omit: [".k-chrome-menu", ".k-toast-stack"] });
+      if (!blob) {
+        // Rasterizing can fail for reasons the player can do nothing about
+        // (an engine that will not draw the foreignObject). Say so rather
+        // than looking like the button did nothing.
+        setSnapshotError("Could not save a picture of the table on this browser.");
+        return;
+      }
       const name = snapshotFilename(room.name || room.roomId, round?.roundNumber);
       const file = new File([blob], name, { type: "image/png" });
       // canShare({files}) is the only reliable test -- iOS exposes navigator
@@ -1253,8 +1261,16 @@ export function TableRoot({
                 Reset zoom
               </button>
             )}
-            {notifications.length > 0 && (
+            {(notifications.length > 0 || snapshotError) && (
               <div className="k-toast-stack">
+                {snapshotError && (
+                  <div className="k-toast error" role="alert" aria-live="assertive">
+                    <span>{snapshotError}</span>
+                    <button type="button" onClick={() => setSnapshotError(null)}>
+                      Dismiss
+                    </button>
+                  </div>
+                )}
                 {notifications.map((note) => (
                   <div key={note.id} className={`k-toast ${note.tone}`} role="alert" aria-live="assertive">
                     <span>{note.message}</span>

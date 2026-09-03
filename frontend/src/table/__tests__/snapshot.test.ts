@@ -29,33 +29,54 @@ describe("snapshotFilename", () => {
   });
 });
 
-describe("what a snapshot is allowed to show", () => {
-  // The point of drawing this by hand instead of rasterizing the DOM is that
-  // concealment becomes a decision this file makes, not a side effect of which
-  // cards happened to be face-down on screen. A snapshot taken mid-round and
-  // sent to a player still deciding their hand is the leak that matters, and
-  // these pin the two things that prevent it.
+describe("how the snapshot is produced", () => {
+  // The first version DREW the table -- canvas, seat positions out of
+  // layout.ts, plates and pills painted by hand. It was faithful to the data
+  // and nothing like the game, because a second renderer only ever reproduces
+  // what someone remembered to reimplement. It now rasterizes the real DOM.
   //
-  // Asserted at the source level on purpose: jsdom has no canvas, so there is
-  // no rendered pixel to inspect, and the invariant is about which function
-  // decides -- which is exactly what source can answer and a mock cannot.
+  // jsdom cannot rasterize anything, so there is no output to inspect here.
+  // What these hold are the decisions that make the picture faithful -- each
+  // one is something that reverts silently to a plausible-looking wrong
+  // result rather than to an error.
 
-  it("reads totals through totalDisplay, never off turn.cards", () => {
-    expect(SOURCE).toContain("totalDisplay(");
-    // bestTotal is the raw, unconcealed calculation. Calling it here would
-    // compute the true total and print it regardless of who is looking.
-    expect(SOURCE).not.toContain("bestTotal(");
+  it("captures the DOM rather than redrawing the table", () => {
+    expect(SOURCE).toContain("foreignObject");
+    // The tell-tales of the drawn version. Any of these coming back means
+    // someone has started reimplementing the felt again.
+    expect(SOURCE).not.toContain("seatPositions");
+    expect(SOURCE).not.toContain("getContext(\"2d\")\n  if (!ctx) return null;\n  ctx.scale");
+    expect(SOURCE).not.toContain("arcTo");
   });
 
-  it("keeps the bank's hole card down unless the viewer is the banker or the round resolved", () => {
-    expect(SOURCE).toContain("const isOwner = viewerId === bankerTurn.player.id;");
-    expect(SOURCE).toContain('const resolved = bankerTurn.state !== "pending";');
-    expect(SOURCE).toContain("drawHand(ctx, bankerTurn.cards, images, cx, y, !isOwner && !resolved)");
+  it("inlines every same-origin resource it needs", () => {
+    // An external reference taints the canvas and makes toBlob throw -- so the
+    // failure mode for missing this is not "the font looks wrong", it is "the
+    // button does nothing".
+    expect(SOURCE).toContain("readAsDataURL");
+    expect(SOURCE).toContain("inlineCssUrls");
+    expect(SOURCE).toContain('querySelectorAll("img")');
   });
 
-  it("draws an unknown face as a card back rather than skipping it", () => {
-    // A hand that silently loses a card is a snapshot that misrepresents the
-    // round -- worse than an obviously unrendered one.
-    expect(SOURCE).toContain("// Face-down, or a face that failed to load.");
+  it("copies form state that lives in properties, not attributes", () => {
+    // cloneNode copies attributes. The bet field would serialize empty and the
+    // Eleveroon box unchecked, in a picture that otherwise looks entirely
+    // correct -- the worst kind of wrong.
+    expect(SOURCE).toContain("field.checked");
+    expect(SOURCE).toContain('target.setAttribute("value", field.value)');
+  });
+
+  it("serializes as XML, not innerHTML", () => {
+    // The foreignObject payload has to be well-formed XML. innerHTML happily
+    // emits HTML that is not, and the SVG then fails to load as an image --
+    // silently, through the onerror path.
+    expect(SOURCE).toContain("XMLSerializer");
+  });
+
+  it("paints a background behind the capture", () => {
+    // The page's ground colour is on <body>, outside the captured element.
+    // Without this the PNG is transparent and looks washed out anywhere it is
+    // viewed on a light background -- i.e. in most chat apps.
+    expect(SOURCE).toContain("fillRect(0, 0, width, height)");
   });
 });

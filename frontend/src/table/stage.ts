@@ -15,7 +15,15 @@ import { STAGE_HEIGHT, STAGE_WIDTH, SEAT_HEIGHT, seatPositions, seatScale } from
 //
 // Matches index.css's compact PlayerDock breakpoint exactly -- the dock is
 // shorter there, so it needs a smaller band reserved for it below.
-const COMPACT_MEDIA_QUERY = "(max-width: 520px), (max-height: 440px)";
+// Exported for compactQuery.test.ts, which checks that every compact block in
+// index.css is written with this exact string. Unlike the portrait gate -- one
+// predicate, hiding the whole table, so its CSS rule could be deleted outright
+// -- this one legitimately styles many rules and has to live in both files.
+// Six blocks carry it today; the risk is not that one of them is wrong on
+// purpose but that a future seventh is typed from memory as 521 or 400, and
+// then a phone gets the compact JS layout with desktop CSS or the reverse.
+// See docs/mobile-ui.md Part 4.
+export const COMPACT_MEDIA_QUERY = "(max-width: 520px), (max-height: 440px)";
 const DOCK_HEIGHT_PX = 66;
 const COMPACT_DOCK_HEIGHT_PX = 54;
 // Breathing room between the dock tray and the lowest seat above it. Trimmed

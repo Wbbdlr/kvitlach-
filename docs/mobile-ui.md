@@ -279,7 +279,7 @@ re-checks. What is actually true today:
 | Owning module | `table/breakpoints.ts` | **No such file.** `TableRoot.tsx:288` also names it, in a comment describing "step 4 of the refactor" |
 | Gate query | `TableRoot` reads `useMediaQuery(GATE_QUERY)` | `TableRoot.tsx:290` hardcodes the literal `"(orientation: portrait) and (max-width: 540px)"` |
 | Gate's CSS rule | deleted outright | **Done.** The gate is rendered conditionally from `portraitBlocked`; `index.css` carries only unconditional `.k-rotate-gate` / `.k-fit.is-portrait-blocked` styling and no copy of the query. `portraitGate.test.ts` keeps it at one |
-| Compact query | `COMPACT_QUERY`, pinned to `index.css` by a test | `COMPACT_MEDIA_QUERY` at `stage.ts:18`, not exported, no pinning test. The string appears in six `index.css` blocks |
+| Compact query | `COMPACT_QUERY`, pinned to `index.css` by a test | **Done.** `COMPACT_MEDIA_QUERY` is exported from `stage.ts` and pinned by `compactQuery.test.ts`, which also fails on any *new* near-miss breakpoint in `index.css`. Still legitimately written in both files -- unlike the gate, it styles many rules, so it is pinned rather than eliminated |
 
 The design is still right, and it is what to build: one module owning both
 strings, the gate query enforced by deleting its CSS rule so there is nothing
