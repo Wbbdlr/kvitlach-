@@ -1483,8 +1483,24 @@ body:has(.k-fit) {
   gap: 4px;
   /* Nothing sits below a popover on this tier, so it may use most of the
      screen; on a 384px-tall landscape phone the alternative is hiding the rows
-     players came here for. It scrolls past that rather than clipping. */
-  max-height: min(84vh, 460px);
+     players came here for. It scrolls past that rather than clipping.
+
+     Bounded by the space actually below it, not by a fraction. This was
+     `min(84vh, 460px)`, and at 854x384 it measured 322px tall ending 5px above
+     the fold -- fitting by coincidence, not by construction, because 84vh
+     leaves exactly 16% for a top offset that is a fixed number of pixels. Any
+     shorter viewport, a notch, or one more row in the chrome and it hangs off
+     the bottom. Reported as the menus opening too large and spilling off
+     screen, which is also why the fullscreen row was "hard to find": it was
+     below the fold in a menu that overflowed.
+
+     The 100% is the trick that makes it exact: for max-height a percentage
+     resolves against the containing block's height, and this menu's containing
+     block is .k-chrome-top -- whose height IS the chrome row it hangs under.
+     So this reads "the viewport, less the row above me, less my own offsets".
+     dvh with a vh fallback, per the contract: never 100vh alone. */
+  max-height: calc(100vh - 100% - max(8px, env(safe-area-inset-top)) - 16px);
+  max-height: calc(100dvh - 100% - max(8px, env(safe-area-inset-top)) - 16px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 8px;
@@ -1809,6 +1825,60 @@ body:has(.k-fit) {
   .k-dock-stack > .k-viewer-hud {
     position: static;
     margin-bottom: 0;
+  }
+
+  /* Reported: the control bar "is not stretched out width wise enough and is
+     spilling over onto a second line". Both halves of that are one cause.
+     The stack is content-width and centred, and a wrapping flex container
+     (.k-dock) used as a flex item is sized from its MIN-content width, not its
+     max -- so the dock collapsed to roughly the widest single control, wrapped
+     to two rows to fit that, and the stack then sized itself to the narrow
+     result. Measured at 640x360: a 620px-wide row of which the stack claimed
+     446 and the dock 268, while its one-row content wanted 545.
+     So the stack takes the full width it is centred in and the dock is allowed
+     to grow into what the readout and the react button leave. Compact only:
+     outside this range the readout is absolutely positioned against the
+     stack's left edge, and widening the stack there would move it off the
+     dock and out to the viewport edge. */
+  .k-dock-stack {
+    width: 100%;
+  }
+  .k-dock-stack > .k-dock {
+    /* Grows into the space the readout and the react button leave.
+       `auto` was the bug: a wrapping flex container used as a flex item is
+       sized from its MIN-content width, so the dock collapsed and then wrapped
+       to fit the collapsed box. `0 1 max-content` was tried next and is the
+       tidier idea -- ask for exactly one row of the current controls -- but
+       Chrome does not resolve max-content to the unwrapped sum for a wrap
+       container: measured at 640x360 it returned 433px for content that needs
+       roughly 500, and the dock wrapped anyway inside a box that had 442
+       available. So: grow. The controls stay centred inside it, which is what
+       keeps a sparse between-rounds dock from reading as a stretched empty
+       bar. */
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* And the row still has to FIT once it has the width. These are the same
+     controls, tightened -- not smaller type or smaller tap targets (the
+     buttons and the checkbox keep theirs), just less air between them.
+     Measured saving at 640x360: ~60px of the ~103px shortfall, with the stack
+     change covering the rest. */
+  .k-dock {
+    gap: 6px;
+    padding: 6px 9px;
+  }
+  .k-betbox {
+    gap: 3px;
+    padding: 4px 6px;
+  }
+  .k-betbox .k-amt {
+    width: 34px;
+    font-size: 14px;
+  }
+  .k-dock .k-toggle {
+    gap: 5px;
+    font-size: 11px;
   }
 }
 
@@ -2293,6 +2363,28 @@ body:has(.k-fit) {
      scrollbar. Those are not reachable from CSS, so without this they stay
      light on a dark surface no matter what the rules below say. */
   color-scheme: dark;
+}
+
+/* A list inside a dialog that can outgrow it -- a player's round history, most
+   obviously, which is one row per round for however long the night ran.
+   .k-dialog already scrolls itself at 85vh, so nothing was ever unreachable,
+   but scrolling the whole dialog carries its headline numbers off the top: you
+   open a player's stats to read their W/L and their net, and then have to
+   scroll back up past forty rounds to see them. Bounding the list is what
+   keeps the summary in place. Reported as the details window needing to scroll
+   when the list is long.
+   overscroll-behavior: contain so reaching the end of the list does not start
+   scrolling the felt behind it -- on a phone that reads as the table lurching. */
+.k-scroll-list {
+  max-height: min(46vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* The divider between rows in one. Tailwind's divide-slate-200 is a
+   light-surface colour and was left behind by the move to a dark dialog --
+   same class of miss as the form fields above. */
+.k-dialog-divide > * + * {
+  border-color: var(--k-surface-inset-line);
 }
 
 /* Form controls in a dialog.

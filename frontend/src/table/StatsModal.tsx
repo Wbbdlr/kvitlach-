@@ -63,7 +63,14 @@ export function StatsModal({ data, onClose }: StatsModalProps) {
             </span>
           </div>
 
-          <div className="border k-dialog-line rounded-lg divide-y divide-slate-200 overflow-hidden">
+          {/* Its own scroller, not the dialog's. .k-dialog already scrolls at
+              85vh, but letting the whole thing scroll takes the W/L strip and
+              the net with it -- and those are the numbers you opened this to
+              read. A long night is a long list, so the list is what moves.
+              divide-slate-200 was a light-surface leftover, the same class of
+              miss as the form fields: a pale hairline on a dark dialog. */}
+          <div className="border k-dialog-line rounded-lg overflow-hidden">
+            <div className="k-scroll-list divide-y k-dialog-divide">
             {data.entries.length === 0 && <div className="p-3 text-xs k-dialog-sub">No completed rounds yet.</div>}
             {data.entries.map((entry) => (
               <div key={`stats-entry-${entry.roundNumber}`} className="p-3 flex items-center justify-between text-sm">
@@ -74,6 +81,7 @@ export function StatsModal({ data, onClose }: StatsModalProps) {
                 </div>
               </div>
             ))}
+            </div>
           </div>
         </div>
       </div>

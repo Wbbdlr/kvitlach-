@@ -73,3 +73,27 @@ describe("StatsModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+// A long night is a long list. The dialog already scrolled at 85vh, so nothing
+// was unreachable -- but scrolling the whole dialog carries the W/L strip and
+// the net off the top, and those are what you opened it to read.
+describe("StatsModal's round list", () => {
+  it("scrolls on its own, so the summary stays put", () => {
+    const entries = Array.from({ length: 40 }, (_, i) => ({
+      roundNumber: i + 1,
+      status: "WON",
+      statusClass: "text-emerald-300",
+      bet: "$5",
+      betClass: "text-emerald-300",
+    }));
+    render(
+      <StatsModal
+        data={{ name: "Rivky", isBanker: false, wins: 20, losses: 20, pushes: 0, netTotal: 15, entries } as never}
+        onClose={() => {}}
+      />
+    );
+    const list = document.querySelector(".k-scroll-list");
+    expect(list, "the round list has no scroller of its own").not.toBeNull();
+    expect(list!.children).toHaveLength(40);
+  });
+});

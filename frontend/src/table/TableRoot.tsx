@@ -563,6 +563,36 @@ export function TableRoot({
   // bit too nested". They were. Chips and name changes lived two levels down
   // behind a button whose only label was the room's NAME, and the felt colours
   // lived behind an unlabelled swatch icon inside an unlabelled "..." icon.
+  // Pulled out of chromeControls so it can render in the ROW on a phone
+  // rather than inside the overflow menu. Reported as the fullscreen button
+  // being hard to find, and it was: the whole chrome collapses behind one
+  // button on compact, and fullscreen sat below the fold inside it -- two
+  // taps and a scroll for the control that makes the table usable on a phone
+  // in the first place. It is icon-only in the row (.k-ctl-label is hidden
+  // there), so it costs one 36px chip.
+  const fullscreenControl = fullscreenSupported && (
+        <span className="relative inline-flex">
+          <button
+            type="button"
+            className="k-chip-btn"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          >
+            <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
+            <span className="k-ctl-label">{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</span>
+          </button>
+          {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
+            <div className="k-fs-hint">
+              Tap for fullscreen -- best in landscape.
+              <button type="button" onClick={dismissFullscreenHint}>
+                Got it
+              </button>
+            </div>
+          )}
+    </span>
+  );
+
   const chromeControls = (
     <>
       <span className="relative inline-flex items-center gap-1">
@@ -640,28 +670,6 @@ export function TableRoot({
         <Icon name="motion" size={13} />
         <span className="k-ctl-label">Animations {motionEnabled ? "on" : "off"}</span>
       </button>
-      {fullscreenSupported && (
-        <span className="relative inline-flex">
-          <button
-            type="button"
-            className="k-chip-btn"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen (best in landscape)"}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          >
-            <Icon name={isFullscreen ? "compress" : "expand"} size={13} />
-            <span className="k-ctl-label">{isFullscreen ? "Exit fullscreen" : "Fullscreen"}</span>
-          </button>
-          {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
-            <div className="k-fs-hint">
-              Tap for fullscreen -- best in landscape.
-              <button type="button" onClick={dismissFullscreenHint}>
-                Got it
-              </button>
-            </div>
-          )}
-        </span>
-      )}
       {showIOSInstallHint && (
         <span className="relative inline-flex">
           <span className="k-chip-btn" style={{ cursor: "default" }}>
@@ -1038,7 +1046,17 @@ export function TableRoot({
           phone -- see ChromeMenu, which takes children for exactly this
           reason. Two renderings of one list is how they drift. */}
       <div className="k-chrome-top">
-        {compact ? <ChromeMenu badge={pendingApprovals}>{chromeControls}</ChromeMenu> : chromeControls}
+        {compact ? (
+          <>
+            {fullscreenControl}
+            <ChromeMenu badge={pendingApprovals}>{chromeControls}</ChromeMenu>
+          </>
+        ) : (
+          <>
+            {chromeControls}
+            {fullscreenControl}
+          </>
+        )}
         {bankIsEmpty && (
           <button
             type="button"

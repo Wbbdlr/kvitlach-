@@ -72,7 +72,7 @@ export function DiscardPileModal({ entries, onClose }: DiscardPileModalProps) {
               {/* "Discarded" reads like a player chose to fold these -- this
                   is just what's already come out of the shoe (every round
                   since the last reshuffle), so "used" is the honest word. */}
-              Used this shoe
+              Cards used this shoe
             </div>
             <button type="button" className="k-dialog-sub hover:text-amber-200" onClick={onClose} aria-label="Close">
               ✕
