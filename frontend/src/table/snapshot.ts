@@ -48,6 +48,35 @@ async function toDataUri(url: string): Promise<string | null> {
   }
 }
 
+// The custom properties felt/chip theme and the watermark set on <html> --
+// felt color and button layout were both reported wrong in the captured
+// picture, and this is why: theme.ts's applyFelt/applyChip and TableRoot's
+// watermark effect all write to document.documentElement.style, an INLINE
+// style on the real root, not a stylesheet rule. collectCss() below only
+// reads sheet.cssRules, so none of these ever made it into the capture --
+// and the clone is a fresh wrapper <div> with no ancestor chain back to the
+// real <html>, so it could not inherit them the normal way either. Every
+// var(--felt-hi)/--btn-bet/--chip-border/--wm reference in the captured CSS
+// resolved to nothing, which is a broken felt gradient and unstyled chip
+// buttons -- exactly "felt color was wrong, so was button layout".
+// Applied directly to the wrapper element rather than emitted as a `:root`
+// CSS rule: the SVG is loaded as an <img>, which parses it as its own
+// document whose actual root is the <svg> itself, not anything inside the
+// foreignObject -- rather than lean on inheritance through a selector match
+// I'm not certain holds across that boundary, setting the properties as
+// inline style on the wrapper (the real common ancestor of everything being
+// rasterized) inherits down exactly the same way the live page's --felt-hi
+// etc. inherit from the real <html> to the table today. Read generically off
+// the root's own style rather than naming each property, so a future theme
+// variable does not silently repeat this bug.
+function applyRootCustomProperties(target: HTMLElement): void {
+  const root = document.documentElement.style;
+  for (let i = 0; i < root.length; i++) {
+    const prop = root.item(i);
+    if (prop.startsWith("--")) target.style.setProperty(prop, root.getPropertyValue(prop));
+  }
+}
+
 // Every rule the page actually has, as text.
 //
 // Cross-origin sheets throw on .cssRules and are skipped: the app serves its
@@ -171,6 +200,7 @@ export async function captureElement(el: HTMLElement, opts: CaptureOptions = {})
   style.textContent = css;
   const wrapper = document.createElement("div");
   wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+  applyRootCustomProperties(wrapper);
   wrapper.appendChild(style);
   wrapper.appendChild(clone);
 

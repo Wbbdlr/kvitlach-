@@ -10,6 +10,15 @@ const baseTurn: Turn = {
   bet: 0,
 };
 
+// The move/resize grips are exercised in DockGrips.test.tsx -- this is just
+// enough shape for PlayerDock to render them without crashing.
+const stubDockPanel = {
+  moveProps: { onPointerDown: () => {} },
+  gripProps: { onPointerDown: () => {} },
+  moved: false,
+  reset: () => {},
+};
+
 function renderDock(overrides: { wallet?: number; bankIncrement?: number; canBank?: boolean; onBet?: (a: number, o: { bank: boolean; eleveroon: boolean }) => void } = {}) {
   const onBet = overrides.onBet ?? vi.fn();
   render(
@@ -21,6 +30,7 @@ function renderDock(overrides: { wallet?: number; bankIncrement?: number; canBan
       onBet={onBet}
       onHit={vi.fn()}
       onStand={vi.fn()}
+      dockPanel={stubDockPanel}
     />
   );
   return { onBet };
@@ -214,6 +224,7 @@ describe("PlayerDock BANK! confirmation", () => {
         onBet={vi.fn()}
         onHit={vi.fn()}
         onStand={vi.fn()}
+        dockPanel={stubDockPanel}
       />
     );
     expect(screen.queryByText("Bank is empty.")).not.toBeInTheDocument();
@@ -231,7 +242,16 @@ describe("PlayerDock BANK! confirmation", () => {
     const onHit = vi.fn();
     const onBet = vi.fn();
     const { rerender } = render(
-      <PlayerDock turn={baseTurn} wallet={200} bankIncrement={80} canBank onBet={onBet} onHit={onHit} onStand={vi.fn()} />
+      <PlayerDock
+        turn={baseTurn}
+        wallet={200}
+        bankIncrement={80}
+        canBank
+        onBet={onBet}
+        onHit={onHit}
+        onStand={vi.fn()}
+        dockPanel={stubDockPanel}
+      />
     );
     fireEvent.click(screen.getByText("BANK!"));
     fireEvent.click(screen.getByText("Yes, bet BANK!"));
@@ -246,6 +266,7 @@ describe("PlayerDock BANK! confirmation", () => {
         onBet={onBet}
         onHit={onHit}
         onStand={vi.fn()}
+        dockPanel={stubDockPanel}
       />
     );
     expect(onHit).not.toHaveBeenCalled();
@@ -255,7 +276,16 @@ describe("PlayerDock BANK! confirmation", () => {
     const onHit = vi.fn();
     const onBet = vi.fn();
     const { rerender } = render(
-      <PlayerDock turn={baseTurn} wallet={200} bankIncrement={80} canBank onBet={onBet} onHit={onHit} onStand={vi.fn()} />
+      <PlayerDock
+        turn={baseTurn}
+        wallet={200}
+        bankIncrement={80}
+        canBank
+        onBet={onBet}
+        onHit={onHit}
+        onStand={vi.fn()}
+        dockPanel={stubDockPanel}
+      />
     );
     fireEvent.click(screen.getByText("Bet"));
     rerender(
@@ -267,6 +297,7 @@ describe("PlayerDock BANK! confirmation", () => {
         onBet={onBet}
         onHit={onHit}
         onStand={vi.fn()}
+        dockPanel={stubDockPanel}
       />
     );
     expect(onHit).not.toHaveBeenCalled();

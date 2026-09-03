@@ -2339,6 +2339,19 @@ body:has(.k-fit) {
   padding-right: max(10px, env(safe-area-inset-right));
   z-index: 25;
 }
+/* Centering under the viewer's own seat (above) is right whenever there's a
+   dock to center -- once a bet field or a "Table ready" panel is part of
+   what's centered, the whole GROUP sitting under your attention is the
+   point. It stops being right the moment .k-dock-row has nothing in it but
+   the reaction button: centering ONE 36px icon under your seat puts it, and
+   the picker it opens, directly on top of your own cards -- reported
+   exactly that way. `:has()` targets only that specific case (already used
+   for the same kind of structural switch by AppearanceMenu's wrapper);
+   every other state, including a narrow between-rounds panel, still
+   centers as before. */
+.k-controls:has(.k-dock-row > .k-chrome-react:only-child) {
+  justify-content: flex-end;
+}
 /* The tray inherits the band's pointer-events: none -- only the real controls
    inside it take taps, so its full-width box stops covering the felt. */
 .k-controls > * {
@@ -2446,21 +2459,50 @@ body:has(.k-fit) {
    containing block. This panel is position:absolute instead, anchored to
    .k-quickbets right here in the same (possibly scaled) tree -- so it scales
    and tracks WITH the dock exactly like every other in-flow control in it,
-   under any resize, with no measurement or portal needed. */
+   under any resize, with no measurement or portal needed.
+
+   Opens SIDEWAYS (left: 100%), not upward -- the trigger sits beside
+   .k-betbox now, near the dock's own left edge, which is almost exactly
+   where .k-viewer-hud (bottom: 100% of this same dock's left edge) already
+   sits. An upward-opening panel shared that coordinate and LOST the
+   stacking fight: .k-dock carries z-index: 25, deliberately low so
+   .k-preround/.k-bank-banner/.k-bank-decision can always draw over the
+   whole bar, and nothing inside .k-dock's own stacking context can outrank
+   an outside sibling sitting at 45 no matter how high its own LOCAL
+   z-index goes -- reported as the $5 chip going missing. Opening sideways
+   instead means this panel never shares a coordinate with .k-viewer-hud, so
+   the stacking question never comes up; it only has to beat its OWN dock
+   siblings (the bet field, Bet/Blatt/Stand), which carry no z-index of
+   their own.
+
+   NOT flex-wrap: wrap, on an absolutely-positioned flex container with no
+   explicit width -- tried first, and rendered (not assumed) it collapsed
+   the shrink-to-fit width to the single WIDEST child ($25's ~45px) instead
+   of the three-in-a-row width the panel actually needs, stacking every
+   chip in its own row in a tall, narrow sliver. A wrapping flex container
+   sizes its auto width off what fitting-in-fewer-rows needs, and with
+   wrapping ALLOWED that is one item, not all three. overflow-x is the
+   fallback for the width max-width alone cannot enforce without wrap --
+   same "a row that scrolls beats one that overlaps" call already made for
+   .k-dock-row > .k-dock in the compact block below. */
 .k-quickbets-panel {
   position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 0;
+  left: calc(100% + 8px);
   z-index: 60; /* matches .k-appearance-panel / .k-chrome-menu, the other popovers this dock-level chrome can open */
   display: flex;
   gap: 6px;
   padding: 8px;
+  max-width: calc(100vw - 24px);
+  overflow-x: auto;
+  scrollbar-width: none;
   background: rgba(10, 20, 14, 0.97);
   border: 1px solid rgba(230, 164, 75, 0.45);
   border-radius: 10px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-  white-space: nowrap;
+}
+.k-quickbets-panel::-webkit-scrollbar {
+  display: none;
 }
 .k-btn {
   border: none;

@@ -5,6 +5,8 @@ import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
 import { useDialogFocus } from "../useDialogFocus";
 import { useClickOutside } from "./clickOutside";
+import { DraggablePanel } from "./draggablePanel";
+import { DockGrips } from "./DockGrips";
 
 const DEFAULT_BET = 5;
 const BET_STEP = 1;
@@ -22,6 +24,8 @@ export interface PlayerDockProps {
   onBet: (amount: number, options: { bank: boolean; eleveroon: boolean }) => void;
   onHit: (options: { eleveroon: boolean }) => void;
   onStand: () => void;
+  /** Move/resize grips render INSIDE this dock's own box -- see DockGrips's comment. */
+  dockPanel: Pick<DraggablePanel, "moveProps" | "gripProps" | "moved" | "reset">;
 }
 
 // Control dock for the viewer's own active turn, styled as the mockup's
@@ -40,6 +44,7 @@ export function PlayerDock({
   onBet,
   onHit,
   onStand,
+  dockPanel,
 }: PlayerDockProps) {
   // Tracked as a string (not a number) so the field can sit empty mid-edit
   // while the player retypes it -- a number-backed value would fight any
@@ -186,6 +191,51 @@ export function PlayerDock({
         </button>
       </div>
 
+      {/* Beside .k-betbox, not at the end of the row -- asked for directly
+          ("next to the wager amount selector"). A first pass put it here,
+          then moved it to the row's far end after the panel was reported
+          going MISSING when opened: it renders upward (bottom: 100%), and
+          this end of the dock sits almost directly under .k-viewer-hud
+          (bottom: 100% of this SAME dock's own left edge), which wins the
+          stacking fight -- .k-dock carries z-index: 25 specifically so
+          .k-preround/.k-bank-banner/.k-bank-decision (42/46/48) can always
+          draw over the whole bar, and nothing inside .k-dock's own stacking
+          context can out-rank an outside sibling sitting at 45 no matter its
+          own LOCAL z-index. Moving the trigger was treating the symptom.
+          The actual fix is .k-quickbets-panel's own: it opens SIDEWAYS
+          (left: 100%), not upward, so it never shares a coordinate with
+          .k-viewer-hud in the first place and the stacking question never
+          comes up. */}
+      <span ref={quickBetRef} className="relative inline-flex k-quickbets">
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={() => setQuickBetOpen((v) => !v)}
+          aria-expanded={quickBetOpen}
+          aria-haspopup="menu"
+          title="Quick-bet amounts"
+          aria-label="Quick-bet amounts"
+        >
+          <Icon name="coins" size={14} />
+        </button>
+        {quickBetOpen && (
+          <div className="k-quickbets-panel" role="menu">
+            {QUICK_BET_CHIPS.map((amount) => (
+              <button
+                key={amount}
+                type="button"
+                role="menuitem"
+                className="k-btn ghost sm"
+                onClick={() => setQuickBet(amount)}
+                aria-label={`Set bet to $${amount}`}
+              >
+                ${amount}
+              </button>
+            ))}
+          </div>
+        )}
+      </span>
+
       <button type="button" className="k-btn bet" onClick={handleBet}>
         Bet
       </button>
@@ -225,53 +275,6 @@ export function PlayerDock({
             this one keeps its row rather than disappearing into one. */}
         <span className="k-toggle-label">Eleveroon</span>
       </label>
-
-      {/* Collapsed behind a trigger rather than sitting permanently in the
-          row -- k-betbox is already the row's tightest width budget (see the
-          compact media query below), and three more always-visible buttons
-          would cost real width for something used once per bet at most. Pops
-          UP (bottom: 100%, not top), since the dock lives at the bottom of
-          the screen -- see .k-quickbets-panel's own comment on why this stays
-          position:absolute rather than copying AppearanceMenu's fixed-at-
-          small-viewport trick: unlike the top chrome, this row can be under
-          the dock's own resize scale transform.
-          Lives at the END of the row, not beside .k-betbox where a first pass
-          put it: rendered and looked at (per mobile-ui.md Part 6), a trigger
-          that far left pops its panel straight into .k-viewer-hud, which is
-          independently pinned to bottom:100% of THIS SAME dock's own left
-          edge (see that class's own rule) -- both dark, so the panel's own
-          z-index win over it read as the $5 chip going missing rather than as
-          a stacking order. Right of BANK!/Eleveroon there is nothing else
-          floating above the dock to collide with. */}
-      <span ref={quickBetRef} className="relative inline-flex k-quickbets">
-        <button
-          type="button"
-          className="k-chip-btn"
-          onClick={() => setQuickBetOpen((v) => !v)}
-          aria-expanded={quickBetOpen}
-          aria-haspopup="menu"
-          title="Quick-bet amounts"
-          aria-label="Quick-bet amounts"
-        >
-          <Icon name="coins" size={14} />
-        </button>
-        {quickBetOpen && (
-          <div className="k-quickbets-panel" role="menu">
-            {QUICK_BET_CHIPS.map((amount) => (
-              <button
-                key={amount}
-                type="button"
-                role="menuitem"
-                className="k-btn ghost sm"
-                onClick={() => setQuickBet(amount)}
-                aria-label={`Set bet to $${amount}`}
-              >
-                ${amount}
-              </button>
-            ))}
-          </div>
-        )}
-      </span>
 
       {/* betError is transient -- it appears because you just pressed Bet with
           a bad amount, and clears on the next keystroke. The BANK! reason used
@@ -335,6 +338,7 @@ export function PlayerDock({
         </StageOverlay>
       )}
 
+      <DockGrips dockPanel={dockPanel} />
     </div>
   );
 }

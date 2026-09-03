@@ -20,6 +20,7 @@ import { BankReservations } from "./BankReservations";
 import { ViewerHud } from "./ViewerHud";
 import { ReactionLayer } from "./ReactionLayer";
 import { useDraggablePanel } from "./draggablePanel";
+import { DockGrips } from "./DockGrips";
 import { ChromeMenu } from "./ChromeMenu";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { ManageDrawer } from "./ManageDrawer";
@@ -1367,6 +1368,7 @@ export function TableRoot({
                 Waiting {abandonedBanker.secondsLeft}s for them to reconnect…
               </span>
             )}
+            <DockGrips dockPanel={dockPanel} />
           </div>
         )}
 
@@ -1381,6 +1383,7 @@ export function TableRoot({
             onBet={onBet}
             onHit={onHit}
             onStand={onStand}
+            dockPanel={dockPanel}
           />
         )}
 
@@ -1423,49 +1426,12 @@ export function TableRoot({
                 Waiting for the banker to {preRound ? "deal" : "start the next round"}…
               </span>
             )}
+            <DockGrips dockPanel={dockPanel} />
           </div>
         )}
           <div className="k-chrome-react">
             <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
           </div>
-
-          {/* Both grips on the TOP edge, asked for directly ("the dragger needs
-              to be on the top right and left"). The resize grip used to be in
-              the bar's bottom-right corner, which on a phone in landscape is
-              the one corner sitting in the gesture bar and under the heel of a
-              thumb already holding the device. The top edge is the only edge of
-              this bar with nothing behind it.
-              Each stops the event reaching anything else: the bar is full of
-              buttons and a bet field, and a press that starts on a grip must
-              not also press one of them. */}
-          <span
-            className="k-dock-grip move"
-            {...dockPanel.moveProps}
-            title="Drag to move the controls"
-            aria-hidden="true"
-          />
-          <span
-            className="k-dock-grip size"
-            {...dockPanel.gripProps}
-            title="Drag to resize the controls"
-            aria-hidden="true"
-          />
-          {/* Only once it has actually been moved or resized -- an
-              always-visible "put it back" on a bar nobody has touched is
-              clutter that explains a feature by apologising for it. Same rule
-              as the readout's own reset. */}
-          {dockPanel.moved && (
-            <button
-              type="button"
-              className="k-dock-reset"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={dockPanel.reset}
-              title="Put the controls back where they started"
-              aria-label="Put the controls back where they started"
-            >
-              <Icon name="rotate" size={9} />
-            </button>
-          )}
         </div>
         </div>
         </div>

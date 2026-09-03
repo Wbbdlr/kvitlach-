@@ -79,4 +79,21 @@ describe("how the snapshot is produced", () => {
     // viewed on a light background -- i.e. in most chat apps.
     expect(SOURCE).toContain("fillRect(0, 0, width, height)");
   });
+
+  // Reported: "felt color was wrong, so was button layout". theme.ts's
+  // applyFelt/applyChip and TableRoot's watermark effect all set CSS custom
+  // properties as an INLINE style on document.documentElement, never in a
+  // stylesheet rule -- collectCss() only ever reads sheet.cssRules, and the
+  // clone is a fresh wrapper with no ancestor chain back to the real <html>
+  // to inherit them from either. Every var(--felt-hi)/--btn-bet/--chip-border
+  // reference in the captured picture resolved to nothing.
+  it("carries the root's inline custom properties (felt/chip theme, watermark) into the capture", () => {
+    expect(SOURCE).toContain("applyRootCustomProperties");
+    expect(SOURCE).toContain('prop.startsWith("--")');
+    // Applied to the wrapper specifically, before serializing -- not emitted
+    // as a `:root` rule, which would depend on :root matching the right
+    // element once the SVG is parsed as its own document by the <img> that
+    // loads it.
+    expect(SOURCE).toMatch(/applyRootCustomProperties\(wrapper\)/);
+  });
 });
