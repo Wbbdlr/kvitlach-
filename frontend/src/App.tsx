@@ -7,6 +7,7 @@ import { buzz } from "./table/haptics";
 
 import { enterImmersive, exitImmersive } from "./table/immersive";
 import { buildHistoryHtml, downloadFile, historyFilename } from "./exportHistory";
+import { loadChip, loadFelt } from "./theme";
 import { bestTotal, isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
 import { TableRoot } from "./table/TableRoot";
@@ -390,9 +391,26 @@ export default function App() {
   const exportRoundHistoryTxt = (focusPlayerId?: string) => {
     const rounds = roundHistory ?? [];
     if (!rounds.length) return;
+    const focused = room?.players?.find((p) => p.id === focusPlayerId);
+    const playerName = [focused?.firstName, focused?.lastName].filter(Boolean).join(" ").trim();
     downloadFile(
-      historyFilename(room?.roomId, Boolean(focusPlayerId)),
-      buildHistoryHtml({ rounds, roomId: room?.roomId, roomName: room?.name, focusPlayerId })
+      // The names are for the FILE, so it is findable in a Downloads folder
+      // months later -- see historyFilename.
+      historyFilename(room?.roomId, Boolean(focusPlayerId), new Date(), {
+        roomName: room?.name,
+        playerName,
+      }),
+      // Read at export time rather than held in state: these are the exporting
+      // player's own felt and chip choices (theme.ts, localStorage), and the
+      // sheet is a keepsake of the table THEY were looking at.
+      buildHistoryHtml({
+        rounds,
+        roomId: room?.roomId,
+        roomName: room?.name,
+        focusPlayerId,
+        felt: loadFelt(),
+        chip: loadChip(),
+      })
     );
   };
 

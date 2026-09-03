@@ -358,16 +358,24 @@ export function ManageDrawer({
           ))}
         </div>
 
-        <div className="flex items-center justify-between rounded-lg border k-dialog-line px-3 py-2 text-sm">
-          <span>Round history ({roundHistoryCount})</span>
-          <button
-            type="button"
-            disabled={!roundHistoryCount}
-            className="text-xs font-semibold text-sky-300 underline disabled:k-dialog-sub disabled:no-underline"
-            onClick={onExportHistory}
-          >
-            Export the night
-          </button>
+        <div className="rounded-lg border k-dialog-line px-3 py-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span>Round history ({roundHistoryCount})</span>
+            <button
+              type="button"
+              disabled={!roundHistoryCount}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-300 underline disabled:k-dialog-sub disabled:no-underline"
+              onClick={onExportHistory}
+            >
+              <Icon name="download" size={13} />
+              Export the night
+            </button>
+          </div>
+          {/* Same reason as the player-facing pair in RoomInfoDrawer: the
+              button named what it contained, not what it did. */}
+          <div className="text-[11px] k-dialog-sub mt-1 leading-snug">
+            Downloads one page with every round and the final standings, to keep or to share.
+          </div>
         </div>
 
         <div className="border-t k-dialog-line pt-3">

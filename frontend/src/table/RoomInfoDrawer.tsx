@@ -195,21 +195,39 @@ export function RoomInfoDrawer({
               <div className="text-xs k-dialog-sub mt-0.5">
                 {completedRounds} round{completedRounds === 1 ? "" : "s"} played so far.
               </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white"
-                  onClick={() => onExportHistory(playerId)}
-                >
-                  My results
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full border k-dialog-line px-3 py-1.5 text-xs font-semibold k-dialog-strong"
-                  onClick={() => onExportHistory()}
-                >
-                  Whole table
-                </button>
+              {/* Two buttons named "My results" and "Whole table" say what
+                  they contain and nothing about what pressing them DOES --
+                  reported as needing to tell people what they are clicking.
+                  A download is not a thing anyone wants to find out by
+                  trying, least of all mid-game on a phone, so each line says
+                  it downloads a file and roughly what is in it. */}
+              <div className="mt-2 flex flex-col gap-2.5">
+                <div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-white"
+                    onClick={() => onExportHistory(playerId)}
+                  >
+                    <Icon name="download" size={13} />
+                    My results
+                  </button>
+                  <div className="text-[11px] k-dialog-sub mt-1 leading-snug">
+                    Downloads a page written from your seat: what you finished on, round by round.
+                  </div>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-full border k-dialog-line px-3 py-1.5 text-xs font-semibold k-dialog-strong"
+                    onClick={() => onExportHistory()}
+                  >
+                    <Icon name="download" size={13} />
+                    Whole table
+                  </button>
+                  <div className="text-[11px] k-dialog-sub mt-1 leading-snug">
+                    Downloads the same page for everyone at the table, with the final standings.
+                  </div>
+                </div>
               </div>
             </div>
           )}

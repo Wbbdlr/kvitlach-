@@ -223,11 +223,46 @@ describe("verdict", () => {
   });
 });
 
+// This is the only thing a person sees when they go looking for the keepsake
+// months later, and every table on the same night used to sort together under
+// an identical "kvitlach-table-" prefix followed by a room ID nobody
+// recognises.
 describe("historyFilename", () => {
-  it("dates the file and marks a personal copy", () => {
-    const now = new Date("2026-01-05T12:00:00");
-    expect(historyFilename("ZXD636", false, now)).toBe("kvitlach-table-ZXD636-2026-01-05.html");
-    expect(historyFilename("ZXD636", true, now)).toBe("kvitlach-my-night-ZXD636-2026-01-05.html");
+  const now = new Date("2026-01-05T12:00:00");
+
+  it("leads with the table's name, and with yours on a personal copy", () => {
+    expect(historyFilename("ZXD636", false, now, { roomName: "Chanukah night 3" })).toBe(
+      "Kvitlach - Chanukah night 3 - 2026-01-05.html"
+    );
+    expect(
+      historyFilename("ZXD636", true, now, { roomName: "Chanukah night 3", playerName: "Rivky S" })
+    ).toBe("Kvitlach - Rivky S - Chanukah night 3 - 2026-01-05.html");
+  });
+
+  it("falls back through the room ID to a bare date, never to nothing", () => {
+    expect(historyFilename("ZXD636", false, now)).toBe("Kvitlach - ZXD636 - 2026-01-05.html");
+    expect(historyFilename(undefined, false, now)).toBe("Kvitlach - 2026-01-05.html");
+  });
+
+  // A room name is player-typed and lands straight in a Downloads folder.
+  it("strips what a filesystem would reject, and keeps it short", () => {
+    const name = historyFilename("R1", false, now, { roomName: 'a/b\\c:d*e?f"g<h>i|j' });
+    expect(name).toBe("Kvitlach - a b c d e f g h i j - 2026-01-05.html");
+    expect(name).not.toMatch(/[\/:*?"<>|]/);
+
+    const long = historyFilename("R1", false, now, { roomName: "x".repeat(200) });
+    expect(long.length).toBeLessThan(80);
+  });
+
+  // A name of nothing but punctuation must not leave a stray separator or a
+  // file that starts with a dot.
+  it("drops a name that sanitises away to nothing", () => {
+    expect(historyFilename("ZXD636", false, now, { roomName: "  ///  " })).toBe(
+      "Kvitlach - ZXD636 - 2026-01-05.html"
+    );
+    expect(historyFilename("ZXD636", false, now, { roomName: "..." })).toBe(
+      "Kvitlach - ZXD636 - 2026-01-05.html"
+    );
   });
 });
 
@@ -245,5 +280,39 @@ describe("the round-by-round hands", () => {
     const html = buildHistoryHtml({ rounds, roomId: "ZXD636" });
     expect(html).toContain("FUTCHED!");
     expect(html).toContain("−$5");
+  });
+});
+
+// Asked for directly: the sheet is the only place anyone re-reads the night
+// from, so the two things it must not blur are how a hand was lost and
+// whether anything was ever at stake.
+describe("what the sheet calls each hand", () => {
+  it("separates a futch from losing the showdown", () => {
+    const html = buildHistoryHtml({ rounds, roomId: "R1" });
+    expect(html).toContain("FUTCHED!"); // Moshe went over 21 in round 2
+    expect(html).toContain("LOST"); // Rivky was simply out-drawn
+  });
+
+  it("calls a stakeless hand a blatt, not a push", () => {
+    const blatt = [
+      { ...rounds[0], turns: [seat("p1", "Rivky", 0, "won"), banker(0)] },
+    ] as unknown as CompletedRoundSummary[];
+    const html = buildHistoryHtml({ rounds: blatt, roomId: "R1" });
+    expect(html).toContain("BLATT");
+    expect(html).not.toContain("PUSH");
+  });
+
+  // Skipped is also stakeless and is emphatically not a blatt -- nobody drew.
+  it("does not call a skipped turn a blatt", () => {
+    const skipped = [
+      { ...rounds[0], turns: [seat("p1", "Rivky", 0, "skipped"), banker(0)] },
+    ] as unknown as CompletedRoundSummary[];
+    expect(buildHistoryHtml({ rounds: skipped, roomId: "R1" })).not.toContain("BLATT");
+  });
+
+  it("never calls the banker's own hand a blatt -- they never wager", () => {
+    const html = buildHistoryHtml({ rounds, roomId: "R1" });
+    const bankerLines = html.split("\n").filter((l) => l.includes("Banker"));
+    expect(bankerLines.some((l) => l.includes("BLATT"))).toBe(false);
   });
 });
