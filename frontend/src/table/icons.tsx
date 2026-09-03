@@ -78,6 +78,11 @@ const ICON_PATHS: Record<IconName, string> = {
     '<ellipse cx="9" cy="5.5" rx="5.5" ry="2"/><path d="M3.5 5.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9"/><path d="M3.5 10c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2"/><path d="M18.5 15v6M15.5 18h6"/>',
   // Export/save. A tray with an arrow coming down into it -- the standard
   // download idiom, so it needs no label of its own beside one.
+  // Snapshot. A camera body with the lens as a plain circle -- at 13px the
+  // lens is ~5px across, so anything inside it (a second ring, a highlight)
+  // fills in to a dot and the whole glyph reads as a blob. Kept open.
+  camera:
+    '<path d="M3 8.5h3.2l1.6-2.4h8.4l1.6 2.4H21a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.6"/>',
   download: '<path d="M12 3v11"/><path d="M8 10.5l4 4 4-4"/><path d="M4 16.5v2.2A2.3 2.3 0 0 0 6.3 21h11.4a2.3 2.3 0 0 0 2.3-2.3v-2.2"/>',
   "user-pencil":
     '<circle cx="8.5" cy="7" r="3.4"/><path d="M2 20c0-3.9 2.7-7 6.5-7 1 0 1.9.2 2.7.6"/><path d="M13 20h3l6.2-6.2a1.7 1.7 0 0 0-2.4-2.4L13.6 17.6z"/>',

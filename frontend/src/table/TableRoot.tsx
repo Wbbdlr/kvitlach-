@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cardImages } from "./selectors";
 import { clsx } from "clsx";
+import { renderSnapshot, snapshotFilename } from "./snapshot";
 import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useChip, useFelt } from "../theme";
@@ -615,6 +616,52 @@ export function TableRoot({
   // note below about two renderings of one list is what this is avoiding. In
   // the row they are icon-only (.k-ctl-label is hidden on compact), so each
   // costs a single 36px chip.
+  // A16: a picture of the table to send to the family group chat.
+  //
+  // Shares through the OS sheet when the browser offers one -- on a phone that
+  // is the difference between the feature working and the feature producing a
+  // file in Downloads that nobody can find. Falls back to a download link
+  // everywhere else. `seatedTurns` rather than playerTurns because the drawing
+  // maps turn i onto seatPositions()[i], and those two orders are not the same
+  // (layout.ts's orderTurnsBySeat exists precisely because they are not).
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
+  const takeSnapshot = async () => {
+    if (snapshotBusy) return;
+    setSnapshotBusy(true);
+    try {
+      const blob = await renderSnapshot({
+        turns: seatedTurns,
+        bankerTurn,
+        viewerId: playerId,
+        roundState: round?.state,
+        roomName: room.name || room.roomId,
+        roundNumber: round?.roundNumber,
+        bankerWallet,
+      });
+      if (!blob) return;
+      const name = snapshotFilename(room.name || room.roomId, round?.roundNumber);
+      const file = new File([blob], name, { type: "image/png" });
+      // canShare({files}) is the only reliable test -- iOS exposes navigator
+      // .share but rejects a files payload on older versions, and the throw
+      // lands after the user has already tapped.
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: room.name || "Kvitlach" });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // A cancelled share sheet rejects. That is a normal thing for a person
+      // to do and must not surface as an error.
+    } finally {
+      setSnapshotBusy(false);
+    }
+  };
+
   const manageControl = isAdmin && (
     <button
       type="button"
@@ -688,6 +735,17 @@ export function TableRoot({
           </div>
         )}
       </span>
+      <button
+        type="button"
+        className="k-chip-btn"
+        onClick={takeSnapshot}
+        disabled={snapshotBusy}
+        title="Save a picture of the table"
+        aria-label="Save a picture of the table"
+      >
+        <Icon name="camera" size={13} />
+        <span className="k-ctl-label">{snapshotBusy ? "Saving..." : "Snapshot"}</span>
+      </button>
       <button
         type="button"
         className="k-chip-btn"
