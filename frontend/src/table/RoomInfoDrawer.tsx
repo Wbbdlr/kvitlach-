@@ -257,59 +257,59 @@ export function RoomInfoDrawer({
             </div>
           )}
 
+          {/* Rename/chip requests no longer have a toggle button HERE --
+              asked for directly, once ChromeMenu grew its own dedicated
+              "Change name" / "Request chips" entries (see `focus` above,
+              which those set): a second, generically-labelled way to reach
+              the exact same form was the "too nested to work out" complaint
+              this file's own header comment already describes, just not
+              fully retired when the first fix landed. Opening this drawer
+              from THOSE buttons still lands here and still shows the right
+              form -- showRenameForm/showBuyInForm are driven entirely by
+              the focus effect above now, with nothing left in the generic
+              view to set them by hand. A standing pending-request notice
+              stays regardless of how the form was reached: someone who
+              already asked should see that they did, not go hunting for a
+              button that no longer exists to confirm it. */}
           {!isAdmin && (
             <>
-              <div ref={selfServiceRef} className="border-t k-dialog-line pt-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs k-dialog-sub">Banker approval required for name changes.</span>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-full border border-accent text-accent px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-accent hover:text-white flex-none"
-                    onClick={() => setShowRenameForm((prev) => !prev)}
-                  >
-                    {showRenameForm ? "Hide" : "Request name change"}
-                  </button>
+              {(showRenameForm || myRenameRequest) && (
+                <div ref={selfServiceRef} className="border-t k-dialog-line pt-3 flex flex-col gap-2">
+                  {showRenameForm ? (
+                    <RenameRequestForm
+                      pending={myRenameRequest}
+                      onSubmit={onRequestRename}
+                      onDone={() => setShowRenameForm(false)}
+                    />
+                  ) : (
+                    myRenameRequest && (
+                      <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
+                        Pending banker approval for {myRenameRequest.firstName}
+                        {myRenameRequest.lastName ? ` ${myRenameRequest.lastName}` : ""}.
+                      </div>
+                    )
+                  )}
                 </div>
-                {showRenameForm && (
-                  <RenameRequestForm
-                    pending={myRenameRequest}
-                    onSubmit={onRequestRename}
-                    onDone={() => setShowRenameForm(false)}
-                  />
-                )}
-                {!showRenameForm && myRenameRequest && (
-                  <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
-                    Pending banker approval for {myRenameRequest.firstName}
-                    {myRenameRequest.lastName ? ` ${myRenameRequest.lastName}` : ""}.
-                  </div>
-                )}
-              </div>
+              )}
 
-              <div className="border-t border-dashed k-dialog-line pt-3 flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs k-dialog-sub">Need more chips? Ask the Banker for a top-up.</span>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-full border border-accent text-accent px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-accent hover:text-white flex-none"
-                    onClick={() => setShowBuyInForm((prev) => !prev)}
-                  >
-                    {showBuyInForm ? "Hide" : "Request more chips"}
-                  </button>
+              {(showBuyInForm || myBuyInRequest) && (
+                <div className="border-t border-dashed k-dialog-line pt-3 flex flex-col gap-2">
+                  {showBuyInForm ? (
+                    <ChipRequestForm
+                      pending={myBuyInRequest}
+                      onSubmit={onRequestBuyIn}
+                      onDone={() => setShowBuyInForm(false)}
+                    />
+                  ) : (
+                    myBuyInRequest && (
+                      <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
+                        Pending banker approval for ${myBuyInRequest.amount}
+                        {myBuyInRequest.note ? ` · "${myBuyInRequest.note}"` : ""}.
+                      </div>
+                    )
+                  )}
                 </div>
-                {showBuyInForm && (
-                  <ChipRequestForm
-                    pending={myBuyInRequest}
-                    onSubmit={onRequestBuyIn}
-                    onDone={() => setShowBuyInForm(false)}
-                  />
-                )}
-                {!showBuyInForm && myBuyInRequest && (
-                  <div className="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded px-3 py-2">
-                    Pending banker approval for ${myBuyInRequest.amount}
-                    {myBuyInRequest.note ? ` · "${myBuyInRequest.note}"` : ""}.
-                  </div>
-                )}
-              </div>
+              )}
             </>
           )}
         </div>

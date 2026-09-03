@@ -13,6 +13,18 @@ const BET_STEP = 1;
 // Player-requested, 2026-09-03: a one-tap way to reach a common amount
 // instead of typing it or walking the +/- stepper up one dollar at a time.
 const QUICK_BET_CHIPS = [5, 10, 25];
+// Same two constants ReactionLayer.tsx's own picker uses, for the same
+// anchor math -- breathing room between the panel and the trigger, and
+// between the panel and the screen edge.
+const QUICKBET_GAP_PX = 8;
+const QUICKBET_EDGE_PX = 8;
+
+interface QuickBetAnchor {
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+}
 
 export interface PlayerDockProps {
   turn: Turn;
@@ -59,14 +71,50 @@ export function PlayerDock({
   // Player-requested, 2026-09-03: collapsed behind a trigger rather than
   // sitting permanently in the row (the first version did that, and the dock
   // is already the tightest-budgeted row in the whole UI -- see the compact
-  // media query below). Wrapping ref covers the trigger AND the panel, not
-  // just the panel, the same way AppearanceMenu does it: a click ON the
-  // trigger must not count as "outside" or opening and closing race each
-  // other on the same tap.
+  // media query below).
+  //
+  // Portalled, same as ReactionLayer.tsx's own picker and for the same
+  // reason: it needs to open UPWARD (asked for directly -- a sideways panel
+  // was reported overlapping Bet/Blatt/Stand), and upward from this trigger
+  // lands in the same real estate .k-viewer-hud occupies (bottom: 100% of
+  // this same dock's own left edge). A non-portalled panel there is capped
+  // by .k-dock's own low z-index (25, deliberately, so
+  // .k-preround/.k-bank-banner/.k-bank-decision can always draw over the
+  // whole bar) and can never outrank a sibling sitting outside it -- see
+  // Seat.tsx's reactionAnchor comment, the identical fight, same fix.
+  // Two refs in useClickOutside, not one: the trigger's own wrapper AND the
+  // portalled panel, since a click landing inside the (now-elsewhere-in-the-
+  // DOM) panel is not "outside" either.
   const [quickBetOpen, setQuickBetOpen] = useState(false);
+  const [quickBetAnchor, setQuickBetAnchor] = useState<QuickBetAnchor | null>(null);
   const quickBetRef = useRef<HTMLSpanElement>(null);
+  const quickBetTriggerRef = useRef<HTMLButtonElement>(null);
+  const quickBetPanelRef = useRef<HTMLDivElement>(null);
   useEscapeKey(() => setQuickBetOpen(false), quickBetOpen);
-  useClickOutside([quickBetRef], () => setQuickBetOpen(false), quickBetOpen);
+  useClickOutside([quickBetRef, quickBetPanelRef], () => setQuickBetOpen(false), quickBetOpen);
+
+  const toggleQuickBet = () => {
+    if (quickBetOpen) {
+      setQuickBetOpen(false);
+      return;
+    }
+    const rect = quickBetTriggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      // Same up-vs-down, left-vs-right heuristic as ReactionLayer.tsx's own
+      // picker: whichever side actually has the room, measured against the
+      // real viewport rather than assumed from where the dock usually sits
+      // -- correct even once the player has dragged the bar somewhere else.
+      const above = rect.top - QUICKBET_GAP_PX - QUICKBET_EDGE_PX;
+      const below = window.innerHeight - rect.bottom - QUICKBET_GAP_PX - QUICKBET_EDGE_PX;
+      const up = above >= below;
+      const alignRight = rect.right - 160 >= QUICKBET_EDGE_PX;
+      setQuickBetAnchor({
+        ...(up ? { bottom: window.innerHeight - rect.top + QUICKBET_GAP_PX } : { top: rect.bottom + QUICKBET_GAP_PX }),
+        ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
+      });
+    }
+    setQuickBetOpen(true);
+  };
 
   const hasBet = (turn.bet ?? 0) > 0;
   const drawLabel = hasBet ? "Hit" : "Blatt";
@@ -191,26 +239,21 @@ export function PlayerDock({
         </button>
       </div>
 
-      {/* Beside .k-betbox, not at the end of the row -- asked for directly
-          ("next to the wager amount selector"). A first pass put it here,
-          then moved it to the row's far end after the panel was reported
-          going MISSING when opened: it renders upward (bottom: 100%), and
-          this end of the dock sits almost directly under .k-viewer-hud
-          (bottom: 100% of this SAME dock's own left edge), which wins the
-          stacking fight -- .k-dock carries z-index: 25 specifically so
-          .k-preround/.k-bank-banner/.k-bank-decision (42/46/48) can always
-          draw over the whole bar, and nothing inside .k-dock's own stacking
-          context can out-rank an outside sibling sitting at 45 no matter its
-          own LOCAL z-index. Moving the trigger was treating the symptom.
-          The actual fix is .k-quickbets-panel's own: it opens SIDEWAYS
-          (left: 100%), not upward, so it never shares a coordinate with
-          .k-viewer-hud in the first place and the stacking question never
-          comes up. */}
+      {/* Beside .k-betbox, next to the wager amount selector, asked for
+          directly. Two earlier passes both patched the SYMPTOM instead of
+          the cause: one moved the trigger to the row's far end after the
+          panel opened upward into .k-viewer-hud and lost that stacking
+          fight; the other kept the trigger here but opened the panel
+          SIDEWAYS instead, which cleared .k-viewer-hud but was then
+          reported overlapping Bet/Blatt/Stand. Both symptoms trace to the
+          same cause -- see toggleQuickBet's comment -- and the actual fix
+          is the portal below. */}
       <span ref={quickBetRef} className="relative inline-flex k-quickbets">
         <button
+          ref={quickBetTriggerRef}
           type="button"
           className="k-chip-btn"
-          onClick={() => setQuickBetOpen((v) => !v)}
+          onClick={toggleQuickBet}
           aria-expanded={quickBetOpen}
           aria-haspopup="menu"
           title="Quick-bet amounts"
@@ -218,21 +261,34 @@ export function PlayerDock({
         >
           <Icon name="coins" size={14} />
         </button>
-        {quickBetOpen && (
-          <div className="k-quickbets-panel" role="menu">
-            {QUICK_BET_CHIPS.map((amount) => (
-              <button
-                key={amount}
-                type="button"
-                role="menuitem"
-                className="k-btn ghost sm"
-                onClick={() => setQuickBet(amount)}
-                aria-label={`Set bet to $${amount}`}
-              >
-                ${amount}
-              </button>
-            ))}
-          </div>
+        {quickBetOpen && quickBetAnchor && (
+          <StageOverlay>
+            <div
+              ref={quickBetPanelRef}
+              className="k-quickbets-panel"
+              role="menu"
+              style={{
+                position: "fixed",
+                top: quickBetAnchor.top,
+                bottom: quickBetAnchor.bottom,
+                left: quickBetAnchor.left,
+                right: quickBetAnchor.right,
+              }}
+            >
+              {QUICK_BET_CHIPS.map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  role="menuitem"
+                  className="k-btn ghost sm"
+                  onClick={() => setQuickBet(amount)}
+                  aria-label={`Set bet to $${amount}`}
+                >
+                  ${amount}
+                </button>
+              ))}
+            </div>
+          </StageOverlay>
         )}
       </span>
 

@@ -42,16 +42,34 @@ describe("RoomInfoDrawer", () => {
     expect(screen.getByText("Share via WhatsApp")).toBeInTheDocument();
   });
 
-  it("shows rename/buy-in self-service requests for a non-admin player", () => {
+  // The generic toggle buttons ("Request name change" / "Request more
+  // chips") are gone -- ChromeMenu has its own dedicated entries for both
+  // now, which open this same drawer with `focus` set. A second,
+  // generically-labelled way to reach the identical form was reported as
+  // "too nested to work out" once already; these pin that it stays gone
+  // rather than creeping back the next time this file is touched.
+  it("shows neither self-service form nor its toggle without focus, for a non-admin player with nothing pending", () => {
     renderDrawer({ isAdmin: false });
-    expect(screen.getByText("Request name change")).toBeInTheDocument();
-    expect(screen.getByText("Request more chips")).toBeInTheDocument();
-  });
-
-  it("hides rename/buy-in requests for the banker (they approve, not request)", () => {
-    renderDrawer({ isAdmin: true });
     expect(screen.queryByText("Request name change")).not.toBeInTheDocument();
     expect(screen.queryByText("Request more chips")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Amount/)).not.toBeInTheDocument();
+  });
+
+  it("opens straight into the rename form when focus asks for it, no button in between", () => {
+    renderDrawer({ isAdmin: false, focus: "rename" });
+    expect(screen.getByLabelText(/First name/)).toBeInTheDocument();
+  });
+
+  it("opens straight into the chip-request form when focus asks for it, no button in between", () => {
+    renderDrawer({ isAdmin: false, focus: "chips" });
+    expect(screen.getByLabelText(/Amount/)).toBeInTheDocument();
+  });
+
+  it("hides rename/buy-in requests for the banker (they approve, not request) even with focus set", () => {
+    renderDrawer({ isAdmin: true, focus: "rename" });
+    expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Amount/)).not.toBeInTheDocument();
   });
 
   // The banker used to be shown the room's actual password here, with a
@@ -76,16 +94,14 @@ describe("RoomInfoDrawer", () => {
   });
 
   it("submits a rename request with the entered name", () => {
-    const { onRequestRename } = renderDrawer();
-    fireEvent.click(screen.getByText("Request name change"));
+    const { onRequestRename } = renderDrawer({ focus: "rename" });
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: "Yanky" } });
     fireEvent.click(screen.getByText("Submit rename request"));
     expect(onRequestRename).toHaveBeenCalledWith("Yanky", undefined);
   });
 
   it("submits a buy-in request with the entered amount", () => {
-    const { onRequestBuyIn } = renderDrawer();
-    fireEvent.click(screen.getByText("Request more chips"));
+    const { onRequestBuyIn } = renderDrawer({ focus: "chips" });
     fireEvent.change(screen.getByLabelText(/Amount/), { target: { value: "50" } });
     fireEvent.click(screen.getByText("Submit chip request"));
     expect(onRequestBuyIn).toHaveBeenCalledWith(50, undefined);

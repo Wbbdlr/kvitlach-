@@ -2113,6 +2113,15 @@ body:has(.k-fit) {
   height: 16px;
   touch-action: none;
   border-radius: 8px;
+  /* Explicit, not auto -- reported as "hard to grab, the left one especially,
+     covered by another field". Measured with elementFromPoint across a grid
+     of this element's own box, not assumed: 3 of 5 sample points (including
+     the bottom-right corner, exactly where .k-betbox starts) returned
+     .k-betbox or bare .k-dock instead of the grip, even though this element
+     is later in the DOM and *should* win ties on that alone. DOM order is a
+     tiebreaker only among equal (auto) z-index -- an explicit one removes
+     the tie rather than trusting it. */
+  z-index: 2;
 }
 .k-dock-grip.move {
   left: 2px;
@@ -2129,6 +2138,27 @@ body:has(.k-fit) {
   background:
     linear-gradient(135deg, transparent 0 44%, rgba(230, 164, 75, 0.5) 44% 54%, transparent 54% 100%),
     linear-gradient(135deg, transparent 0 64%, rgba(230, 164, 75, 0.36) 64% 74%, transparent 74% 100%);
+}
+/* Same hit-slop technique .k-stepbtn already uses two screens over for the
+   identical reason (a visually-small control that has to survive a real
+   finger, not a mouse pointer) -- a pseudo-element enlarges what actually
+   catches the tap without growing what's drawn. Biased toward the DOCK's
+   own empty padding (up/outward) rather than toward the bet field the grip
+   already sits closest to, so the extra hit area never starts stealing
+   taps meant for MAX or the stepper next to it. */
+.k-dock-grip::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+}
+.k-dock-grip.move::before {
+  left: -6px;
+  right: -4px;
+}
+.k-dock-grip.size::before {
+  left: -4px;
+  right: -6px;
 }
 .k-dock-reset {
   position: absolute;
@@ -2348,8 +2378,30 @@ body:has(.k-fit) {
    exactly that way. `:has()` targets only that specific case (already used
    for the same kind of structural switch by AppearanceMenu's wrapper);
    every other state, including a narrow between-rounds panel, still
-   centers as before. */
-.k-controls:has(.k-dock-row > .k-chrome-react:only-child) {
+   centers as before.
+
+   Fixed on .k-dock-stack, not on .k-controls (a first pass did it there,
+   and it was wrong): .k-controls has exactly one flex child, the stack
+   itself, and re-aligning THAT child moves the stack's own box -- taking
+   .k-viewer-hud with it, since the readout is `left: 0` relative to
+   whichever box the stack happens to be, not to the viewport. With no
+   dock, the stack's max-content width is just the reaction button's
+   (viewer-hud is position:absolute, so it never counts toward that width),
+   so flex-end on .k-controls put a ~40px-wide stack flush against the
+   viewport's right edge -- and the 280px-wide readout, still `left: 0` of
+   THAT, ran straight off the right side of the screen. Reported as the
+   readout "reverting to a space off screen" the moment it wasn't the
+   viewer's turn, and back to normal the moment it was (a dock reappears,
+   the :has() stops matching, .k-controls was never touched).
+   width: 100% here is what actually fixes it: the stack spans the same box
+   .k-controls always did, so the readout's `left: 0` still means the
+   viewport's own left edge, exactly as it does in every other state --
+   only the ROW's own alignment inside that now-full-width stack needs to
+   move, which costs .k-viewer-hud nothing because it was never centered by
+   flex in the first place (position: absolute takes it out of that flow
+   entirely). */
+.k-controls:has(.k-dock-row > .k-chrome-react:only-child) .k-dock-stack {
+  width: 100%;
   justify-content: flex-end;
 }
 /* The tray inherits the band's pointer-events: none -- only the real controls
@@ -2452,43 +2504,39 @@ body:has(.k-fit) {
   opacity: 0.35;
   cursor: not-allowed;
 }
-/* The trigger's own wrapper is the popover's positioned ancestor -- deliberately
-   NOT portalled through StageOverlay like the BANK! confirm dialog above.
-   That dialog is position:fixed, which escapes to the viewport and needs the
-   portal to dodge .k-dock's own resize scale transform becoming its
-   containing block. This panel is position:absolute instead, anchored to
-   .k-quickbets right here in the same (possibly scaled) tree -- so it scales
-   and tracks WITH the dock exactly like every other in-flow control in it,
-   under any resize, with no measurement or portal needed.
+/* Portalled through StageOverlay (PlayerDock.tsx's toggleQuickBet), same as
+   the BANK! confirm dialog above and for the same reason: an ancestor's
+   stacking context. Two earlier, non-portalled designs both patched a
+   SYMPTOM of that instead of the cause:
+     - Opening upward from beside .k-betbox landed on the exact spot
+       .k-viewer-hud already occupies (bottom: 100% of this same dock's own
+       left edge) and LOST that stacking fight -- .k-dock carries
+       z-index: 25, deliberately low so .k-preround/.k-bank-banner/
+       .k-bank-decision can always draw over the whole bar, and nothing
+       inside .k-dock's own stacking context can outrank an outside sibling
+       sitting at 45 no matter how high its own LOCAL z-index goes.
+       Reported as the $5 chip going missing.
+     - Moving the trigger and opening SIDEWAYS instead dodged .k-viewer-hud,
+       but then reported overlapping Bet/Blatt/Stand -- which was never
+       going to be fixable by picking a direction, since the panel still had
+       nothing beating those siblings on anything but DOM order.
+   Portalling removes the ceiling outright: top/bottom/left/right come from
+   quickBetAnchor (real viewport px, the same up-vs-down / left-vs-right
+   measurement ReactionLayer.tsx's own picker already does), and z-index: 60
+   here is compared with NOTHING standing between it and the elements it
+   actually needs to clear.
 
-   Opens SIDEWAYS (left: 100%), not upward -- the trigger sits beside
-   .k-betbox now, near the dock's own left edge, which is almost exactly
-   where .k-viewer-hud (bottom: 100% of this same dock's left edge) already
-   sits. An upward-opening panel shared that coordinate and LOST the
-   stacking fight: .k-dock carries z-index: 25, deliberately low so
-   .k-preround/.k-bank-banner/.k-bank-decision can always draw over the
-   whole bar, and nothing inside .k-dock's own stacking context can outrank
-   an outside sibling sitting at 45 no matter how high its own LOCAL
-   z-index goes -- reported as the $5 chip going missing. Opening sideways
-   instead means this panel never shares a coordinate with .k-viewer-hud, so
-   the stacking question never comes up; it only has to beat its OWN dock
-   siblings (the bet field, Bet/Blatt/Stand), which carry no z-index of
-   their own.
-
-   NOT flex-wrap: wrap, on an absolutely-positioned flex container with no
-   explicit width -- tried first, and rendered (not assumed) it collapsed
-   the shrink-to-fit width to the single WIDEST child ($25's ~45px) instead
-   of the three-in-a-row width the panel actually needs, stacking every
-   chip in its own row in a tall, narrow sliver. A wrapping flex container
-   sizes its auto width off what fitting-in-fewer-rows needs, and with
-   wrapping ALLOWED that is one item, not all three. overflow-x is the
-   fallback for the width max-width alone cannot enforce without wrap --
-   same "a row that scrolls beats one that overlaps" call already made for
-   .k-dock-row > .k-dock in the compact block below. */
+   NOT flex-wrap: wrap, on a flex container with no explicit width -- tried
+   first, and rendered (not assumed) it collapsed the shrink-to-fit width to
+   the single WIDEST child ($25's ~45px) instead of the three-in-a-row width
+   the panel actually needs, stacking every chip in its own row in a tall,
+   narrow sliver. A wrapping flex container sizes its auto width off what
+   fitting-in-fewer-rows needs, and with wrapping ALLOWED that is one item,
+   not all three. overflow-x is the fallback for the width max-width alone
+   cannot enforce without wrap -- same "a row that scrolls beats one that
+   overlaps" call already made for .k-dock-row > .k-dock in the compact
+   block below. */
 .k-quickbets-panel {
-  position: absolute;
-  bottom: 0;
-  left: calc(100% + 8px);
   z-index: 60; /* matches .k-appearance-panel / .k-chrome-menu, the other popovers this dock-level chrome can open */
   display: flex;
   gap: 6px;

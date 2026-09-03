@@ -1056,57 +1056,17 @@ export default function App() {
 
 
 
-      <SiteFooter>
-        <div className="flex items-center gap-3">
-          {/* The raw "WS ok/wait/down" pill used to live here, permanently
-              visible even when perfectly healthy -- pure engineering jargon
-              on the public lobby, and it didn't gate Join/Create or drive
-              any inline error, so it wasn't load-bearing. Removed rather
-              than kept as always-on chrome; TableRoot.tsx's own connection
-              tag (`wsStatus !== "connected"`) is the pattern worth
-              following if this needs to come back -- silent while healthy,
-              a plain-English warning only when something's actually
-              wrong. */}
-          <span className="text-[11px] uppercase tracking-wide text-slate-500">Sound</span>
-          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              checked={musicEnabled}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setMusicEnabled(next);
-                setUserInteracted(true);
-                audioManager.noteInteraction();
-              }}
-            />
-            <span className="text-[11px] font-semibold text-ink">Music</span>
-          </label>
-          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              checked={sfxEnabled}
-              onChange={(e) => {
-                const next = e.target.checked;
-                setSfxEnabled(next);
-                setUserInteracted(true);
-                audioManager.noteInteraction();
-              }}
-            />
-            <span className="text-[11px] font-semibold text-ink">SFX</span>
-          </label>
-          <label className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 shadow-sm">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              checked={motionEnabled}
-              onChange={(e) => setMotionEnabled(e.target.checked)}
-            />
-            <span className="text-[11px] font-semibold text-ink">Motion</span>
-          </label>
-        </div>
-      </SiteFooter>
+      {/* Sound/Music/SFX/Motion toggles used to render here too -- removed
+          per direct request: the table already has its own copies of all
+          four (ChromeMenu/AppearanceMenu, wired to this same state and
+          these same onToggle* callbacks passed to TableRoot below), and a
+          visitor who hasn't joined a table yet has nothing playing for
+          these to affect. The STATE stays -- musicEnabled/sfxEnabled/
+          motionEnabled are still what TableRoot's own toggles read and
+          write, and still what the audioManager/motion-off effects above
+          react to -- only this second, redundant set of lobby-page
+          controls is gone. */}
+      <SiteFooter />
 
 
       </div>

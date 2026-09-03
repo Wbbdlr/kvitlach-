@@ -165,6 +165,19 @@ export default function About() {
             </a>{" "}
             (free, no attribution required).
           </li>
+          <li>
+            {/* The other four entries here are attributions -- crediting
+                someone else's work. This one is the opposite: the Futch horn
+                and Eleveroon fanfare are OUR OWN original recordings, not
+                sourced from anywhere, which is exactly why they had no line
+                here at all -- and why that read as unaccounted-for rather
+                than as "these are ours". Full ownership language lives on
+                the Disclaimer page; this is the pointer to it from where
+                someone curious about the sounds actually looks first. */}
+            The Futch (bust) horn and Eleveroon fanfare are original recordings made for Kvitlach, not sourced
+            elsewhere. See the <a href="/disclaimer" className="text-amber-700 hover:underline">Disclaimer</a> page
+            for the full ownership notice.
+          </li>
         </ul>
       </section>
 
