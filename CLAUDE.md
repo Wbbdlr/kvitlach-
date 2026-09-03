@@ -71,6 +71,15 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   source — Node kills the process on an unhandled rejection by default, and one
   dropped socket's failed DB write once took down every room on the server.
 - **`useEscapeKey.ts`** — new dialogs use it, not a bespoke `keydown`.
+- **Every audio asset's source and license is already recorded** — `audio.ts`'s
+  own comments (natural21: Mixkit, free/no attribution) and `About.tsx`'s
+  Credits section (Kenney CC0 casino pack: deal/win/shuffle/chip/lose; Micha
+  Gamerman: `bgm.m4a`). **`futch.mp3` and `eleveroon.mp3` are the two
+  exceptions** — original recordings made for this game, no external source,
+  which is why they carry no Credits entry and are the only sounds named in
+  Disclaimer.tsx's Ownership section. Don't re-derive this from git log again;
+  it took one. Extend the proprietary claim to another asset only once its own
+  provenance is actually confirmed, the same way this one was.
 
 ## Local development
 
@@ -108,30 +117,71 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
    `meta?.playerId` in `ws-server.ts`. Pinned by `ws-auth.test.ts`.
 2. **Never send the deck to clients.** `sanitizeRound` strips it for
    `deckRemaining`. Knowing the shoe order breaks the game.
-3. **Never reveal concealed totals or hole cards early.** `totalDisplay` /
-   `sanitizeRound` decide who sees what; don't route around them.
-4. Banker-only actions go through `isAdmin` checks in `store.ts`.
-5. **For money, use `normalizeMoney`** (`store.ts`) — whole chips, bounded by
+3. **Never reveal concealed totals or hole cards early.** `totalDisplay` (the
+   frontend's rendering rule) and `sanitizeRound`/`isCardHidden` (the
+   server's own mirror of that same rule, in `ws-server.ts`) have to agree,
+   or one is decorative. Until a security pass, only the frontend enforced
+   this — `sanitizeRound` stripped the deck and nothing else, so the
+   banker's hole card and a standing player's hand were in every
+   `round:state` broadcast to every socket in the room, in full, readable
+   straight out of devtools by anyone already seated. `broadcastRound` is
+   now PER-RECIPIENT (`isCardHidden` takes a `viewerId`); don't go back to
+   one shared payload for a round that isn't `terminate`. Pinned by
+   `concealed-cards.test.ts`.
+4. **`room:get` and `round:get` require the caller to already belong to the
+   room being asked about** (`meta.roomId === roomId`, the same
+   server-set-only field every other handler already trusts) — a socket that
+   had never sent `room:create`/`join`/`resume`/`watch` used to get the
+   room's full state back for the price of knowing its id, `passwordHash`
+   included, and a round's full state (unredacted) for the price of knowing
+   its `roundId`. Pinned by `room-round-authorization.test.ts`.
+5. Banker-only actions go through `isAdmin` checks in `store.ts`. The reverse
+   also holds: **`applyBet` rejects a bet from the admin's own turn** (the
+   banker never wagers — see the rules above). Found the day the bot banker
+   bug was fixed: the first tests for that fix passed with the fix reverted,
+   because the bot's stray wager sometimes SUCCEEDED and the round looked
+   normal. Before this guard a client that sent `bet` on the admin's turn was
+   unopposed, and `calculateEndState` then overwrites `bet` with the round's
+   net, erasing the evidence once the round resolved. Pinned by
+   `money-validation.test.ts`.
+6. **For money, use `normalizeMoney`** (`store.ts`) — whole chips, bounded by
    `MAX_MONEY`, `undefined` on anything else. `Number.isFinite` alone passes
    `10.5` (wallets are floats forever after) and `1e308` (turns `Infinity` on
    the first addition). Found because `createRoom` validated `bankerBankroll`
    but never validated `buyIn`, which becomes every joining player's starting
-   wallet.
-6. Bots must never authenticate as actors (`!actor.isBot` guards).
-7. **`room:resume` is never gated, in any access mode.** Lockdown closes the
+   wallet. `adjustPlayerWallet` was the one money path that skipped this (it
+   moves a wallet both ways, so it normalizes the magnitude and reapplies the
+   banker's own sign rather than calling `normalizeMoney` directly).
+7. Bots must never authenticate as actors (`!actor.isBot` guards).
+8. **`room:resume` is never gated, in any access mode.** Lockdown closes the
    door; it does not eject people mid-hand.
-8. **Operator-authored text is stored raw and rendered as text.** Never escape
+9. **Operator-authored text is stored raw and rendered as text.** Never escape
    on the way in and never assign it as HTML on the way out (`about.ts`).
-
-**Open, not yet enforced — for the next security pass:** `applyBet` has no
-`isAdmin` guard. The banker never wagers (see the rules above), but nothing at
-the store rejects a bet *from* the banker; only the callers happen not to send
-one. Found the day the bot banker bug was fixed: the first tests for that fix
-passed with the fix reverted, because the bot's stray wager sometimes SUCCEEDED
-and the round looked normal. A client that sends `bet` on the admin's turn is
-currently unopposed, and `calculateEndState` then overwrites that `bet` with the
-round's net, so the evidence is gone by the time anyone reads the round back.
-Reject it at the store; do not rely on bot logic avoiding it.
+10. **A room's password is never stored or compared as plain text.**
+    `RoomState.passwordHash` is a scrypt hash (`admin-auth.ts`'s own
+    `hashPassword`/`verifyPassword`, reused rather than reinvented) — the
+    plaintext lived in every Postgres backup and, unredacted, in every
+    `room:state` broadcast to every player. `RoomInfoDrawer` can no longer
+    show the banker their own password back (a one-way hash can't be
+    reversed); it only shows that one is set. Pinned by
+    `room-password-hashing.test.ts`.
+11. **`room:create`/`room:create-practice` carry their own per-IP throttle**
+    (`ws-server.ts`), independent of the generic per-socket message-rate
+    limiter — that one alone let a single connection exhaust `limits.ts`'s
+    `maxRooms` in under a minute. A windowed count (5 per IP per 60s), not a
+    flat cooldown after one success — see the constant's own comment for why
+    a hard cooldown was tried and rejected (more than one banker can share a
+    home NAT on a real night). Pinned by `room-create-throttle.test.ts`.
+12. **Per-IP checks (`client-ip.ts`'s `resolveClientIp`) key off
+    `CF-Connecting-IP`, not `X-Forwarded-For`.** Cloudflare's edge sets
+    `CF-Connecting-IP` itself and overwrites it on every request; it
+    APPENDS to `X-Forwarded-For` rather than replacing it, so reading that
+    header's first entry (the old code, in both `http-server.ts` and
+    `ws-server.ts`) returned whatever a client had put there — a working
+    spoof of the WS connection cap and the admin-login brute-force throttle
+    alike. `X-Forwarded-For` is still the fallback for a path that bypasses
+    Cloudflare (local dev, a direct Tailscale connection). Pinned by
+    `client-ip.test.ts`.
 
 ## Development rules
 

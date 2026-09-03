@@ -17,3 +17,10 @@ e2e/blob-report/
 # backend/vitest.config.ts are the durable artefact; the HTML report is just a
 # local view of one run and churns on every invocation.
 **/coverage/
+# Vitest's own last-run cache (which tests failed last time, for --changed).
+**/test-results/
+# Python bytecode cache from tools/card-mark.py.
+**/__pycache__/
+# deploy/verify-setup-admin.sh's own throwaway tree (see the deploy skill) --
+# scratch output from a dry run against a stub docker, never meant to be kept.
+/envtest/

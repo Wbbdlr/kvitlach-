@@ -41,6 +41,23 @@ export default function Disclaimer() {
       </section>
 
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
+        <h2 className="text-lg font-semibold text-amber-700">Ownership</h2>
+        <ul className="list-disc list-inside space-y-1">
+          <li>Kvitlach&trade; and the Kvitlach name, logo, and site design are &copy; 2026 SWS. All rights reserved.</li>
+          {/* Scoped to exactly the two confirmed original assets, not "all
+              game sounds" -- several of the others (card/chip taps, shuffle)
+              are stock effects, not original work, and claiming those here
+              would be a false statement, not a cautious one. Extend this
+              list only once another asset's own provenance is confirmed. */}
+          <li>
+            The Futch (bust) horn and the Eleveroon fanfare are original sound recordings created for this
+            platform and may not be copied, redistributed, or reused elsewhere without permission.
+          </li>
+          <li>Use of the Kvitlach name to refer to this platform is fine. Using it for anything else needs permission first.</li>
+        </ul>
+      </section>
+
+      <section className="space-y-2 border-l-2 border-amber-200 pl-4">
         <h2 className="text-lg font-semibold text-amber-700">Still in development</h2>
         <ul className="list-disc list-inside space-y-1">
           <li>This app is still in active development. Features may change, and outages or resets may occur.</li>

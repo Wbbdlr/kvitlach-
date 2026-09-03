@@ -33,8 +33,14 @@ export function useFullscreen() {
         // Landscape lock is opportunistic -- unsupported on many browsers and
         // only meaningful once actually in fullscreen, so failures here are
         // expected and silently ignored rather than surfaced as an error.
-        const orientation = screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
-        orientation?.lock?.("landscape").catch(() => {});
+        // Delayed the same way and for the same reason as immersive.ts's
+        // LOCK_DELAY_MS: firing it in the same tick fullscreen entry resolves
+        // is suspected to leave Android Chrome's own "exit full screen"
+        // banner stuck on screen instead of clearing itself.
+        setTimeout(() => {
+          const orientation = screen.orientation as unknown as { lock?: (o: string) => Promise<void> };
+          orientation?.lock?.("landscape").catch(() => {});
+        }, 120);
       }
     } catch {
       /* user gesture requirement not met, or the browser denied it -- nothing to do */

@@ -38,6 +38,7 @@ export const ERROR_COPY: Record<string, string> = {
   practice_capacity:
     "All practice tables are busy right now. Try again in a few minutes.",
   rate_limited: "Too many requests. Please slow down.",
+  room_create_throttled: "You just created a table. Give it a moment before starting another.",
 
   // Getting to a table.
   room_not_found: "Room not found. Check the room ID and try again.",

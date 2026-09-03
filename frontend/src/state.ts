@@ -523,7 +523,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // remember it at each call site. Auto-dismissing an ID already gone
   // (manually dismissed, or aged out of the 5-notification cap elsewhere)
   // is a harmless no-op -- the filter just doesn't match anything.
-  const NOTIFICATION_AUTO_DISMISS_MS = 18000;
+  // Was 18s, unmeasured -- reported as staying up too long, and with up to
+  // 5 stacked (the slice(-5) cap below) a slow-draining stack reads as
+  // clutter rather than history. 8s: long enough to read one outcome
+  // sentence, short enough that the stack actually clears between hands.
+  const NOTIFICATION_AUTO_DISMISS_MS = 8000;
   const makeNotification = (message: string, tone: NotificationTone): UINotification => {
     const notification: UINotification = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -612,6 +616,14 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (nextTurn.busted) {
         return makeNotification(`You futched with ${bustedTotal ?? "a bust"} -- every hand still live wins.`, "error");
       }
+      // A natural 21 beats the whole table outright, the same instant a bust
+      // futches the bank -- it deserves the same kind of stand-out wording,
+      // not the plain "stood on N" an ordinary showdown win gets. Same
+      // total === 21 check selectors.ts's "BANK 21!" badge and App.tsx's
+      // natural21 sound already use to tell this apart.
+      if (nextTurn.state === "won" && total === 21) {
+        return makeNotification("You hit 21 -- everyone still in the hand loses!", "success");
+      }
       return nextTurn.state === "won"
         ? makeNotification(`You stood on ${total ?? "--"} and took the round.`, "success")
         : makeNotification(`You stood on ${total ?? "--"} and finished down on the round.`, "info");
@@ -697,6 +709,12 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       );
     }
     if (banker.state === "won") {
+      // Same natural-21 special case as outcomeNotification's own banker
+      // branch above (see its comment) -- bad news for the table this time,
+      // hence "error" rather than the plain "info" an ordinary bank win gets.
+      if (total === 21) {
+        return makeNotification("Banker has 21 -- everyone still in the hand loses.", "error");
+      }
       return makeNotification(`The bank stood on ${total ?? "--"} and took the round.`, "info");
     }
     return makeNotification(`The bank stood on ${total ?? "--"} and finished down on the round.`, "info");

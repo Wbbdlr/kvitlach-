@@ -47,9 +47,9 @@ afterAll(() => {
   (server as unknown as { wss: { close: () => void } }).wss.close();
 });
 
-function connect(): Promise<WebSocket> {
+function connect(ip?: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(URL);
+    const ws = new WebSocket(URL, ip ? { headers: { "x-forwarded-for": ip } } : undefined);
     const timer = setTimeout(() => reject(new Error("connect timeout")), 10_000);
     ws.once("open", () => {
       clearTimeout(timer);
@@ -209,7 +209,12 @@ describe("WS load -- room bookkeeping under connection churn", () => {
     const churn = 12;
     const sockets: WebSocket[] = [];
     for (let i = 0; i < churn; i += 1) {
-      const ws = await connect();
+      // A distinct synthetic IP per room -- unrelated to what this test is
+      // actually about (room bookkeeping, not connection limits), but
+      // room:create now carries its own per-IP throttle (see ws-server.ts),
+      // and 12 in a loop from one literal address would trip it well before
+      // this test's real assertion.
+      const ws = await connect(`10.88.${i}.1`);
       await send(ws, "room:create", { firstName: `Churn${i}` });
       sockets.push(ws);
     }

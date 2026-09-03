@@ -7,7 +7,27 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=kvitlach
-      - POSTGRES_PASSWORD=kvitlach
+      # Was a hardcoded "kvitlach" -- weak and, worse, identical to the
+      # username, found in the same security pass as the room:get/round:get
+      # and concealed-cards fixes. Low risk in itself (this port is
+      # 127.0.0.1-only, three lines down), but it is the credential guarding
+      # every room's data, including the password hashes added this same
+      # pass, so it is worth a real value.
+      #
+      # Configurable now, but NOT pre-rotated here: POSTGRES_PASSWORD only
+      # takes effect on a container's FIRST init against an EMPTY data
+      # volume (Postgres's own behaviour, not this compose file's) -- an
+      # already-initialized deployment (this one) ignores a changed value
+      # here entirely and keeps expecting the OLD password, so changing only
+      # this line would silently break DATABASE_URL below on the next
+      # `docker compose up`. Rotating the live password needs one extra
+      # step, run against the CURRENT password before switching over:
+      #   docker compose exec db psql -U kvitlach -c "ALTER USER kvitlach WITH PASSWORD '<new>';"
+      # then set POSTGRES_PASSWORD=<new> in deploy/.env (which DATABASE_URL
+      # below reads too) and redeploy. Never `docker compose down -v` to
+      # "fix" a mismatch here -- that destroys the volume this is trying to
+      # protect.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-kvitlach}
       - POSTGRES_DB=kvitlach
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -26,7 +46,13 @@ services:
     environment:
       - PORT=25000
       - WS_PORT=25001
-      - DATABASE_URL=postgres://kvitlach:kvitlach@db:5432/kvitlach
+      # Reads the SAME POSTGRES_PASSWORD as the db service above -- one
+      # variable, so the two can never drift out of sync with each other.
+      # If the value ever contains a literal `$`, this breaks the exact way
+      # ADMIN_PASSWORD_HASH already taught this file to watch for (see
+      # admin-auth.ts's own comment): Compose reads `$x` as an interpolation
+      # and silently expands it to nothing. Pick a password without one.
+      - DATABASE_URL=postgres://kvitlach:${POSTGRES_PASSWORD:-kvitlach}@db:5432/kvitlach
       # Boot DEFAULTS only. Whatever was last set from /admin is stored in
       # Postgres and wins over these on startup -- deliberately, so a lockdown
       # flipped because the box was struggling is not undone by the restart

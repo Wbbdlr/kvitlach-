@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Turn } from "../types";
 import { Icon } from "./icons";
-import { useScaleGrip } from "./draggablePanel";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
 import { useDialogFocus } from "../useDialogFocus";
+import { useClickOutside } from "./clickOutside";
 
 const DEFAULT_BET = 5;
 const BET_STEP = 1;
+// Player-requested, 2026-09-03: a one-tap way to reach a common amount
+// instead of typing it or walking the +/- stepper up one dollar at a time.
+const QUICK_BET_CHIPS = [5, 10, 25];
 
 export interface PlayerDockProps {
   turn: Turn;
@@ -47,6 +50,18 @@ export function PlayerDock({
   const [bankConfirmOpen, setBankConfirmOpen] = useState(false);
   useEscapeKey(() => setBankConfirmOpen(false), bankConfirmOpen);
   const dialogRef = useDialogFocus<HTMLDivElement>(bankConfirmOpen);
+
+  // Player-requested, 2026-09-03: collapsed behind a trigger rather than
+  // sitting permanently in the row (the first version did that, and the dock
+  // is already the tightest-budgeted row in the whole UI -- see the compact
+  // media query below). Wrapping ref covers the trigger AND the panel, not
+  // just the panel, the same way AppearanceMenu does it: a click ON the
+  // trigger must not count as "outside" or opening and closing race each
+  // other on the same tap.
+  const [quickBetOpen, setQuickBetOpen] = useState(false);
+  const quickBetRef = useRef<HTMLSpanElement>(null);
+  useEscapeKey(() => setQuickBetOpen(false), quickBetOpen);
+  useClickOutside([quickBetRef], () => setQuickBetOpen(false), quickBetOpen);
 
   const hasBet = (turn.bet ?? 0) > 0;
   const drawLabel = hasBet ? "Hit" : "Blatt";
@@ -89,6 +104,18 @@ export function PlayerDock({
     setBetError(undefined);
   };
 
+  // Sets the field outright, same as MAX -- not additive, so tapping $10
+  // after $5 lands on $10, not $15. Insufficient-funds validation still
+  // happens where it always has, on the Bet click itself; this is a shortcut
+  // for typing the number, not a different path around it. Closes the panel
+  // on selection -- it's a pick, not a settings toggle a player might want
+  // to leave open.
+  const setQuickBet = (amount: number) => {
+    setBetAmount(String(amount));
+    setBetError(undefined);
+    setQuickBetOpen(false);
+  };
+
   const handleBet = () => {
     const amount = Math.floor(Number(betAmount) || 0);
     if (amount < 1) {
@@ -117,24 +144,16 @@ export function PlayerDock({
     setBetError(undefined);
   };
 
-  // 0.7 to 1.25 rather than this file's default 0.75-1.8. The dock is a row
-  // that already only just fits one line on a 640px phone (index.css's compact
-  // block is a measured 428 of 433 available), so growth is what has to be
-  // bounded tightly here -- and shrinking is what was actually asked for.
-  const { scale: dockScale, gripProps: dockGripProps, reset: resetDockScale, scaled: dockScaled } = useScaleGrip(
-    "dock",
-    { min: 0.7, max: 1.25 }
-  );
-
+  // Neither the grips nor the scale live here any more. They sit on the dock
+  // ROW in TableRoot, one level up, because this is only one of three things
+  // that render as a .k-dock -- the abandoned-banker notice and the
+  // between-rounds panel are the others, and a size the player set on their
+  // betting controls that snapped back to full width the moment the round
+  // ended was reported as exactly that. The BANK! confirmation below is still
+  // portalled through StageOverlay: the row's scale transform makes it the
+  // containing block for anything position:fixed underneath it.
   return (
-    <div
-      className="k-dock"
-      // Scaled where it sits, never moved -- see useScaleGrip. A transform
-      // here would normally trap any position:fixed descendant, which is
-      // exactly what the BANK! confirmation used to be; it is portalled out
-      // through StageOverlay below for that reason.
-      style={dockScale === 1 ? undefined : { transform: `scale(${dockScale})`, transformOrigin: "bottom center" }}
-    >
+    <div className="k-dock">
       <div className="k-betbox">
         <span className="k-cur">$</span>
         <input
@@ -207,6 +226,53 @@ export function PlayerDock({
         <span className="k-toggle-label">Eleveroon</span>
       </label>
 
+      {/* Collapsed behind a trigger rather than sitting permanently in the
+          row -- k-betbox is already the row's tightest width budget (see the
+          compact media query below), and three more always-visible buttons
+          would cost real width for something used once per bet at most. Pops
+          UP (bottom: 100%, not top), since the dock lives at the bottom of
+          the screen -- see .k-quickbets-panel's own comment on why this stays
+          position:absolute rather than copying AppearanceMenu's fixed-at-
+          small-viewport trick: unlike the top chrome, this row can be under
+          the dock's own resize scale transform.
+          Lives at the END of the row, not beside .k-betbox where a first pass
+          put it: rendered and looked at (per mobile-ui.md Part 6), a trigger
+          that far left pops its panel straight into .k-viewer-hud, which is
+          independently pinned to bottom:100% of THIS SAME dock's own left
+          edge (see that class's own rule) -- both dark, so the panel's own
+          z-index win over it read as the $5 chip going missing rather than as
+          a stacking order. Right of BANK!/Eleveroon there is nothing else
+          floating above the dock to collide with. */}
+      <span ref={quickBetRef} className="relative inline-flex k-quickbets">
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={() => setQuickBetOpen((v) => !v)}
+          aria-expanded={quickBetOpen}
+          aria-haspopup="menu"
+          title="Quick-bet amounts"
+          aria-label="Quick-bet amounts"
+        >
+          <Icon name="coins" size={14} />
+        </button>
+        {quickBetOpen && (
+          <div className="k-quickbets-panel" role="menu">
+            {QUICK_BET_CHIPS.map((amount) => (
+              <button
+                key={amount}
+                type="button"
+                role="menuitem"
+                className="k-btn ghost sm"
+                onClick={() => setQuickBet(amount)}
+                aria-label={`Set bet to $${amount}`}
+              >
+                ${amount}
+              </button>
+            ))}
+          </div>
+        )}
+      </span>
+
       {/* betError is transient -- it appears because you just pressed Bet with
           a bad amount, and clears on the next keystroke. The BANK! reason used
           to sit here beside it, but that one is a standing condition (a fresh
@@ -269,27 +335,6 @@ export function PlayerDock({
         </StageOverlay>
       )}
 
-      {/* The resize grip. Its own pointer handler, and it stops the event
-          reaching anything else -- the dock is full of buttons and a press
-          that starts on the grip must not also press one of them. Sits in the
-          dock's own corner rather than floating: there is exactly one thing it
-          resizes and it should look attached to it. */}
-      <span className="k-dock-grip" {...dockGripProps} title="Drag to resize the controls" aria-hidden="true" />
-      {/* Only once it has actually been resized -- an always-visible "put it
-          back" on a dock nobody has touched is clutter that explains a feature
-          by apologising for it. Same rule as the readout's own reset. */}
-      {dockScaled && (
-        <button
-          type="button"
-          className="k-dock-reset"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={resetDockScale}
-          title="Put the controls back to their normal size"
-          aria-label="Reset the controls to their normal size"
-        >
-          <Icon name="rotate" size={9} />
-        </button>
-      )}
     </div>
   );
 }

@@ -106,9 +106,34 @@ export interface DraggablePanel {
   panelProps: { style: CSSProperties; onPointerDown: (event: ReactPointerEvent) => void };
   /** Spread onto the resize grip. */
   gripProps: { onPointerDown: (event: ReactPointerEvent) => void };
+  /**
+   * Spread onto a MOVE grip, for a panel that must not be draggable by its
+   * body. The readout is a slab of text and can be grabbed anywhere; the dock
+   * is a row of buttons and a bet field, where a drag that starts on the body
+   * is a mis-press waiting to happen.
+   */
+  moveProps: { onPointerDown: (event: ReactPointerEvent) => void };
+  /**
+   * The positioning alone, WITHOUT the scale transform.
+   *
+   * For a panel that must not become the containing block for its own
+   * position:fixed descendants -- a transform on an ancestor makes it one, and
+   * the dock stack holds the viewer's readout, which is itself fixed once the
+   * player has moved it. Apply this to the stack and `scale` to something
+   * inside it.
+   */
+  positionStyle: CSSProperties;
+  scale: number;
   /** True once the player has moved or resized it -- gates the "reset" affordance. */
   moved: boolean;
   reset: () => void;
+}
+
+export interface DraggablePanelOptions {
+  /** Tighter than this file's own MIN_SCALE/MAX_SCALE, per panel. */
+  bounds?: { min?: number; max?: number };
+  /** transform-origin while the panel is still in flow. */
+  flowOrigin?: string;
 }
 
 /**
@@ -116,99 +141,31 @@ export interface DraggablePanel {
  *             resting position the first time it is dragged
  * @param key  storage key, scoped per panel
  */
-/**
- * Resize-only sibling of useDraggablePanel, for a panel that should be
- * scalable where it sits rather than draggable somewhere else.
- *
- * Asked for after the readout got its grip: "perhaps we should make the
- * player control panel resizeable too." The dock is a different problem from
- * the readout, though, and the difference is why this is a separate hook
- * rather than an option on that one. The readout is decoration a player may
- * want anywhere; the dock is where every action in the game is taken, and it
- * is anchored to the bottom of the screen because that is where a thumb is.
- * Letting it be dragged would mostly be a way to lose it.
- *
- * Shares this file's storage format, bounds and slop deliberately -- two
- * panels writing subtly different shapes into kvitlach.panel.* is how the
- * next person ends up reading one with the other's loader.
- */
-export function useScaleGrip(
+export function useDraggablePanel(
+  ref: RefObject<HTMLElement>,
   key: string,
-  bounds?: { min?: number; max?: number }
-): { scale: number; gripProps: { onPointerDown: (event: ReactPointerEvent) => void }; reset: () => void; scaled: boolean } {
-  const [scale, setScale] = useState(() => load(key).placement.scale);
-  const live = useRef(scale);
-  live.current = scale;
-
-  const bound = useCallback(
-    (value: number) => Math.min(bounds?.max ?? MAX_SCALE, Math.max(bounds?.min ?? MIN_SCALE, Number(value) || 1)),
-    [bounds?.max, bounds?.min]
-  );
-
-  // Re-clamped on mount, not just on write: a value saved before these bounds
-  // were tightened is still sitting in localStorage on somebody's phone.
-  useEffect(() => {
-    setScale((current) => bound(current));
-  }, [bound]);
-
-  const onPointerDown = useCallback(
-    (event: ReactPointerEvent) => {
-      if (event.button !== undefined && event.button !== 0) return;
-      event.stopPropagation();
-      const startX = event.clientX;
-      const startY = event.clientY;
-      const from = live.current;
-      const target = event.currentTarget as HTMLElement;
-      let dragging = false;
-      // The gesture's own running value, NOT live.current. live.current is
-      // refreshed on render, and React batches the state updates a fast drag
-      // produces -- so at pointerup it can still hold the scale from before
-      // the gesture. Measured in a real browser: the dock visibly sat at 0.7
-      // and localStorage said 1, so the size survived until the next reload
-      // and then silently vanished. Nothing in jsdom reproduces it, because
-      // fireEvent flushes between events.
-      let latest = from;
-      target.setPointerCapture?.(event.pointerId);
-
-      const onMove = (moveEvent: PointerEvent) => {
-        const dx = moveEvent.clientX - startX;
-        const dy = moveEvent.clientY - startY;
-        if (!dragging && Math.hypot(dx, dy) < DRAG_SLOP_PX) return;
-        dragging = true;
-        // Down-right grows it, same gesture and same 200px-per-step as the
-        // readout's grip -- a player who has learned one has learned both.
-        latest = bound(from + (dx + dy) / 200);
-        setScale(latest);
-        moveEvent.preventDefault();
-      };
-      const onUp = () => {
-        target.releasePointerCapture?.(event.pointerId);
-        target.removeEventListener("pointermove", onMove);
-        target.removeEventListener("pointerup", onUp);
-        target.removeEventListener("pointercancel", onUp);
-        if (dragging) save(key, { x: null, y: null, scale: latest });
-      };
-      target.addEventListener("pointermove", onMove);
-      target.addEventListener("pointerup", onUp);
-      target.addEventListener("pointercancel", onUp);
-    },
-    [bound, key]
-  );
-
-  const reset = useCallback(() => {
-    setScale(1);
-    save(key, { x: null, y: null, scale: 1 });
-  }, [key]);
-
-  return { scale, gripProps: { onPointerDown }, reset, scaled: scale !== 1 };
-}
-
-export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): DraggablePanel {
+  opts: DraggablePanelOptions = {}
+): DraggablePanel {
   const initial = useRef(load(key));
   const [placement, setPlacement] = useState<Placement>(initial.current.placement);
   const legacy = useRef(initial.current.legacy);
   const live = useRef(placement);
   live.current = placement;
+
+  const minScale = opts.bounds?.min;
+  const maxScale = opts.bounds?.max;
+  const bound = useCallback(
+    (value: number) => Math.min(maxScale ?? MAX_SCALE, Math.max(minScale ?? MIN_SCALE, Number(value) || 1)),
+    [maxScale, minScale]
+  );
+
+  // Re-clamped on mount, not only on write: a scale saved before a panel's
+  // bounds were tightened is still sitting in localStorage on somebody's phone.
+  useEffect(() => {
+    setPlacement((current) =>
+      bound(current.scale) === current.scale ? current : { ...current, scale: bound(current.scale) }
+    );
+  }, [bound]);
 
   // Pull a floating panel back on screen. Works in viewport px throughout,
   // which is what makes it simple now: the panel's own rendered box is the
@@ -311,6 +268,15 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): Dra
       }
       const target = event.currentTarget as HTMLElement;
       let dragging = false;
+      // The gesture's own running value, NOT live.current. live.current is
+      // refreshed on render, and React batches the state updates a fast drag
+      // produces -- so at pointerup it can still hold the placement from
+      // before the gesture, and what gets saved is not what is on screen.
+      // Measured in a real browser on the dock's grip: the dock sat at 0.7 and
+      // localStorage said 1, so the size survived until the next reload and
+      // then silently vanished. Nothing in jsdom reproduces it, because
+      // fireEvent flushes between events.
+      let latest = { ...from };
       target.setPointerCapture?.(event.pointerId);
 
       const onMove = (moveEvent: PointerEvent) => {
@@ -321,13 +287,13 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): Dra
         if (mode === "move") {
           // Viewport px on both sides now, so a drag of N screen px moves the
           // panel N screen px with nothing to divide out.
-          setPlacement(clamp({ ...from, x: (from.x as number) + dx, y: (from.y as number) + dy }));
+          latest = clamp({ ...from, x: (from.x as number) + dx, y: (from.y as number) + dy });
         } else {
           // Down-right grows it. Both axes count so the gesture works whichever
           // way the grip is dragged, at 200px of travel per full size step.
-          const next = from.scale + (dx + dy) / 200;
-          setPlacement({ ...live.current, scale: boundScale(next) });
+          latest = { ...latest, scale: bound(from.scale + (dx + dy) / 200) };
         }
+        setPlacement(latest);
         moveEvent.preventDefault();
       };
       const onUp = () => {
@@ -335,13 +301,13 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): Dra
         target.removeEventListener("pointermove", onMove);
         target.removeEventListener("pointerup", onUp);
         target.removeEventListener("pointercancel", onUp);
-        if (dragging) commit(live.current);
+        if (dragging) commit(latest);
       };
       target.addEventListener("pointermove", onMove);
       target.addEventListener("pointerup", onUp);
       target.addEventListener("pointercancel", onUp);
     },
-    [clamp, commit, ref]
+    [bound, clamp, commit, ref]
   );
 
   const reset = useCallback(() => {
@@ -357,7 +323,7 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): Dra
   // pinned by its top-left, so growing it must not drag that corner; in flow
   // it is anchored to the corner the layout puts it in, so growing it pushes
   // into the empty felt rather than off the bottom of the screen.
-  const style: CSSProperties = floating
+  const positionStyle: CSSProperties = floating
     ? {
         position: "fixed",
         left: placement.x as number,
@@ -376,19 +342,24 @@ export function useDraggablePanel(ref: RefObject<HTMLElement>, key: string): Dra
         right: "auto",
         bottom: "auto",
         margin: 0,
-        transform: `scale(${placement.scale})`,
-        transformOrigin: "top left",
         touchAction: "none",
       }
+    : { touchAction: "none" };
+
+  const style: CSSProperties = floating
+    ? { ...positionStyle, transform: `scale(${placement.scale})`, transformOrigin: "top left" }
     : {
+        ...positionStyle,
         transform: `translate(${legacy.current?.dx ?? 0}px, ${legacy.current?.dy ?? 0}px) scale(${placement.scale})`,
-        transformOrigin: "bottom left",
-        touchAction: "none",
+        transformOrigin: opts.flowOrigin ?? "bottom left",
       };
 
   return {
     panelProps: { style, onPointerDown: (event) => begin(event, "move") },
     gripProps: { onPointerDown: (event) => begin(event, "resize") },
+    moveProps: { onPointerDown: (event) => begin(event, "move") },
+    positionStyle,
+    scale: placement.scale,
     moved,
     reset,
   };

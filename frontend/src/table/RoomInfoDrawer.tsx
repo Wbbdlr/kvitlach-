@@ -11,7 +11,11 @@ export interface RoomInfoDrawerProps {
   onClose: () => void;
   roomName?: string;
   roomId: string;
-  roomPassword?: string;
+  /** Whether the table has a password set -- the value itself never reaches
+   *  the client (server-side pass: it used to, in plain text, in every
+   *  room:state broadcast). See the banner below for what that means for
+   *  the banker specifically. */
+  hasPassword?: boolean;
   buyIn?: number;
   isAdmin: boolean;
   playerId?: string;
@@ -46,7 +50,7 @@ export function RoomInfoDrawer({
   onClose,
   roomName,
   roomId,
-  roomPassword,
+  hasPassword,
   buyIn,
   isAdmin,
   playerId,
@@ -60,8 +64,8 @@ export function RoomInfoDrawer({
 }: RoomInfoDrawerProps) {
   const [showRenameForm, setShowRenameForm] = useState(false);
   const [showBuyInForm, setShowBuyInForm] = useState(false);
-  const [copied, setCopied] = useState<"id" | "link" | "password" | null>(null);
-  const [copyFailed, setCopyFailed] = useState<"id" | "link" | "password" | null>(null);
+  const [copied, setCopied] = useState<"id" | "link" | null>(null);
+  const [copyFailed, setCopyFailed] = useState<"id" | "link" | null>(null);
   const selfServiceRef = useRef<HTMLDivElement>(null);
 
   // Keyed on `open` as well as `focus` so asking for the same section twice
@@ -99,7 +103,7 @@ export function RoomInfoDrawer({
   // exactly how this looks when someone opens it over plain http on the LAN.
   // Telling the player to copy it themselves beats a button that quietly
   // does nothing.
-  const copy = async (text: string, which: "id" | "link" | "password") => {
+  const copy = async (text: string, which: "id" | "link") => {
     try {
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) throw new Error("unavailable");
       await navigator.clipboard.writeText(text);
@@ -237,27 +241,20 @@ export function RoomInfoDrawer({
             </div>
           )}
 
-          {/* Banker-only: the password is what they read out to late joiners,
-              so it has to live somewhere reachable from the table itself. */}
-          {isAdmin && roomPassword && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-rose-400/30 bg-rose-500/12 px-3 py-2 text-sm text-rose-300">
-              <div>
-                Password: <code className="font-semibold">{roomPassword}</code>
-              </div>
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded-full border border-rose-400/40 bg-white/5 p-1.5 text-rose-300 shadow-sm transition-colors hover:bg-rose-500/25"
-                onClick={() => void copy(roomPassword, "password")}
-                title="Copy room password"
-                aria-label="Copy room password"
-              >
-                <Icon name="clipboard" size={14} />
-              </button>
+          {/* Banker-only. Used to show the password itself, read out to late
+              joiners -- but the server only ever stores a one-way hash of it
+              now (security pass: a plaintext room password sat in every
+              room:state broadcast to every player, and in every Postgres
+              backup, in the clear). There is no value left to copy; a
+              banker who needs to share it again has to remember what they
+              typed at creation, same as any other password nobody stores
+              in reversible form. hasPassword only ever says whether one is
+              set, never what it is. */}
+          {isAdmin && hasPassword && (
+            <div className="flex items-center gap-2 rounded-lg border border-rose-400/30 bg-rose-500/12 px-3 py-2 text-sm text-rose-300">
+              <Icon name="info" size={14} />
+              <div>This table has a password set. Share the one you chose when you created it.</div>
             </div>
-          )}
-          {copied === "password" && <div className="text-xs text-emerald-300 -mt-2">Password copied.</div>}
-          {copyFailed === "password" && (
-            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically — select the password and copy it.</div>
           )}
 
           {!isAdmin && (

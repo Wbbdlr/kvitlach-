@@ -55,9 +55,15 @@ export const EMPTY_RECORD: LifetimeRecord = {
 /**
  * What one turn was worth to the player who took it.
  *
- * Mirrors useTableData's netAmount and betDisplay's own amount selection, and
- * has to keep mirroring them: a lifetime total that disagrees with the sum of
- * the rounds a player can see in their own stats list is worse than no total.
+ * The single source for this number -- useTableData's own stats panel imports
+ * it rather than keeping a second copy. It used to be two functions with
+ * identical bodies and a comment on each insisting they "have to keep
+ * mirroring" the other, which is exactly the shape this codebase has been
+ * bitten by more than once this session (the flank offsets, the compact
+ * query, the gate query): two things that must never drift, expressed as two
+ * places instead of one. A lifetime total that disagrees with the sum of the
+ * rounds a player can see in their own stats list would be worse than no
+ * total, so there is now nothing left to drift.
  *
  * The admin branch is the one that is not obvious. calculateEndState (round.ts)
  * overwrites the banker's `bet` with the round's SIGNED NET once it resolves,

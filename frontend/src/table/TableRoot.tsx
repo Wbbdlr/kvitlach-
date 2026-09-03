@@ -19,6 +19,7 @@ import { BankPanel } from "./BankPanel";
 import { BankReservations } from "./BankReservations";
 import { ViewerHud } from "./ViewerHud";
 import { ReactionLayer } from "./ReactionLayer";
+import { useDraggablePanel } from "./draggablePanel";
 import { ChromeMenu } from "./ChromeMenu";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { ManageDrawer } from "./ManageDrawer";
@@ -228,6 +229,24 @@ export function TableRoot({
   // its reservation by the same amount the seats themselves actually shrink.
   const { wrapRef, dockRef, scale, stageHeight, vf, playTop, compact } = useStageScale(playerTurns.length);
   const { zoomed, reset: resetZoom } = usePinchZoom(wrapRef, feltRef, scale);
+
+  // The control bar: movable and resizable, as one unit.
+  //
+  // 0.7 to 1.25 rather than the hook's default 0.75-1.8. The bar already only
+  // just fits one line on a 640px phone (index.css's compact block is a
+  // measured 428 of 433 available), so growth is what has to be bounded
+  // tightly here -- shrinking is what was actually asked for.
+  //
+  // positionStyle goes on the STACK and scale on the ROW inside it, rather
+  // than both on one element, because the stack also holds the viewer's
+  // readout and that panel is position:fixed once its own player has moved it.
+  // A transform on the stack would make the stack its containing block and
+  // quietly drag the readout around with the bar.
+  const dockStackRef = useRef<HTMLDivElement>(null);
+  const dockPanel = useDraggablePanel(dockStackRef, "dock", {
+    bounds: { min: 0.7, max: 1.25 },
+    flowOrigin: "bottom center",
+  });
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
   // Shoe-scoped discard tally: earlier rounds' resolved cards (shoeDiscards,
@@ -957,7 +976,12 @@ export function TableRoot({
                 loading="lazy"
               />
             </span>
-            <span className="k-logo-word">Kvitlach</span>
+            <span className="k-logo-word">
+              Kvitlach
+              {/* Same unregistered-use claim as SiteHeader's wordmark, same
+                  reasoning -- see that file's comment. */}
+              <sup className="text-[0.4em] font-normal align-super ml-0.5">&trade;</sup>
+            </span>
             <span className="k-logo-tag">Ah Heimishe Chanukah Shpil</span>
           </div>
         </div>
@@ -1293,9 +1317,12 @@ export function TableRoot({
             is full-width and centres this stack; the stack's width is its
             content, so `left: 0` on the readout is the same x the dock starts
             at, at every viewport, with nothing measured. */}
-        <div className="k-dock-stack">
+        <div className="k-dock-stack" ref={dockStackRef} style={dockPanel.positionStyle}>
           {/* The viewer's own readout, out of flow (position: absolute) so it
-              cannot widen the stack it is aligning itself to. */}
+              cannot widen the stack it is aligning itself to. It sits OUTSIDE
+              the row below on purpose: untouched it rides along above the bar
+              wherever the bar is put, and once its own player has moved it, its
+              fixed coordinates are its own and the bar cannot reach it. */}
           {myPlayerTurn && (
             <ViewerHud
               turn={myPlayerTurn}
@@ -1307,6 +1334,16 @@ export function TableRoot({
               onOpenStats={onOpenStats}
             />
           )}
+
+        {/* Everything a player thinks of as "the control bar": whichever dock
+            is showing, plus the reaction button beside it. One box so the two
+            move and scale together -- the reaction popover is anchored to its
+            button, so dragging a bar that left the button behind would strand
+            the picker across the screen from the controls it belongs with. */}
+        <div
+          className="k-dock-row"
+          style={dockPanel.scale === 1 ? undefined : { transform: `scale(${dockPanel.scale})`, transformOrigin: "bottom center" }}
+        >
         {/* The banker has dropped and the table is waiting on them. Nothing else
             can move this round: the banker is the dealer, not a seat, so no turn
             timer covers them, and every other action is theirs to take. Rather
@@ -1391,6 +1428,45 @@ export function TableRoot({
           <div className="k-chrome-react">
             <ReactionLayer onReact={onReact} disabled={!room.players.some((p) => p.id === playerId)} />
           </div>
+
+          {/* Both grips on the TOP edge, asked for directly ("the dragger needs
+              to be on the top right and left"). The resize grip used to be in
+              the bar's bottom-right corner, which on a phone in landscape is
+              the one corner sitting in the gesture bar and under the heel of a
+              thumb already holding the device. The top edge is the only edge of
+              this bar with nothing behind it.
+              Each stops the event reaching anything else: the bar is full of
+              buttons and a bet field, and a press that starts on a grip must
+              not also press one of them. */}
+          <span
+            className="k-dock-grip move"
+            {...dockPanel.moveProps}
+            title="Drag to move the controls"
+            aria-hidden="true"
+          />
+          <span
+            className="k-dock-grip size"
+            {...dockPanel.gripProps}
+            title="Drag to resize the controls"
+            aria-hidden="true"
+          />
+          {/* Only once it has actually been moved or resized -- an
+              always-visible "put it back" on a bar nobody has touched is
+              clutter that explains a feature by apologising for it. Same rule
+              as the readout's own reset. */}
+          {dockPanel.moved && (
+            <button
+              type="button"
+              className="k-dock-reset"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={dockPanel.reset}
+              title="Put the controls back where they started"
+              aria-label="Put the controls back where they started"
+            >
+              <Icon name="rotate" size={9} />
+            </button>
+          )}
+        </div>
         </div>
         </div>
       </div>
@@ -1443,7 +1519,7 @@ export function TableRoot({
         onClose={() => setRoomInfoOpen(false)}
         roomName={room.name}
         roomId={room.roomId}
-        roomPassword={room.password}
+        hasPassword={Boolean(room.passwordHash)}
         buyIn={room.buyIn}
         isAdmin={isAdmin}
         playerId={playerId}

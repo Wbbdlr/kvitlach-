@@ -73,6 +73,22 @@ export interface Turn {
   // clients can flag it near their seat without falsely tagging the
   // banker's always-on protection as something they "called".
   eleveroonCalled?: boolean;
+  // The index in `cards` where this player's first real wager landed --
+  // i.e. `cards[betStartIndex]` is the first card drawn AFTER `bet` left
+  // zero, not the free "blatt" draws before it. Set once, by handleBet, and
+  // never touched again for the rest of the turn.
+  //
+  // Exists purely so ws-server.ts's redaction (concealedRoundFor) can tell a
+  // still-visible blatt card from a hidden wagered one without re-deriving
+  // it. The frontend used to infer the same boundary itself, client-side, by
+  // watching for the moment `bet` first went positive (App.tsx's
+  // firstBetCardIndex) -- which works for a client that was connected to see
+  // the transition happen, and silently hides the whole hand for one that
+  // joined or resumed after it (a real, pre-existing display quirk, left as
+  // is). The server does not have that blind spot: it sees every mutation,
+  // so recording the boundary here is exact regardless of when any given
+  // viewer connected.
+  betStartIndex?: number;
 }
 
 export interface BankLockState {
@@ -182,7 +198,13 @@ export type PublicRoundState = Omit<RoundState, "deck"> & { deckRemaining: numbe
 export interface RoomState {
   roomId: string;
   name?: string;
-  password?: string;
+  // scrypt hash (admin-auth.ts's hashPassword/verifyPassword -- same
+  // format and same reasoning as the admin panel's own credential), never
+  // the room password itself. Stored raw plaintext once, compared with a
+  // bare `!==`; a Postgres backup of this room -- and every room:state
+  // broadcast, since nothing here is redacted per recipient -- carried it
+  // in the clear. Undefined means the room has no password, same as before.
+  passwordHash?: string;
   buyIn: number;
   bankerBuyIn: number;
   wallets: Record<string, number>;

@@ -136,6 +136,44 @@ messages/10s (`ws-server.ts`).
   `accessMode`.
 - `GET /metrics` — the same gauges as Prometheus text.
 
+## Cloudflare Tunnel
+
+kvitlach.us does **not** share the box's main `cloudflared.service` /
+`/etc/cloudflared/config.yml` (that one carries 613.deals, microbin and
+everything else on this host). It runs as its **own** systemd unit against
+its **own** config file, found the hard way once already — don't re-search
+for it:
+
+- Service: `cloudflared-kvitlach.service` — `systemctl cat` it to confirm.
+- Config: `/home/adguard/.cloudflared/kvitlach.yml` (runs as user `adguard`,
+  not root — the file lives under that user's home, not `/etc/cloudflared/`,
+  and its filename doesn't match a `config*.yml` search either).
+- Credentials: `/home/adguard/.cloudflared/<tunnel-id>.json`, tunnel ID
+  `78780264-6aa4-4f78-ab6b-e9136ad083a7`, named `kvitlach` (`cloudflared
+  tunnel list` on the host enumerates every tunnel on the account regardless
+  of which config file, if any, backs it).
+
+The ingress rules, confirmed against `deploy/docker-compose.yml`'s actual
+port mappings (2026-09-03 security pass):
+
+| Hostname | Routes to | What's there |
+|---|---|---|
+| `kvitlach.us` | `http://localhost:28080` | frontend container (`127.0.0.1:28080:4173`) |
+| `ws.kvitlach.us` | `http://localhost:25001` | backend's raw WS port (`127.0.0.1:25001:25001`) |
+| *(catch-all)* | `http_status:404` | static 404, not a proxy |
+
+**Neither the admin panel/health/metrics port (25000) nor Postgres (25432)
+appears anywhere in this file.** That's the actual boundary keeping them off
+the public internet — cloudflared runs locally on the box and could reach
+either 127.0.0.1-bound port exactly as easily as the two above; it simply
+isn't told to. `ADMIN_BIND` (above) is a second, independent layer, not a
+substitute for checking this file after any tunnel change.
+
+If this box ever migrates kvitlach's tunnel to dashboard-managed routing
+(Zero Trust → Networks → Tunnels — floated 2026-09-03, not yet done), this
+table stops being derivable from a file on disk at all; check the dashboard
+instead and update this section by hand.
+
 ## Uptime Kuma
 
 Kuma runs on the adguard box at `uptime.swdhs.com` / `127.0.0.1:3001`.

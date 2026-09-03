@@ -145,7 +145,10 @@ export interface RoundState {
 export interface RoomState {
   roomId: string;
   name?: string;
-  password?: string;
+  // A scrypt hash, never the room's actual password -- see backend/src/types.ts's
+  // identical field for why. Not human-readable; only ever used here to
+  // derive a hasPassword boolean (RoomInfoDrawer), never displayed.
+  passwordHash?: string;
   buyIn: number;
   bankerBuyIn: number;
   wallets: Record<string, number>;

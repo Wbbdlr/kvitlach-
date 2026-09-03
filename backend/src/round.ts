@@ -142,6 +142,12 @@ export function handleBet(state: RoundContext, playerId: string, amount: number,
     // eleveroonActive, so the banker's always-on protection above never
     // shows up as something they "called".
     eleveroonCalled: eleveroonRequested,
+    // The FIRST bet on this turn (turn.bet was still 0 coming in) is the one
+    // that draws the boundary card -- everything before it was a free blatt
+    // draw, this card and everything after stays wagered. Set once; a
+    // second bet later in the same turn must not move it (turn.betStartIndex
+    // is already defined by then, so the ?? short-circuits).
+    betStartIndex: turn.betStartIndex ?? (turn.bet === 0 ? turn.cards.length : undefined),
   };
 
   const turns = state.turns.map((t, idx) => (idx === turnIndex ? updatedTurn : t));

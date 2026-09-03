@@ -9,6 +9,7 @@ import { AboutContent } from "./about.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
 import { renderAboutEditor, renderAdminPage, renderLoginPage } from "./admin-page.js";
+import { resolveClientIp } from "./client-ip.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
 // interpolating into a <script> or an inline event handler: the HTML parser
@@ -45,9 +46,7 @@ const MAX_TRACKED_IPS = 500;
 const adminAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function getClientIp(request: FastifyRequest): string {
-  const forwarded = request.headers["x-forwarded-for"];
-  const fromHeader = Array.isArray(forwarded) ? forwarded[0] : typeof forwarded === "string" ? forwarded.split(",")[0]?.trim() : undefined;
-  return fromHeader || request.ip || "unknown";
+  return resolveClientIp(request.headers, request.ip);
 }
 
 function isRateLimited(ip: string): boolean {

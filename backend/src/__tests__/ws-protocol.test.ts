@@ -38,9 +38,20 @@ afterAll(() => {
   (server as unknown as { wss: { close: () => void } }).wss.close();
 });
 
-function connect(): Promise<WebSocket> {
+// Every connection gets its own synthetic IP by default. This file's own
+// tests each build a fresh table via makeTable(), which -- since the
+// security pass added a per-IP room:create throttle -- would otherwise all
+// collide on the one literal address an unheadered local socket resolves
+// to, and start throttling each other well before the file finishes (one
+// FRESH TABLE per test really is the "different household, different game"
+// case that throttle is meant to leave alone; see its own comment in
+// ws-server.ts). Nothing in this file tests IP-sharing behaviour itself
+// (that's ws-load.test.ts's deliberate job), so there is no case here that
+// needs two sockets to actually share an address.
+let ipCounter = 0;
+function connect(ip = `10.77.${++ipCounter}.1`): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(URL);
+    const ws = new WebSocket(URL, { headers: { "x-forwarded-for": ip } });
     ws.once("open", () => {
       openSockets.push(ws);
       resolve(ws);

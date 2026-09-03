@@ -579,7 +579,9 @@ describe("deck reshuffle notification", () => {
     expect(notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
   });
 
-  it("auto-dismisses a notification after 15-20 seconds without a manual Dismiss", async () => {
+  it("auto-dismisses a notification after ~8 seconds without a manual Dismiss", async () => {
+    // Was 15-20s (18s, unmeasured); reported as staying up too long with up
+    // to 5 stacked, see NOTIFICATION_AUTO_DISMISS_MS's own comment.
     vi.useFakeTimers();
     try {
       const useGameStore = await freshState();
@@ -592,10 +594,10 @@ describe("deck reshuffle notification", () => {
       });
       expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
 
-      vi.advanceTimersByTime(14999);
+      vi.advanceTimersByTime(7999);
       expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
 
-      vi.advanceTimersByTime(5001); // past 20s total
+      vi.advanceTimersByTime(1001); // past 8s total
       expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -1142,6 +1144,19 @@ describe("bank outcome notification", () => {
     expect(texts(useGameStore).some((t: string) => /bank stood on 20/i.test(t))).toBe(true);
   });
 
+  it("gives a banker's natural 21 its own wording, not the plain 'stood on 21'", async () => {
+    // Same stand-out treatment as the futch branch above -- a natural 21
+    // beats the whole table outright, the same instant a bust futches the
+    // bank, so it earns different words than an ordinary showdown win.
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "p1" });
+    send(socket, round({}));
+    send(socket, round({ cards: [card([10]), card([10]), card([1])], state: "won" }));
+    const all = texts(useGameStore).join(" | ");
+    expect(all).toMatch(/banker has 21/i);
+    expect(all).not.toMatch(/bank stood on 21/i);
+  });
+
   it("calls a banker who merely ended down on money LOST, not futched", async () => {
     // A banker's turn also resolves to "lost" when they finish the round down
     // on chips, which is why `busted` is a separate field -- calling that a
@@ -1166,6 +1181,16 @@ describe("bank outcome notification", () => {
     const all = texts(useGameStore);
     expect(all.some((t: string) => /^you stood on 20 and took the round/i.test(t))).toBe(true);
     expect(all.some((t: string) => /^the bank stood/i.test(t))).toBe(false);
+  });
+
+  it("gives the banker their own natural-21 wording too, not just the table's", async () => {
+    const { useGameStore, socket } = await connected();
+    useGameStore.setState({ playerId: "banker" });
+    send(socket, round({}));
+    send(socket, round({ cards: [card([10]), card([10]), card([1])], state: "won" }));
+    const all = texts(useGameStore);
+    expect(all.some((t: string) => /^you hit 21/i.test(t))).toBe(true);
+    expect(all.some((t: string) => /^you stood on 21/i.test(t))).toBe(false);
   });
 
   it("tells the banker what THEY did, not what a wagering player did", async () => {

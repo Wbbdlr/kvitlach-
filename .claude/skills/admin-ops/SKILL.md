@@ -64,6 +64,11 @@ Compose is not the only thing that eats it — `sed`, shells and editors do too.
 - **There can be no per-person allowlist.** The platform has no accounts, only
   names and per-room session tokens. A shared code is the only "certain
   people" this data model can express.
+- **kvitlach's Cloudflare Tunnel config is not in `/etc/cloudflared/`.** It's
+  `cloudflared-kvitlach.service` running `/home/adguard/.cloudflared/kvitlach.yml`
+  — its own unit, own config, separate from the box's other tunnels. Two wrong
+  guesses were made finding this once already. Full ingress table:
+  [docs/OPERATIONS.md](../../../docs/OPERATIONS.md#cloudflare-tunnel).
 
 ## Access model
 

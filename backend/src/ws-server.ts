@@ -3,10 +3,82 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "http";
 import { AccessControl } from "./access.js";
 import { validatePayload } from "./payload.js";
+import { resolveClientIp } from "./client-ip.js";
 import { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
-import { ClientEnvelope, PublicRoundState, RoomState, RoundState, ServerEnvelope, ReactionEvent } from "./types.js";
+import { ClientEnvelope, PublicRoundState, RoomState, RoundState, ServerEnvelope, ReactionEvent, Turn, Card } from "./types.js";
 import type { RoundContext } from "./round.js";
+
+// A card that carries no game information, sent in place of one a viewer is
+// not entitled to see yet. "0" is never a real Kvitlach value (the deck is
+// 1-12), so if a redaction rule and the frontend's own render-time hiding
+// ever disagreed, the result is an obviously-wrong blank card rather than a
+// silently-plausible one.
+const REDACTED_CARD: Card = { name: "0", attributes: { values: [] } };
+
+// Whether card `idx` of `turn` must stay hidden from `viewerId`.
+//
+// This is a server-side mirror of the concealment rules that used to live
+// ONLY in the frontend (selectors.ts's totalDisplay, and the per-card `hide`
+// logic in Seat.tsx/Dealer.tsx) -- rules that decided what got RENDERED, not
+// what got SENT. The server sent every card to everyone regardless, so the
+// banker's hole card and a standing player's hand were one devtools Network
+// tab away from anyone already connected to the room. Exactly the class of
+// bug this file already fixed once for the shoe (see sanitizeRound's own
+// comment on `deck`), never applied here.
+//
+// Mirrors, not re-implements from scratch: the three branches below (banker,
+// public-standby, blatt-vs-wagered) are the same three the frontend already
+// had reasons for, reproduced so the two stay readable side by side rather
+// than trusting a description of them. `betStartIndex` (types.ts, set by
+// round.ts's handleBet) replaces the frontend's own client-side inference of
+// the same boundary -- see that field's own comment for why the server's
+// version has no blind spot for a late-joining viewer.
+function isCardHidden(turn: Turn, idx: number, viewerId: string | undefined, roundTerminated: boolean): boolean {
+  if (viewerId !== undefined && viewerId === turn.player.id) return false; // a hand is never hidden from its own player
+
+  if (turn.player.type === "admin") {
+    // The banker's hole card (idx 0) stays down until their own turn stops
+    // being pending, or the round ends outright. Every other card of theirs
+    // -- their hits after the hole card -- is public as soon as it is drawn.
+    const bankerReveal = roundTerminated || turn.state !== "pending";
+    return idx === 0 && !bankerReveal;
+  }
+
+  // Once a hand is actually decided, or the round is over, nothing about it
+  // is secret any more -- this covers a resolved win/loss AND (via
+  // roundTerminated) the "everyone's cards flip" moment at round end.
+  if (turn.state === "won" || turn.state === "lost" || roundTerminated) return false;
+
+  const isBlattPhase = (turn.bet ?? 0) === 0;
+  const betStart = turn.betStartIndex;
+  const hasBet = typeof betStart === "number";
+  // A "blatt" card: a free peek drawn before any wager landed. Visible to
+  // the whole table regardless of what happens next -- it's how the game
+  // builds tension. Once betStartIndex exists, everything from there on is a
+  // real wagered draw and stays hidden; before it exists, the turn hasn't
+  // wagered yet at all, so cards 1+ are (so far) all blatts.
+  const isBlattCard = hasBet ? idx > 0 && idx < betStart : isBlattPhase && idx > 0;
+
+  // Standing on a wager (turn.state "standby") does NOT reveal it -- see
+  // totalDisplay's own comment: a player who stood keeps their hand hidden
+  // from everyone still deciding theirs, exactly as if they were still
+  // playing. Only the free blatt cards, if any, stay visible.
+  if (turn.state === "standby") return !isBlattCard;
+  if (isBlattPhase) return idx === 0;
+  if (hasBet) return idx === 0 || idx >= betStart;
+  return true;
+}
+
+function redactTurn(turn: Turn, viewerId: string | undefined, roundTerminated: boolean): Turn {
+  let changed = false;
+  const cards = turn.cards.map((card, idx) => {
+    if (!isCardHidden(turn, idx, viewerId, roundTerminated)) return card;
+    changed = true;
+    return REDACTED_CARD;
+  });
+  return changed ? { ...turn, cards } : turn;
+}
 
 interface ConnectionMeta {
   roomId?: string;
@@ -37,6 +109,31 @@ const MSG_WINDOW_MS = 10_000;
 // closed by `ws` itself with 1009 before any of our code sees them.
 const MAX_MESSAGE_BYTES = 32 * 1024;
 
+// Independent of MAX_MSGS_PER_WINDOW above: that one bounds a single
+// SOCKET's total message rate, but room:create has no cost of its own
+// beyond it, so one connection sending room:create in a loop could exhaust
+// the platform-wide room cap (limits.ts's maxRooms, 150 by default) in
+// under a minute -- denying every OTHER player on the box the ability to
+// create a room until one ages out naturally, which for a real room is up
+// to three days.
+//
+// A WINDOWED COUNT, not a flat cooldown after one success: a flat "one per
+// 30s" was tried first and rejected before it shipped, on the same grounds
+// MAX_CONNS_PER_IP's own comment already documents -- dozens of players are
+// commonly behind the same home-WiFi NAT, and on a night with more than one
+// household hosting, a SECOND real banker on that NAT creating their own
+// table minutes after the first is entirely ordinary, not abuse. A window
+// with real headroom (5 creates per IP per minute) accommodates that easily
+// while still turning "exhaust the 150-room cap in under a minute" into "at
+// minimum 30 minutes, from one IP" -- enough that an operator has time to
+// notice and reach for the admin page's lockdown, which is the actual goal;
+// this was never going to stop a determined attacker rotating addresses
+// (nothing per-IP does -- see MAX_CONNS_PER_IP's own comment on that), only
+// raise the floor on an accidental or lazy one.
+const ROOM_CREATE_WINDOW_MS = 60_000;
+const MAX_ROOM_CREATES_PER_WINDOW = 5;
+const MAX_TRACKED_ROOM_CREATE_IPS = 500;
+
 export class WSServer {
   private wss: WebSocketServer;
   private store: GameStore;
@@ -49,6 +146,14 @@ export class WSServer {
   // authorisation, not game state, and must not survive a restart: the admin
   // panel re-renders its links every 15s, so a lost grant costs one refresh.
   private watchTokens = new Map<string, { roomId: string; expires: number }>();
+  // Successful room:create count per IP within the current window, and the
+  // same for room:create-practice, kept SEPARATE -- see
+  // ROOM_CREATE_WINDOW_MS above. One map for both would block the entirely
+  // ordinary "try the practice table, then create a real one" sequence; the
+  // two draw from different capacity pools (limits.ts's maxRooms vs
+  // maxPracticeRooms) and deserve independent throttles.
+  private roomCreatesByIp = new Map<string, { count: number; resetAt: number }>();
+  private practiceCreatesByIp = new Map<string, { count: number; resetAt: number }>();
 
   // How many rooms this server currently holds socket sets for. Must track
   // rooms with someone CONNECTED, not rooms ever created -- see onClose. Read
@@ -72,16 +177,10 @@ export class WSServer {
   }
 
   private onConnection(socket: WebSocket, request: IncomingMessage) {
-    const forwardedFor = request.headers["x-forwarded-for"];
-    const ip = Array.isArray(forwardedFor)
-      ? forwardedFor[0]
-      : typeof forwardedFor === "string"
-      ? forwardedFor.split(",")[0]?.trim()
-      : request.socket.remoteAddress;
+    const ipKey = resolveClientIp(request.headers, request.socket.remoteAddress);
     const userAgentHeader = request.headers["user-agent"];
     const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
 
-    const ipKey = ip ?? "unknown";
     const existing = this.connsByIp.get(ipKey) ?? new Set();
     if (existing.size >= MAX_CONNS_PER_IP) {
       console.warn(`Rate limit: too many connections from ${ipKey} (${existing.size}), dropping`);
@@ -92,7 +191,7 @@ export class WSServer {
     this.connsByIp.set(ipKey, existing);
     metrics.wsConnectionOpened();
 
-    this.meta.set(socket, { ip: ip ?? undefined, userAgent: userAgent ?? undefined });
+    this.meta.set(socket, { ip: ipKey, userAgent: userAgent ?? undefined });
     this.msgCount.set(socket, { count: 0, resetAt: Date.now() + MSG_WINDOW_MS });
     socket.on("message", (data: RawData) => void this.onMessage(socket, data));
     socket.on("close", () => this.onClose(socket));
@@ -184,7 +283,10 @@ export class WSServer {
           const { firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll, accessCode } = (payload as any) || {};
           this.access.assertAllowed("create", accessCode);
           if (!firstName) throw new Error("invalid_payload");
+          const createIp = this.meta.get(socket)?.ip ?? "unknown";
+          if (WSServer.createThrottled(this.roomCreatesByIp, createIp)) throw new Error("room_create_throttled");
           const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll });
+          WSServer.recordCreate(this.roomCreatesByIp, createIp);
           await this.attach(socket, room.roomId, player.id);
           this.sendAck(socket, requestId, {
             room,
@@ -199,7 +301,10 @@ export class WSServer {
           const { firstName, botCount, buyIn, bankBuyIn, deckCount, accessCode } = (payload as any) || {};
           this.access.assertAllowed("practice", accessCode);
           if (!firstName) throw new Error("invalid_payload");
+          const practiceIp = this.meta.get(socket)?.ip ?? "unknown";
+          if (WSServer.createThrottled(this.practiceCreatesByIp, practiceIp)) throw new Error("room_create_throttled");
           const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount, buyIn, bankBuyIn, deckCount });
+          WSServer.recordCreate(this.practiceCreatesByIp, practiceIp);
           await this.attach(socket, room.roomId, player.id);
           // Unlike room:create, a round is already underway here (no human
           // banker exists to click Start) -- the client only ever populates
@@ -210,7 +315,7 @@ export class WSServer {
           this.sendAck(socket, requestId, {
             room,
             player,
-            round: round ? this.sanitizeRound(round) : undefined,
+            round: round ? this.sanitizeRound(round, player.id) : undefined,
             session: { roomId: room.roomId, playerId: player.id, token: sessionToken },
           });
           this.broadcastRoom(room.roomId);
@@ -260,7 +365,10 @@ export class WSServer {
           this.sendAck(socket, requestId, {
             room,
             watching: true,
-            round: round ? this.sanitizeRound(round) : undefined,
+            // undefined viewerId -- a watcher has no player.id, and gets the
+            // same conservative "nothing hidden included" view broadcastRound
+            // gives it going forward (see isCardHidden's own comment).
+            round: round ? this.sanitizeRound(round, undefined) : undefined,
           });
           break;
         }
@@ -280,7 +388,7 @@ export class WSServer {
           this.sendAck(socket, requestId, {
             room,
             player,
-            round: round ? this.sanitizeRound(round) : undefined,
+            round: round ? this.sanitizeRound(round, playerId) : undefined,
             session: { roomId, playerId, token: sessionToken },
           });
           await this.broadcastConnections(roomId);
@@ -303,7 +411,7 @@ export class WSServer {
           if (!roomId || !actorId) throw new Error("invalid_payload");
           const round = this.store.startRound(roomId, actorId, deckCount);
           this.broadcastRound(round);
-          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           this.broadcastRoom(roomId);
           break;
         }
@@ -314,7 +422,7 @@ export class WSServer {
           if (!roundId || typeof amount !== "number" || !actorId) throw new Error("invalid_payload");
           const round = this.store.applyBet(roundId, actorId, amount, { bank: Boolean(bank), eleveroon: Boolean(eleveroon) });
           this.handleRoundUpdate(round);
-          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
         }
         case "turn:stand": {
@@ -324,7 +432,7 @@ export class WSServer {
           if (!roundId || !actorId) throw new Error("invalid_payload");
           const round = this.store.applyStand(roundId, actorId);
           this.handleRoundUpdate(round);
-          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
         }
         case "turn:hit": {
@@ -334,7 +442,7 @@ export class WSServer {
           if (!roundId || !actorId) throw new Error("invalid_payload");
           const round = this.store.applyHit(roundId, actorId, { eleveroon: Boolean(eleveroon) });
           this.handleRoundUpdate(round);
-          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
         }
         case "turn:skip": {
@@ -350,7 +458,7 @@ export class WSServer {
           }
           const round = this.store.applySkip(roundId, effectivePlayerId);
           this.handleRoundUpdate(round);
-          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
         }
         case "round:banker-end": {
@@ -361,7 +469,7 @@ export class WSServer {
           const round = this.store.endRoundAfterBankDecision(roomId, actorId);
           this.handleRoundUpdate(round);
           this.broadcast(roomId, { type: "round:banker-ended", roomId });
-          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
         }
         // Any seated player can pull the table out from under a banker who
@@ -380,7 +488,7 @@ export class WSServer {
             roomId,
             payload: { by: actorId, reason: "banker_absent" },
           });
-          this.sendAck(socket, requestId, { round: this.sanitizeRound(round) });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
         }
         case "player:rename-request": {
@@ -643,9 +751,26 @@ export class WSServer {
           this.sendAck(socket, requestId, {});
           break;
         }
+        // Both of these used to take an id from the client and hand back the
+        // raw object with no check at all -- reachable by a socket that had
+        // never sent room:create/join/resume/watch. room:get returned the
+        // FULL RoomState, plaintext password included (store.ts's getRoom
+        // does no redaction), so a "password protected" table's password
+        // could be read by anyone who knew the room id, without attempting
+        // to join. Room ids are exactly the string players are told to
+        // share to join, so this was not a brute-force problem.
+        //
+        // Fixed the same way every other handler already works: the
+        // caller's own attached room (meta.roomId, set server-side by
+        // attach()/attachWatcher(), never client-supplied) has to match the
+        // room being asked about. A watch grant sets meta.roomId too, so a
+        // legitimate Watch link still works -- it already receives this same
+        // data via broadcast.
         case "room:get": {
           const { roomId } = (payload as any) || {};
           if (!roomId) throw new Error("invalid_payload");
+          const meta = this.meta.get(socket);
+          if (meta?.roomId !== roomId) throw new Error("forbidden");
           const room = this.store.getRoom(roomId);
           this.sendAck(socket, requestId, { room });
           break;
@@ -653,8 +778,10 @@ export class WSServer {
         case "round:get": {
           const { roundId } = (payload as any) || {};
           if (!roundId) throw new Error("invalid_payload");
+          const meta = this.meta.get(socket);
           const round = this.store.getRound(roundId);
-          this.sendAck(socket, requestId, { round: round ? this.sanitizeRound(round) : undefined });
+          if (!round || meta?.roomId !== round.roomId) throw new Error("forbidden");
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
         }
         default:
@@ -684,7 +811,12 @@ export class WSServer {
     this.broadcastRound(round);
     if (round.state === "terminate") {
       const roundSnapshot = this.store.getRound(round.roundId);
-      const sanitizedRound = roundSnapshot ? this.sanitizeRound(roundSnapshot as RoundContext) : undefined;
+      // A single shared payload is genuinely correct here, unlike
+      // broadcastRound: round.state is already "terminate" by this branch,
+      // which is one of isCardHidden's own unconditional reveal cases -- so
+      // redaction is a no-op for every viewer and there is nothing left to
+      // keep separate per socket.
+      const sanitizedRound = roundSnapshot ? this.sanitizeRound(roundSnapshot as RoundContext, undefined) : undefined;
       const { balances } = this.store.finalizeRound(round.roundId);
       this.broadcast(round.roomId, {
         type: "round:ended",
@@ -706,9 +838,23 @@ export class WSServer {
   // `deck` is the live shoe in dealing order -- sending it let any player read
   // the next cards straight out of devtools. Clients only ever used its
   // length, for the shoe badge, so only the count goes out.
-  private sanitizeRound(round: RoundState | RoundContext): PublicRoundState {
-    const { timer, turnTimer, botTimer, deck, ...rest } = round as RoundContext;
-    return { ...rest, deckRemaining: deck?.length ?? 0 };
+  //
+  // `viewerId` makes this PER-RECIPIENT rather than one shared payload: each
+  // turn's cards are redacted through redactTurn for whoever is actually
+  // receiving this copy. Pass the socket's own meta.playerId (undefined for
+  // a room:watch spectator, which is the conservative default -- see
+  // isCardHidden's own comment; a watcher sees exactly what a non-member
+  // would, nothing hidden included). This is why broadcastRound can no
+  // longer send one identical message to the whole room -- see its own
+  // comment.
+  private sanitizeRound(round: RoundState | RoundContext, viewerId: string | undefined): PublicRoundState {
+    const { timer, turnTimer, botTimer, deck, turns, ...rest } = round as RoundContext;
+    const roundTerminated = round.state === "terminate";
+    return {
+      ...rest,
+      turns: turns.map((turn) => redactTurn(turn, viewerId, roundTerminated)),
+      deckRemaining: deck?.length ?? 0,
+    };
   }
 
   private async attach(socket: WebSocket, roomId: string, playerId: string) {
@@ -761,6 +907,40 @@ export class WSServer {
     return grant.roomId === roomId;
   }
 
+  private static createThrottled(map: Map<string, { count: number; resetAt: number }>, ip: string): boolean {
+    const entry = map.get(ip);
+    if (!entry || Date.now() > entry.resetAt) return false; // no entry, or the window has rolled over
+    return entry.count >= MAX_ROOM_CREATES_PER_WINDOW;
+  }
+
+  private static recordCreate(map: Map<string, { count: number; resetAt: number }>, ip: string): void {
+    const now = Date.now();
+    const entry = map.get(ip);
+    if (!entry || now > entry.resetAt) {
+      // Bounded the same way http-server.ts's admin-login attempt tracker
+      // is: a rotating IP defeats a per-IP throttle regardless, so the cap
+      // here is only about keeping this map from being an unbounded place
+      // to spend memory on a public endpoint, not about stopping rotation.
+      // Only swept on a fresh IP's first entry in a full map -- an IP
+      // already tracked just updates its own entry below, same as
+      // recordFailedAttempt's identical reasoning.
+      if (map.size >= MAX_TRACKED_ROOM_CREATE_IPS && !map.has(ip)) {
+        let oldestKey: string | undefined;
+        let oldestAt = Infinity;
+        for (const [key, e] of map) {
+          if (e.resetAt < oldestAt) {
+            oldestAt = e.resetAt;
+            oldestKey = key;
+          }
+        }
+        if (oldestKey !== undefined) map.delete(oldestKey);
+      }
+      map.set(ip, { count: 1, resetAt: now + ROOM_CREATE_WINDOW_MS });
+    } else {
+      entry.count += 1;
+    }
+  }
+
   /**
    * Subscribes a socket to a room's broadcasts with NO player identity.
    *
@@ -784,12 +964,19 @@ export class WSServer {
     this.broadcast(roomId, { type: "room:state", roomId, payload: room });
   }
 
+  // ONE round is now potentially as many DIFFERENT payloads as there are
+  // sockets in the room -- the banker's own hole card is real in the copy
+  // the banker gets and REDACTED_CARD in everyone else's, so this can no
+  // longer build one message and hand it to `broadcast`. Mirrors
+  // broadcastConnections's own per-socket loop, one door down, for the same
+  // reason: that one redacts by isAdmin, this one by seat ownership.
   private broadcastRound(round: RoundState) {
-    const sanitized = this.sanitizeRound(round as RoundContext);
-    this.broadcast(round.roomId, {
-      type: "round:state",
-      roomId: round.roomId,
-      payload: sanitized,
+    const sockets = this.rooms.get(round.roomId);
+    if (!sockets) return;
+    sockets.forEach((sock) => {
+      const meta = this.meta.get(sock);
+      const sanitized = this.sanitizeRound(round as RoundContext, meta?.playerId);
+      this.send(sock, { type: "round:state", roomId: round.roomId, payload: sanitized });
     });
   }
 

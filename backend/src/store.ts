@@ -8,6 +8,7 @@ import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInReque
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 import { metrics } from "./metrics.js";
+import { hashPassword, verifyPassword } from "./admin-auth.js";
 
 const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
@@ -515,7 +516,10 @@ export class GameStore {
     const room: RoomState = {
       roomId,
       name: resolvedRoomName,
-      password: admin.password,
+      // Falsy stays falsy -- a room with no password must hash to
+      // `undefined`, not to a hash of "" or "undefined", or joinRoom below
+      // would suddenly start demanding a password nobody set.
+      passwordHash: admin.password ? hashPassword(admin.password) : undefined,
       buyIn,
       bankerBuyIn,
       wallets: { [player.id]: bankerBuyIn },
@@ -627,7 +631,12 @@ export class GameStore {
       const normalizedId = roomId.trim().toUpperCase();
       const roomRec = this.rooms.get(normalizedId);
     if (!roomRec) throw new Error("room_not_found");
-    if (roomRec.room.password && roomRec.room.password !== info.password) throw new Error("invalid_password");
+    // verifyPassword rejects outright on a missing/empty `provided` (see its
+    // own guard), so a room WITH a password still refuses a blank join
+    // attempt the same way the old truthy check did.
+    if (roomRec.room.passwordHash && !verifyPassword(roomRec.room.passwordHash, info.password ?? "")) {
+      throw new Error("invalid_password");
+    }
     if (roomRec.room.players.length >= this.limits.maxPlayersPerRoom) throw new Error("room_full");
     const player: Player = {
       id: uuid(),
@@ -827,16 +836,27 @@ export class GameStore {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");
     if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
-    if (!Number.isFinite(amount) || amount === 0) throw new Error("invalid_bank_amount");
+    // Only Number.isFinite used to guard this -- the one money path in the
+    // file that didn't route through normalizeMoney (see that function's own
+    // comment on why: 10.5 and 1e308 both pass a bare finite check, and this
+    // wallet is a plain JS number forever after). This adjustment moves the
+    // wallet BOTH WAYS though, unlike every other money path here, so it
+    // normalizes the MAGNITUDE and reapplies the banker's own sign rather
+    // than calling normalizeMoney(amount) directly, which rejects anything
+    // <= 0 and would refuse every deduction outright.
+    const sign = amount < 0 ? -1 : 1;
+    const magnitude = normalizeMoney(Math.abs(amount));
+    if (magnitude === undefined) throw new Error("invalid_bank_amount");
+    const normalizedAmount = sign * magnitude;
     const current = roomRec.room.wallets[targetPlayerId];
     if (current === undefined) throw new Error("player_not_found");
-    const updatedTotal = current + amount;
+    const updatedTotal = current + normalizedAmount;
     if (updatedTotal < 0) throw new Error("insufficient_bank");
     roomRec.room.wallets[targetPlayerId] = updatedTotal;
     const trimmedNote = this.sanitizeNote(note);
-    this.audit("wallet-adjust", roomId, adminId, { target: targetPlayerId, amount, note: trimmedNote });
+    this.audit("wallet-adjust", roomId, adminId, { target: targetPlayerId, amount: normalizedAmount, note: trimmedNote });
     this.bumpRoomTimer(roomId);
-    return { amount, total: updatedTotal, note: trimmedNote };
+    return { amount: normalizedAmount, total: updatedTotal, note: trimmedNote };
   }
 
   // Practice-only self-serve top-up -- see PRACTICE_TOPUP_AMOUNT. Deliberately
@@ -953,6 +973,15 @@ export class GameStore {
     if (normalizeMoney(amount) !== amount) throw new Error("invalid_bet");
     const playerTurn = round.turns.find((t) => t.player.id === playerId);
     if (!playerTurn) throw new Error("turn_not_found");
+    // The banker never wagers (see docs/GAME_RULES.md) -- playBotTurn already
+    // knows this and steers around it (its own comment tells that story), but
+    // that is bot logic choosing not to call this, not this method refusing
+    // the call. A client that sent `bet` on the admin's turn was previously
+    // unopposed, and calculateEndState (round.ts) then overwrites `bet` with
+    // the round's signed net once it resolves, erasing the evidence a stray
+    // wager had ever landed. Rejected here, at the one place both paths
+    // (WS and bot) funnel through.
+    if (playerTurn.player.type === "admin") throw new Error("forbidden");
 
     const lock = round.bankLock;
     if (lock) {
@@ -1724,7 +1753,7 @@ export class GameStore {
           waitingCount: rec.room.waitingPlayerIds?.length ?? 0,
           completedRounds: rec.room.completedRounds ?? 0,
           hasActiveRound: Boolean(rec.room.roundId),
-          hasPassword: Boolean(rec.room.password),
+          hasPassword: Boolean(rec.room.passwordHash),
           lastActivityAt: rec.lastActivityAt ?? Date.now(),
         };
       })

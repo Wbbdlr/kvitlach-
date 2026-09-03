@@ -101,6 +101,59 @@ describe("PlayerDock bet amount field", () => {
 
 });
 
+describe("PlayerDock quick-bet chips", () => {
+  it("stays collapsed behind the trigger until tapped", () => {
+    renderDock();
+    expect(screen.queryByLabelText("Set bet to $10")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Quick-bet amounts"));
+    expect(screen.getByLabelText("Set bet to $10")).toBeInTheDocument();
+  });
+
+  it("sets the field to the tapped amount and closes the panel", () => {
+    renderDock();
+    fireEvent.click(screen.getByLabelText("Quick-bet amounts"));
+    fireEvent.click(screen.getByLabelText("Set bet to $10"));
+    const input = screen.getByLabelText("Bet amount") as HTMLInputElement;
+    expect(input.value).toBe("10");
+    expect(screen.queryByLabelText("Set bet to $10")).not.toBeInTheDocument();
+  });
+
+  it("replaces rather than adds -- $25 after $5 lands on $25, not $30", () => {
+    renderDock();
+    fireEvent.click(screen.getByLabelText("Quick-bet amounts"));
+    fireEvent.click(screen.getByLabelText("Set bet to $5"));
+    fireEvent.click(screen.getByLabelText("Quick-bet amounts"));
+    fireEvent.click(screen.getByLabelText("Set bet to $25"));
+    const input = screen.getByLabelText("Bet amount") as HTMLInputElement;
+    expect(input.value).toBe("25");
+  });
+
+  it("does not call onBet by itself -- it only fills the field", () => {
+    const { onBet } = renderDock();
+    fireEvent.click(screen.getByLabelText("Quick-bet amounts"));
+    fireEvent.click(screen.getByLabelText("Set bet to $25"));
+    expect(onBet).not.toHaveBeenCalled();
+  });
+
+  it("clears a standing bet error the same as typing does", () => {
+    renderDock({ wallet: 3 });
+    fireEvent.click(screen.getByText("Bet")); // $5 default > $3 wallet
+    expect(screen.getByText("Insufficient chips for this wager.")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Quick-bet amounts"));
+    fireEvent.click(screen.getByLabelText("Set bet to $10"));
+    expect(screen.queryByText("Insufficient chips for this wager.")).not.toBeInTheDocument();
+  });
+
+  it("closes on Escape without changing the field", () => {
+    renderDock();
+    fireEvent.click(screen.getByLabelText("Quick-bet amounts"));
+    expect(screen.getByLabelText("Set bet to $10")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByLabelText("Set bet to $10")).not.toBeInTheDocument();
+    expect((screen.getByLabelText("Bet amount") as HTMLInputElement).value).toBe("5");
+  });
+});
+
 describe("PlayerDock BANK! confirmation", () => {
   it("opens a confirmation dialog instead of arming the bet field directly", () => {
     renderDock({ bankIncrement: 80 });

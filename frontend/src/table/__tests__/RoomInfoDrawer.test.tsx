@@ -54,6 +54,27 @@ describe("RoomInfoDrawer", () => {
     expect(screen.queryByText("Request more chips")).not.toBeInTheDocument();
   });
 
+  // The banker used to be shown the room's actual password here, with a
+  // copy button -- read out to late joiners. Security pass: the server only
+  // ever stores a one-way hash now (that plaintext sat in every room:state
+  // broadcast to every player, and in every Postgres backup, in the clear),
+  // so there is no value left to display or copy -- only whether one is set.
+  it("tells the banker a password is set, with nothing to copy", () => {
+    renderDrawer({ isAdmin: true, hasPassword: true });
+    expect(screen.getByText(/This table has a password set/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Copy room password")).not.toBeInTheDocument();
+  });
+
+  it("shows nothing about a password when the table has none", () => {
+    renderDrawer({ isAdmin: true, hasPassword: false });
+    expect(screen.queryByText(/password/i)).not.toBeInTheDocument();
+  });
+
+  it("never shows the password banner to a non-admin, even if one is set", () => {
+    renderDrawer({ isAdmin: false, hasPassword: true });
+    expect(screen.queryByText(/password/i)).not.toBeInTheDocument();
+  });
+
   it("submits a rename request with the entered name", () => {
     const { onRequestRename } = renderDrawer();
     fireEvent.click(screen.getByText("Request name change"));

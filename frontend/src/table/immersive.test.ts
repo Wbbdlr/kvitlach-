@@ -95,7 +95,13 @@ describe("enterImmersive", () => {
     // Chained, not parallel: Chrome rejects the lock unless a fullscreen
     // element already exists, so it must wait for the promise.
     expect(lock).not.toHaveBeenCalled();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Also still not called right as the fullscreen promise resolves -- see
+    // LOCK_DELAY_MS's comment in immersive.ts (a stuck Android "exit full
+    // screen" banner, suspected to be triggered by firing the orientation
+    // lock in the same tick fullscreen entry resolves).
+    await Promise.resolve();
+    expect(lock).not.toHaveBeenCalled();
+    await new Promise((resolve) => setTimeout(resolve, 150));
     expect(lock).toHaveBeenCalledWith("landscape");
   });
 

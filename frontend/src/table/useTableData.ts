@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
+import { Player, ReactionEvent, RoomState, RoundState } from "../types";
 import { CompletedRoundSummary } from "../state";
-import { statusDisplay, betDisplay, fullName, formatNames, isPushTurn, reservedAgainst } from "./selectors";
+import { statusDisplay, betDisplay, fullName, formatNames, reservedAgainst } from "./selectors";
+import { turnNet } from "../playerRecord";
 
 // Must match the server's own BANKER_ABANDON_MS (store.ts). Offering the
 // escape hatch earlier than the server honours it would just produce an error
@@ -26,18 +27,6 @@ export interface StatsData {
   netTotal: number;
   /** Whether the person reading this is the person it is about. */
   isSelf: boolean;
-}
-
-// Mirrors betDisplay's own amount selection (selectors.ts) so the summed
-// total always agrees with what each individual round row already shows.
-function netAmount(turn: Turn): number {
-  if (turn.player.type === "admin") return turn.bet ?? 0; // already the signed net balance post-resolution
-  if (isPushTurn(turn)) return 0;
-  const baseBet = turn.bet ?? 0;
-  const amount = baseBet > 0 ? baseBet : turn.settledBet ?? baseBet;
-  if (turn.state === "won") return amount;
-  if (turn.state === "lost") return -amount;
-  return 0;
 }
 
 export interface TableDataInput {
@@ -178,7 +167,7 @@ export function useTableData({
         if (!turn) return undefined;
         const status = statusDisplay(turn);
         const betInfo = betDisplay(turn, true);
-        netTotal += netAmount(turn);
+        netTotal += turnNet(turn);
         return {
           roundNumber: r.roundNumber,
           status: status.label || "",

@@ -1852,6 +1852,22 @@ body:has(.k-fit) {
   justify-content: center;
   gap: 8px;
 }
+/* The control bar as the player sees it: whichever dock is showing, plus the
+   reaction button beside it, as one box that moves and scales together.
+   It is a level of nesting the stack did not used to need, and the reason is
+   the readout: everything in here travels with the bar, and the readout must
+   not, because it is separately draggable and carries its own position:fixed.
+   So the stack holds the bar's POSITION and the row holds its SCALE -- a
+   transform on the stack would make the stack the containing block for a
+   readout its own player had moved, and the readout would follow the bar
+   around the screen. */
+.k-dock-row {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+}
 .k-dock-stack > .k-viewer-hud {
   position: absolute;
   left: 0;
@@ -1907,7 +1923,14 @@ body:has(.k-fit) {
   .k-dock-stack {
     width: 100%;
   }
-  .k-dock-stack > .k-dock {
+  /* The row is what the dock now grows inside, so it has to be handed the
+     width the stack was just given -- otherwise the row is content-width and
+     the dock is back to sizing against its own min-content. */
+  .k-dock-row {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .k-dock-row > .k-dock {
     /* Two goes at this, and the second was the wrong lever.
        The original bug: a WRAPPING flex container used as a flex item is sized
        from its MIN-content width, so the dock collapsed to roughly its widest
@@ -1939,18 +1962,18 @@ body:has(.k-fit) {
      Controls keep their natural width; the row is made to fit by making the
      controls genuinely smaller (below), which is what "scale the whole thing
      down" actually asks for. */
-  .k-dock-stack > .k-dock > * {
+  .k-dock-row > .k-dock > * {
     flex: none;
   }
   /* The last-resort net. Below roughly 600px of stack there is no honest way
      to fit six controls, and a row that scrolls is strictly better than one
      that overlaps itself -- which is the one failure mode nowrap introduces
      that wrapping did not have. */
-  .k-dock-stack > .k-dock {
+  .k-dock-row > .k-dock {
     overflow-x: auto;
     scrollbar-width: none;
   }
-  .k-dock-stack > .k-dock::-webkit-scrollbar {
+  .k-dock-row > .k-dock::-webkit-scrollbar {
     display: none;
   }
 
@@ -2072,30 +2095,46 @@ body:has(.k-fit) {
   color: #f0c579;
   cursor: pointer;
 }
-/* The dock's own resize grip and reset, deliberately the same two controls
-   the readout carries and drawn the same way -- a player who has found one has
-   found both. Bottom-right and top-right of .k-dock, which is position:
-   relative already.
-   The grip is CSS gradients rather than an icon for the same reason the
-   readout's is: at 18px an SVG of a corner-grip is three grey smudges, and
-   two diagonal rules read as a grip at any size. */
+/* The control bar's two grips, on its TOP edge -- move at the left end, resize
+   at the right. Asked for in as many words: "the dragger needs to be on the top
+   right and left, and we should be able to move the control bar too."
+   The resize grip used to sit in the bar's bottom-right corner. On a phone in
+   landscape that is the one corner of the screen that is both in the system
+   gesture bar and under the heel of the thumb already holding the device; the
+   top edge is the only edge of this bar with nothing behind it.
+   Drawn as CSS gradients rather than icons for the same reason the readout's
+   is: at 18px an SVG of a grip is three grey smudges, while a couple of rules
+   read as a grip at any size. Two directions of rule, so the two are told
+   apart by shape and not only by which end they are at. */
 .k-dock-grip {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 18px;
-  height: 18px;
-  cursor: nwse-resize;
+  top: 1px;
+  width: 22px;
+  height: 16px;
   touch-action: none;
+  border-radius: 8px;
+}
+.k-dock-grip.move {
+  left: 2px;
+  cursor: move;
+  /* Two horizontal rules -- the universal "grab bar". */
   background:
-    linear-gradient(135deg, transparent 0 46%, rgba(230, 164, 75, 0.5) 46% 54%, transparent 54% 100%),
-    linear-gradient(135deg, transparent 0 66%, rgba(230, 164, 75, 0.36) 66% 74%, transparent 74% 100%);
-  border-bottom-right-radius: 13px;
+    linear-gradient(180deg, transparent 0 36%, rgba(230, 164, 75, 0.5) 36% 46%, transparent 46% 100%),
+    linear-gradient(180deg, transparent 0 56%, rgba(230, 164, 75, 0.5) 56% 66%, transparent 66% 100%);
+}
+.k-dock-grip.size {
+  right: 2px;
+  cursor: nwse-resize;
+  /* Diagonals, matching the readout's own resize grip. */
+  background:
+    linear-gradient(135deg, transparent 0 44%, rgba(230, 164, 75, 0.5) 44% 54%, transparent 54% 100%),
+    linear-gradient(135deg, transparent 0 64%, rgba(230, 164, 75, 0.36) 64% 74%, transparent 74% 100%);
 }
 .k-dock-reset {
   position: absolute;
   top: -8px;
-  right: -8px;
+  /* Clear of the resize grip that now owns the top-right corner. */
+  right: 26px;
   width: 20px;
   height: 20px;
   display: grid;
@@ -2399,6 +2438,29 @@ body:has(.k-fit) {
 .k-maxbtn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+/* The trigger's own wrapper is the popover's positioned ancestor -- deliberately
+   NOT portalled through StageOverlay like the BANK! confirm dialog above.
+   That dialog is position:fixed, which escapes to the viewport and needs the
+   portal to dodge .k-dock's own resize scale transform becoming its
+   containing block. This panel is position:absolute instead, anchored to
+   .k-quickbets right here in the same (possibly scaled) tree -- so it scales
+   and tracks WITH the dock exactly like every other in-flow control in it,
+   under any resize, with no measurement or portal needed. */
+.k-quickbets-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60; /* matches .k-appearance-panel / .k-chrome-menu, the other popovers this dock-level chrome can open */
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(10, 20, 14, 0.97);
+  border: 1px solid rgba(230, 164, 75, 0.45);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
 }
 .k-btn {
   border: none;

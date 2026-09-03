@@ -23,6 +23,10 @@ type LockableOrientation = ScreenOrientation & {
   unlock?: () => void;
 };
 
+// See the requestFullscreen().then() comment below for what this guards
+// against.
+const LOCK_DELAY_MS = 120;
+
 function orientationApi(): LockableOrientation | undefined {
   if (typeof screen === "undefined") return undefined;
   return screen.orientation as LockableOrientation | undefined;
@@ -91,7 +95,20 @@ export function enterImmersive(): void {
   // The lock is chained onto the fullscreen promise rather than fired
   // alongside it: Chrome rejects orientation.lock() outright unless a
   // fullscreen element already exists.
-  el.requestFullscreen().then(lockLandscape).catch(() => {});
+  //
+  // Reported on Android, 2026-09-03: Chrome's own "To exit full screen, drag
+  // from the top..." banner -- system UI this file does not render and
+  // cannot dismiss -- got stuck on screen instead of clearing itself after a
+  // couple of seconds like it normally does. That banner is timed around the
+  // fullscreen transition alone; firing a SECOND viewport-changing call
+  // (the orientation lock) back to back with it, in the same tick the
+  // fullscreen promise resolves, is a known trigger for it on some Android
+  // Chrome builds. Ordering still has to hold -- lock() still can't fire
+  // before fullscreen exists -- so this keeps the chain but gives Chrome's
+  // own transition a beat to settle before the second mutation lands.
+  // Best-effort like everything else here: unverified against a real device,
+  // report back if it recurs.
+  el.requestFullscreen().then(() => setTimeout(lockLandscape, LOCK_DELAY_MS)).catch(() => {});
 }
 
 /**

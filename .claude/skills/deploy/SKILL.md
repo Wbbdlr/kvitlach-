@@ -34,7 +34,13 @@ previous turn already said three of them.
 ## Steps
 
 1. **Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 first**, so the
-   footer badge proves which build is live.
+   footer badge proves which build is live. **In the same edit, append an
+   entry to that file's `VERSION_HISTORY` array** with today's date — the
+   footer badge is clickable and shows a tester when this version first
+   shipped, read from that array; a bump with no matching entry shows "No
+   ship date recorded" instead. `SiteFooter.test.tsx` fails if the currently
+   running `APP_VERSION` has no entry, so a skipped one is caught before it
+   ships, not after.
 
 2. **Run `npx vite build` AFTER the bump, not just before.** The bump is a
    code edit and can break the build on its own: a scripted bump once
