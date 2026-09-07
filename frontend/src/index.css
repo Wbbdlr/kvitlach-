@@ -1003,6 +1003,24 @@ body:has(.k-fit) {
   color: #f0c579;
   border-color: rgba(230, 164, 75, 0.55);
 }
+/* The seat the turn is coming to next. Cool blue against the felt's green and
+   against the gold the ACTIVE seat wears -- "you are not up yet, but you are
+   the one after this". Both this and .wait used to be .k-tag.muted, which is
+   also what a seat with nothing to say wears, so the felt drew no distinction
+   between "next" and "nothing". */
+.k-tag.next {
+  --tag-tint: rgba(60, 130, 180, 0.26);
+  color: #a8d4ee;
+  border-color: rgba(80, 150, 200, 0.5);
+}
+/* Waiting for the turn to come round. Deliberately quieter than .next -- it is
+   the resting state of most seats for most of a round, so it reads as "in the
+   round, nothing to do yet" without competing with the two seats that matter. */
+.k-tag.wait {
+  --tag-tint: rgba(120, 112, 180, 0.2);
+  color: #c2bce6;
+  border-color: rgba(130, 122, 190, 0.38);
+}
 .k-tag.muted {
   --tag-tint: rgba(255, 255, 255, 0.06);
   color: #b9c2b9;
@@ -2277,13 +2295,35 @@ body:has(.k-fit) {
      the tie rather than trusting it. */
   z-index: 2;
 }
+/* The move handle: a corner bracket in each of the bar's two LEFT corners.
+   It was two horizontal rules, the universal "grab bar" -- rejected on sight
+   ("should be in the corners, not horizontal lines which look weird"), and
+   the objection is right. Stacked rules sitting inboard of a corner read as a
+   texture applied to the bar; a bracket that traces the corner reads as the
+   bar's own edge being offered to you. Borders rather than gradients because
+   a bracket IS two borders, and stating it that way keeps the two variants
+   below to one line each. */
 .k-dock-grip.move {
   left: 2px;
   cursor: move;
-  /* Two horizontal rules -- the universal "grab bar". */
-  background:
-    linear-gradient(180deg, transparent 0 36%, rgba(230, 164, 75, 0.5) 36% 46%, transparent 46% 100%),
-    linear-gradient(180deg, transparent 0 56%, rgba(230, 164, 75, 0.5) 56% 66%, transparent 66% 100%);
+  width: 15px;
+  height: 15px;
+  background: none;
+  border: 2px solid rgba(230, 164, 75, 0.5);
+  border-radius: 0;
+}
+.k-dock-grip.move.tl {
+  top: 1px;
+  border-right: 0;
+  border-bottom: 0;
+  border-top-left-radius: 6px;
+}
+.k-dock-grip.move.bl {
+  top: auto;
+  bottom: 1px;
+  border-right: 0;
+  border-top: 0;
+  border-bottom-left-radius: 6px;
 }
 .k-dock-grip.size {
   right: 2px;
@@ -2309,6 +2349,16 @@ body:has(.k-fit) {
 .k-dock-grip.move::before {
   left: -6px;
   right: -4px;
+}
+/* Each corner slops away from the bar's contents, not into them: the top
+   bracket upward, the bottom bracket downward. The shared rule above biases
+   both directions, which for the bottom one would push its hit area up over
+   the bet field. */
+.k-dock-grip.move.tl::before {
+  bottom: -2px;
+}
+.k-dock-grip.move.bl::before {
+  top: -2px;
 }
 .k-dock-grip.size::before {
   left: -4px;
@@ -4045,15 +4095,30 @@ body:has(.k-fit) {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
-/* Shakes the whole track (not just the shrinking fill) so the widget reads
-   as "panicking" as a unit in the final seconds before an auto-skip. */
+/* Wobbles the whole track (not just the shrinking fill) so the widget reads
+   as "panicking" as a unit in the final seconds before an auto-skip.
+   It was a flat side-to-side shake of 1.5px. On a 110x3px bar that is a
+   rounding error at any stage scale below 1 -- asked for as "a wobble effect
+   to show urgency", and a rotation is what makes it one: tilting a bar this
+   wide by a degree moves its ENDS several pixels while its middle stays put,
+   so the motion survives being scaled down in a way a pure translate does
+   not. The translate stays, riding along, to keep it from reading as a clean
+   pivot. */
 .k-turnbar.is-urgent {
-  animation: turnBarShake 0.35s ease-in-out infinite;
+  animation: turnBarWobble 0.55s ease-in-out infinite;
+  transform-origin: 50% 50%;
 }
-@keyframes turnBarShake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-1.5px); }
-  75% { transform: translateX(1.5px); }
+/* Angles picked off the geometry, not by eye: the bar is 110px wide, so a
+   rotation of D degrees moves each tip 55*sin(D) px vertically. 1.4deg was
+   the first pass and worked out at 1.3px of travel -- less than the flat
+   shake it replaced. 2.8deg gives ~2.7px each way, so the two ends visibly
+   see-saw against a 3px-tall bar, which is the whole effect. */
+@keyframes turnBarWobble {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  20% { transform: translateX(-2.5px) rotate(-2.8deg); }
+  45% { transform: translateX(2.5px) rotate(2.8deg); }
+  70% { transform: translateX(-1.5px) rotate(-1.5deg); }
+  88% { transform: translateX(1px) rotate(0.9deg); }
 }
 
 /* "Your move" - fired once when it becomes the local player's turn. */

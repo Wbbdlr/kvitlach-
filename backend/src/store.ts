@@ -88,7 +88,20 @@ function normalizeMoney(raw: unknown): number | undefined {
 // startRound()'s rotation advances by exactly one player per round.
 const MAX_SEATED_PLAYERS_PER_ROUND = 11;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const TURN_TIMEOUT_MS = 90 * 1000;
+// A seat's thinking time, in seconds. 90 was the original and was cut to 60
+// on the banker's own report that it felt slack at a real table -- the clock
+// now refills on every action (see syncTurnTimer), so 60 is 60 seconds per
+// DECISION rather than per turn, which is a longer leash than the old 90 was
+// in practice.
+//
+// The bounds exist because this is the only game rule a banker can change
+// mid-night and both ends of it break the table: under ~10s nobody on a phone
+// can read their hand and press a button, and past 5 minutes an away player
+// stalls everyone else for as long as they like, which is the exact problem
+// the clock was added to solve.
+export const DEFAULT_TURN_SECONDS = 60;
+export const MIN_TURN_SECONDS = 10;
+export const MAX_TURN_SECONDS = 300;
 // How long a banker must be gone before the seats they left behind may throw
 // the round away. Long enough that a tunnel blip or a phone changing cells
 // doesn't cost anyone a hand -- the client reconnects on its own well inside
@@ -338,7 +351,8 @@ export class GameStore {
 
     const sameActive =
       !acted && prev?.turnTimerPlayerId === activeTurnId && typeof prev?.turnTimerExpiresAt === "number";
-    const remainingMs = sameActive ? Math.max((prev?.turnTimerExpiresAt ?? 0) - now, 0) : TURN_TIMEOUT_MS;
+    const turnMs = this.turnTimeoutMs(next.roomId);
+    const remainingMs = sameActive ? Math.max((prev?.turnTimerExpiresAt ?? 0) - now, 0) : turnMs;
 
     if (remainingMs <= 0) {
       return this.forceTimeoutStand(roundId, next, activeTurnId);
@@ -352,7 +366,7 @@ export class GameStore {
       turnTimer: timer,
       turnTimerPlayerId: activeTurnId,
       turnTimerExpiresAt: now + remainingMs,
-      turnTimerDurationMs: TURN_TIMEOUT_MS,
+      turnTimerDurationMs: turnMs,
     };
   }
 
@@ -1036,6 +1050,30 @@ export class GameStore {
     roomRec.room.bankerBuyIn = total;
     this.bumpRoomTimer(roomId);
     return { amount: normalized, total };
+  }
+
+  private turnTimeoutMs(roomId: string): number {
+    const seconds = this.rooms.get(roomId)?.room.turnSeconds;
+    return (typeof seconds === "number" && seconds > 0 ? seconds : DEFAULT_TURN_SECONDS) * 1000;
+  }
+
+  // The banker's own call, per table, for the night. Deliberately NOT applied
+  // to the clock already running: a seat that started its turn under a 60s
+  // rule finishes under it, because shortening the limit out from under
+  // somebody mid-decision is the same force-stand the refill was added to
+  // stop. The next turn picks the new value up (syncTurnTimer reads it fresh
+  // every time it starts a clock).
+  setTurnSeconds(roomId: string, adminId: string, seconds: number) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    if (!Number.isFinite(seconds)) throw new Error("invalid_payload");
+    const whole = Math.floor(seconds);
+    if (whole < MIN_TURN_SECONDS || whole > MAX_TURN_SECONDS) throw new Error("invalid_turn_seconds");
+    roomRec.room.turnSeconds = whole;
+    this.audit("set-turn-seconds", roomId, adminId, { seconds: whole });
+    this.bumpRoomTimer(roomId);
+    return { turnSeconds: whole };
   }
 
   setFeltWatermark(roomId: string, adminId: string, text: string) {

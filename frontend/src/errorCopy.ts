@@ -58,6 +58,7 @@ export const ERROR_COPY: Record<string, string> = {
   invalid_bankroll: "Enter a valid starting amount for the bank.",
   invalid_buyin: "Enter a valid buy-in - whole chips, at least 1.",
   invalid_bank_amount: "Bank wager must equal the remaining bank.",
+  invalid_turn_seconds: "Turn time has to be between 10 and 300 seconds.",
   bank_empty: "The bank has no chips left.",
   bank_locked: "Bank showdown in progress. Please wait.",
   bank_not_empty: "The bank still has chips - there is nothing to refill yet.",

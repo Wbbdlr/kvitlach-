@@ -774,6 +774,17 @@ export class WSServer {
           this.sendAck(socket, requestId, { room, topUp: result });
           break;
         }
+        case "room:set-turn-seconds": {
+          const { seconds, roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || typeof seconds !== "number") throw new Error("invalid_payload");
+          const result = this.store.setTurnSeconds(roomId, actorId, seconds);
+          this.broadcastRoom(roomId);
+          this.sendAck(socket, requestId, { result });
+          break;
+        }
         case "room:set-watermark": {
           const { text, roomId: roomFromPayload } = (payload as any) || {};
           const meta = this.meta.get(socket);
@@ -878,8 +889,16 @@ export class WSServer {
       // rather than a list of the ~34 codes: every one of them is a bare
       // snake_case token, and real exception messages carry spaces and
       // punctuation, so the list can grow without anyone updating this.
+      // The optional `:<digits>` tail is not cosmetic. applyBet is the one
+      // place that BUILDS a code rather than naming one -- `bank_limit:400`,
+      // carrying the number the wager has to fit inside -- and the original
+      // shape test rejected it on the colon, so the client never saw it. It
+      // got "Something went wrong on our end. Please try again." instead, on
+      // the single most consequential refusal in the game: a BANK! wager the
+      // bank could not cover. errorCopy already had the copy for this and it
+      // was unreachable. Digits only, so no exception text can ride in on it.
       const raw = err?.message;
-      const isProtocolCode = typeof raw === "string" && /^[a-z][a-z0-9_]*$/.test(raw);
+      const isProtocolCode = typeof raw === "string" && /^[a-z][a-z0-9_]*(:[0-9]+(\.[0-9]+)?)?$/.test(raw);
       if (!isProtocolCode) console.error("unexpected handler error", type, err);
       this.send(socket, {
         type: "error",
@@ -891,6 +910,27 @@ export class WSServer {
 
   private handleRoundUpdate(round: RoundState) {
     this.broadcastRound(round);
+    // The room goes out with every round update, not only at "terminate".
+    //
+    // Wallets move DURING a round: settleImmediateTurn pays a hand the moment
+    // it is decided -- a 21, a rosier pair, and a BANK! wager the player wins
+    // outright -- and it moves the bank's own money by the size of that
+    // wager. Until this line the only room broadcast in a round's whole life
+    // was the one at the end, so from the first early payout onward every
+    // client at the table was rendering stale chip counts, the bank's most of
+    // all.
+    //
+    // That is not only cosmetic, which is how it survived. BANK! wagers "the
+    // bank's entire available window", and the client sizes that wager from
+    // room.wallets -- so a stale bank meant the client confidently sent a
+    // number the bank could no longer cover and the server refused it. Seen
+    // in production as `bank_limit:291` against a client still showing the
+    // pre-payout balance.
+    //
+    // Cheap enough to do unconditionally: a room payload is a roster and a
+    // wallet map for at most 11 seats, and this fires on turn actions, not on
+    // a timer.
+    this.broadcastRoom(round.roomId);
     if (round.state === "terminate") {
       const roundSnapshot = this.store.getRound(round.roundId);
       // A single shared payload is genuinely correct here, unlike

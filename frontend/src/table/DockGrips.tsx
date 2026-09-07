@@ -26,17 +26,24 @@ export interface DockGripsProps {
 export function DockGrips({ dockPanel }: DockGripsProps) {
   return (
     <>
-      {/* Both grips on the TOP edge, asked for directly ("the dragger needs
-          to be on the top right and left, and we should be able to move the
-          control bar too"). The resize grip used to be in the bar's
-          bottom-right corner, which on a phone in landscape is the one
-          corner sitting in the gesture bar and under the heel of a thumb
-          already holding the device -- the top edge is the only edge of this
-          bar with nothing behind it.
+      {/* The move handle is TWO corner marks down the bar's left edge, top
+          and bottom -- "the grab handle to move the main controls box should
+          be bottom left top left, and should be in the corners, not
+          horizontal lines which look weird."
+          Two of them rather than one because a corner mark only reads as a
+          corner when it is actually IN one, and a single bracket on a bar
+          this wide reads as decoration; a matched pair down one edge reads
+          as "this edge is the thing you hold". They carry the same
+          moveProps, so which one the thumb lands on does not matter.
+          The resize grip keeps the top-right corner. It used to sit at the
+          bottom-right, which on a phone in landscape is the one corner both
+          inside the system gesture bar and under the heel of the thumb
+          already holding the device.
           Each stops the event reaching anything else: the bar is full of
           buttons and a bet field, and a press that starts on a grip must not
           also press one of them. */}
-      <span className="k-dock-grip move" {...dockPanel.moveProps} title="Drag to move the controls" aria-hidden="true" />
+      <span className="k-dock-grip move tl" {...dockPanel.moveProps} title="Drag to move the controls" aria-hidden="true" />
+      <span className="k-dock-grip move bl" {...dockPanel.moveProps} title="Drag to move the controls" aria-hidden="true" />
       <span className="k-dock-grip size" {...dockPanel.gripProps} title="Drag to resize the controls" aria-hidden="true" />
       {/* Only once it has actually been moved or resized -- an always-visible
           "put it back" on a bar nobody has touched is clutter that explains a

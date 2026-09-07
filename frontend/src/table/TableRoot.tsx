@@ -104,6 +104,7 @@ export interface TableRootProps {
   onReact: (emoji: string) => void;
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
+  onSetTurnSeconds: (seconds: number) => void;
   roundHistoryCount: number;
   standings: StandingRow[];
   onApproveRename: (playerId: string) => void;
@@ -179,6 +180,7 @@ export function TableRoot({
   onReact,
   onTopUp,
   onSetWatermark,
+  onSetTurnSeconds,
   roundHistoryCount,
   standings,
   onApproveRename,
@@ -1791,8 +1793,10 @@ export function TableRoot({
           ledger={room.ledger ?? []}
           bankerWallet={bankerWallet}
           feltWatermark={room.feltWatermark}
+          turnSeconds={room.turnSeconds}
           onTopUp={onTopUp}
           onSetWatermark={onSetWatermark}
+          onSetTurnSeconds={onSetTurnSeconds}
           onApproveRename={onApproveRename}
           onRejectRename={onRejectRename}
           onApproveBuyIn={onApproveBuyIn}

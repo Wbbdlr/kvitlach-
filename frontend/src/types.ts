@@ -188,6 +188,8 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  /** Thinking time per decision. Absent on rooms made before the setting existed. */
+  turnSeconds?: number;
   /** Chips that moved without a hand being played. See LedgerEntry. */
   ledger?: LedgerEntry[];
   practice?: boolean;

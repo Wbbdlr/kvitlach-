@@ -138,7 +138,16 @@ export function Seat({
     turnTimer && turnTimer.playerId === turn.player.id && !isBanker && turn.state === "pending" && roundState !== "terminate"
   );
   const timerMsLeft = Math.max(0, turnTimer?.remainingMs ?? 0);
-  const timerTone = timerMsLeft <= 20000 ? "urgent" : timerMsLeft <= 45000 ? "warning" : "normal";
+  // Both thresholds are a FRACTION of the turn, capped in absolute seconds --
+  // they used to be flat 20s/45s, which was fine while every table ran the
+  // same 90-second clock and wrong the moment the banker could change it: on
+  // a 30-second turn the bar opened already in "warning" and spent its last
+  // two thirds red, which is a bar that says nothing. The absolute caps keep
+  // a long clock from spending half a minute shouting.
+  const timerDurationMs = turnTimer?.durationMs ?? 60000;
+  const urgentAtMs = Math.min(10000, timerDurationMs * 0.25);
+  const warningAtMs = Math.min(30000, timerDurationMs * 0.5);
+  const timerTone = timerMsLeft <= urgentAtMs ? "urgent" : timerMsLeft <= warningAtMs ? "warning" : "normal";
 
   const betStart = firstBetCardIndex?.[turn.player.id];
   const isOwnerView = viewerId === turn.player.id;
@@ -166,7 +175,7 @@ export function Seat({
   // happened from then on, not a ring left sitting in the hand.
   const showEleveroonCall = Boolean(!isBanker && turn.eleveroonCalled && turn.state === "pending");
   const label = isNextPlayer ? "Up next" : isCurrentTurn ? (isMe ? "Your turn" : "Active") : statusInfo.label;
-  const variant = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
+  const variant = tagVariant(label, isCurrentTurn);
   const showBet = !isBanker && betInfo.label !== "-";
   // selectors.ts distinguishes a real number from a concealed one ("hidden",
   // "--") and flags a bust; both distinctions have to survive here or every

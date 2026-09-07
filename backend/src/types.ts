@@ -233,6 +233,10 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  // How long a seat gets to decide, in seconds. Optional and defaulted at
+  // every read (DEFAULT_TURN_SECONDS): rooms persisted before this field
+  // existed come back from loadFromDB() without it, same as roundHistory.
+  turnSeconds?: number;
   // Chips that moved without a hand being played, plus the banker actions that
   // destroyed a stack. Optional for the same reason roundHistory is: rooms
   // persisted before this field existed come back from loadFromDB() without

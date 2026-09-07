@@ -82,7 +82,13 @@ export function useTableData({
 
   const activeTimerPlayerId = round?.turnTimerPlayerId;
   const activeTimerRemainingMs = round?.turnTimerExpiresAt ? Math.max(round.turnTimerExpiresAt - nowTs, 0) : undefined;
-  const turnTimerDurationMs = round?.turnTimerDurationMs ?? 90_000;
+  // The fallback matters more than it used to. It is only reached by a round
+  // snapshot with no duration on it (one persisted before the field existed),
+  // and it feeds `percent` -- so a wrong number here does not just mis-size
+  // the bar, it mis-sizes it in the direction that hides urgency. 60_000 is
+  // the server's own DEFAULT_TURN_SECONDS; 90_000 was the old default and
+  // would have drawn a 60s clock as never dropping below a third full.
+  const turnTimerDurationMs = round?.turnTimerDurationMs ?? 60_000;
   const activeTurnTimer = useMemo(() => {
     if (!activeTimerPlayerId || activeTimerRemainingMs === undefined) return undefined;
     const percent = Math.max(0, Math.min(100, (activeTimerRemainingMs / turnTimerDurationMs) * 100));
@@ -185,7 +191,7 @@ export function useTableData({
     }[];
     if (!entries.length)
       return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false, netTotal: 0, isSelf: statsPlayerId === playerId };
-    const wins = entries.filter((e) => e.status === "WON").length;
+    const wins = entries.filter((e) => e.status === "WON!").length;
     const losses = entries.filter((e) => e.status === "LOST" || e.status === "FUTCHED!").length;
     const pushes = entries.filter((e) => e.status === "PUSH").length;
     const playerRecord = room?.players.find((p) => p.id === statsPlayerId);

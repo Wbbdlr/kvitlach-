@@ -23,17 +23,30 @@ function panel(overrides: Partial<{ moved: boolean }> = {}) {
 }
 
 describe("DockGrips", () => {
-  it("renders both grips, always", () => {
+  // Two move grips, one in each of the bar's left corners, and one resize
+  // grip in the top-right. The move handle was a single strip of horizontal
+  // rules and is now a matched pair of corner brackets -- rejected on sight
+  // as "horizontal lines which look weird".
+  it("renders both move corners and the resize grip, always", () => {
     render(<DockGrips dockPanel={panel()} />);
-    expect(screen.getByTitle("Drag to move the controls")).toBeInTheDocument();
+    const moves = screen.getAllByTitle("Drag to move the controls");
+    expect(moves).toHaveLength(2);
+    expect(moves.map((el) => el.className)).toEqual([
+      expect.stringContaining("tl"),
+      expect.stringContaining("bl"),
+    ]);
     expect(screen.getByTitle("Drag to resize the controls")).toBeInTheDocument();
   });
 
-  it("wires the move grip's pointerdown to moveProps", () => {
+  // Either corner has to work. A pair where only one is live is worse than a
+  // single handle, because the dead one still looks grabbable.
+  it("wires BOTH move corners' pointerdown to moveProps", () => {
     const dockPanel = panel();
     render(<DockGrips dockPanel={dockPanel} />);
-    fireEvent.pointerDown(screen.getByTitle("Drag to move the controls"));
-    expect(dockPanel.moveProps.onPointerDown).toHaveBeenCalled();
+    for (const grip of screen.getAllByTitle("Drag to move the controls")) {
+      fireEvent.pointerDown(grip);
+    }
+    expect(dockPanel.moveProps.onPointerDown).toHaveBeenCalledTimes(2);
   });
 
   it("wires the resize grip's pointerdown to gripProps", () => {

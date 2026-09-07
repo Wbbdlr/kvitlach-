@@ -321,9 +321,17 @@ export function totalDisplay(
 export function tagVariant(label: string, isCurrentTurn: boolean): string {
   if (isCurrentTurn) return "turn";
   if (label === "BANK 21!") return "natural";
-  if (label === "WON") return "won";
+  if (label === "WON!") return "won";
   if (label === "LOST" || label === "FUTCHED!") return "bust";
   if (label === "STANDING") return "stand";
+  // The two states a seat can be in while the round is still coming toward
+  // it. Both used to take .k-tag.muted, the same grey the felt gives a seat
+  // with nothing to say at all -- so "your hand is next" and "this seat is
+  // idle" were the same pill. They get their own tones now for the same
+  // reason won/bust/stand have theirs: the pill is read at a glance, from
+  // across a table, at whatever size the stage happens to be scaled to.
+  if (label === "Up next") return "next";
+  if (label === "Waiting...") return "wait";
   // Banker split results (see bankerOutcome). A mixed round is genuinely
   // neither a win nor a loss for the bank, so it takes the neutral amber
   // rather than being forced into one or the other.
@@ -359,7 +367,7 @@ export function statusDisplay(turn: Turn): { label: string; className: string } 
   if (banker) return banker;
   // The banker hitting exactly 21 outright beats everyone still live in
   // the round, the same instant a bust futches them -- it deserves the
-  // same kind of stand-out moment FUTCHED! gets, not the plain "WON" a
+  // same kind of stand-out moment FUTCHED! gets, not the plain "WON!" a
   // player's ordinary showdown win shows. bankerOutcome (above) already
   // claims this turn once beat/lostTo exist post-settlement (the "BEAT N"
   // tag), so this only ever fires in the live window before that -- same
@@ -381,7 +389,9 @@ export function statusDisplay(turn: Turn): { label: string; className: string } 
   if (isPushTurn(turn)) return { label: "PUSH", className: "text-slate-600 font-semibold" };
   if (turn.state === "standby") return { label: "STANDING", className: "text-orange-600 font-bold" };
   if (turn.state === "won") {
-    return { label: "WON", className: "text-emerald-700 font-bold" };
+    // WON! carries the exclamation mark FUTCHED! has always had. They are
+    // the two ends of the same moment and only one of them was shouting.
+    return { label: "WON!", className: "text-emerald-700 font-bold" };
   }
   if (turn.state === "lost") {
     // `turn.busted` wins when present -- a server-backfilled history turn

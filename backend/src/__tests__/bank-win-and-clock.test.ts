@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { GameStore } from "../store.js";
+import { GameStore, DEFAULT_TURN_SECONDS } from "../store.js";
 
 // Two bugs reported from the felt in v11.6, both inside a BANK!.
 //
@@ -10,7 +10,10 @@ import { GameStore } from "../store.js";
 // played him out and stayed at 17 [...] the whole round was broken as a
 // result."
 
-const TURN_TIMEOUT_MS = 90 * 1000;
+// Not a literal any more: the banker can set this per table, so the tests
+// track the store's own default rather than restating a number that moved
+// from 90 to 60 under them.
+const TURN_TIMEOUT_MS = DEFAULT_TURN_SECONDS * 1000;
 const card = (...values: number[]) => ({ name: String(values[0]), attributes: { values } });
 const TWO = card(2);
 const NINE = card(9);
@@ -33,7 +36,7 @@ describe("the turn clock refills on every action, not once per turn", () => {
     vi.useRealTimers();
   });
 
-  it("gives a player who just acted a fresh 90s to decide on the next move", () => {
+  it("gives a player who just acted a fresh full clock to decide on the next move", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
     store.joinRoom(room.roomId, { firstName: "P1" });
@@ -50,7 +53,7 @@ describe("the turn clock refills on every action, not once per turn", () => {
     store.applyBet(round.roundId, activeId, 5);
     expect(store.getRound(round.roundId)!.turns.find((t) => t.player.id === activeId)!.state).toBe("pending");
 
-    // Past the ORIGINAL 90s mark, well inside the refilled one. This is the
+    // Past the ORIGINAL expiry mark, well inside the refilled one. This is the
     // reported bug: a player thinking about their next card was force-stood
     // 10 seconds after taking one.
     vi.advanceTimersByTime(20_000);

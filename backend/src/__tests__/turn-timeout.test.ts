@@ -1,18 +1,21 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { GameStore } from "../store.js";
+import { GameStore, DEFAULT_TURN_SECONDS } from "../store.js";
 
-// The 90-second turn timer is the safety net for a player who walks away
+// The turn timer is the safety net for a player who walks away
 // mid-hand, drops their connection, or simply stalls -- without it, one
 // unresponsive seat wedges the whole table forever, since the server holds
 // strict turn order (nobody else can act out of turn -- see turn-order.test.ts).
 // It had zero test coverage before this file: nothing anywhere exercised
 // syncTurnTimer's setTimeout actually firing, forceTimeoutStand, or
 // handleTurnTimeout. That is exactly the kind of path where a bug hides the
-// longest, because it only ever runs 90 seconds after normal play already
+// longest, because it only ever runs a full clock after normal play already
 // looked fine.
-const TURN_TIMEOUT_MS = 90 * 1000;
+// Not a literal any more: the banker can set this per table, so the tests
+// track the store's own default rather than restating a number that moved
+// from 90 to 60 under them.
+const TURN_TIMEOUT_MS = DEFAULT_TURN_SECONDS * 1000;
 
-describe("the 90s turn timeout", () => {
+describe("the turn timeout", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -48,7 +51,7 @@ describe("the 90s turn timeout", () => {
     }
   });
 
-  it("stays on a mid-timeout player: a normal action before 90s resets the clock rather than firing early", () => {
+  it("stays on a mid-timeout player: a normal action before it expires resets the clock rather than firing early", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
     const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
@@ -69,7 +72,7 @@ describe("the 90s turn timeout", () => {
     // The now-stale first timer must not still be armed and fire late against
     // whichever seat is active next -- if syncTurnTimer didn't clear it on
     // every persistRound, a leftover timer from turn N could force-stand
-    // turn N+1 partway through ITS OWN fresh 90s window.
+    // turn N+1 partway through ITS OWN fresh window.
     const nextId = store.getRound(round.roundId)!.turns.find((t) => t.state === "pending" && t.player.type !== "admin")?.player.id;
     if (nextId) {
       vi.advanceTimersByTime(6000); // total elapsed since round start: 91s, but only 6s into this seat's own window

@@ -36,8 +36,10 @@ export interface ManageDrawerProps {
   ledger?: LedgerEntry[];
   bankerWallet: number;
   feltWatermark?: string;
+  turnSeconds?: number;
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
+  onSetTurnSeconds: (seconds: number) => void;
   onApproveRename: (playerId: string) => void;
   onRejectRename: (playerId: string) => void;
   onApproveBuyIn: (playerId: string) => void;
@@ -60,6 +62,10 @@ export interface ManageDrawerProps {
 // switch-admin is intentionally NOT here: it exists as a backend WS action
 // but was never exposed in the old UI either, so leaving it out isn't a
 // regression.
+// Bounded by MIN/MAX_TURN_SECONDS on the server, which is what actually
+// enforces them -- these are the four a banker would plausibly want.
+const TURN_SECOND_CHOICES = [30, 45, 60, 90];
+
 export function ManageDrawer({
   open,
   onClose,
@@ -75,8 +81,10 @@ export function ManageDrawer({
   ledger = [],
   bankerWallet,
   feltWatermark,
+  turnSeconds,
   onTopUp,
   onSetWatermark,
+  onSetTurnSeconds,
   onApproveRename,
   onRejectRename,
   onApproveBuyIn,
@@ -258,6 +266,41 @@ export function ManageDrawer({
             </button>
           </div>
           <div className="text-[11px] k-dialog-sub">Everyone at the table sees a notification when the bank total changes.</div>
+        </div>
+
+        {/* The one game rule a banker can change for their own night. Presets
+            rather than a free field: this is set once, standing at the felt,
+            usually because the last round felt rushed or slow -- four choices
+            answer that in one tap, where a number pad asks the banker to
+            invent a value and then defend it. 60 is the default and is marked
+            as such so a banker who has fiddled can get back to it.
+            The clock refills on every action (store.ts's syncTurnTimer), so
+            these are seconds per DECISION, which is what the note says --
+            without it 30 reads as brutal rather than brisk. */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Turn clock</label>
+          <div className="flex gap-1.5">
+            {TURN_SECOND_CHOICES.map((choice) => {
+              const active = (turnSeconds ?? 60) === choice;
+              return (
+                <button
+                  key={choice}
+                  type="button"
+                  aria-pressed={active}
+                  className={`flex-1 rounded border px-2 py-1.5 text-xs font-semibold ${
+                    active ? "border-emerald-400 bg-emerald-600/25 text-emerald-100" : "k-dialog-line k-dialog-inset k-dialog-strong"
+                  }`}
+                  onClick={() => onSetTurnSeconds(choice)}
+                >
+                  {choice}s{choice === 60 ? " *" : ""}
+                </button>
+              );
+            })}
+          </div>
+          <div className="text-[11px] k-dialog-sub">
+            Time to make each decision, not the whole turn - the clock refills every time a player bets or hits.
+            60s (*) is the default. Takes effect from the next turn, so nobody loses the clock they are already on.
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">

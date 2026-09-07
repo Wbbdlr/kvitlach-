@@ -83,7 +83,7 @@ export function ViewerHud({
   const isCurrentTurn = Boolean(isActiveTurn && turn.state === "pending" && roundState !== "terminate");
   const isNextPlayer = Boolean(isNextTurn && !isCurrentTurn && turn.state === "pending" && roundState !== "terminate");
   const tagLabel = isNextPlayer ? "Up next" : isCurrentTurn ? "Your turn" : statusInfo.label;
-  const tagClass = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
+  const tagClass = tagVariant(tagLabel, isCurrentTurn);
   const showBet = betInfo.label !== "-";
   // Carried over from the seat plate this replaced, where it lived on the
   // avatar. It has to come along: the mark is how you can see you are calling

@@ -129,6 +129,7 @@ interface UIState {
   kickPlayer: (playerId: string) => void;
   adjustPlayerBankroll: (playerId: string, amount: number, note?: string) => void;
   setFeltWatermark: (text: string) => void;
+  setTurnSeconds: (seconds: number) => void;
   reshuffleDeck: () => void;
   closeRoom: () => void;
   /** Disconnect but keep the seat, the stack and the way back. */
@@ -1961,6 +1962,20 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("player:bank-adjust", { roomId, playerId, amount: normalizedAmount, note });
+    },
+    setTurnSeconds: (seconds: number) => {
+      const roomId = get().room?.roomId;
+      const actorId = get().playerId;
+      if (!roomId || !actorId) {
+        set({ message: "Join a game first." });
+        return;
+      }
+      const actor = get().room?.players.find((p) => p.id === actorId);
+      if (actor?.type !== "admin") {
+        set({ message: "Only the banker can change the turn clock." });
+        return;
+      }
+      client.send("room:set-turn-seconds", { roomId, seconds });
     },
     setFeltWatermark: (text: string) => {
       const roomId = get().room?.roomId;

@@ -59,6 +59,6 @@ describe("ViewerHud's turn tag", () => {
 
   it("leaves a settled turn's own result alone", () => {
     renderHud({ turn: makeTurn({ state: "won" }), isActiveTurn: true });
-    expect(screen.getByText("WON")).toBeInTheDocument();
+    expect(screen.getByText("WON!")).toBeInTheDocument();
   });
 });

@@ -204,7 +204,7 @@ describe("tagVariant -- the banker's own status pill must match a player's", () 
   });
 
   it("shows the green 'won' variant for WON", () => {
-    expect(tagVariant("WON", false)).toBe("won");
+    expect(tagVariant("WON!", false)).toBe("won");
   });
 
   it("prioritizes the active-turn variant over the label", () => {
@@ -213,7 +213,8 @@ describe("tagVariant -- the banker's own status pill must match a player's", () 
 
   it("falls back to muted for anything else", () => {
     expect(tagVariant("PUSH", false)).toBe("muted");
-    expect(tagVariant("Waiting...", false)).toBe("muted");
+    expect(tagVariant("Waiting...", false)).toBe("wait");
+    expect(tagVariant("Up next", false)).toBe("next");
   });
 });
 
@@ -285,7 +286,7 @@ describe("statusDisplay -- the bank hitting exactly 21 outright", () => {
       state: "won",
       cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
     });
-    expect(statusDisplay(turn).label).toBe("WON");
+    expect(statusDisplay(turn).label).toBe("WON!");
   });
 
   it("does not fire for a showdown win that only reaches 21 by coincidence of a settled beat/lostTo tally", () => {

@@ -605,6 +605,7 @@ export default function App() {
         onReact={(emoji) => sendReaction(emoji)}
         onTopUp={(amount, note) => store.topUpBanker(amount, note)}
         onSetWatermark={(text) => store.setFeltWatermark(text)}
+        onSetTurnSeconds={(seconds) => store.setTurnSeconds(seconds)}
         roundHistoryCount={roundHistory?.length ?? 0}
         standings={standings}
         onApproveRename={(id) => store.approveRename(id)}
