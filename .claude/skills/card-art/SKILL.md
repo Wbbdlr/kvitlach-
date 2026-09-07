@@ -1,6 +1,6 @@
 ---
 name: card-art
-description: Regenerate or change the Kvitlach card face PNGs — the Schlesinger maker's mark, the 9's underdot, card geometry, fonts. Use when changing how cards look, when new art is not appearing for players, or before touching anything in frontend/public/*.png.
+description: Regenerate or change the Kvitlach card face PNGs - the Schlesinger maker's mark, the 9's underdot, card geometry, fonts. Use when changing how cards look, when new art is not appearing for players, or before touching anything in frontend/public/*.png.
 ---
 
 # Card art
@@ -24,11 +24,11 @@ Full geometry, the dot spec, font licensing and regeneration steps:
   the plain ten are clear from `y1172`. Their free band is **67px** against the
   others' 232px, and it is what caps `SIZE`. A plain card cannot show that
   collision, so checking one proves nothing. Find it with a row-ink scan, not
-  by eye on a half-scale sheet — that is how it was missed the first time.
+  by eye on a half-scale sheet - that is how it was missed the first time.
 
 ## Sizes: design for the felt, not for 946px
 
-Source art is 946×1438. **Measure the rendered size, don't quote this file** —
+Source art is 946×1438. **Measure the rendered size, don't quote this file** -
 it was wrong once already. At a 1512px viewport the felt renders a card at
 **56 CSS px**, and on a `devicePixelRatio: 2` screen the browser rasterises
 112 device px. Get the live number with:
@@ -40,7 +40,7 @@ it was wrong once already. At a 1512px viewport the felt renders a card at
 
 The first mark shipped at `SIZE=46 / ALPHA=140`, approved on a full-resolution
 proof sheet, and **did not appear at all** in play: eleven letters landed on
-about two pixel rows and averaged to paper colour. Not faint — absent.
+about two pixel rows and averaged to paper colour. Not faint - absent.
 
 **Judge the mark by ink contrast measured AFTER the downscale**, over the
 mark's own band, never by eye at full res. Measured at 68px:
@@ -52,13 +52,13 @@ mark's own band, never by eye at full res. Measured at 68px:
 | **58 / α230 (current)** | **74** | reads; ~70 is the floor |
 | 58 / α230 wght700 | 87 | the lever if `SIZE` must drop again |
 
-Current geometry: `SIZE 58`, caps 43px, two baselines — `y1350` for the plain
+Current geometry: `SIZE 58`, caps 43px, two baselines - `y1350` for the plain
 ten, `y1393` to centre cards 2 and 11 in their short band. Card 1's head
 cartouche is `HEAD_TOP=96`, box 122px, in the 237px band between the rule at
 `y31` and the digit at `y269`.
 
 **Clearance, not collision, is the test on cards 2 and 11.** At `SIZE 72` the
-mark cleared the scrollwork by 8px and the rule by 9px — clean on a row-ink
+mark cleared the scrollwork by 8px and the rule by 9px - clean on a row-ink
 scan, and reported from a live table as sitting on the frame, because 8px of
 946 is half a pixel on the felt. 58 gives 14px and 13px.
 
@@ -67,14 +67,14 @@ moves saturation ~2 points and the paper wins. A mark that changes size
 between cards looks like a mistake rather than a maker's mark.
 
 `ALPHA` and `MARK_INK` are constants in the generator and are **baked into the
-raster** — no environment variable can change them. Edit and re-run.
+raster** - no environment variable can change them. Edit and re-run.
 
 ## Verifying a change actually shipped
 
 Two separate questions, and they have different answers:
 
 1. **Are the right bytes in `public/`?** Pixel-diff `frontend/public/N.png`
-   against `tools/card-src/N.png` — the differing region tells you where the
+   against `tools/card-src/N.png` - the differing region tells you where the
    mark landed.
 2. **Is the server serving them?** Fetch from the live origin and compare
    sha256 against the local file. This distinguishes a caching problem from a
@@ -84,7 +84,7 @@ Two separate questions, and they have different answers:
 
 Files in `public/` keep plain filenames forever, so browsers and the
 Cloudflare edge go on serving bytes they already have. `table/selectors.ts`
-appends `?v=${APP_VERSION}` for exactly this reason — new art shipped in v7.9
+appends `?v=${APP_VERSION}` for exactly this reason - new art shipped in v7.9
 and appeared for nobody until the query string moved. Pinned by a test in
 `CardView.test.tsx`.
 
@@ -94,5 +94,5 @@ too, and a versioned copy would download that 2.6MB file twice.
 ## Known dead weight
 
 `frontend/public/` still holds `N-<hash>.png` duplicates (byte-identical to
-the live faces) and unreferenced `N_thumb.png` files — about 1MB. Only
+the live faces) and unreferenced `N_thumb.png` files - about 1MB. Only
 `1.png`–`12.png` are live. Flagged repeatedly, never actioned.

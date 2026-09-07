@@ -178,6 +178,16 @@ export interface RoundState {
   // guesswork -- their states get rewritten by the very settlements being
   // undone. Recording it as it happens is the only version that can't drift.
   ledger?: Balance[];
+  // Seats that were at the table when this round was dealt but were left out
+  // of it, because they had been disconnected for longer than the grace
+  // window (see startRound). Absent, never an empty array, when nobody was.
+  //
+  // The exclusion itself was always right -- a round cannot wait on a phone
+  // that is off. What was wrong is that it happened in silence: the player
+  // saw everyone else playing with no explanation, and the banker could not
+  // see it at all. This is the round saying who it left behind, so both ends
+  // can be told.
+  satOutPlayerIds?: string[];
   // The table gave up on an absent banker and threw this round away. Every
   // wager was returned; no hand won or lost.
   voided?: boolean;
@@ -223,7 +233,38 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  // Chips that moved without a hand being played, plus the banker actions that
+  // destroyed a stack. Optional for the same reason roundHistory is: rooms
+  // persisted before this field existed come back from loadFromDB() without
+  // it, so every read defaults to []. See LedgerEntry.
+  ledger?: LedgerEntry[];
   practice?: boolean;
+}
+
+/**
+ * One movement of chips that did not come from playing a hand.
+ *
+ * The settlement table is derived from round history alone, which is correct
+ * for play and silently wrong the moment a banker corrects something: an
+ * adjustment moved real money and left no trace anywhere the banker could
+ * see. `audit()` logged it to the server's stdout, which is invisible during a
+ * game, unreadable after one, and gone on restart.
+ *
+ * `amount` is signed and always expressed as the change to that player's own
+ * stack, so a kick or a departure records the stack that left as a negative.
+ * That makes the whole list summable without knowing what each `kind` means.
+ */
+export interface LedgerEntry {
+  id: string;
+  kind: "adjust" | "buy-in" | "bank-topup" | "kick" | "leave";
+  playerId: string;
+  /** Captured at the time -- the player may not be at the table any more. */
+  playerName: string;
+  actorId: string;
+  actorName: string;
+  amount: number;
+  note?: string;
+  at: number;
 }
 
 export interface ConnectionSummary {

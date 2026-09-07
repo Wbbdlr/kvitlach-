@@ -84,7 +84,7 @@ export function ViewerHud({
   const isNextPlayer = Boolean(isNextTurn && !isCurrentTurn && turn.state === "pending" && roundState !== "terminate");
   const tagLabel = isNextPlayer ? "Up next" : isCurrentTurn ? "Your turn" : statusInfo.label;
   const tagClass = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
-  const showBet = betInfo.label !== "—";
+  const showBet = betInfo.label !== "-";
   // Carried over from the seat plate this replaced, where it lived on the
   // avatar. It has to come along: the mark is how you can see you are calling
   // Eleveroon, and dropping it would have left everyone at the table able to
@@ -97,7 +97,7 @@ export function ViewerHud({
       ref={panelRef}
       className={clsx("k-viewer-hud", isCurrentTurn && "is-active", moved && "is-moved")}
       {...panelProps}
-      title="Drag to move -- grab the corner to resize"
+      title="Drag to move - grab the corner to resize"
     >
       <div className="k-viewer-hud-top">
         {showEleveroonCall && (

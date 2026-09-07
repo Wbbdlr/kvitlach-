@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { STAGE_HEIGHT, STAGE_WIDTH, SEAT_HEIGHT, seatPositions, seatScale } from "./layout";
+import { RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  STAGE_HEIGHT,
+  STAGE_WIDTH,
+  SEAT_HEIGHT,
+  bottomSeatCenterY,
+  seatPositions,
+  seatScale,
+} from "./layout";
 
 // PREDICATE 3 OF 3. Owns exactly one question: "is the RENDERED TABLE cramped
 // enough to need compact chrome and dock styling?" Not "is this a phone"
@@ -32,6 +39,11 @@ const COMPACT_DOCK_HEIGHT_PX = 54;
 // bigger play area on a flattened landscape phone, where this reservation
 // directly trades off against vf rather than becoming unused felt).
 const DOCK_GUTTER_PX = 10;
+// The resize grip's range. The floor is a taste call (shrinking is what was
+// actually asked for); the ceiling is now only ever an upper bound on
+// StageFit.maxDockScale, which is what a viewport tight enough will lower.
+export const DOCK_SCALE_MIN = 0.7;
+export const DOCK_SCALE_MAX = 1.25;
 // .k-chrome-top's row (buttons + its 8px inset) plus a gutter. The felt used
 // to letterbox, which kept the dealer well clear of this row by accident;
 // now that the stage reaches the viewport's top edge, the play area has to
@@ -181,6 +193,23 @@ export interface StageFit {
    * where the row still is.
    */
   compact: boolean;
+  /**
+   * The largest resize factor the control bar can take before its top edge
+   * reaches the viewer's own cards (draggablePanel.ts's `bounds.max`).
+   *
+   * A number, not a constant, because the room available for it is not one:
+   * on a landscape phone `vf` is already pinned at MIN_VF and the felt fills
+   * the viewport, so nothing left in computeFit can absorb a taller bar --
+   * the bar simply grows up over the bottom seat. The flat 1.25 that used to
+   * be hardcoded was set without checking it against that, and on the
+   * profiles this table supports it lands within a few pixels of the seat (at
+   * the dock's tallest state, past it). Reported from an Android phone as
+   * "the control bar begins too high up on the screen, overlapping my cards a
+   * bit. not sure why, it should start off lower on the screen" -- "not sure
+   * why" being the point: the size is remembered in localStorage from
+   * whenever it was set, and nothing on screen says so.
+   */
+  maxDockScale: number;
 }
 
 // Exported for tests -- this is the whole no-wasted-space contract, and it's
@@ -199,10 +228,30 @@ export function computeFit(
   availHeight: number,
   isCompact: boolean,
   dockHeight = 0,
-  seatCount = 0
+  seatCount = 0,
+  // What the phone itself takes off the bottom of the viewport -- Android's
+  // gesture bar, an iPhone's home indicator. `.k-bottom-band` sits at
+  // `max(10px, env(safe-area-inset-bottom))`, so on a device with an inset
+  // the whole bar is pushed further UP the screen than the flat
+  // DOCK_GUTTER_PX below ever accounted for. Read from a live probe rather
+  // than assumed (see readBottomInset) because env() has no JS API and the
+  // value differs per device, per orientation, and between a browser tab and
+  // a standalone/fullscreen session on the SAME device.
+  bottomInsetPx = 0,
+  // The bar's UNSCALED height, when it differs from dockHeight above.
+  //
+  // dockHeight is what the bar measures ON SCREEN, transform included, which
+  // is the number the reservation needs. maxDockScale needs the other one:
+  // it is a factor applied to the bar's layout height, so dividing the room
+  // available by an already-scaled height answers "how much bigger again
+  // than it currently is", not "how big may it be" -- and feeding that back
+  // through a clamp settles on sqrt(room/height) rather than room/height.
+  // Defaults to dockHeight, which is exactly right whenever the bar has not
+  // been resized and the two are the same number.
+  dockLayoutHeightPx = dockHeight
 ): StageFit {
   if (availWidth <= 0 || availHeight <= 0) {
-    return { scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0, compact: isCompact };
+    return { scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0, compact: isCompact, maxDockScale: 1 };
   }
 
   // Width binds first, always: the stage is a fixed 1280 design px wide, so
@@ -239,7 +288,8 @@ export function computeFit(
   // comment), unlike the rest of this sum, which starts as real px and
   // needs the /scale conversion -- added after, not inside, the division.
   // Scaled by `crowding` for the reason above.
-  const dockBand = (Math.max(nominalDock, dockHeight) + DOCK_GUTTER_PX) / scale + VIEWER_SEAT_OVERHANG_PX * crowding;
+  const bottomGutter = Math.max(DOCK_GUTTER_PX, bottomInsetPx);
+  const dockBand = (Math.max(nominalDock, dockHeight) + bottomGutter) / scale + VIEWER_SEAT_OVERHANG_PX * crowding;
   // Same split as dockBand above: TOP_CHROME_PX is real px (needs /scale),
   // DEALER_SEAT_OVERHANG_PX is already stage-design px (added after). NOT
   // scaled by `crowding` -- the dealer's own seat never shrinks, so its
@@ -283,7 +333,29 @@ export function computeFit(
   // grown) bands.
   const stageHeight = Math.min(availHeight / scale, grownPlayTop + STAGE_HEIGHT * vf + grownDockBand);
 
-  return { scale, stageHeight, vf, playTop: grownPlayTop, compact: isCompact };
+  // How much of the screen the bar may actually occupy, in real px, derived
+  // the same way __tests__/stage.test.ts's own clearance check derives it --
+  // from the rendered geometry (TableRoot's JSX: the felt centred in .k-fit,
+  // the band bottom-anchored off what is left) rather than from computeFit's
+  // internal accounting, which is exactly what cannot see this: with vf
+  // pinned at MIN_VF and the felt filling the viewport, dockBand above has
+  // nothing left to give and the bar's extra height comes straight out of
+  // the bottom seat.
+  const feltRealY = (availHeight - stageHeight * scale) / 2;
+  const seatRealBottom =
+    feltRealY + scale * (bottomSeatCenterY(vf, grownPlayTop) + VIEWER_SEAT_OVERHANG_PX * crowding);
+  const barRoom = availHeight - feltRealY - bottomGutter - seatRealBottom;
+  // dockHeight is the bar's height as measured ON SCREEN, so the ratio is
+  // the factor it could still grow by. Clamped to the range the resize grip
+  // offers: never below its own floor (a bar too small to press is not an
+  // improvement on one that overlaps), never above the ceiling the design
+  // already chose.
+  const maxDockScale =
+    dockLayoutHeightPx > 0
+      ? Math.min(DOCK_SCALE_MAX, Math.max(DOCK_SCALE_MIN, barRoom / dockLayoutHeightPx))
+      : DOCK_SCALE_MAX;
+
+  return { scale, stageHeight, vf, playTop: grownPlayTop, compact: isCompact, maxDockScale };
 }
 
 // seatCount: how many (non-dealer) seats are on the arc right now --
@@ -294,35 +366,100 @@ export function computeFit(
 // so it lives in the effect's own dependency array instead: a seat joining
 // or leaving mid-session re-runs apply() with the new count, same as a
 // resize would.
-export function useStageScale(seatCount = 0) {
+// dockBarRef: the control bar's own box -- `.k-dock-row`, the element that
+// carries the resize transform, NOT the `.k-controls` tray dockRef sits on.
+//
+// Both are needed and they measure different things. The scale is a CSS
+// transform with `transform-origin: bottom center`, and a descendant's
+// transform never changes an ancestor's border box -- so dockRef keeps
+// reporting the bar's UNSCALED layout height while the bar on screen is up to
+// 25% taller, growing UPWARDS because the band is bottom-anchored. The
+// reservation was made against the smaller number and the bar quietly grew
+// into the viewer's own cards.
+//
+// A ResizeObserver cannot catch it either: it reports layout size and ignores
+// transforms outright. So the visual height is read straight off the row's
+// rect, and the layout effect below is what re-reads it -- a resize drag
+// re-renders on every frame, and setFit's own equality guard is what keeps
+// that from looping.
+// env(safe-area-inset-bottom) has no JS API, so it is read the only way it
+// can be: hand it to a throwaway element and measure what comes back. Zero on
+// every desktop browser and on any device without an inset, which is why the
+// flat DOCK_GUTTER_PX was never caught being wrong -- it is only wrong on a
+// phone, which is where the bar's clearance is tightest to begin with.
+function readBottomInset(): number {
+  if (typeof document === "undefined" || !document.body) return 0;
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom,0px)";
+  document.body.appendChild(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  return Number.isFinite(height) ? height : 0;
+}
+
+export function useStageScale(seatCount = 0, dockBarRef?: RefObject<HTMLElement>) {
   const wrapRef = useRef<HTMLDivElement>(null);
   // Attach to the controls tray so its real height feeds the bottom band.
   const dockRef = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState<StageFit>({ scale: 1, stageHeight: STAGE_HEIGHT, vf: 1, playTop: 0, compact: false });
+  const [fit, setFit] = useState<StageFit>({
+    scale: 1,
+    stageHeight: STAGE_HEIGHT,
+    vf: 1,
+    playTop: 0,
+    compact: false,
+    maxDockScale: DOCK_SCALE_MAX,
+  });
+
+  const apply = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const isCompact = typeof window.matchMedia === "function" && window.matchMedia(COMPACT_MEDIA_QUERY).matches;
+    // The row's rect when there is one (it includes the resize transform);
+    // the tray's otherwise, which is the same number at scale 1 and the only
+    // one available before the row has mounted.
+    // Two heights, and the difference is the whole point of having both refs:
+    // the ROW carries the resize transform, so its rect is what the bar
+    // really occupies; `.k-controls` is its untransformed ancestor, so its
+    // rect is the bar's layout height. The reservation wants the first, the
+    // resize ceiling wants the second.
+    const layoutHeight = dockRef.current?.getBoundingClientRect().height ?? 0;
+    const barHeight = dockBarRef?.current?.getBoundingClientRect().height ?? layoutHeight;
+    const next = computeFit(
+      wrap.clientWidth,
+      wrap.clientHeight,
+      isCompact,
+      barHeight,
+      seatCount,
+      readBottomInset(),
+      layoutHeight || barHeight
+    );
+    // maxDockScale is compared like every other field, and has to be: it is
+    // the only one that can move on its own (a taller bar changes what the
+    // bar is allowed to grow to without moving vf, which is pinned at its
+    // floor on exactly the viewports where this matters), and a fit held back
+    // here never reaches draggablePanel's bounds.
+    setFit((prev) =>
+      prev.scale === next.scale &&
+      prev.stageHeight === next.stageHeight &&
+      prev.vf === next.vf &&
+      prev.playTop === next.playTop &&
+      prev.compact === next.compact &&
+      prev.maxDockScale === next.maxDockScale
+        ? prev
+        : next
+    );
+  }, [seatCount, dockBarRef]);
+
+  // Every render, not only on the events below: the bar's on-screen height
+  // changes with a transform nothing observes (see the note above the hook),
+  // and a resize drag is a re-render. Cheap and self-limiting -- setFit above
+  // returns the previous object unless something actually moved.
+  useLayoutEffect(apply);
 
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-
-    const apply = () => {
-      const isCompact = typeof window.matchMedia === "function" && window.matchMedia(COMPACT_MEDIA_QUERY).matches;
-      const next = computeFit(
-        wrap.clientWidth,
-        wrap.clientHeight,
-        isCompact,
-        dockRef.current?.getBoundingClientRect().height ?? 0,
-        seatCount
-      );
-      setFit((prev) =>
-        prev.scale === next.scale &&
-        prev.stageHeight === next.stageHeight &&
-        prev.vf === next.vf &&
-        prev.playTop === next.playTop &&
-        prev.compact === next.compact
-          ? prev
-          : next
-      );
-    };
 
     apply();
 
@@ -354,7 +491,7 @@ export function useStageScale(seatCount = 0) {
       document.removeEventListener("fullscreenchange", apply);
       window.removeEventListener("orientationchange", onOrientation);
     };
-  }, [seatCount]);
+  }, [apply]);
 
   return { wrapRef, dockRef, ...fit };
 }

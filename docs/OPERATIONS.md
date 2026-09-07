@@ -22,11 +22,11 @@ can reach it:
 
 **Port 25000 also serves `/health`, `/health/detail` and `/metrics`.** Anything
 that can reach the panel can read those. None of these bindings creates public
-exposure on their own — nothing forwards 25000 from the router and the tunnel
-only carries the frontend — but `0.0.0.0` covers every *future* interface too,
+exposure on their own - nothing forwards 25000 from the router and the tunnel
+only carries the frontend - but `0.0.0.0` covers every *future* interface too,
 so re-check it if this box ever joins another network.
 
-> **TODO — replace password auth with something stronger.** A username and
+> **TODO - replace password auth with something stronger.** A username and
 > password over plain HTTP on the LAN is the weak link here, and it is
 > deliberate and temporary. Better options, roughly in order of effort:
 > Tailscale Serve (gives it real HTTPS and a tailnet-only hostname for free),
@@ -37,7 +37,7 @@ so re-check it if this box ever joins another network.
 
 The panel **404s entirely** unless credentials are configured, which is the
 default. A wrong password also returns 401 and a wrong token 404, so an
-unauthenticated probe cannot confirm what exists — meaning the response tells
+unauthenticated probe cannot confirm what exists - meaning the response tells
 you nothing about *which* thing is misconfigured.
 
 Two mechanisms, either works:
@@ -49,10 +49,10 @@ Two mechanisms, either works:
   unset means a fresh random secret per boot, so a restart signs you out.
 - **`ADMIN_TOKEN` in the query string**: the original mechanism, kept because
   it works from a shell with `curl`. Do not use it once the port is reachable
-  from other machines — a token in the URL is a token in every proxy log,
+  from other machines - a token in the URL is a token in every proxy log,
   browser history entry and `Referer` header.
 
-**One paste sets everything up** — no editor, which matters because Dockge
+**One paste sets everything up** - no editor, which matters because Dockge
 only shows the compose and `.env` files for stacks inside its own stacks
 directory, and this one lives in `~/docker/kvitlach`:
 
@@ -73,28 +73,28 @@ for server-only, or the box's `100.x.y.z` for tailnet-only.
 
 ## What the panel does
 
-- **Load** — rooms (against the current cap), players, live rounds, WS
+- **Load** - rooms (against the current cap), players, live rounds, WS
   connections, event-loop lag, memory, uptime. `auto-refresh` toggles a 15s
   meta refresh; it is opt-in because refreshing while someone is typing a list
   of access codes would eat it.
-- **Who can play** — presets and per-action modes, below.
-- **Capacity** — max rooms, max practice rooms, max players per room, live.
+- **Who can play** - presets and per-action modes, below.
+- **Capacity** - max rooms, max practice rooms, max players per room, live.
   Lowering a cap never evicts anyone; it refuses the next one over the line.
-- **Broadcast** — pushes a banner to everyone currently at a table. Not
+- **Broadcast** - pushes a banner to everyone currently at a table. Not
   stored, so someone joining afterwards will not see it.
-- **Rooms** — busiest first, with banker, player/bot/waiting counts, rounds
+- **Rooms** - busiest first, with banker, player/bot/waiting counts, rounds
   played, whether a round is live, idle time, and force-delete to free a
   stuck Game ID.
 
-**`eventLoopLagMs` is the number to watch.** Everything in this server — every
-room timer, every WS frame, every broadcast — runs on one event loop, so lag
+**`eventLoopLagMs` is the number to watch.** Everything in this server - every
+room timer, every WS frame, every broadcast - runs on one event loop, so lag
 climbs while players are already seeing turns land late, well before memory or
 room count look alarming.
 
 ## Access control (`backend/src/access.ts`)
 
 Each way in is gated separately, so "anyone can join a table, but only I can
-start one" is expressible — set **Start a table** to *Needs a code* and leave
+start one" is expressible - set **Start a table** to *Needs a code* and leave
 the other two on *Anyone*.
 
 | per action | meaning |
@@ -108,7 +108,7 @@ The presets set all three at once: **Open** (all `open`), **Invite only** (all
 `/health/detail` both report `custom`.
 
 - Changes apply immediately, no restart, and **persist in the `settings`
-  table, overriding the env defaults on boot** — a lockdown must survive the
+  table, overriding the env defaults on boot** - a lockdown must survive the
   restart that usually follows whatever caused it. `ACCESS_MODE` /
   `ACCESS_CODES` / `MAX_ROOMS` etc. are boot defaults only. **To reopen, set
   it back in the panel; editing compose will not do it.**
@@ -129,24 +129,24 @@ messages/10s (`ws-server.ts`).
 
 ## Health endpoints
 
-- `GET /health` — `{"status":"ok"}`.
-- `GET /health/detail` — flat JSON for Kuma's **Json Query** monitor, the only
+- `GET /health` - `{"status":"ok"}`.
+- `GET /health/detail` - flat JSON for Kuma's **Json Query** monitor, the only
   type that can threshold on a number: `rooms`, `practiceRooms`, `players`,
   `activeRounds`, `wsConnections`, `eventLoopLagMs`, `rssMb`, `uptimeSeconds`,
   `accessMode`.
-- `GET /metrics` — the same gauges as Prometheus text.
+- `GET /metrics` - the same gauges as Prometheus text.
 
 ## Cloudflare Tunnel
 
 kvitlach.us does **not** share the box's main `cloudflared.service` /
 `/etc/cloudflared/config.yml` (that one carries 613.deals, microbin and
 everything else on this host). It runs as its **own** systemd unit against
-its **own** config file, found the hard way once already — don't re-search
+its **own** config file, found the hard way once already - don't re-search
 for it:
 
-- Service: `cloudflared-kvitlach.service` — `systemctl cat` it to confirm.
+- Service: `cloudflared-kvitlach.service` - `systemctl cat` it to confirm.
 - Config: `/home/adguard/.cloudflared/kvitlach.yml` (runs as user `adguard`,
-  not root — the file lives under that user's home, not `/etc/cloudflared/`,
+  not root - the file lives under that user's home, not `/etc/cloudflared/`,
   and its filename doesn't match a `config*.yml` search either).
 - Credentials: `/home/adguard/.cloudflared/<tunnel-id>.json`, tunnel ID
   `78780264-6aa4-4f78-ab6b-e9136ad083a7`, named `kvitlach` (`cloudflared
@@ -164,13 +164,13 @@ port mappings (2026-09-03 security pass):
 
 **Neither the admin panel/health/metrics port (25000) nor Postgres (25432)
 appears anywhere in this file.** That's the actual boundary keeping them off
-the public internet — cloudflared runs locally on the box and could reach
+the public internet - cloudflared runs locally on the box and could reach
 either 127.0.0.1-bound port exactly as easily as the two above; it simply
 isn't told to. `ADMIN_BIND` (above) is a second, independent layer, not a
 substitute for checking this file after any tunnel change.
 
 If this box ever migrates kvitlach's tunnel to dashboard-managed routing
-(Zero Trust → Networks → Tunnels — floated 2026-09-03, not yet done), this
+(Zero Trust → Networks → Tunnels - floated 2026-09-03, not yet done), this
 table stops being derivable from a file on disk at all; check the dashboard
 instead and update this section by hand.
 
@@ -178,23 +178,23 @@ instead and update this section by hand.
 
 Kuma runs on the adguard box at `uptime.swdhs.com` / `127.0.0.1:3001`.
 
-**Kuma 2.5.0 has no write API — monitors are created in the GUI, by hand.**
+**Kuma 2.5.0 has no write API - monitors are created in the GUI, by hand.**
 Both Python wrappers were tried against this box and both fail; roughly an hour
 has been spent proving it. See `homeserver/CLAUDE.md` item 3. Do not attempt to
 automate monitor creation.
 
-Host is `192.168.50.23:25000`, **not** `127.0.0.1` — inside the Kuma container
+Host is `192.168.50.23:25000`, **not** `127.0.0.1` - inside the Kuma container
 that is the container itself. No port conflict: Kvitlach is on 25000/25001,
 Kuma on 3001.
 
 | type | URL | json query | expect |
 |---|---|---|---|
-| HTTP(s) | `http://192.168.50.23:25000/health` | — | 200 |
+| HTTP(s) | `http://192.168.50.23:25000/health` | - | 200 |
 | Json Query | `http://192.168.50.23:25000/health/detail` | `$.eventLoopLagMs` | `< 250` |
 | Json Query | `http://192.168.50.23:25000/health/detail` | `$.wsConnections` | `< 300` |
 | Json Query | `http://192.168.50.23:25000/health/detail` | `$.accessMode` | `== "open"` |
 
-Those thresholds match the panel's own colour bands on purpose — the page and
+Those thresholds match the panel's own colour bands on purpose - the page and
 the alert should not disagree about what "bad" means. The last monitor is a
 reminder, not an outage: it goes red whenever access is restricted, so a
 lockdown flipped at 2am cannot be forgotten.

@@ -79,14 +79,35 @@ export function ChromeMenu({ children, badge = 0 }: ChromeMenuProps) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title={badge > 0 ? `Table controls -- ${badge} waiting for you` : "Table controls"}
+        title={badge > 0 ? `Table controls - ${badge} waiting for you` : "Table controls"}
         aria-label={badge > 0 ? `Table controls, ${badge} waiting for you` : "Table controls"}
       >
         <Icon name="more" size={15} />
         {badge > 0 && <span className="k-badge-count">{badge}</span>}
       </button>
       {open && (
-        <div className="k-chrome-menu" role="dialog" aria-label="Table controls">
+        <div
+          className="k-chrome-menu"
+          role="dialog"
+          aria-label="Table controls"
+          // Some controls in here ACT on the table rather than toggling a
+          // setting, and those have to take the panel down with them --
+          // otherwise the panel is left covering the very thing the action
+          // just changed (reported for Reshuffle: the shoe's confirmation
+          // animation played underneath this menu). Opt-in by attribute
+          // rather than closing on every click, because most of what lives
+          // here IS a toggle -- music, sound, animations -- and a player
+          // flipping those should not have to reopen the menu each time.
+          //
+          // Delegated instead of wired per-button because these same
+          // children also render INLINE on desktop, where there is no panel
+          // and no close function to hand them; an attribute is simply inert
+          // there. See this file's header on why the two renderings must
+          // stay one list.
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest("[data-closes-menu]")) setOpen(false);
+          }}
+        >
           {children}
         </div>
       )}

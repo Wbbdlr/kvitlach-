@@ -6,9 +6,11 @@ import { AccessControl, isAccessMode, isActionMode, parseCodeList } from "./acce
 import type { GatedAction } from "./access.js";
 import { GATED_ACTIONS } from "./access.js";
 import { AboutContent } from "./about.js";
+import { ContactContent } from "./contact.js";
+import { DisclaimerContent, isDisclaimerSlug } from "./disclaimer.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAboutEditor, renderAdminPage, renderLoginPage } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage } from "./admin-page.js";
 import { resolveClientIp } from "./client-ip.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
@@ -103,6 +105,10 @@ export interface HttpServerDeps {
   /** Operator-authored About copy. Read by a PUBLIC route, unlike everything
    *  else on this server -- see GET /api/about. */
   about?: AboutContent;
+  /** Same as `about`, for the Contact page -- see GET /api/contact. */
+  contact?: ContactContent;
+  /** Per-section overrides for the Disclaimer page -- see GET /api/disclaimer. */
+  disclaimer?: DisclaimerContent;
   auth?: AdminAuth;
   /** Set by index.ts once the WS server exists; the broadcast form needs it.
    *  `roomId` targets one table; omitted, every table. */
@@ -122,6 +128,12 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   const access = opts.access ?? new AccessControl();
   const limits = opts.limits ?? new RuntimeLimits();
   const about = opts.about ?? new AboutContent();
+  const contact = opts.contact ?? new ContactContent();
+  const disclaimer = opts.disclaimer ?? new DisclaimerContent();
+  // Deliberately the STORE's own instance rather than a dep of its own: the
+  // panel has to edit the very object createPracticeRoom reads, or an operator
+  // saves a list that nothing uses and nothing says why.
+  const botNames = store.botNames;
   const auth = opts.auth ?? new AdminAuth();
   const app = Fastify({
     logger: {
@@ -168,18 +180,28 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     }
   );
 
-  // The ONE public route on this server. Everything else here is admin or
-  // operator telemetry and is protected by ADMIN_BIND defaulting to localhost;
-  // this is reached from a browser, via an exact-path nginx proxy on the
-  // frontend origin (frontend/nginx.conf). Exact path, GET only, no auth, and
-  // it returns nothing that is not already meant for the About page -- widen
-  // that proxy and the admin panel goes public with it.
+  // The public, operator-authored-content routes. Everything else here is
+  // admin or operator telemetry and is protected by ADMIN_BIND defaulting to
+  // localhost; these are reached from a browser, via exact-path nginx proxies
+  // on the frontend origin (frontend/nginx.conf). Exact path, GET only, no
+  // auth, and each returns nothing that is not already meant for its public
+  // page -- widen one of those proxies and the admin panel goes public with it.
   app.get("/api/about", async (_request, reply) => {
     const record = about.toRecord();
     // A minute of caching: the copy changes when an operator edits it, which is
     // rarely, and the About page should not wait on the backend to paint.
     reply.header("cache-control", "public, max-age=60");
     return record;
+  });
+
+  app.get("/api/contact", async (_request, reply) => {
+    reply.header("cache-control", "public, max-age=60");
+    return contact.toRecord();
+  });
+
+  app.get("/api/disclaimer", async (_request, reply) => {
+    reply.header("cache-control", "public, max-age=60");
+    return disclaimer.toRecord();
   });
 
   app.get("/health", async () => ({ status: "ok" }));
@@ -283,6 +305,9 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
         access,
         limits,
         about,
+        contact,
+        disclaimer,
+        botNames,
         query: carry(request, how),
         // On unless explicitly stopped. An operator opens this page to watch
         // load, and a stale page is worse than useless -- it is misleading.
@@ -343,6 +368,36 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     return reply.redirect(`/admin${carry(request, how)}`);
   });
 
+  // Same page-per-form reasoning as /admin/about: the panel auto-refreshes and
+  // a <meta refresh> landing mid-edit eats an unsaved textarea of names.
+  app.get("/admin/bot-names", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderBotNamesEditor({
+        botNames,
+        query: carry(request, how),
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  app.post("/admin/bot-names", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    // Reset and "cleared both boxes" are the same operation by construction --
+    // an empty pool falls back to the built-in list (see bot-names.ts) -- so
+    // the button exists for discoverability, not as a second code path.
+    const changed = body.reset === "1" ? botNames.set("", "") : botNames.set(body.banker, body.players);
+    const note = changed ? "Computer player names updated." : "No change.";
+    const sep = carry(request, how) ? "&" : "?";
+    // Back to the editor: an operator who just saved a name list is usually
+    // about to add another one.
+    return reply.redirect(`/admin/bot-names${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
+  });
+
   // Its own page, because /admin auto-refreshes every 15s and a <meta refresh>
   // mid-typing eats the field. See renderAboutEditor.
   app.get("/admin/about", async (request, reply) => {
@@ -368,6 +423,62 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     // Back to the editor, not the panel: an operator who just saved a credits
     // list is usually about to add another name.
     return reply.redirect(`/admin/about${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
+  });
+
+  // Same page-per-field reasoning as /admin/about: this panel auto-refreshes,
+  // and a <meta refresh> mid-typing eats an unsaved field.
+  app.get("/admin/contact", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderContactEditor({
+        contact,
+        query: carry(request, how),
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  app.post("/admin/contact", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const changed = body.clear === "1" ? contact.clear() : contact.set(body.heading, body.body);
+    const note = changed ? "Contact page updated." : "No change.";
+    const sep = carry(request, how) ? "&" : "?";
+    return reply.redirect(`/admin/contact${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
+  });
+
+  // One page for all six sections (unlike About/Contact's own single
+  // fields) -- each section is its own <form>, posting only its own slug and
+  // body, so saving one section can never touch another's wording. See
+  // disclaimer.ts for why a section can be overridden or cleared but never
+  // added, removed or renamed from here.
+  app.get("/admin/disclaimer", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderDisclaimerEditor({
+        disclaimer,
+        query: carry(request, how),
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  app.post("/admin/disclaimer", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    // An unrecognised slug (a stale form, a tampered field) changes nothing --
+    // isDisclaimerSlug/set both reject it rather than creating a new section.
+    const changed = body.clear === "1" ? disclaimer.clear(body.slug) : disclaimer.set(body.slug, body.body);
+    const label = isDisclaimerSlug(body.slug) ? body.slug : "section";
+    const note = changed ? `Disclaimer (${label}) updated.` : "No change.";
+    const sep = carry(request, how) ? "&" : "?";
+    return reply.redirect(`/admin/disclaimer${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   app.post("/admin/broadcast", async (request, reply) => {

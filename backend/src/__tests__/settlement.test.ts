@@ -151,7 +151,7 @@ describe("live per-turn wallet settlement", () => {
 
     const { balances } = store.finalizeRound(round4.roundId);
 
-    // Exactly one settlement for p2 (who lost 20 to the banker) — no spurious
+    // Exactly one settlement for p2 (who lost 20 to the banker) - no spurious
     // second row for p1, whose bust was already paid out live.
     expect(balances).toHaveLength(1);
     expect(balances[0]).toEqual({ amount: 20, payer: p2.id, payee: admin.id });

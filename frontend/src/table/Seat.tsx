@@ -35,6 +35,7 @@ export interface SeatProps {
   handScale?: number;
   isBankActor?: boolean;
   onSkipOther?: (playerId: string) => void;
+  onStandOther?: (playerId: string) => void;
   onOpenStats?: (playerId: string) => void;
   // Round-scopes CardView's key (see CardView.tsx) so a fresh round's cards
   // mount as genuinely new DOM nodes instead of reusing last round's -- see
@@ -100,6 +101,7 @@ export function Seat({
   handScale,
   isBankActor,
   onSkipOther,
+  onStandOther,
   onOpenStats,
   roundId,
   pastFirstPaint,
@@ -122,7 +124,15 @@ export function Seat({
   const statusInfo = statusDisplay(turn);
   const betInfo = betDisplay(turn);
   const displayName = [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName;
-  const canAdminSkip = Boolean(isAdmin && !isBanker && turn.state === "pending" && onSkipOther);
+  // Once a wager is down, Skip is the wrong action and the server refuses it
+  // (GameStore.applySkip -- a skipped hand is dropped by calculateBalances,
+  // so it can neither lose nor collect when the bank busts). Standing the
+  // hand is what moves the table on without voiding the money, so the control
+  // becomes that instead of offering a button that will be rejected.
+  const hasWager = (turn.bet ?? 0) > 0;
+  const canAdminAct = Boolean(isAdmin && !isBanker && turn.state === "pending");
+  const canAdminSkip = Boolean(canAdminAct && !hasWager && onSkipOther);
+  const canAdminStand = Boolean(canAdminAct && hasWager && onStandOther);
 
   const showTurnTimer = Boolean(
     turnTimer && turnTimer.playerId === turn.player.id && !isBanker && turn.state === "pending" && roundState !== "terminate"
@@ -157,7 +167,7 @@ export function Seat({
   const showEleveroonCall = Boolean(!isBanker && turn.eleveroonCalled && turn.state === "pending");
   const label = isNextPlayer ? "Up next" : isCurrentTurn ? (isMe ? "Your turn" : "Active") : statusInfo.label;
   const variant = isNextPlayer ? "muted" : tagVariant(statusInfo.label, isCurrentTurn);
-  const showBet = !isBanker && betInfo.label !== "—";
+  const showBet = !isBanker && betInfo.label !== "-";
   // selectors.ts distinguishes a real number from a concealed one ("hidden",
   // "--") and flags a bust; both distinctions have to survive here or every
   // total reads alike. Derived from the data rather than string-matching the
@@ -417,6 +427,18 @@ export function Seat({
         <button type="button" className="k-chip-btn" onClick={() => onSkipOther?.(turn.player.id)}>
           <Icon name="skip" size={10} />
           Skip
+        </button>
+      )}
+
+      {canAdminStand && (
+        <button
+          type="button"
+          className="k-chip-btn"
+          title="Their chips are already down. Stand plays the hand as dealt."
+          onClick={() => onStandOther?.(turn.player.id)}
+        >
+          <Icon name="stand" size={10} />
+          Stand
         </button>
       )}
     </div>

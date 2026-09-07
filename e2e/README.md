@@ -11,22 +11,22 @@ developer's own `npm run dev` session on 3000/3001/5173.
 
 ## What's covered
 
-- `full-round.spec.ts` — a banker and one player play a hand to completion and
+- `full-round.spec.ts` - a banker and one player play a hand to completion and
   agree on the outcome. Also pins that the bank's hole card reads concealed on
   the player's screen.
-- `two-players.spec.ts` — turn ORDER across three independent clients: while
+- `two-players.spec.ts` - turn ORDER across three independent clients: while
   the first player is up, the second must have no dock at all (`canPlayerAct`
   gates it on `activeTurnId === playerId`), and the turn advancing is something
   the second player only ever learns from the server. Ends with all three
   clients agreeing on both players' outcomes.
-- `reconnect.spec.ts` — a player reloads mid-round, after betting, and must
+- `reconnect.spec.ts` - a player reloads mid-round, after betting, and must
   come back to the same single seat with the wager intact. The duplicate-seat
   case is the one that matters: a resume that registered a new player instead
   of reclaiming the session would leave a wager nobody is sitting behind.
-- `seat-cap.spec.ts` — 12 players for 11 seats. The one left out must be told
+- `seat-cap.spec.ts` - 12 players for 11 seats. The one left out must be told
   they're queued, given no dock to act with, and be genuinely absent from the
   felt; then they rotate in on the next round and somebody else waits. The cap
-  and rotation themselves are `backend/src/__tests__/seat-cap.test.ts`'s job —
+  and rotation themselves are `backend/src/__tests__/seat-cap.test.ts`'s job -
   this covers only whether the client honours them. It drives 13 browser
   contexts and is by far the slowest spec here (~1 minute), which is why
   `workers` is capped in the config.

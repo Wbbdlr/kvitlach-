@@ -18,6 +18,10 @@ export interface RoomInfoDrawerProps {
   hasPassword?: boolean;
   buyIn?: number;
   isAdmin: boolean;
+  /** A practice room's banker is a bot with no session to approve a rename
+   *  or chip request -- those forms are for a real banker only (see the
+   *  callers of this prop for the full reasoning). */
+  isPractice?: boolean;
   playerId?: string;
   renameRequests: RenameRequest[];
   buyInRequests: BuyInRequest[];
@@ -53,6 +57,7 @@ export function RoomInfoDrawer({
   hasPassword,
   buyIn,
   isAdmin,
+  isPractice,
   playerId,
   renameRequests,
   buyInRequests,
@@ -176,10 +181,10 @@ export function RoomInfoDrawer({
           </div>
           {copied === "id" && <div className="text-xs text-emerald-300 -mt-2">Game ID copied.</div>}
           {copyFailed === "id" && (
-            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically — select the ID above and copy it.</div>
+            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically - select the ID above and copy it.</div>
           )}
           {copyFailed === "link" && (
-            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically — the invite link is {inviteLink}</div>
+            <div className="text-xs text-amber-300 -mt-2">Couldn't copy automatically - the invite link is {inviteLink}</div>
           )}
 
           {typeof buyIn === "number" && (
@@ -271,7 +276,7 @@ export function RoomInfoDrawer({
               stays regardless of how the form was reached: someone who
               already asked should see that they did, not go hunting for a
               button that no longer exists to confirm it. */}
-          {!isAdmin && (
+          {!isAdmin && !isPractice && (
             <>
               {(showRenameForm || myRenameRequest) && (
                 <div ref={selfServiceRef} className="border-t k-dialog-line pt-3 flex flex-col gap-2">

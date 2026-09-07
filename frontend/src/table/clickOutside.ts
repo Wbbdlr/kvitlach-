@@ -1,5 +1,5 @@
 // Declarative click-outside-closes hook for popovers (seat menu, bank top-up,
-// watermark editor, reaction picker, felt switcher) — one shared listener
+// watermark editor, reaction picker, felt switcher) - one shared listener
 // per open popover instead of each component hand-rolling its own.
 
 import { RefObject, useEffect } from "react";

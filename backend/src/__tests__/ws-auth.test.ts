@@ -8,7 +8,7 @@ import { WSServer } from "../ws-server.js";
 // `playerId`/`actorId` in the message payload (falling back to the session-bound
 // identity only if absent), instead of relying exclusively on the identity the
 // socket authenticated as via room:create/join/resume. Any connected player could
-// therefore act — or, for turn:skip, exercise admin authority — as any other named
+// therefore act - or, for turn:skip, exercise admin authority - as any other named
 // player in the room simply by setting that field, since player ids are visible to
 // everyone via room:state broadcasts. Fixed by ignoring the payload field entirely
 // and using only the socket's authenticated `meta.playerId`.
@@ -52,7 +52,7 @@ function send(ws: WebSocket, type: string, payload: unknown): Promise<any> {
   });
 }
 
-describe("WS authorization — identity must come from the session, never the payload", () => {
+describe("WS authorization - identity must come from the session, never the payload", () => {
   it("turn:bet/turn:hit ignore a spoofed playerId and only ever act as the authenticated socket", async () => {
     const admin = await connect();
     const attacker = await connect();
@@ -97,7 +97,7 @@ describe("WS authorization — identity must come from the session, never the pa
     attacker.close();
   });
 
-  it("turn:skip ignores a spoofed actorId — a non-admin cannot borrow admin authority to skip another player", async () => {
+  it("turn:skip ignores a spoofed actorId - a non-admin cannot borrow admin authority to skip another player", async () => {
     const admin = await connect();
     const attacker = await connect();
     const victim = await connect();

@@ -46,3 +46,20 @@ describe("error copy", () => {
     expect(errorCopy("a_code_from_the_future")).toBe("a code from the future");
   });
 });
+
+// applyBet is the only place the backend BUILDS an error code instead of
+// naming one (`bank_limit:${available}`), which is exactly why the grep above
+// never noticed it had no entry: there is no literal to find. It reached
+// players as "bank limit:400".
+describe("the one dynamic error code", () => {
+  it("turns bank_limit:<n> into something a player can act on", () => {
+    const copy = errorCopy("bank_limit:400");
+    expect(copy).toContain("$400");
+    expect(copy).not.toContain("bank_limit");
+    expect(copy).not.toContain("bank limit");
+  });
+
+  it("still says something sensible if the number is missing", () => {
+    expect(errorCopy("bank_limit:")).toMatch(/bank can|cover/i);
+  });
+});

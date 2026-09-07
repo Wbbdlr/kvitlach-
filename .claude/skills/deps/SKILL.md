@@ -12,22 +12,22 @@ The server build prints three kinds of noise. Assessed 2026-09-01; re-run
 
 **The critical one is `vitest`.** It is a test runner: it never reaches a
 browser, is not in any deployed image, and does not run on the server. The
-same is true of `vite`, `vite-node` and `esbuild` — that group is all one
+same is true of `vite`, `vite-node` and `esbuild` - that group is all one
 advisory about the **dev server** being reachable from a malicious website,
 which only matters while someone is running `npm run dev` locally.
 
 | package | severity | ships to users? | real exposure here |
 |---|---|---|---|
-| vitest | critical | no — dev only | none |
-| vite / vite-node / esbuild | high / mod | no — dev only | dev machine, only while `npm run dev` runs |
-| nanoid | high | **yes** | **none** — see below |
-| react-router / -dom | moderate | **yes** | low — see below |
+| vitest | critical | no - dev only | none |
+| vite / vite-node / esbuild | high / mod | no - dev only | dev machine, only while `npm run dev` runs |
+| nanoid | high | **yes** | **none** - see below |
+| react-router / -dom | moderate | **yes** | low - see below |
 
-- **nanoid** — the advisory is an infinite loop when called with a zero or
+- **nanoid** - the advisory is an infinite loop when called with a zero or
   negative `size`. Both call sites pass a constant: `nanoid(8)` in
   `frontend/src/ws.ts:130` and `customAlphabet` in `backend/src/store.ts`.
   No attacker-reachable size, so it is not reachable at all.
-- **react-router** — two issues: an open redirect via a backslash in `<Link>`,
+- **react-router** - two issues: an open redirect via a backslash in `<Link>`,
   and constructor injection in `deserializeErrors()` during **SSR hydration**.
   There is no SSR here (a Vite SPA served by nginx), so the second does not
   apply. The first needs an attacker-controlled link target; links are built
@@ -54,7 +54,7 @@ does not change what gets installed, and the container is discarded after the
 build. Pinning a newer npm in the Dockerfile adds a network step and a moving
 part to every build for no change in output.
 
-### DONE in v8.9 — both Dockerfiles now pin `node:22-alpine`
+### DONE in v8.9 - both Dockerfiles now pin `node:22-alpine`
 
 Three things, one fix:
 
@@ -64,19 +64,19 @@ Three things, one fix:
 2. **CI proves the code on Node 22** (`.github/workflows/ci.yml`, all three
    jobs) **and the images ship Node 20.** Every green check is against a
    runtime that is not the one in production.
-3. Newer npm comes bundled with newer Node — which is how to get it, rather
+3. Newer npm comes bundled with newer Node - which is how to get it, rather
    than chasing npm separately.
 
 **Fix: move both Dockerfiles to `node:22-alpine`.** Assessed low risk on
 2026-09-01, evidence gathered rather than assumed:
 
-- Both suites already pass on Node 22 — in CI, and locally on v22.17.0.
+- Both suites already pass on Node 22 - in CI, and locally on v22.17.0.
 - **No native dependencies to rebuild.** Backend production deps are 6
   packages; the only package anywhere with an install hook or `binding.gyp` is
   `esbuild`, which is dev-only and excluded by `npm ci --omit=dev`.
 - The frontend's runtime stage is `nginx:alpine`; Node only builds the bundle.
 
-Shipped in v8.9 alongside other changes at the user's explicit direction —
+Shipped in v8.9 alongside other changes at the user's explicit direction -
 the plan had been to isolate it, so if the server misbehaves on that build,
 the base image is one of several suspects rather than the only one. Node 22 is
 in maintenance until April 2027, so this buys real time rather than being a
@@ -85,7 +85,7 @@ hop. Next EOL to watch: **April 2027**.
 ## `caniuse-lite is 9 months old`
 
 Cosmetic, and the one genuinely worth doing. It only affects which
-autoprefixer rules and browser targets are applied — stale data means slightly
+autoprefixer rules and browser targets are applied - stale data means slightly
 conservative CSS output, never a broken build.
 
 ```bash

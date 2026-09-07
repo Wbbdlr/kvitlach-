@@ -1,6 +1,9 @@
 import { AccessControl, GATED_ACTIONS, GatedAction } from "./access.js";
 import { DEFAULT_LIMITS, LIMIT_KEYS, LimitKey, RuntimeLimits, limitBounds } from "./limits.js";
+import { BotNames, BOT_NAME_MAX, DEFAULT_BANKER_NAMES, DEFAULT_PLAYER_NAMES } from "./bot-names.js";
 import { AboutContent, ABOUT_MAX } from "./about.js";
+import { ContactContent, CONTACT_MAX } from "./contact.js";
+import { DisclaimerContent, DISCLAIMER_HEADINGS, DISCLAIMER_MAX, DISCLAIMER_SLUGS } from "./disclaimer.js";
 import { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
 
@@ -140,6 +143,12 @@ export interface AdminPageDeps {
   limits: RuntimeLimits;
   /** Operator-authored copy for the public About page. */
   about: AboutContent;
+  /** Same, for the Contact page. */
+  contact: ContactContent;
+  /** Per-section overrides for the Disclaimer page. */
+  disclaimer: DisclaimerContent;
+  /** Names the practice-mode computer players and their banker draw from. */
+  botNames: BotNames;
   /** Appended to every form action so token-authenticated sessions keep working. */
   query: string;
   refresh: boolean;
@@ -182,7 +191,7 @@ export function renderAboutEditor({
     : "never";
   const act = (path: string) => `${path}${query}`;
   return shell(
-    "About page — Kvitlach admin",
+    "About page - Kvitlach admin",
     `<h1>About page</h1>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
     <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
@@ -209,9 +218,175 @@ export function renderAboutEditor({
   );
 }
 
-export function renderAdminPage({ store, access, limits, about, query, refresh, appUrl, watchToken, notice }: AdminPageDeps): string {
+/** Its own page for the same reason renderAboutEditor is: /admin carries a
+ *  15-second <meta refresh>, and a refresh landing mid-edit eats a textarea
+ *  full of names. */
+export function renderBotNamesEditor({
+  botNames,
+  query,
+  notice,
+}: {
+  botNames: BotNames;
+  query: string;
+  notice?: string;
+}): string {
+  const record = botNames.toRecord();
+  const edited = record.updatedAt
+    ? new Date(record.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+    : "never";
+  const act = (path: string) => `${path}${query}`;
+  const pool = (names: string[]) => `<span class="meta">${escapeHtml(names.join(", "))}</span>`;
+  return shell(
+    "Computer players - Kvitlach admin",
+    `<h1>Computer players</h1>
+    ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
+    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <fieldset>
+      <legend>Names for &ldquo;Play Against the Computer&rdquo;</legend>
+      <p class="meta">One name per line (commas work too). Duplicates and blank lines are dropped,
+      and each name is trimmed to ${BOT_NAME_MAX.name} characters so it still fits a seat plate on a
+      phone. Up to ${BOT_NAME_MAX.pool} names per list. Changing these affects tables started from
+      now on &mdash; a practice table already in play keeps the names it was dealt.
+      Last edited: ${edited}.</p>
+      <form method="post" action="${act("/admin/bot-names")}">
+        <p><label>Banker names<br />
+          <span class="meta">The computer banker picks one of these per table, so the dealer is not
+          the same character every single time. One name here means it never changes.</span><br />
+          <textarea name="banker" rows="6" style="width:100%"
+            placeholder="${escapeHtml(DEFAULT_BANKER_NAMES.join(", "))}"
+            >${escapeHtml(botNames.customText("banker"))}</textarea></label></p>
+        <p class="meta">In use now: ${pool(botNames.bankerNames())}${
+          botNames.isDefault("banker") ? " &middot; built-in list" : ""
+        }</p>
+
+        <p><label>Computer player names<br />
+          <span class="meta">Each table draws as many of these as it has computer seats (2&ndash;10).
+          A list shorter than the table is fine &mdash; the extra seats reuse a name with a number
+          after it rather than going unfilled.</span><br />
+          <textarea name="players" rows="12" style="width:100%"
+            placeholder="${escapeHtml(DEFAULT_PLAYER_NAMES.join(", "))}"
+            >${escapeHtml(botNames.customText("players"))}</textarea></label></p>
+        <p class="meta">In use now: ${pool(botNames.playerNames())}${
+          botNames.isDefault("players") ? " &middot; built-in list" : ""
+        }</p>
+
+        <button type="submit" class="save">Save</button>
+        <button type="submit" name="reset" value="1">Reset to the built-in names</button>
+      </form>
+      <p class="meta">Clearing a box has the same effect as Reset for that list: with nothing set,
+      the built-in names are used. A pool cannot be empty &mdash; a table with no names to give its
+      seats could not be dealt.</p>
+    </fieldset>`,
+    false
+  );
+}
+
+/** Same reasoning as renderAboutEditor's own doc comment: its own page so a
+ *  <meta refresh> on the panel can never eat what is half-typed here. */
+export function renderContactEditor({
+  contact,
+  query,
+  notice,
+}: {
+  contact: ContactContent;
+  query: string;
+  notice?: string;
+}): string {
+  const record = contact.toRecord();
+  const edited = record.updatedAt
+    ? new Date(record.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+    : "never";
+  const act = (path: string) => `${path}${query}`;
+  return shell(
+    "Contact page - Kvitlach admin",
+    `<h1>Contact page</h1>
+    ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
+    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <fieldset>
+      <legend>Extra copy for the public Contact page</legend>
+      <p class="meta">Shown at the foot of <b>/contact</b> &mdash; a holiday closure notice, a
+      different reply-time estimate, anything you want to say without shipping a build. Plain
+      text: a blank line starts a new paragraph, and HTML is shown as typed rather than rendered.
+      Leave both blank, or use Clear, to show nothing at all. Last edited: ${edited}.</p>
+      <form method="post" action="${act("/admin/contact")}">
+        <p><label>Heading<br />
+          <input type="text" name="heading" maxlength="${CONTACT_MAX.heading}" style="width:100%"
+            placeholder="We're slower to reply during the holiday" value="${escapeHtml(record.heading)}" /></label></p>
+        <p><label>Body<br />
+          <textarea name="body" rows="10" maxlength="${CONTACT_MAX.body}" style="width:100%"
+            placeholder="We're a small team; replies may take a few extra days this week."
+            >${escapeHtml(record.body)}</textarea></label></p>
+        <button type="submit" class="save">Save</button>
+        <button type="submit" name="clear" value="1">Clear</button>
+      </form>
+    </fieldset>`,
+    false
+  );
+}
+
+/**
+ * One fieldset per legal section, each its own <form> posting only its own
+ * `slug` and `body` -- saving one section can never touch another's wording,
+ * and there is no field here that adds, removes or renames a section (see
+ * disclaimer.ts). Same own-page-no-refresh reasoning as the other two
+ * editors.
+ */
+export function renderDisclaimerEditor({
+  disclaimer,
+  query,
+  notice,
+}: {
+  disclaimer: DisclaimerContent;
+  query: string;
+  notice?: string;
+}): string {
+  const record = disclaimer.toRecord();
+  const act = (path: string) => `${path}${query}`;
+  const sections = DISCLAIMER_SLUGS.map((slug) => {
+    const section = record[slug];
+    const edited = section.updatedAt
+      ? new Date(section.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+      : "never";
+    return `<fieldset>
+      <legend>${escapeHtml(DISCLAIMER_HEADINGS[slug])}</legend>
+      <p class="meta">${section.body
+        ? `Overridden. Last edited: ${edited}.`
+        : "Showing the built-in wording for this section -- nothing overrides it."}</p>
+      <form method="post" action="${act("/admin/disclaimer")}">
+        <input type="hidden" name="slug" value="${slug}" />
+        <p><label>Override text<br />
+          <textarea name="body" rows="6" maxlength="${DISCLAIMER_MAX.body}" style="width:100%"
+            placeholder="Leave blank to keep the built-in wording for this section."
+            >${escapeHtml(section.body)}</textarea></label></p>
+        <button type="submit" class="save">Save</button>
+        <button type="submit" name="clear" value="1">Clear</button>
+      </form>
+    </fieldset>`;
+  }).join("\n");
+  return shell(
+    "Disclaimer page - Kvitlach admin",
+    `<h1>Disclaimer page</h1>
+    ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
+    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <p class="meta">Each section below replaces that section's built-in bullet points on the public
+    <b>/disclaimer</b> page with the plain text you enter here (a blank line starts a new
+    paragraph). The heading and which sections exist are fixed by the app, not by this form --
+    only the wording of a section you choose to override changes.</p>
+    ${sections}`,
+    false
+  );
+}
+
+export function renderAdminPage({ store, access, limits, about, contact, disclaimer, botNames, query, refresh, appUrl, watchToken, notice }: AdminPageDeps): string {
   const aboutRecord = about.toRecord();
   const aboutEdited = aboutRecord.updatedAt ? new Date(aboutRecord.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "never";
+  const contactRecord = contact.toRecord();
+  const contactEdited = contactRecord.updatedAt ? new Date(contactRecord.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "never";
+  const disclaimerRecord = disclaimer.toRecord();
+  const disclaimerOverrideCount = DISCLAIMER_SLUGS.filter((slug) => disclaimerRecord[slug].body).length;
   const load = store.loadSnapshot();
   const lag = Math.round(metrics.eventLoopLagMs);
   const conns = metrics.currentWsConnections;
@@ -295,7 +470,7 @@ export function renderAdminPage({ store, access, limits, about, query, refresh, 
       return `<tr>
         <td><code>${escapeHtml(r.roomId)}</code>${r.hasPassword ? ' <span class="meta" title="password protected">&#128274;</span>' : ""}</td>
         <td>${escapeHtml(r.name ?? "")}${r.practice ? ' <span class="meta">(practice)</span>' : ""}</td>
-        <td>${escapeHtml(r.bankerName ?? "—")}</td>
+        <td>${escapeHtml(r.bankerName ?? "-")}</td>
         <td>${humans}${r.botCount ? ` <span class="meta">+${r.botCount} bot</span>` : ""}${r.waitingCount ? ` <span class="meta">, ${r.waitingCount} waiting</span>` : ""}</td>
         <td>${r.completedRounds}</td>
         <td>${r.hasActiveRound ? '<span class="ok">yes</span>' : "no"}</td>
@@ -366,6 +541,19 @@ export function renderAdminPage({ store, access, limits, about, query, refresh, 
     </fieldset>
 
     <fieldset>
+      <legend>Computer players</legend>
+      <p class="meta">The names used by &ldquo;Play Against the Computer&rdquo; &mdash; the bots at the
+      seats, and the computer banker, which picks a different one of its names per table.</p>
+      <p><span class="meta">Banker: ${escapeHtml(botNames.bankerNames().join(", "))}${
+        botNames.isDefault("banker") ? " (built-in)" : ""
+      }</span><br />
+      <span class="meta">Players: ${botNames.playerNames().length} name(s)${
+        botNames.isDefault("players") ? ", built-in" : ", custom"
+      }</span></p>
+      <p><a href="${act("/admin/bot-names")}">Edit the computer players&rsquo; names&hellip;</a></p>
+    </fieldset>
+
+    <fieldset>
       <legend>About page</legend>
       <p class="meta">Extra copy shown at the foot of the public <b>About</b> page &mdash; beta-tester
       credits, thanks, a note about the table. Last edited: ${aboutEdited}.</p>
@@ -374,6 +562,27 @@ export function renderAdminPage({ store, access, limits, about, query, refresh, 
              <span class="meta">${escapeHtml(aboutRecord.body.slice(0, 160))}${aboutRecord.body.length > 160 ? "&hellip;" : ""}</span>`
           : `<span class="meta">Nothing set &mdash; the About page shows only its built-in copy.</span>`}</p>
       <p><a href="${act("/admin/about")}">Edit the About copy&hellip;</a></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Contact page</legend>
+      <p class="meta">Extra copy shown at the foot of the public <b>Contact</b> page. Last edited: ${contactEdited}.</p>
+      <p>${contactRecord.heading || contactRecord.body
+          ? `<b>${escapeHtml(contactRecord.heading) || "(no heading)"}</b><br />
+             <span class="meta">${escapeHtml(contactRecord.body.slice(0, 160))}${contactRecord.body.length > 160 ? "&hellip;" : ""}</span>`
+          : `<span class="meta">Nothing set &mdash; the Contact page shows only its built-in copy.</span>`}</p>
+      <p><a href="${act("/admin/contact")}">Edit the Contact copy&hellip;</a></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Disclaimer page</legend>
+      <p class="meta">Per-section wording overrides for the public <b>Disclaimer</b> page &mdash;
+      the six legal sections there (no-gambling, liability, ownership and so on) each keep their
+      built-in wording unless overridden individually.</p>
+      <p>${disclaimerOverrideCount > 0
+          ? `<span class="meta">${disclaimerOverrideCount} of ${DISCLAIMER_SLUGS.length} section(s) overridden.</span>`
+          : `<span class="meta">Nothing overridden &mdash; the Disclaimer page shows only its built-in wording.</span>`}</p>
+      <p><a href="${act("/admin/disclaimer")}">Edit the Disclaimer sections&hellip;</a></p>
     </fieldset>
 
     <fieldset>

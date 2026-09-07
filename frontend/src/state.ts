@@ -1,7 +1,7 @@
 import { create, StateCreator } from "zustand";
 import { errorCopy } from "./errorCopy";
 import { WSClient } from "./ws";
-import { Balance, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
+import { Balance, LedgerEntry, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 import { ReactionEvent } from "./types";
 import { bestTotal, isPushTurn } from "./table/selectors";
 import { DiscardEntry, discardedEntries } from "./table/DiscardPile";
@@ -34,6 +34,33 @@ export interface CompletedRoundSummary {
   completedAt: number;
 }
 
+/**
+ * What survives the table being closed, so the night doesn't just vanish.
+ *
+ * `room:closed` wipes room/round/playerId/session -- it has to, or a stale
+ * room repopulates from the next broadcast (see the handler). But that left
+ * every player except the banker with a toast and nothing else: no final
+ * standings, and no way to export, because the export reads room.roomId,
+ * room.name and room.players, all of which had just been cleared. After a
+ * two-hour night that is the last frame everyone sees.
+ *
+ * So the pieces the summary screen and the export need are lifted out BEFORE
+ * the wipe. `rounds` is the same array roundHistory already holds (no copy --
+ * completed rounds are never mutated in place), which is also why standings
+ * are recomputed from it via tableStandings rather than stored: one source.
+ */
+export interface GameOverSummary {
+  roomId?: string;
+  roomName?: string;
+  /** Who this device was at that table -- drives "your night" and the personal export. */
+  playerId?: string;
+  wasBanker: boolean;
+  closedAt: number;
+  rounds: CompletedRoundSummary[];
+  /** Chips moved by hand -- the export needs these after the room is gone. */
+  ledger: LedgerEntry[];
+}
+
 interface UIState {
   client: WSClient;
   room?: RoomState;
@@ -54,6 +81,8 @@ interface UIState {
   wsUrl: string;
   pendingAction?: { requestId: string; type: "bet" | "hit" | "stand" | "skip" };
   bankerSummaryAt?: number;
+  gameOver?: GameOverSummary;
+  dismissGameOver: () => void;
   init: () => void;
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
   createPracticeRoom: (firstName: string, options?: { botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => void;
@@ -81,16 +110,20 @@ interface UIState {
   hit: (options?: { eleveroon?: boolean }) => void;
   stand: () => void;
   skip: (playerId?: string) => void;
+  standFor: (playerId: string) => void;
   sendReaction: (emoji: string) => void;
   requestRename: (firstName: string, lastName?: string) => void;
   approveRename: (playerId: string) => void;
   rejectRename: (playerId: string) => void;
   requestBuyIn: (amount: number, note?: string) => void;
   practiceTopUp: () => void;
+  practiceTopUpBank: (amount: number) => void;
   approveBuyIn: (playerId: string) => void;
   rejectBuyIn: (playerId: string) => void;
   topUpBanker: (amount: number, note?: string) => void;
   endRoundDueToBank: () => void;
+  endGameAfterBankDecision: () => void;
+  passBankToPlayer: (targetPlayerId: string) => void;
   voidAbandonedRound: () => void;
   dismissBankerSummary: () => void;
   kickPlayer: (playerId: string) => void;
@@ -98,6 +131,9 @@ interface UIState {
   setFeltWatermark: (text: string) => void;
   reshuffleDeck: () => void;
   closeRoom: () => void;
+  /** Disconnect but keep the seat, the stack and the way back. */
+  stepAway: () => void;
+  /** Give up the seat for good -- the server removes it, chips and all. */
   leaveGame: () => void;
 }
 
@@ -279,6 +315,44 @@ const persistAccessCode = (code: string) => {
   }
 };
 
+// Player-requested, 2026-09-04: the Disclaimer's age/legal language ("by
+// playing, you agree you are of legal age...") was a passive sentence on a
+// page most people never open before joining -- an active checkbox at every
+// point that actually starts play (Join, Create, Practice; NOT Watch, which
+// never wagers or "plays" in that sense) closes the gap between the claim and
+// what's actually confirmed. Remembered rather than re-asked every time, same
+// reasoning and same shape as the access code above: a returning player
+// should not re-confirm on every table they join.
+//
+// Scoped per form, NOT one shared flag -- tried a single flag first (check
+// it on Join, Practice shows checked too, same load) and it read as one
+// checkbox silently controlling three, which is not what "I confirm" means
+// on a form you never touched. Same key shape, one segment longer, so each
+// of the three still gets its own remembered state.
+export type AgeAckScope = "join" | "create" | "practice";
+
+const ageAckStorageKey = (scope: AgeAckScope): string => `kvitlach.ageAck.${scope}`;
+
+export const loadAgeAcknowledged = (scope: AgeAckScope): boolean => {
+  if (typeof window === "undefined" || !window.localStorage) return false;
+  try {
+    return window.localStorage.getItem(ageAckStorageKey(scope)) === "1";
+  } catch (err) {
+    console.warn("Failed to load age acknowledgement", err);
+    return false;
+  }
+};
+
+export const persistAgeAcknowledged = (scope: AgeAckScope, value: boolean): void => {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    if (value) window.localStorage.setItem(ageAckStorageKey(scope), "1");
+    else window.localStorage.removeItem(ageAckStorageKey(scope));
+  } catch (err) {
+    console.warn("Failed to persist age acknowledgement", err);
+  }
+};
+
 export const loadLastRoomId = (): string | undefined => {
   if (typeof window === "undefined" || !window.localStorage) return undefined;
   try {
@@ -453,25 +527,23 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   let pendingWatermarkRequestId: string | undefined;
   let pendingReshuffleRequestId: string | undefined;
   let pendingRoundStartRequestId: string | undefined;
-  // A confirmed BANK! wagers the bank's whole remaining window, so the seat
-  // is fully committed -- their next card follows automatically rather than
-  // making them tap Hit again for a decision they've already made.
+  // NO auto-hit follows a confirmed BANK!, deliberately.
   //
-  // This has to be driven off the BANK! bet's own ACK, not off watching
-  // turn.bet change in the dock. Two separate bugs came from trying the
-  // latter (both confirmed by test before this moved here):
-  //   1. ws-server.ts broadcasts round:state BEFORE it sends the ack, so the
-  //      re-render that a bet-watcher keys on always lands while
-  //      pendingAction is still set -- and every action getter starts with
-  //      `if (get().pendingAction) return`, so the follow-up hit was
-  //      silently swallowed every single time.
-  //   2. the watcher keyed on a `bet > 0` boolean, which does not change at
-  //      all when a seat that had ALREADY bet raises to BANK! -- so for that
-  //      (very ordinary) path it never even fired.
-  // Keyed by requestId so a stale flag can't attach itself to some later
-  // unrelated bet; carries eleveroon so the auto-drawn card is protected the
-  // same way the wager itself was.
-  let pendingBankAutoHit: { requestId: string; eleveroon: boolean } | undefined;
+  // One used to: a BANK! wagers the bank's whole window, and the reasoning
+  // was that a seat that committed everything had already decided to take
+  // another card. It was broken from the day it was written (it fired inside
+  // the window where pendingAction blocks every action, so it was swallowed
+  // every time) and only actually reached a player once that was fixed --
+  // who reported it immediately: "when i confirmed BANK! it gave me TWO
+  // cards instead of once".
+  //
+  // They are right, and the rule is on their side. A bet of any size deals
+  // exactly one card (handleBet, backend/src/round.ts); BANK! is a bet, not
+  // a different kind of move, and nothing in docs/GAME_RULES.md says
+  // otherwise. The bank lock stays at stage "player" for exactly as long as
+  // that seat is pending, so they can hit or stand as normal -- the wager
+  // being large is a reason to leave the next card to the player, not to
+  // take it out of their hands.
   // pendingAction gates every gameplay action (each of bet/hit/stand/skip
   // opens with `if (get().pendingAction) return`) so a double-tap can't fire
   // the same move twice. Nothing but a matching ack or error ever cleared
@@ -492,6 +564,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // `invite_required` has to land on the form the player is actually looking
   // at -- and nothing in the error envelope says which that was.
   let lastLobbyAction: "create" | "join" | "practice" | undefined;
+  // Which room the player last tried to JOIN by hand. Only ever read to
+  // decide whether a room_not_found means the remembered table is gone (see
+  // the error handler), and never to decide anything about the round.
+  let lastJoinAttemptRoomId: string | undefined;
 
   let pendingActionTimer: ReturnType<typeof setTimeout> | undefined;
   const beginPendingAction = (requestId: string, type: "bet" | "hit" | "stand" | "skip") => {
@@ -503,11 +579,16 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       // action taken its place -- clearing that one would reintroduce the
       // double-fire this guard exists to prevent.
       if (get().pendingAction?.requestId !== requestId) return;
-      if (pendingBankAutoHit?.requestId === requestId) pendingBankAutoHit = undefined;
-      set({
+      // Same reason the refusal branch toasts: `message` is rendered only by
+      // App.tsx's lobby branch, so an action that never reached the table
+      // released the controls and said nothing at the felt -- the player is
+      // left tapping a button that appears to do nothing.
+      const dropped = "That didn't reach the table - try again.";
+      set((state: UIState) => ({
         pendingAction: undefined,
-        message: "That didn't reach the table -- try again.",
-      });
+        message: dropped,
+        notifications: [...state.notifications, makeNotification(dropped, "error")].slice(-5),
+      }));
     }, PENDING_ACTION_TIMEOUT_MS);
     set({ pendingAction: { requestId, type } });
   };
@@ -525,9 +606,10 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // is a harmless no-op -- the filter just doesn't match anything.
   // Was 18s, unmeasured -- reported as staying up too long, and with up to
   // 5 stacked (the slice(-5) cap below) a slow-draining stack reads as
-  // clutter rather than history. 8s: long enough to read one outcome
-  // sentence, short enough that the stack actually clears between hands.
-  const NOTIFICATION_AUTO_DISMISS_MS = 8000;
+  // clutter rather than history. Dropped to 8s, then to 6s (still reported
+  // as lingering): long enough to read one outcome sentence, short enough
+  // that the stack actually clears between hands.
+  const NOTIFICATION_AUTO_DISMISS_MS = 6000;
   const makeNotification = (message: string, tone: NotificationTone): UINotification => {
     const notification: UINotification = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -549,7 +631,59 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     nextRound: RoundState
   ): UINotification | undefined => {
     if (!nextRound.deckReshuffledAt || nextRound.deckReshuffledAt === prevRound?.deckReshuffledAt) return undefined;
-    return makeNotification("Fresh deck shuffled in -- the shoe ran low.", "info");
+    return makeNotification("Fresh deck shuffled in - the shoe ran low.", "info");
+  };
+
+  // Who this round left behind, said out loud exactly once -- on the first
+  // broadcast of a new roundId, not on every one of the dozens that follow.
+  //
+  // The exclusion has always been correct: startRound cannot deal to a phone
+  // that is off. What it never did was TELL anybody, and the two people who
+  // needed telling need opposite sentences. The player who was left out saw
+  // the table playing without them and had no way to know why; the banker
+  // saw a full player list and no sign that the round was short a seat.
+  // Everyone else is told nothing, because the empty chair is already on the
+  // felt in front of them.
+  //
+  // Deduped on the round id it last announced rather than on a prev/next
+  // diff, which is what every other notification here uses. That difference
+  // is load-bearing, and a live run is what found it: ws-server's room:resume
+  // BROADCASTS round:state before it sends the ack, so a reconnecting player
+  // receives the new round twice -- first on a broadcast where the store does
+  // not yet know who they are (playerId arrives with the ack's session), then
+  // on the ack, by which time a prev/next diff sees the same roundId and says
+  // nothing. The person the message exists for got silence.
+  let satOutAnnouncedFor: string | undefined;
+  const satOutNotification = (
+    _prevRound: RoundState | undefined,
+    nextRound: RoundState,
+    viewerId: string | undefined,
+    room: RoomState | undefined
+  ): UINotification | undefined => {
+    const satOut = nextRound.satOutPlayerIds ?? [];
+    if (satOut.length === 0) return undefined;
+    if (nextRound.roundId === satOutAnnouncedFor) return undefined;
+    // Only claimed once there is somebody to tell -- a broadcast that lands
+    // before the session does must not consume the announcement.
+    if (!viewerId) return undefined;
+    satOutAnnouncedFor = nextRound.roundId;
+    if (viewerId && satOut.includes(viewerId)) {
+      return makeNotification(
+        "You were disconnected when this round was dealt, so you're sitting it out. You're back in for the next one.",
+        "info"
+      );
+    }
+    const isBanker = room?.players?.find((p) => p.id === viewerId)?.type === "admin";
+    if (!isBanker) return undefined;
+    const names = satOut
+      .map((id) => {
+        const player = room?.players?.find((p) => p.id === id);
+        return player ? [player.firstName, player.lastName].filter(Boolean).join(" ").trim() : undefined;
+      })
+      .filter((n): n is string => Boolean(n));
+    if (names.length === 0) return undefined;
+    const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    return makeNotification(`${who} ${names.length === 1 ? "was" : "were"} offline and sat this round out.`, "info");
   };
 
   // Folds a round that's about to be replaced into the running shoe-scoped
@@ -614,7 +748,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     // banker and the table are told the same story about the same hand.
     if (nextTurn.player?.type === "admin") {
       if (nextTurn.busted) {
-        return makeNotification(`You futched with ${bustedTotal ?? "a bust"} -- every hand still live wins.`, "error");
+        return makeNotification(`You futched with ${bustedTotal ?? "a bust"} - every hand still live wins.`, "error");
       }
       // A natural 21 beats the whole table outright, the same instant a bust
       // futches the bank -- it deserves the same kind of stand-out wording,
@@ -622,13 +756,13 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       // total === 21 check selectors.ts's "BANK 21!" badge and App.tsx's
       // natural21 sound already use to tell this apart.
       if (nextTurn.state === "won" && total === 21) {
-        return makeNotification("You hit 21 -- everyone still in the hand loses!", "success");
+        return makeNotification("You hit 21 - everyone still in the hand loses!", "success");
       }
       return nextTurn.state === "won"
         ? makeNotification(`You stood on ${total ?? "--"} and took the round.`, "success")
         : makeNotification(`You stood on ${total ?? "--"} and finished down on the round.`, "info");
     }
-    if (isPushTurn(nextTurn)) return makeNotification("Push -- your wager is returned.", "info");
+    if (isPushTurn(nextTurn)) return makeNotification("Push - your wager is returned.", "info");
     if (nextTurn.state === "won") return makeNotification("You won this hand!", "success");
     return makeNotification(busted ? "You Futched!" : "You lost this hand.", "error");
   };
@@ -704,7 +838,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       // Good news from every seat that is reading this, hence "success" on
       // what is nominally the bank losing.
       return makeNotification(
-        `The bank futched with ${bustedTotal ?? "a bust"} -- everyone still in the hand wins!`,
+        `The bank futched with ${bustedTotal ?? "a bust"} - everyone still in the hand wins!`,
         "success"
       );
     }
@@ -713,7 +847,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       // branch above (see its comment) -- bad news for the table this time,
       // hence "error" rather than the plain "info" an ordinary bank win gets.
       if (total === 21) {
-        return makeNotification("Banker has 21 -- everyone still in the hand loses.", "error");
+        return makeNotification("Banker has 21 - everyone still in the hand loses.", "error");
       }
       return makeNotification(`The bank stood on ${total ?? "--"} and took the round.`, "info");
     }
@@ -759,11 +893,15 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
               ? ` (lost to ${frame.lostTo})`
               : ` (beat ${frame.beat}, lost ${frame.lostTo})`;
     const tone: NotificationTone = busted ? "error" : total === 21 ? "success" : "info";
-    return makeNotification(`${headline}${record} -- new hand dealt to keep the table live.`, tone);
+    return makeNotification(`${headline}${record} - new hand dealt to keep the table live.`, tone);
   };
 
   const analyzeRoomTransition = (state: UIState, nextRoom: RoomState): Partial<UIState> => {
     const updates: Partial<UIState> = { room: nextRoom };
+    // Being in a room again is the one unambiguous signal that the last
+    // night's summary is done with, whether it was dismissed or the player
+    // just joined the next table straight past it.
+    if (state.gameOver) updates.gameOver = undefined;
     let history = state.roundHistory;
     if (!history.length || state.room?.roomId !== nextRoom.roomId) {
       const hydratedHistory = loadRoundHistory(nextRoom.roomId);
@@ -889,6 +1027,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         const nextRound = msg.payload as RoundState;
         const notifications = [
           deckReshuffleNotification(state.round, nextRound),
+          satOutNotification(state.round, nextRound, state.playerId, state.room),
           outcomeNotification(state.round, nextRound, state.playerId),
           eleveroonNotification(state.round, nextRound),
           bankOutcomeNotification(state.round, nextRound, state.playerId),
@@ -955,6 +1094,18 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           persistSession(undefined);
           setUrlRoomId(undefined);
         }
+        // Lifted out before the wipe below -- see GameOverSummary. No toast
+        // any more: it said less than the screen that replaces it, and would
+        // have sat on top of it.
+        const gameOver: GameOverSummary = {
+          roomId,
+          roomName: s.room?.name,
+          playerId: s.playerId,
+          wasBanker: s.room?.players.find((p) => p.id === s.playerId)?.type === "admin",
+          closedAt: Date.now(),
+          rounds: s.roundHistory,
+          ledger: s.room?.ledger ?? [],
+        };
         return {
           room: undefined,
           round: undefined,
@@ -962,7 +1113,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           balances: [],
           playerId: undefined,
           session: undefined,
-          notifications: [...s.notifications, makeNotification("The banker has closed this session.", "info")].slice(-5),
+          gameOver,
         };
       });
       return;
@@ -1124,10 +1275,16 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
       if (errorMessage === "invalid_session") {
         const priorRoom = get().session?.roomId || get().room?.roomId;
-        if (priorRoom) persistLastRoomId(priorRoom);
         persistSession(undefined);
+        // AFTER persistSession, not before: clearing the session also clears
+        // the remembered room id (see persistSession), so re-saving it first
+        // and dropping the session second threw away the very thing this line
+        // exists to keep. The table is still there and only the token went
+        // stale, so the Game ID the player needs is the one to leave in the
+        // lobby's box -- which is what this could not actually do.
+        if (priorRoom) persistLastRoomId(priorRoom);
         setUrlRoomId(undefined);
-        // Do NOT clear per-room session on invalid_session — the server session token
+        // Do NOT clear per-room session on invalid_session - the server session token
         // lasts 7 days but the per-room localStorage key lasts 21 days (ROOM_SESSION_
         // MAX_AGE_MS, matching the server's own room-inactivity GC window). If the
         // server restarted (in-memory state lost) or the token simply expired, the user
@@ -1152,12 +1309,44 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         // below instead, so a mistyped room code isn't swallowed silently.
         if (errorMessage === "room_not_found" && isAutoResumeError) {
           setUrlRoomId(undefined);
+          // Forget the table as well as the seat. invalid_session directly
+          // above deliberately does the opposite -- it re-saves the room id,
+          // because there the TABLE is still there and only the token went
+          // stale, so prefilling the Game ID is exactly right. Here the room
+          // itself is gone (ended, GC'd, or a practice table the server
+          // restarted out of existence), and remembering it only means the
+          // lobby opens with a dead code already typed into the Game ID box.
+          // Reported from a fresh visit that showed a code from a table that
+          // no longer existed: pressing Join then says "Room not found" about
+          // something the player never typed.
+          persistSession(undefined);
+          const goneRoom = get().session?.roomId || get().room?.roomId;
+          if (goneRoom) clearRoomSession(goneRoom);
           update.session = undefined;
           update.room = undefined;
           update.round = undefined;
           update.shoeDiscards = [];
           update.playerId = undefined;
           return update;
+        }
+        // The other half of the auto-resume branch above. A table the player
+        // last sat at is remembered so the lobby can prefill its Game ID
+        // (App.tsx's loadLastRoomId), and until now nothing ever unremembered
+        // it once the auto-resume path stopped running -- which it does the
+        // moment the session itself is gone. So a code for a table that ended
+        // weeks ago sat in the box on every visit, and pressing Join answered
+        // "Room not found" about something the player never typed.
+        //
+        // Pressing Join against that exact code is the server telling us it
+        // is gone. Matched against the attempted id rather than cleared on
+        // any room_not_found, so a mistyped code costs the player nothing.
+        if (
+          errorMessage === "room_not_found" &&
+          !isAutoResumeError &&
+          lastJoinAttemptRoomId &&
+          lastJoinAttemptRoomId.trim().toUpperCase() === (loadLastRoomId() ?? "").trim().toUpperCase()
+        ) {
+          persistLastRoomId(undefined);
         }
         // Puts the message on the form that was actually submitted, falling
         // back to all three only when we somehow have no idea -- which is
@@ -1168,8 +1357,35 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
             : { ...current, create: text, join: text, practice: text };
         const pendingType = state.pendingAction?.type;
         const friendly = errorCopy(errorMessage);
-        if (pendingType === "bet" || pendingType === "hit" || pendingType === "stand" || pendingType === "skip") {
+        // Anything refused while the player is AT A TABLE has to be visible at
+        // the table. `message` below reaches only App.tsx's lobby branch
+        // (`return room ? <TableRoot/> : <lobby/>`), and `formErrors` reaches
+        // only the three lobby forms, so an in-room refusal that is not one of
+        // the four turn actions had nowhere at all to land: it set state
+        // nothing renders and the felt carried on as if nothing had happened.
+        //
+        // Found by pressing "Add to the bank" on a practice table and watching
+        // the dialog close, the bank stay at zero and nothing be said - the
+        // same failure shape as the 11.6 BANK! report, one release later,
+        // through a message type that had not been written yet when that was
+        // fixed. Toasting off `room` rather than off a list of message types
+        // is what stops the next new action inheriting it too.
+        const isTurnAction =
+          pendingType === "bet" || pendingType === "hit" || pendingType === "stand" || pendingType === "skip";
+        if (state.room && !isTurnAction) {
+          update.notifications = [...state.notifications, makeNotification(friendly, "error")].slice(-5);
+        }
+        if (isTurnAction) {
+          // A toast, because `message` below is rendered ONLY by the lobby
+          // branch of App.tsx (`return room ? <TableRoot/> : <lobby/>`) -- so
+          // at the felt, where every one of these four actions actually
+          // happens, it went nowhere. Reported on 11.6 as BANK! being
+          // accepted and then "just wouldn't deal a card, no matter how many
+          // times": the server was refusing correctly and the client was
+          // saying nothing at all. `message` is kept for the case where a
+          // refusal lands while the player is back at the lobby.
           update.message = friendly;
+          update.notifications = [...state.notifications, makeNotification(friendly, "error")].slice(-5);
           // Both of these can only come from creating a table, so they belong
           // on the create form. Without the room_capacity case they fell to
           // the join branch below and surfaced on a form the banker isn't
@@ -1279,8 +1495,25 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
           const nextRound = payload.round as RoundState;
           update.shoeDiscards = advanceShoeDiscards(state.round, nextRound, state.shoeDiscards);
           update.round = nextRound;
+          // Who this ack is FOR, not who the store currently thinks we are.
+          // On a join or resume the session block below is what sets playerId,
+          // and it runs after this one -- so state.playerId is still undefined
+          // on exactly the ack a returning player receives. That is not an
+          // edge case for the sat-out notice, it is the ONLY case: a player
+          // left out of a round because they were disconnected necessarily
+          // learns about it on the ack that reconnects them.
+          const viewerId =
+            (payload.session as SessionData | undefined)?.playerId ??
+            (payload.player as { id?: string } | undefined)?.id ??
+            state.playerId;
+          const viewerRoom = (payload.room as RoomState | undefined) ?? state.room;
           const newNotifications = [
             deckReshuffleNotification(state.round, nextRound),
+            satOutNotification(state.round, nextRound, viewerId, viewerRoom),
+            // Deliberately still state.playerId: this one diffs against the
+            // round already in state, and a resuming client has none, so
+            // widening it here would toast a returning player about a hand
+            // that finished while they were gone.
             outcomeNotification(state.round, nextRound, state.playerId),
           ].filter((n): n is UINotification => Boolean(n));
           if (newNotifications.length) {
@@ -1306,20 +1539,6 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         update.formErrors = nextErrors;
         return update;
       });
-
-      // Strictly after the set() above: that is what clears pendingAction,
-      // and hit() refuses to send while it is still set.
-      if (msg.requestId && msg.requestId === pendingBankAutoHit?.requestId) {
-        const { eleveroon } = pendingBankAutoHit;
-        pendingBankAutoHit = undefined;
-        // Only if the wager left the seat with something still to play. The
-        // bet deals a card of its own, so a BANK! can bust or otherwise
-        // resolve the hand outright -- hitting again there is not "finish
-        // your hand", it is a turn_not_pending error toast on a hand the
-        // player already saw settle.
-        const myTurn = get().round?.turns.find((t) => t.player.id === get().playerId);
-        if (myTurn?.state === "pending") get().hit({ eleveroon });
-      }
     }
   };
 
@@ -1343,7 +1562,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
     }
 
-    // Priority 1: URL param ?room=ROOMID — try per-room saved session first.
+    // Priority 1: URL param ?room=ROOMID - try per-room saved session first.
     const urlRoomId = getUrlRoomId();
     if (urlRoomId) {
       const roomSession = loadRoomSession(urlRoomId);
@@ -1432,6 +1651,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     },
     notifications: [],
     bankerSummaryAt: undefined,
+    gameOver: undefined,
+    dismissGameOver: () => set({ gameOver: undefined }),
     session: initialSession,
     init: () => {
       set({ status: "connecting", message: undefined });
@@ -1471,6 +1692,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       lastLobbyAction = "join";
+      lastJoinAttemptRoomId = roomId;
         client.send("room:join", { roomId, firstName, lastName, password, spectator: Boolean(spectator), accessCode: get().accessCode || undefined });
     },
     watchRoom: (roomId: string, token: string) => {
@@ -1517,9 +1739,6 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         bank: Boolean(options?.bank),
         eleveroon: Boolean(options?.eleveroon),
       });
-      pendingBankAutoHit = options?.bank
-        ? { requestId, eleveroon: Boolean(options?.eleveroon) }
-        : undefined;
       beginPendingAction(requestId, "bet");
     },
     hit: (options?: { eleveroon?: boolean }) => {
@@ -1556,6 +1775,19 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       if (get().pendingAction) return;
       const requestId = client.send("turn:skip", { roundId, playerId, actorId });
       beginPendingAction(requestId, "skip");
+    },
+    // The banker standing an absent player's hand for them. Skip voids a
+    // hand, which is the wrong answer once chips are down (the server now
+    // refuses it -- cannot_skip_wagered), so this is the banker's way past a
+    // seat the table is stuck on without touching anyone's money: the hand
+    // stands as dealt and settles like any other, bank bust included.
+    standFor: (playerId: string) => {
+      const roundId = get().round?.roundId;
+      const actorId = get().playerId;
+      if (!roundId || !actorId || !playerId) return;
+      if (get().pendingAction) return;
+      const requestId = client.send("turn:stand", { roundId, playerId });
+      beginPendingAction(requestId, "stand");
     },
     requestRename: (firstName: string, lastName?: string) => {
       const roomId = get().room?.roomId;
@@ -1599,6 +1831,15 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       const roomId = get().room?.roomId;
       if (!roomId) return;
       client.send("player:practice-topup", { roomId });
+    },
+    // The practice table's own answer to an emptied bank. A real table's
+    // banker fixes this from Manage -> BANK; a practice table's banker is a
+    // bot, so without this the table is simply over -- every wager after the
+    // bank hits zero is refused and nothing on the felt can undo it.
+    practiceTopUpBank: (amount: number) => {
+      const roomId = get().room?.roomId;
+      if (!roomId) return;
+      client.send("bank:practice-topup", { roomId, amount });
     },
     approveBuyIn: (playerId: string) => {
       const roomId = get().room?.roomId;
@@ -1644,6 +1885,35 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("round:banker-end", { roomId });
+    },
+    // The banker's third exit from a depleted bank. The rule was always
+    // "replenish, pass the bank, or end round AND game" -- the button only
+    // ever did the first half, leaving a table sitting on a dead bank with no
+    // hand in progress and no way forward but the Manage drawer.
+    //
+    // Two existing sends rather than a new server op: both halves are already
+    // authorized paths, and the socket delivers them in order, so the round
+    // that just ended is folded into roundHistory BEFORE room:closed wipes the
+    // room -- which is what puts it in the game-over screen's standings. A new
+    // combined op would have to reproduce that ordering anyway.
+    endGameAfterBankDecision: () => {
+      get().endRoundDueToBank();
+      get().closeRoom();
+    },
+    // Same moment and same admin gate as endRoundDueToBank -- this is the
+    // third choice offered when a BANK! wager empties the bank (replenish /
+    // end / hand it over). The server ends the round as part of the handover;
+    // see GameStore.passBankAfterBankDecision for why the two are one action.
+    passBankToPlayer: (targetPlayerId: string) => {
+      const roomId = get().room?.roomId;
+      const playerId = get().playerId;
+      if (!roomId || !playerId || !targetPlayerId) return;
+      const player = get().room?.players.find((p) => p.id === playerId);
+      if (player?.type !== "admin") {
+        set({ message: "Only the banker can pass the bank." });
+        return;
+      }
+      client.send("round:pass-bank", { roomId, targetPlayerId });
     },
     // Deliberately not admin-gated, unlike everything else that ends a round:
     // this exists precisely because the admin is the one who has gone.
@@ -1747,7 +2017,30 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
       client.send("room:close", { roomId });
     },
+    // Two doors, because there were always two intentions behind one button.
+    //
+    // Stepping away is a disconnect and nothing more: the per-room session
+    // token stays in localStorage, so returning to this room resumes the same
+    // seat with the same chips. This is what an accidental tap, a dying
+    // battery, or "I'll restart the app to fix it" has to do.
+    //
+    // Found by playing (2026-09-06): the old single Leave cleared the token
+    // and never told the server, so the seat stayed on the table holding its
+    // stack and the returning player could only arrive as a stranger -- two
+    // rows with the same name, one of them unreachable. See
+    // backend/src/__tests__/leave-and-return.test.ts.
+    stepAway: () => {
+      // Deliberately NOT clearRoomSession: that token is the way back.
+      persistSession(undefined);
+      get().client.close();
+      if (typeof window !== "undefined") window.location.assign("/");
+    },
     leaveGame: () => {
+      // Tell the server first -- teardownRoomSession closes the socket, and a
+      // room:leave sent after that goes nowhere. The seat outliving the
+      // player is the whole bug this exists to stop.
+      const roomId = get().room?.roomId;
+      if (roomId) client.send("room:leave", { roomId });
       teardownRoomSession();
       // A hard navigation (not just clearing in-memory state) is deliberate:
       // the existing WebSocket stays attached server-side to this room/player,

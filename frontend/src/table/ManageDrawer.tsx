@@ -1,10 +1,21 @@
 import { useState } from "react";
-import { BuyInRequest, Player, RenameRequest } from "../types";
+import { BuyInRequest, LedgerEntry, Player, RenameRequest } from "../types";
 import { Icon } from "./icons";
 import { StandingRow } from "../playerRecord";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
+import { NumberField } from "../NumberField";
 import { useDialogFocus } from "../useDialogFocus";
+
+// One word each, so the list reads as a sentence about what happened rather
+// than as the internal `kind` string.
+const LEDGER_LABEL: Record<string, string> = {
+  adjust: "banker adjusted",
+  "buy-in": "buy-in approved",
+  "bank-topup": "added to the bank",
+  kick: "removed from the table",
+  leave: "left the table",
+};
 
 export interface ManageDrawerProps {
   open: boolean;
@@ -21,6 +32,8 @@ export interface ManageDrawerProps {
    * which is what keeps that decision to the banker's own screen.
    */
   standings?: StandingRow[];
+  /** Chips moved without a hand being played -- see LedgerEntry. */
+  ledger?: LedgerEntry[];
   bankerWallet: number;
   feltWatermark?: string;
   onTopUp: (amount: number, note?: string) => void;
@@ -59,6 +72,7 @@ export function ManageDrawer({
   // finished has nothing to stand, which is the same empty case as a table
   // that has played none.
   standings = [],
+  ledger = [],
   bankerWallet,
   feltWatermark,
   onTopUp,
@@ -81,7 +95,18 @@ export function ManageDrawer({
   const [confirmClose, setConfirmClose] = useState(false);
   const [confirmReshuffle, setConfirmReshuffle] = useState(false);
   const [topUpSign, setTopUpSign] = useState<1 | -1>(1);
-  const [topUpAmount, setTopUpAmount] = useState("500");
+  // Empty, not "500". Nothing else in this drawer is pre-filled, and this one
+  // field sits next to "+ Add" and "Apply to bank" -- two taps put $500 into
+  // the bank that nobody decided to put there. A default that is also the
+  // most damaging value is the wrong default; making the banker type the
+  // number is the whole confirmation this action gets.
+  const [topUpAmount, setTopUpAmount] = useState("");
+  // Both of the drawer's money actions used to fail silently on an empty
+  // amount. That was survivable while the bank field arrived pre-filled with
+  // 500 (it could never BE empty) -- emptying it in 11.5 made the silent
+  // return reachable, and a banker who taps Apply and sees nothing cannot
+  // tell a no-op from a failure.
+  const [moneyError, setMoneyError] = useState<string | undefined>(undefined);
   const [topUpNote, setTopUpNote] = useState("");
   const [watermarkInput, setWatermarkInput] = useState(feltWatermark ?? "");
 
@@ -96,7 +121,13 @@ export function ManageDrawer({
   const applyAdjust = () => {
     if (!adjustTarget) return;
     const amount = Math.round(Number(adjustAmount));
-    if (!Number.isFinite(amount) || amount === 0) return;
+    // 0 is refused as well as empty: "move zero chips" is never what anyone
+    // meant, and it would write a meaningless ledger line.
+    if (!Number.isFinite(amount) || amount === 0) {
+      setMoneyError("Enter an amount - negative to remove chips.");
+      return;
+    }
+    setMoneyError(undefined);
     onAdjustChips(adjustTarget, amount, adjustNote.trim() || undefined);
     setAdjustTarget(null);
     setAdjustAmount("");
@@ -105,9 +136,13 @@ export function ManageDrawer({
 
   const applyTopUp = () => {
     const amount = Math.round(Number(topUpAmount));
-    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMoneyError("Enter an amount of at least $1.");
+      return;
+    }
+    setMoneyError(undefined);
     onTopUp(amount * topUpSign, topUpNote.trim() || undefined);
-    setTopUpAmount("500");
+    setTopUpAmount("");
     setTopUpNote("");
   };
 
@@ -202,11 +237,10 @@ export function ManageDrawer({
               &minus; Subtract
             </button>
           </div>
-          <input
-            type="number"
-            min={1}
+          <NumberField
             value={topUpAmount}
-            onChange={(e) => setTopUpAmount(e.target.value)}
+            onChange={setTopUpAmount}
+            label="Bank amount"
             placeholder="Amount"
             className="w-full rounded border px-2 py-1 text-sm"
           />
@@ -217,6 +251,7 @@ export function ManageDrawer({
             placeholder="Note (optional)"
             className="w-full rounded border px-2 py-1 text-sm"
           />
+          {moneyError && <p className="text-xs font-semibold text-rose-400">{moneyError}</p>}
           <div className="flex justify-end">
             <button type="button" className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white" onClick={applyTopUp}>
               Apply to bank
@@ -266,7 +301,7 @@ export function ManageDrawer({
             <div className="flex flex-col gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs">
               <span className="text-amber-200">
                 {roundActive
-                  ? "A hand is in progress. Reshuffling now brings in a completely fresh shoe for any cards still to be dealt this round — everyone's cards already dealt stay exactly as they are. Continue?"
+                  ? "A hand is in progress. Reshuffling now brings in a completely fresh shoe for any cards still to be dealt this round - everyone's cards already dealt stay exactly as they are. Continue?"
                   : "Shuffle a fresh shoe in before the next round?"}
               </span>
               <div className="flex justify-end gap-2">
@@ -279,6 +314,18 @@ export function ManageDrawer({
                   onClick={() => {
                     onReshuffleDeck();
                     setConfirmReshuffle(false);
+                    // Close the whole drawer, not just the confirm. Reported
+                    // 2026-09-06: a player reshuffled mid-round and "that
+                    // popup wouldn't go away even after the shuffle
+                    // occurred". It had -- the confirm collapsed back to the
+                    // plain "Reshuffle deck" link and the shoe really was
+                    // fresh -- but the drawer itself stayed open looking
+                    // exactly as it did before the tap, so the only visible
+                    // evidence of success was a toast behind the drawer that
+                    // is covering the felt. Dismissing puts the table (and
+                    // the shuffle animation) back in front of the person who
+                    // just asked for it.
+                    onClose();
                   }}
                 >
                   Reshuffle
@@ -300,7 +347,12 @@ export function ManageDrawer({
                   <span className="font-normal k-dialog-sub">${wallets[p.id] ?? 0}</span>
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" className="text-xs font-semibold text-sky-300 underline" onClick={() => setAdjustTarget(p.id)}>
+                  <button type="button" className="text-xs font-semibold text-sky-300 underline" onClick={() => {
+                    // One shared error slot, so it must not follow the banker
+                    // from one player's panel into the next one they open.
+                    setMoneyError(undefined);
+                    setAdjustTarget(p.id);
+                  }}>
                     Adjust
                   </button>
                   <button type="button" className="text-xs font-semibold text-rose-300 underline" onClick={() => setKickTarget(p.id)}>
@@ -310,23 +362,20 @@ export function ManageDrawer({
               </div>
               {adjustTarget === p.id && (
                 <div className="mt-2 flex flex-col gap-1.5 border-t k-dialog-line pt-2">
-                  {/* type="text" + inputMode, not type="number": iOS Safari's
-                      number-pad keyboard for type="number" doesn't reliably
-                      expose a "-" key at all, which would make "negative
-                      removes chips" untypable on an iPhone. Mirrors
-                      PlayerDock.tsx's own bet-amount input, just with the
-                      pattern loosened to allow a leading minus. applyAdjust
-                      already parses this via plain Number(), so the value
-                      shape is identical either way -- this only changes
-                      which on-screen keyboard mobile shows. */}
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="-?[0-9]*"
-                    autoFocus
-                    placeholder="Amount (negative removes chips)"
+                  {/* allowNegative is load-bearing: "negative removes chips"
+                      is the only way a banker takes chips back. This field
+                      used to be type="text" + inputMode="numeric" precisely
+                      because iOS Safari's number pad for type="number" does
+                      not reliably expose a "-" key at all -- a workaround
+                      that is moot now the pad is ours and carries its own
+                      sign key. applyAdjust still parses with plain Number(),
+                      so the value shape is unchanged. */}
+                  <NumberField
                     value={adjustAmount}
-                    onChange={(e) => setAdjustAmount(e.target.value)}
+                    onChange={setAdjustAmount}
+                    label="Adjustment amount"
+                    allowNegative
+                    placeholder="Amount (negative removes chips)"
                     className="w-full rounded border px-2 py-1 text-sm"
                   />
                   <input
@@ -336,8 +385,16 @@ export function ManageDrawer({
                     onChange={(e) => setAdjustNote(e.target.value)}
                     className="w-full rounded border px-2 py-1 text-sm"
                   />
+                  {moneyError && <p className="text-xs font-semibold text-rose-400">{moneyError}</p>}
                   <div className="flex justify-end gap-2">
-                    <button type="button" className="px-2 py-1 text-xs k-dialog-sub" onClick={() => setAdjustTarget(null)}>
+                    <button
+                      type="button"
+                      className="px-2 py-1 text-xs k-dialog-sub"
+                      onClick={() => {
+                        setMoneyError(undefined);
+                        setAdjustTarget(null);
+                      }}
+                    >
                       Cancel
                     </button>
                     <button type="button" className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white" onClick={applyAdjust}>
@@ -390,14 +447,65 @@ export function ManageDrawer({
                     <span className="k-dialog-sub">
                       {row.wins}W / {row.losses}L
                     </span>
+                    {/* Chips the banker moved by hand, shown NEXT TO the play
+                        result rather than merged into it. Merging would give
+                        one number nobody can check; two numbers are two things
+                        a table full of relatives can argue with, which is the
+                        actual job at the end of a night. */}
+                    {row.adjustments !== 0 && (
+                      <span className="k-dialog-sub" title="Chips the banker moved by hand">
+                        {row.adjustments >= 0 ? "+" : "-"}${Math.abs(row.adjustments)} by hand
+                      </span>
+                    )}
                     <span
-                      className={`w-16 text-right font-semibold ${row.net >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                      className={`w-16 text-right font-semibold ${row.settle >= 0 ? "text-emerald-300" : "text-rose-300"}`}
                     >
-                      {row.net >= 0 ? "+" : "-"}${Math.abs(row.net)}
+                      {row.settle >= 0 ? "+" : "-"}${Math.abs(row.settle)}
                     </span>
                   </span>
                 </div>
               ))}
+            </div>
+            {standings.some((row) => row.adjustments !== 0) && (
+              <div className="text-[11px] k-dialog-sub mt-1.5 leading-snug">
+                Totals include chips moved by hand. The cards alone would say{" "}
+                {standings
+                  .filter((row) => row.adjustments !== 0)
+                  .map((row) => `${row.name} ${row.net >= 0 ? "+" : "-"}$${Math.abs(row.net)}`)
+                  .join(", ")}
+                .
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* What the banker did, as opposed to what the cards did.
+            Until 2026-09-06 every one of these went to the server's stdout and
+            nowhere else -- invisible during a game, unreadable after one, gone
+            on restart. It is not an undo (see the review's costing of that),
+            but "who did the banker give $50 to, and when" now has an answer
+            an hour later. */}
+        {ledger.length > 0 && (
+          <div className="rounded-lg border k-dialog-line px-3 py-2">
+            <div className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Chips moved by hand</div>
+            <div className="mt-1.5 flex flex-col gap-1">
+              {[...ledger]
+                .reverse()
+                .slice(0, 12)
+                .map((entry) => (
+                  <div key={entry.id} className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="min-w-0">
+                      <span className="truncate">{entry.playerName}</span>
+                      <span className="k-dialog-sub"> - {LEDGER_LABEL[entry.kind] ?? entry.kind}</span>
+                      {entry.note && <span className="k-dialog-sub"> “{entry.note}”</span>}
+                    </span>
+                    <span
+                      className={`flex-none font-semibold ${entry.amount >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                    >
+                      {entry.amount >= 0 ? "+" : "-"}${Math.abs(entry.amount).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
             </div>
           </div>
         )}
@@ -425,17 +533,22 @@ export function ManageDrawer({
         <div className="border-t k-dialog-line pt-3">
           {!confirmClose ? (
             <button type="button" className="text-xs font-semibold text-rose-300 underline" onClick={() => setConfirmClose(true)}>
-              Close this room for everyone
+              End the game for everyone
             </button>
           ) : (
             <div className="flex flex-col gap-2 rounded-lg border border-rose-400/30 bg-rose-500/12 px-3 py-2 text-xs">
-              <span className="text-rose-300">This disconnects everyone. Export history first if you want a record.</span>
+              {/* No longer tells the banker to export FIRST: everyone,
+                  including them, now gets the final standings and both
+                  export buttons on the game-over screen this opens. */}
+              <span className="text-rose-300">
+                This ends the night for everyone at the table. They all see the final standings and can save a copy.
+              </span>
               <div className="flex justify-end gap-2">
                 <button type="button" className="k-dialog-sub" onClick={() => setConfirmClose(false)}>
                   Cancel
                 </button>
                 <button type="button" className="rounded bg-rose-600 px-2.5 py-1 font-semibold text-white" onClick={onCloseRoom}>
-                  Close room
+                  End the game
                 </button>
               </div>
             </div>

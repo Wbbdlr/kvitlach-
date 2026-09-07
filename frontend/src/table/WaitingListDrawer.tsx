@@ -59,7 +59,7 @@ export function WaitingListDrawer({ open, onClose, players }: WaitingListDrawerP
           </div>
 
           <div className="text-xs k-dialog-sub -mt-1">
-            One new seat opens each round, in this order -- everyone's guaranteed a turn.
+            One new seat opens each round, in this order - everyone's guaranteed a turn.
           </div>
 
           <ul className="flex flex-col gap-1.5">

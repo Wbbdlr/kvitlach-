@@ -108,8 +108,79 @@ body {
 
 /* ── Table overhaul foundations (Phase 0) ─────────────────────────────── */
 
-/* Felt theme — overridden per-user at runtime by theme.ts (applyFelt). */
+/* Felt theme - overridden per-user at runtime by theme.ts (applyFelt). */
 :root {
+  /* ---- Stacking order -------------------------------------------------
+     One named scale for everything that competes for depth on the page.
+     Pinned, in order, by table/__tests__/zIndexScale.test.ts -- which holds
+     the raw numbers these replaced, so "the refactor preserved stacking" is
+     a thing review can check instead of take on trust.
+
+     docs/mobile-ui.md Part 3 described this scale as landed on 2026-09-02
+     and it did not exist: commit 7341f53 ("Land the trimmed layout
+     contract") landed the DOCUMENT -- it deleted mobile-ui.proposed.md and
+     installed it as the contract -- while the migration its own "Replaces"
+     column describes was never applied. Nothing asserted a z-index value,
+     so nothing said so, and every reader since took the doc at its word.
+
+     Two corrections to that doc, both found by enumerating what is actually
+     here rather than what it claimed:
+
+       * The scale it proposed COLLAPSED levels the code keeps apart. It put
+         .k-resv and .k-shoe/.k-discard in one tier when the shoe sits ABOVE
+         a seat and the reservation ring below it; it put .k-dock, .k-topbar
+         and .k-chrome-top in one tier when those are three deliberate
+         steps; it read the 45s as "toast" when they are .k-viewer-hud and
+         .k-hud-bottom-right. Collapsing any of those hands the decision to
+         DOM order. So this scale has more tiers than the doc's twelve --
+         one per level that genuinely exists.
+
+       * "A raw z-index number is a bug" is true of anything competing on
+         the page and false of siblings inside one parent. A card's place in
+         a fan (.k-hand, 2..8) and the dock's grip-over-reset (1, 2) are
+         meaningless outside their own stacking context; putting them on
+         this scale would imply they are comparable to the rotate gate.
+         They stay raw, deliberately, and the test knows about them.
+
+     Values are spaced so a tier can gain a neighbour without a renumber.
+     Only relative order carries meaning -- never compare across groups by
+     arithmetic, and never write a local `+1` against one of these. */
+
+  /* Scene: the felt and what sits on it. */
+  --z-felt-decor: 10;      /* .k-ring                                (was 1)  */
+  --z-scene-links: 20;     /* .k-resv-lines                          (was 2)  */
+  --z-scene-reserve: 30;   /* .k-resv                                (was 9)  */
+  --z-seat: 40;            /* .k-seat                                (was 10) */
+  --z-scene-props: 50;     /* .k-shoe, .k-discard -- above the seats (was 11) */
+  --z-seat-raised: 60;     /* .k-seat.hand-fanned                    (was 20) */
+
+  /* HUD: the chrome a player acts through. Three real steps, not one. */
+  --z-hud: 100;            /* .k-dock, .k-controls                   (was 25) */
+  --z-hud-status: 110;     /* .k-topbar, the reaction bar            (was 30) */
+  --z-hud-top: 120;        /* .k-chrome-top                          (was 40) */
+
+  /* Announcements and floating HUD, interleaved exactly as they are today:
+     the pre-round card sits UNDER the floating panels and the bank's own
+     banners sit over them. */
+  --z-preround: 200;       /* .k-preround                            (was 42) */
+  --z-hud-float: 210;      /* .k-viewer-hud, .k-hud-bottom-right     (was 45) */
+  --z-bank-banner: 220;    /* .k-bank-banner                         (was 46) */
+  --z-bank-decision: 230;  /* .k-bank-decision                       (was 48) */
+
+  /* Overlays. */
+  --z-scrim: 300;          /* .k-dialog-scrim, .k-fs-hint, toasts    (was 50) */
+  --z-popover: 310;        /* appearance / chrome / quick-bet panels (was 60) */
+  /* Under the modal, deliberately: a card sliding across an open BANK!
+     confirmation -- the one dialog asking a player to commit their whole
+     stack -- reads as the table carrying on without them. This is the only
+     tier whose ORDER changed in the refactor (it was 80, over the modal's
+     70); docs/mobile-ui.md Part 3 asked for it and it was the one of its
+     three ordering changes that was not already true. */
+  --z-fly: 390;            /* .table-fly-card                        (was 80) */
+  --z-modal: 400;          /* .k-modal-overlay, drawers              (was 70) */
+  --z-reaction: 420;       /* .k-reaction -- must clear the fly card (was 85) */
+  --z-gate: 500;           /* .k-rotate-gate                         (was 90) */
+
   --felt-hi: #24503a;
   --felt-lo: #12271c;
   --felt-rail: #4a3320;
@@ -175,7 +246,27 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* `clip`, not `hidden`, and the pair is deliberate: `hidden` first as the
+     fallback for a browser that doesn't know `clip`, `clip` second so it
+     wins where it is understood.
+     They look identical and are not. The felt's LAYOUT box is the full
+     unscaled stage (575px tall on a landscape phone; the scale transform
+     that fits it to the viewport doesn't change layout), so it overflows
+     this box by ~96px -- and `overflow: hidden` merely hides that, leaving a
+     perfectly scrollable container behind. Nothing shows a scrollbar and
+     nobody can drag it, but a single `focus()` on any descendant makes the
+     browser scroll it into view, and there it stays: the whole table sits
+     96px too high, the top row of cards runs off the screen, the control bar
+     lands in the middle of the felt and a black band opens underneath.
+     Reproduced deterministically at 854x384 by starting a round
+     (.k-fit's scrollTop went 0 -> 96 and never came back) after it was
+     reported from an Android phone as "the control bar begins too high up on
+     the screen, overlapping my cards a bit. not sure why, it should start
+     off lower on the screen."
+     `overflow: clip` is not a scroll container at all, so there is nothing
+     left to scroll. */
   overflow: hidden;
+  overflow: clip;
   background: #060d09;
   -webkit-tap-highlight-color: transparent;
   /* Without this, dragging down from the very top of the felt (an easy
@@ -185,6 +276,10 @@ body {
      Scoped to the table view only; the lobby/About/Disclaimer pages keep
      normal page-scroll behavior. */
   overscroll-behavior: none;
+  /* Belt to that rule's braces, and specifically because of `overflow: clip`
+     above: overscroll-behavior only does anything on a SCROLL container, and
+     clip is not one. Anchored on the root scroller instead, which is the one
+     pull-to-refresh actually starts from. */
   /* The felt's ACTUAL rendered size, mirroring .felt-table's own scale
      transform (TableRoot sets --stage-scale and --stage-h-px). Chrome that
      has to line up with the felt's edges rather than the window's reads
@@ -195,7 +290,38 @@ body {
      stranded in the surround. */
   --stage-w: calc(1280px * var(--stage-scale, 1));
   --stage-h: calc(var(--stage-h-px, 760px) * var(--stage-scale, 1));
+
+  /* The two walls of the top band, published once so more than one thing can
+     line up against them.
+     .k-chrome-top's own `left` (further down) reconstructs the branding
+     cluster's real right edge from the same three parts -- the topbar's 24px
+     padding, the cluster's own pre-transform width, and the counter-scale its
+     child carries -- and that reconstruction is now needed by a SECOND
+     element (.k-bank-banner, which was landing on the tagline), so it lives
+     here instead of being written out twice and drifting.
+     The companion --k-chrome-w (the controls' own width, the band's other
+     wall) is defined ONLY at the compact breakpoint, because that is the
+     only place anything centres between the two -- see .k-bank-banner
+     there. It cannot be derived: the row's content changes with the
+     breakpoint (a full row of chips on a desktop, `...` + Leave on a phone
+     once ChromeMenu collapses it), so it is measured and stated. */
+  --k-brand-right: calc(
+    max(0px, (100vw - 1280px * var(--stage-scale, 1)) / 2) + 24px * var(--stage-scale, 1) +
+      436px * var(--stage-scale, 1) * clamp(1.05, calc(1 / var(--stage-scale, 1)), 2.6)
+  );
 }
+/* See .k-fit's overscroll note above: with the stage clipping rather than
+   scrolling, the only scroll container left in the table view is the document
+   itself, so this is where the gesture has to be refused.
+   `:has(.k-fit)` keeps the scoping that rule states and this one would
+   otherwise have quietly dropped -- the lobby, About and Disclaimer pages are
+   ordinary scrolling pages and keep ordinary pull-to-refresh. (`:has()` is
+   already load-bearing in this file; see .k-controls.) */
+html:has(.k-fit),
+body:has(.k-fit) {
+  overscroll-behavior: none;
+}
+
 
 /* Card art and avatars trigger iOS's long-press "Save Image" callout on
    rapid taps during play -- this is purely game chrome, never content a
@@ -409,7 +535,7 @@ body:has(.k-fit) {
   height: calc(380px * var(--vf, 1));
   border-radius: calc(210px * var(--hf, 1)) / calc(190px * var(--vf, 1));
   border: 1px dashed rgba(230, 164, 75, 0.14);
-  z-index: 1;
+  z-index: var(--z-felt-decor);
   pointer-events: none;
 }
 
@@ -465,7 +591,7 @@ body:has(.k-fit) {
   justify-content: space-between;
   padding-left: 24px;
   padding-right: 24px;
-  z-index: 30;
+  z-index: var(--z-hud-status);
   background: linear-gradient(180deg, rgba(8, 16, 12, 0.7), rgba(8, 16, 12, 0));
   pointer-events: none;
 }
@@ -532,7 +658,7 @@ body:has(.k-fit) {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  z-index: 10;
+  z-index: var(--z-seat);
   /* transform is set inline by Seat.tsx (translate + per-count scale). */
 }
 
@@ -815,7 +941,7 @@ body:has(.k-fit) {
    stacking context (position + z-index + transform), so the SEAT itself has
    to rise above its neighbours (z-index 10), not just the hand inside it. */
 .k-seat.hand-fanned {
-  z-index: 20;
+  z-index: var(--z-seat-raised);
 }
 @media (prefers-reduced-motion: reduce) {
   .k-hand,
@@ -959,7 +1085,7 @@ body:has(.k-fit) {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  z-index: 42;
+  z-index: var(--z-preround);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1017,7 +1143,7 @@ body:has(.k-fit) {
 .k-resv-lines {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: var(--z-scene-links);
   pointer-events: none;
 }
 .k-resv-line {
@@ -1043,7 +1169,7 @@ body:has(.k-fit) {
 
 .k-resv {
   position: absolute;
-  z-index: 9;
+  z-index: var(--z-scene-reserve);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1180,7 +1306,7 @@ body:has(.k-fit) {
   top: calc(var(--play-top, 0px) + 88px * var(--vf, 1));
   left: calc(50% + 175px);
   width: 30px;
-  z-index: 11;
+  z-index: var(--z-scene-props);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1190,6 +1316,43 @@ body:has(.k-fit) {
   width: 30px;
   height: 48px;
   box-shadow: 0 4px 9px rgba(0, 0, 0, 0.4);
+}
+
+/* A reshuffle used to change nothing on the felt except a number -- the shoe
+   count jumped and that was the entire signal, which is why a banker who had
+   just reshuffled mid-round could not tell whether it had worked (reported
+   2026-09-06 alongside the drawer that appeared stuck). These two extra backs
+   are rendered by Dealer.tsx ONLY while shuffling, riffling against the
+   resting back beneath them; one card cannot look like a shuffle on its own.
+   position:absolute so they stack ON the real back rather than widening the
+   shoe's flex column and shoving the count sideways for the duration. */
+.k-shoe-riffle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin-left: -15px;
+  pointer-events: none;
+}
+.k-shoe-riffle.a {
+  animation: shoeRiffleA 0.3s ease-in-out 3;
+}
+.k-shoe-riffle.b {
+  animation: shoeRiffleB 0.3s ease-in-out 3;
+}
+@keyframes shoeRiffleA {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(-7px, -3px) rotate(-9deg); }
+}
+@keyframes shoeRiffleB {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(7px, -3px) rotate(9deg); }
+}
+/* Reduced motion still gets an answer to "did that work?", just a static
+   one -- the "Shuffling…" label Dealer.tsx swaps in carries it alone. */
+@media (prefers-reduced-motion: reduce) {
+  .k-shoe-riffle {
+    animation: none;
+  }
 }
 .k-shoe-count {
   font-size: 9px;
@@ -1375,11 +1538,8 @@ body:has(.k-fit) {
      cluster's own content changes (a new icon, more/less text) -- the same
      way the 166.6px constant below already has its own paper trail for
      that whenever ITS row gained a new persistent element. */
-  left: calc(
-    max(0px, (100vw - 1280px * var(--stage-scale, 1)) / 2) + 24px * var(--stage-scale, 1) +
-      436px * var(--stage-scale, 1) * clamp(1.05, calc(1 / var(--stage-scale, 1)), 2.6) + 16px
-  );
-  z-index: 40;
+  left: calc(var(--k-brand-right) + 16px);
+  z-index: var(--z-hud-top);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1402,7 +1562,7 @@ body:has(.k-fit) {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 50;
+  z-index: var(--z-scrim);
   width: max-content;
   max-width: 200px;
   background: rgba(10, 20, 14, 0.95);
@@ -1482,7 +1642,7 @@ body:has(.k-fit) {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 60;
+  z-index: var(--z-popover);
   width: max-content;
   max-width: min(300px, calc(100vw - 24px));
   /* A COLUMN of labelled rows, not a wrapped grid of icons.
@@ -1593,7 +1753,7 @@ body:has(.k-fit) {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 60;
+  z-index: var(--z-popover);
   width: max-content;
   max-width: min(280px, calc(100vw - 24px));
   display: flex;
@@ -1703,7 +1863,7 @@ body:has(.k-fit) {
   inset: 0;
   /* Above the dialog scrim: a drawer left open on the last rotation must not
      be able to sit on top of the reason the screen is blank. */
-  z-index: 90;
+  z-index: var(--z-gate);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1747,24 +1907,6 @@ body:has(.k-fit) {
   color: #b9c6bb;
   max-width: 26em;
 }
-/* The escape hatch, and it is not optional. Plenty of people play with
-   rotation lock on, and for them "turn your phone" is advice they cannot
-   take -- without this the gate is a dead end with their money on the table
-   and no way back to it. Deliberately quiet: it is the wrong way to play,
-   just not a forbidden one. */
-.k-rotate-gate .k-rotate-anyway {
-  margin-top: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #9aa79c;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  padding: 8px 12px;
-  /* 44px tap target via padding rather than height -- see the tap-target
-     scan's exception list. */
-  min-height: 44px;
-}
-
 /* Toast stack -- round outcomes (won/lost/futched/push), deck reshuffles,
    etc. Bottom-left of the FELT (not .k-fit's raw edge -- see --stage-w/h on
    .k-fit): a flat offset from the window's corner landed it out in the
@@ -1873,7 +2015,7 @@ body:has(.k-fit) {
   left: 0;
   bottom: 100%;
   margin-bottom: 8px;
-  z-index: 45;
+  z-index: var(--z-hud-float);
   pointer-events: auto;
   /* An absolutely-positioned box with `left` and no `width` shrink-to-fits
      against its CONTAINING BLOCK, not its content -- and the stack is only as
@@ -1930,27 +2072,31 @@ body:has(.k-fit) {
     flex: 1 1 auto;
     min-width: 0;
   }
+  /* Two goes at this, and the second was the wrong lever.
+     The original bug: a WRAPPING flex container used as a flex item is sized
+     from its MIN-content width, so the dock collapsed to roughly its widest
+     single control and then wrapped to fit the box it had just collapsed
+     into. Measured at 640x360: 620px of row, of which the stack claimed 446
+     and the dock 268, for content that needed 545 in one row.
+     `flex: 1 1 auto` fixed that by letting it grow -- and bought two new
+     reports. Between rounds the dock holds one button, and growing made that
+     button's panel span the whole bottom of the phone; and it still wrapped,
+     because growing the box never told it not to. Eleveroon kept landing on
+     a line of its own under everything else.
+     The actual fix is to stop it wrapping. With nowrap, max-content IS the
+     one-row sum (the measurement Chrome would not give for a wrap container:
+     433px for content needing ~500), so `0 1 auto` sizes the dock to exactly
+     one row of whatever the round is currently showing, shrinking only if
+     the viewport is genuinely narrower. Sparse states stay narrow; full
+     states stay on one line.
+     .k-dock itself only sizes here now -- the nowrap and the "last resort"
+     scroll below both moved one level in, to .k-dock-content, the day .k-dock
+     stopped laying out its buttons directly (see its own comment in the base
+     rule): .k-dock has to stay overflow: visible for the grips hanging off
+     its corners, so it can no longer be the thing that also clips or scrolls. */
   .k-dock-row > .k-dock {
-    /* Two goes at this, and the second was the wrong lever.
-       The original bug: a WRAPPING flex container used as a flex item is sized
-       from its MIN-content width, so the dock collapsed to roughly its widest
-       single control and then wrapped to fit the box it had just collapsed
-       into. Measured at 640x360: 620px of row, of which the stack claimed 446
-       and the dock 268, for content that needed 545 in one row.
-       `flex: 1 1 auto` fixed that by letting it grow -- and bought two new
-       reports. Between rounds the dock holds one button, and growing made that
-       button's panel span the whole bottom of the phone; and it still wrapped,
-       because growing the box never told it not to. Eleveroon kept landing on
-       a line of its own under everything else.
-       The actual fix is to stop it wrapping. With nowrap, max-content IS the
-       one-row sum (the measurement Chrome would not give for a wrap container:
-       433px for content needing ~500), so `0 1 auto` sizes the dock to exactly
-       one row of whatever the round is currently showing, shrinking only if
-       the viewport is genuinely narrower. Sparse states stay narrow; full
-       states stay on one line. */
     flex: 0 1 auto;
     min-width: 0;
-    flex-wrap: nowrap;
   }
   /* Explicitly NOT shrinkable. `min-width: 0` was tried here first, to let
      nowrap degrade by tightening instead of overflowing -- and flex spent the
@@ -1962,18 +2108,26 @@ body:has(.k-fit) {
      Controls keep their natural width; the row is made to fit by making the
      controls genuinely smaller (below), which is what "scale the whole thing
      down" actually asks for. */
-  .k-dock-row > .k-dock > * {
+  .k-dock-row > .k-dock > .k-dock-content > * {
     flex: none;
   }
   /* The last-resort net. Below roughly 600px of stack there is no honest way
      to fit six controls, and a row that scrolls is strictly better than one
      that overlaps itself -- which is the one failure mode nowrap introduces
-     that wrapping did not have. */
-  .k-dock-row > .k-dock {
+     that wrapping did not have.
+     On .k-dock-content, not .k-dock: an overflow-x here forces this element's
+     OWN overflow-y to auto too (CSS has no way to scroll one axis and stay
+     visible on the other), and .k-dock's move/resize grips and reset button
+     (DockGrips.tsx) hang off ITS corners on purpose, poking outside its
+     border. Scrolling .k-dock itself clipped the reset button's top 8px
+     every time this rule was live -- reported as "the reset button is still
+     clipped by the border of the control panel." */
+  .k-dock-row > .k-dock > .k-dock-content {
+    flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
   }
-  .k-dock-row > .k-dock::-webkit-scrollbar {
+  .k-dock-row > .k-dock > .k-dock-content::-webkit-scrollbar {
     display: none;
   }
 
@@ -1982,7 +2136,7 @@ body:has(.k-fit) {
      buttons and the checkbox keep theirs), just less air between them.
      Measured saving at 640x360: ~60px of the ~103px shortfall, with the stack
      change covering the rest. */
-  .k-dock {
+  .k-dock-content {
     gap: 4px;
     padding: 6px 6px;
     /* `safe center` and not plain `center`. A centred flex row that overflows
@@ -2038,7 +2192,7 @@ body:has(.k-fit) {
      tuned 1x (the compact override below already covers small screens in
      its own right), only grows past it in step with the stage. */
   transform: scale(max(1, var(--stage-scale, 1)));
-  z-index: 45;
+  z-index: var(--z-hud-float);
   display: flex;
   flex-direction: column;
   /* The persistent readout pinned to the bottom of its column -- so the
@@ -2367,7 +2521,7 @@ body:has(.k-fit) {
   gap: 8px;
   padding-left: max(10px, env(safe-area-inset-left));
   padding-right: max(10px, env(safe-area-inset-right));
-  z-index: 25;
+  z-index: var(--z-hud);
 }
 /* Centering under the viewer's own seat (above) is right whenever there's a
    dock to center -- once a bet field or a "Table ready" panel is part of
@@ -2422,12 +2576,32 @@ body:has(.k-fit) {
   border-radius: 14px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
   display: flex;
+  align-items: stretch;
+  z-index: var(--z-hud);
+  /* Deliberately no overflow rule of any kind. .k-dock-grip / .k-dock-reset
+     (DockGrips.tsx) are position: absolute children of THIS box and hang off
+     its corners on purpose, poking outside the border the same way
+     .k-viewer-hud-reset pokes outside the readout. .k-dock-content below is
+     what actually lays out the buttons and what the compact "last resort"
+     horizontal scroll targets (further down) -- an element with a
+     non-visible overflow-x also forces its own overflow-y to auto (CSS
+     cannot scroll one axis and stay visible on the other), so scrolling
+     lived HERE once and clipped the top 8px of the reset button every time
+     that compact rule was active. Reported as "the reset button is still
+     clipped by the border of the control panel." */
+}
+/* The actual row of controls -- betbox, quick-bet trigger, Bet/Blatt/Stand/
+   BANK!, Eleveroon, the transient bet-error tag. Everything .k-dock used to
+   lay out directly until the line above needed it to stop: one level
+   deeper, so .k-dock itself can stay overflow: visible. */
+.k-dock-content {
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-wrap: wrap;
   gap: 10px;
   padding: 8px 14px;
-  z-index: 25;
+  min-width: 0;
 }
 .k-betbox {
   display: flex;
@@ -2526,23 +2700,28 @@ body:has(.k-fit) {
    here is compared with NOTHING standing between it and the elements it
    actually needs to clear.
 
-   NOT flex-wrap: wrap, on a flex container with no explicit width -- tried
-   first, and rendered (not assumed) it collapsed the shrink-to-fit width to
-   the single WIDEST child ($25's ~45px) instead of the three-in-a-row width
-   the panel actually needs, stacking every chip in its own row in a tall,
-   narrow sliver. A wrapping flex container sizes its auto width off what
-   fitting-in-fewer-rows needs, and with wrapping ALLOWED that is one item,
-   not all three. overflow-x is the fallback for the width max-width alone
-   cannot enforce without wrap -- same "a row that scrolls beats one that
-   overlaps" call already made for .k-dock-row > .k-dock in the compact
-   block below. */
+   A three-across ROW was tried first and reported back as "still huge and
+   not popping up in a small neat column" -- asked for as a column outright,
+   not a taste call this file gets to make on its own. flex-direction:
+   column is what a wrapping row (tried before that, and reverted -- see git
+   history) was actually dodging: a wrapping flex container's shrink-to-fit
+   width comes from whatever needs the FEWEST rows, so wrap collapsed to a
+   1-item-per-row width unpredictably (whichever child happened to be
+   widest) rather than by design. column-direction gets the identical
+   1-per-row shape on purpose, sized to the widest chip ($25, ~45px) rather
+   than to three side by side -- which is the small neat column asked for,
+   not the bug the wrap attempt was. overflow-y is the same "last resort net"
+   .k-dock-row > .k-dock > .k-dock-content already uses below, kept here in
+   case a future longer chip list ever needs it -- three buttons at the 40px compact
+   touch-target floor (~150px) fits every viewport this table supports today. */
 .k-quickbets-panel {
-  z-index: 60; /* matches .k-appearance-panel / .k-chrome-menu, the other popovers this dock-level chrome can open */
+  z-index: var(--z-popover); /* matches .k-appearance-panel / .k-chrome-menu, the other popovers this dock-level chrome can open */
   display: flex;
+  flex-direction: column;
   gap: 6px;
   padding: 8px;
-  max-width: calc(100vw - 24px);
-  overflow-x: auto;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   scrollbar-width: none;
   background: rgba(10, 20, 14, 0.97);
   border: 1px solid rgba(230, 164, 75, 0.45);
@@ -2551,6 +2730,164 @@ body:has(.k-fit) {
 }
 .k-quickbets-panel::-webkit-scrollbar {
   display: none;
+}
+
+/* Our own number pad -- NumberField.tsx. Deliberately styled as a sibling of
+   .k-quickbets-panel / .k-chrome-menu / .k-appearance-panel rather than as
+   its own look: it opens from the same rows, over the same felt, and a pad
+   that announced itself differently would read as a different app's dialog.
+   Same ground, same amber hairline, same radius and shadow, same tier. */
+.k-numpad {
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  width: 208px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  /* max-height without this clips silently rather than scrolling -- the pad
+     fits every supported size today (301px tall against a 360px minimum
+     landscape), so this is insurance against a shorter viewport than the
+     design contemplates, not a fix for one. Scrollbar hidden to match
+     .k-quickbets-panel, which does the same. */
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: rgba(10, 20, 14, 0.97);
+  border: 1px solid rgba(230, 164, 75, 0.45);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+.k-numpad::-webkit-scrollbar {
+  display: none;
+}
+/* The value, where the thumb already is. The field itself is behind the pad
+   on a phone, which is the whole reason this line exists. */
+.k-numpad-value {
+  min-height: 30px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #e6a44b;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.k-numpad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+/* 44px is the floor this codebase states everywhere and had never enforced
+   (see .k-bank-act). A keypad is the one control where missing it means
+   entering the wrong number, not just a missed tap -- so it is a floor here,
+   not a target. The pad is portalled to document.body and never inherits the
+   stage transform, so these are real screen pixels with no correction. */
+.k-numpad-key {
+  min-height: 44px;
+  border: 1px solid rgba(230, 164, 75, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef2ea;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.k-numpad-key:active {
+  background: rgba(230, 164, 75, 0.22);
+}
+.k-numpad-key.is-alt {
+  color: #e6a44b;
+  font-size: 15px;
+}
+.k-numpad-foot {
+  display: flex;
+  gap: 6px;
+}
+.k-numpad-foot .k-numpad-key {
+  flex: 0 0 56px;
+}
+.k-numpad-done {
+  flex: 1;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: #2f7dc9;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.k-numpad-done:active {
+  filter: brightness(1.1);
+}
+
+/* Tighter on a landscape phone, which is the only place the pad's height is
+   ever a problem: at 640x360 the full-size pad ran 301px into a 360px
+   viewport and read, correctly, as too big for what it does.
+   What gives is the CHROME, not the keys. Every saving below comes out of
+   padding, gaps, the readout row and the Done button; the digit keys keep
+   their 44px height, because a keypad is the one control where a missed tap
+   enters a wrong NUMBER rather than just missing (see .k-numpad-key). Keys
+   are 56px wide at this size, so each is a 56x44 target - larger in area
+   than the 44x44 square the floor is written for.
+   Measured: 301px -> 247px tall, 208px -> 180px wide. */
+@media (max-width: 520px), (max-height: 440px) {
+  .k-numpad {
+    width: 180px;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 9px;
+  }
+  .k-numpad-value {
+    min-height: 22px;
+    font-size: 15px;
+    padding: 2px 7px;
+  }
+  .k-numpad-grid {
+    gap: 4px;
+  }
+  /* 38px rather than the 44px floor, and this is the one place in the app
+     that number is deliberately not met. Two things make it defensible here
+     and nowhere else: the keys are 53px WIDE at this size, so each is a
+     53x38 target with more area than the 44x44 square the floor is written
+     for; and the alternative being measured against is not a 44px key, it is
+     the phone's own keyboard, which covered the felt entirely. Asked for
+     after seeing the 44px version on a phone: "if anything, I'd scale down
+     just a little more."
+     If this ever needs to grow back, grow the HEIGHT and leave the width -
+     a taller key on a landscape phone costs felt, and felt is what the pad
+     was shrunk to give back. */
+  .k-numpad-key {
+    min-height: 38px;
+    font-size: 16px;
+  }
+  .k-numpad-foot {
+    gap: 4px;
+  }
+  .k-numpad-foot .k-numpad-key {
+    flex: 0 0 50px;
+  }
+  .k-numpad-done {
+    min-height: 34px;
+    font-size: 13px;
+  }
+}
+/* The running total of the chip stack being built above it. Not a button and
+   deliberately not styled as one -- it is the one thing in this tray that
+   reports rather than acts. */
+.k-quickbet-total {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e6a44b;
+  padding: 2px 0 4px;
+  border-top: 1px solid rgba(230, 164, 75, 0.28);
+  margin-top: 2px;
 }
 .k-btn {
   border: none;
@@ -2589,6 +2926,29 @@ body:has(.k-fit) {
   padding: 6px 12px;
   font-size: 11.5px;
 }
+/* The banker's Hit/Stand, and the only controls in this file that have to
+   undo the stage transform to get their own size right.
+   Measured on 11.4 at 854x384: Hit was 22x27 and Stand 32x27 -- about a
+   quarter the area of the player's own buttons, and the smallest targets
+   anywhere in the app, belonging to the one person who acts every single
+   round. The cause is not a missing rule. These live ON the stage, which
+   TableRoot scales to the viewport (--stage-scale, ~0.5 on a phone), so a
+   44px min-height written normally renders at 22 physical px; the player's
+   dock is unscaled HUD and gets its 44 for free. Dividing by the scale is
+   the same correction .k-chrome-top already applies for the same reason.
+   max() is load-bearing in the other direction: --stage-scale runs well past
+   1 on a wide desktop, where dividing alone would shrink these below every
+   other control on the felt. */
+.k-bank-act {
+  gap: calc(8px / var(--stage-scale, 1));
+}
+.k-bank-act .k-btn {
+  min-height: max(34px, calc(44px / var(--stage-scale, 1)));
+  min-width: max(58px, calc(72px / var(--stage-scale, 1)));
+  padding: max(7px, calc(9px / var(--stage-scale, 1))) max(10px, calc(14px / var(--stage-scale, 1)));
+  font-size: max(11.5px, calc(13px / var(--stage-scale, 1)));
+  border-radius: max(8px, calc(9px / var(--stage-scale, 1)));
+}
 .k-toggle {
   display: flex;
   align-items: center;
@@ -2598,8 +2958,58 @@ body:has(.k-fit) {
   cursor: pointer;
   user-select: none;
 }
-.k-toggle input {
-  accent-color: #e6a44b;
+/* Drawn rather than tinted. `accent-color` only colours the CHECKED fill;
+   the unchecked box keeps the platform's own default, so on the felt this sat
+   as a bright white square in a dock made of dark glass and gold hairlines -
+   the one control on the bar that did not look like it belonged to the table.
+   Asked for directly: "Can we theme the eleveroon checkbox too? Gold and
+   brown or whatever theme we have for the other parts of the table?"
+   Still a real <input type="checkbox">: appearance:none restyles it without
+   costing the label association, the focus ring, or keyboard toggling. The
+   16px box is the visual only - the whole .k-toggle label is the tap target,
+   which is what keeps this off the touch-size floor. */
+.k-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(230, 164, 75, 0.5);
+  background: linear-gradient(180deg, rgba(74, 51, 32, 0.9), rgba(32, 22, 14, 0.95));
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+.k-toggle input[type="checkbox"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform 0.12s ease;
+  /* The tick is drawn by clipping a solid gold block, so it needs no glyph,
+     no icon font and no emoji (see docs: the felt uses real marks, never
+     emoji). box-shadow paints the fill because clip-path applies to the
+     painted box, not the background of a zero-size element. */
+  box-shadow: inset 1em 1em #f0c579;
+  clip-path: polygon(14% 44%, 0 60%, 40% 100%, 100% 22%, 84% 8%, 38% 70%);
+}
+.k-toggle input[type="checkbox"]:checked {
+  border-color: rgba(230, 164, 75, 0.9);
+  background: linear-gradient(180deg, rgba(230, 164, 75, 0.28), rgba(120, 80, 30, 0.5));
+}
+.k-toggle input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+.k-toggle input[type="checkbox"]:focus-visible {
+  outline: 2px solid rgba(230, 164, 75, 0.85);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-toggle input[type="checkbox"]::before {
+    transition: none;
+  }
 }
 
 /* Generic dark-themed modal overlay for in-dock confirmations (BANK!, etc.)
@@ -2608,7 +3018,7 @@ body:has(.k-fit) {
 .k-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2647,7 +3057,7 @@ body:has(.k-fit) {
 .k-dialog-scrim {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2840,7 +3250,7 @@ body:has(.k-fit) {
   top: max(8px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 46;
+  z-index: var(--z-bank-banner);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -2910,10 +3320,34 @@ body:has(.k-fit) {
   .k-bank-hud {
     gap: 2px;
   }
+  /* Centred in the GAP, not in the viewport.
+     `left: 50%` is the middle of the SCREEN, which on a landscape phone is
+     not the middle of the room available: the branding cluster reaches
+     ~341px at 854x384 and the pill's left edge landed at ~302px, on top of
+     the tagline. Reported from the felt exactly that way -- "it overlaps the
+     site tagline and needs to be pushed to the right a bit so it's between
+     the buttons and the tagline".
+     left + right + `margin-inline: auto` on a fit-content box centres it
+     BETWEEN two walls instead of on a point, so it sits in the middle of
+     whatever the branding and the controls leave it. Live at 854x384 that
+     puts it at 417-610, between a tagline ending at 341 and controls
+     starting at 677.
+     Scoped to this breakpoint on purpose, and NOT applied to the base rule
+     even though the arithmetic is just as correct there: at ~1024px wide the
+     top band has no gap left to centre in at all (measured: branding ends at
+     470, the full control row starts at 507), and a box bounded to 37px
+     would squeeze the pill rather than move it. The centred-on-screen
+     position is not in anything's way at those widths -- checked at 1440,
+     where it lands clear of both -- so it keeps it. */
   .k-bank-banner {
     font-size: 11px;
     padding: 5px 12px;
     top: max(6px, env(safe-area-inset-top));
+    left: calc(var(--k-brand-right) + 10px);
+    right: calc(var(--k-chrome-w) + 10px);
+    transform: none;
+    width: fit-content;
+    margin-inline: auto;
   }
 
   /* .k-topbar's branding and .k-chrome-top's controls are two independent
@@ -3000,6 +3434,26 @@ body:has(.k-fit) {
       var(--stage-scale, 1) * 24px + var(--stage-scale, 1) * 166.6px * clamp(1, calc(1 / var(--stage-scale, 1)), 1.15) +
         12px
     );
+  }
+  /* Same two walls as .k-fit's own definitions, restated for this
+     breakpoint's own counter-scale clamp (1 -> 1.15, not 1.05 -> 2.6) and its
+     own controls.
+     The 436px constant is the branding cluster WITH the tagline, which the
+     rule directly above deliberately excludes -- 166.6px is icon + wordmark
+     only, because when that formula was written the tagline was display:none
+     here. It is not any more (see the .k-logo-tag note below), so anything
+     that has to clear the branding needs the wider constant; chrome-top's own
+     row does not, since it is justify-content: flex-end and its content never
+     reaches that far left. Checked live at 854x384: the cluster's real right
+     edge is 341px and this lands on 350px, i.e. it clears with ~9px to spare
+     rather than cutting it fine.
+     --k-chrome-w is the phone row's own measured content span at that size
+     (677 -> 846 = 169px) plus a little air. */
+  .k-fit {
+    --k-brand-right: calc(
+      var(--stage-scale, 1) * 24px + var(--stage-scale, 1) * 436px * clamp(1, calc(1 / var(--stage-scale, 1)), 1.15)
+    );
+    --k-chrome-w: 178px;
   }
 }
 
@@ -3120,7 +3574,7 @@ body:has(.k-fit) {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 48;
+  z-index: var(--z-bank-decision);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3163,7 +3617,10 @@ body:has(.k-fit) {
     min-height: 54px;
   }
   .k-dock {
-    /* Trimmed the CONTAINER's own padding/gap, not any control inside it --
+    /* min-height only -- the container's own box. Its gap/padding moved to
+       .k-dock-content below, the same split the base rules use (.k-dock has
+       to stay overflow: visible for the grips hanging off its corners).
+       Trimmed the CONTAINER's own padding/gap, not any control inside it --
        every control here stays at the ~40px floor the comment above this
        block measured its way to. Buttons packed 2px tighter is still a
        clean tap target; the 40px buttons themselves are what actually
@@ -3171,6 +3628,8 @@ body:has(.k-fit) {
        padding is 52px, +2 for the border/shadow headroom already assumed
        elsewhere in this file. */
     min-height: 54px;
+  }
+  .k-dock-content {
     gap: 6px;
     padding: 6px 8px;
   }
@@ -3412,6 +3871,22 @@ body:has(.k-fit) {
   transform: translateX(-50%) scale(var(--k-rx, 1));
   background: linear-gradient(180deg, rgba(24, 40, 29, 0.97), rgba(10, 18, 13, 0.97));
   border: 1px solid rgba(230, 164, 75, 0.55);
+  /* This bubble never used to need its own `color` -- it rendered nested
+     inside .k-plate, and inherited .k-plate's `color: var(--k-plate-ink)`
+     for free. The portal fix above (Seat.tsx/Dealer.tsx now render it via
+     StageOverlay, straight onto document.body) broke that inheritance: with
+     no ancestor left to inherit from, it fell back to the SITE's base text
+     color (a dark navy, correct for the light About/Contact pages) instead
+     of a felt-readable one -- illegible on this bubble's own near-black
+     gradient. Fixed here rather than by leaving it to inherit again,
+     because a portalled element's text color should never depend on what
+     happens to sit above it in the DOM at mount time. Matches the gold
+     frame rather than --k-plate-ink on purpose: that variable is themeable
+     per-table (Appearance menu) and can itself be dark, which is exactly
+     the bug this is fixing -- this bubble's background is a fixed dark
+     gradient regardless of table theme, so its text color needs to be fixed
+     too. */
+  color: #f0c579;
   border-radius: 12px;
   padding: 3px 10px;
   font-size: 14px;
@@ -3423,7 +3898,7 @@ body:has(.k-fit) {
      .table-fly-card (z-index: 80) is appended -- so this has to clear THAT
      number specifically, not just "look high enough". Reported as reaction
      emoji getting covered by dealt cards. */
-  z-index: 85;
+  z-index: var(--z-reaction);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), 0 0 14px rgba(230, 164, 75, 0.28);
   animation: reactionLife 10s ease-out forwards;
 }
@@ -3541,7 +4016,7 @@ body:has(.k-fit) {
    the whole stage -- keeping both rendered it twice, ~2px apart, at double
    the intended 0.09 alpha. */
 
-/* Turn countdown bar — depletes as the auto-skip timer runs down.
+/* Turn countdown bar - depletes as the auto-skip timer runs down.
    Width is driven by the existing activeTurnTimer.percent; these classes
    handle the color escalation and urgency pulse. */
 /* The track is always in the seat column (Seat.tsx explains why), so it has to
@@ -3581,7 +4056,7 @@ body:has(.k-fit) {
   75% { transform: translateX(1.5px); }
 }
 
-/* "Your move" — fired once when it becomes the local player's turn. */
+/* "Your move" - fired once when it becomes the local player's turn. */
 @keyframes yourMovePulse {
   0% { box-shadow: 0 0 0 0 rgba(230, 164, 75, 0.55); transform: scale(1); }
   50% { box-shadow: 0 0 22px 4px rgba(230, 164, 75, 0.55); transform: scale(1.015); }
@@ -3599,19 +4074,19 @@ body:has(.k-fit) {
   }
 }
 
-/* Button accents — retinted per-felt by theme.ts's applyFelt(). */
+/* Button accents - retinted per-felt by theme.ts's applyFelt(). */
 :root {
   --btn-bet: #d97706;
   --btn-hit: #2f7dc9;
   --btn-stand: #a8532e;
 }
 
-/* Card fly-in — a transient fixed-position node animated from the deck to a
+/* Card fly-in - a transient fixed-position node animated from the deck to a
    hand via left/top transitions (table/animations.ts's flyCard helper),
    then removed once the real card renders in place. */
 .table-fly-card {
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-fly);
   pointer-events: none;
   transition: left 0.48s cubic-bezier(0.2, 0.7, 0.3, 1), top 0.48s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
@@ -3827,7 +4302,7 @@ body:has(.k-fit) {
   top: calc(var(--play-top, 0px) + 88px * var(--vf, 1));
   left: calc(50% - 175px);
   width: 30px;
-  z-index: 11;
+  z-index: var(--z-scene-props);
   display: flex;
   flex-direction: column;
   align-items: center;

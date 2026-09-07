@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeFit } from "../stage";
+import { DOCK_SCALE_MAX, computeFit } from "../stage";
 import { STAGE_WIDTH, bottomSeatCenterY, seatPositions, seatScale } from "../layout";
 
 // Device profiles that actually matter, plus the two that drove this design.
@@ -219,11 +219,92 @@ describe("stage fit", () => {
     }
   });
 
+
+  // The control bar is resizable and the size is remembered in localStorage,
+  // so a bar someone grew months ago is the bar they see today -- with
+  // nothing on screen to say so. Reported from an Android phone on v11.6:
+  // "the control bar begins too high up on the screen, overlapping my cards
+  // a bit. not sure why, it should start off lower on the screen."
+  //
+  // Two things were wrong. The ceiling was a flat 1.25 that had never been
+  // checked against the room the layout actually leaves; and on a landscape
+  // phone there is no room to find -- vf is already pinned at MIN_VF and the
+  // felt fills the viewport, so a taller bar comes straight out of the
+  // bottom seat rather than out of the play area.
+  describe("the bar can never be grown into the viewer's own cards", () => {
+    const GUTTER = 10; // mirrors stage.ts's DOCK_GUTTER_PX
+    const SEAT_OVERHANG = 100; // mirrors stage.ts's VIEWER_SEAT_OVERHANG_PX
+
+    // Same model as the clearance test above: real screen positions, derived
+    // from TableRoot's own JSX rather than from computeFit's internals.
+    const clearance = (p: { w: number; h: number; compact: boolean }, barHeight: number, inset = 0) => {
+      const fit = computeFit(p.w, p.h, p.compact, barHeight, 0, inset);
+      const feltRealY = (p.h - fit.stageHeight * fit.scale) / 2;
+      const dockRealTop = p.h - feltRealY - Math.max(GUTTER, inset) - barHeight;
+      const seatRealBottom = feltRealY + fit.scale * (bottomSeatCenterY(fit.vf, fit.playTop) + SEAT_OVERHANG);
+      return { fit, gap: dockRealTop - seatRealBottom };
+    };
+
+    it("the old flat 1.25 ceiling put the tallest bar past the bottom seat", () => {
+      // Not a fix, a statement of why the ceiling had to stop being a
+      // constant: at the dock's tallest measured state (79px) every
+      // landscape profile this table supports is already inside a few px of
+      // the seat, and 1.25 is over the line.
+      for (const p of PROFILES.filter((x) => x.compact)) {
+        expect(clearance(p, 79 * 1.25).gap, `${p.name}`).toBeLessThan(6);
+      }
+    });
+
+    it("lowers the ceiling on a landscape phone to whatever room is left", () => {
+      for (const p of PROFILES.filter((x) => x.compact)) {
+        const { fit } = clearance(p, 79);
+        expect(fit.maxDockScale, `${p.name}`).toBeLessThan(DOCK_SCALE_MAX);
+        // The bar at that ceiling still clears the seat -- which is the
+        // whole point of deriving it.
+        expect(clearance(p, 79 * fit.maxDockScale).gap, `${p.name}`).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+    it("lowers it further again on a phone with a gesture bar eating the bottom", () => {
+      // env(safe-area-inset-bottom) pushes the whole band UP the screen,
+      // straight into the clearance -- and DOCK_GUTTER_PX's flat 10px never
+      // accounted for it. Zero on every desktop browser, which is why it was
+      // never caught.
+      for (const p of PROFILES.filter((x) => x.compact)) {
+        const withInset = clearance(p, 79, 34).fit.maxDockScale;
+        expect(withInset, `${p.name}`).toBeLessThanOrEqual(clearance(p, 79).fit.maxDockScale);
+      }
+    });
+
+    // The ceiling is a factor applied to the bar's LAYOUT height, so it has
+    // to be derived from that height -- not from what the bar currently
+    // measures on screen with its transform already applied. Dividing the
+    // available room by an already-scaled height answers "how much bigger
+    // AGAIN than it is now", which is a different question, and feeding that
+    // back through a clamp settles on sqrt(room/height) instead of
+    // room/height.
+    it("answers the same ceiling however large the bar is currently drawn", () => {
+      for (const p of PROFILES.filter((x) => x.compact)) {
+        const LAYOUT = 79;
+        const atRest = computeFit(p.w, p.h, p.compact, LAYOUT, 0, 0, LAYOUT).maxDockScale;
+        // Same bar, same layout height, already drawn 20% larger.
+        const grown = computeFit(p.w, p.h, p.compact, LAYOUT * 1.2, 0, 0, LAYOUT).maxDockScale;
+        expect(grown, `${p.name}`).toBeCloseTo(atRest, 5);
+      }
+    });
+
+    it("leaves a roomy desktop free to use the full range", () => {
+      for (const p of PROFILES.filter((x) => !x.compact)) {
+        expect(computeFit(p.w, p.h, p.compact, 66).maxDockScale, `${p.name}`).toBe(DOCK_SCALE_MAX);
+      }
+    });
+  });
+
   it("degrades to the design size rather than dividing by zero before layout", () => {
     // `compact` passes straight through even on the degenerate path -- it is an
     // input, not something measured from the (absent) viewport, so it must be
     // reported back honestly rather than defaulted.
-    expect(computeFit(0, 0, false)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0, compact: false });
-    expect(computeFit(0, 0, true)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0, compact: true });
+    expect(computeFit(0, 0, false)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0, compact: false, maxDockScale: 1 });
+    expect(computeFit(0, 0, true)).toEqual({ scale: 1, stageHeight: 760, vf: 1, playTop: 0, compact: true, maxDockScale: 1 });
   });
 });

@@ -37,9 +37,9 @@ describe("the reaction picker", () => {
     // rendered the button. A component that stayed position: absolute would
     // fail this the same way the bar's resize transform used to break it --
     // by still being inside the ancestor it needs to escape.
-    const popover = document.querySelector(".fixed.z-\\[60\\]");
+    const popover = document.querySelector("[data-testid='reaction-picker']");
     expect(popover).not.toBeNull();
-    expect(container.querySelector(".relative.z-30")?.contains(popover)).toBe(false);
+    expect(container.querySelector("[data-testid='reaction-bar']")?.contains(popover)).toBe(false);
   });
 
   it("opens upward, anchored above the button, when there is more room above than below", () => {
@@ -48,7 +48,7 @@ describe("the reaction picker", () => {
     // resting spot.
     render(<ReactionLayer onReact={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("React"));
-    const popover = document.querySelector(".fixed.z-\\[60\\]") as HTMLElement;
+    const popover = document.querySelector("[data-testid='reaction-picker']") as HTMLElement;
     expect(popover.style.bottom).not.toBe("");
     expect(popover.style.top).toBe("");
   });
@@ -58,7 +58,7 @@ describe("the reaction picker", () => {
     mockRect();
     render(<ReactionLayer onReact={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("React"));
-    const popover = document.querySelector(".fixed.z-\\[60\\]") as HTMLElement;
+    const popover = document.querySelector("[data-testid='reaction-picker']") as HTMLElement;
     expect(popover.style.top).not.toBe("");
     expect(popover.style.bottom).toBe("");
   });
@@ -70,7 +70,7 @@ describe("the reaction picker", () => {
     mockRect();
     render(<ReactionLayer onReact={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("React"));
-    const popover = document.querySelector(".fixed.z-\\[60\\]") as HTMLElement;
+    const popover = document.querySelector("[data-testid='reaction-picker']") as HTMLElement;
     expect(popover.style.left).not.toBe("");
     expect(popover.style.right).toBe("");
   });
@@ -81,15 +81,15 @@ describe("the reaction picker", () => {
     fireEvent.click(screen.getByLabelText("React"));
     fireEvent.click(screen.getByText("🔥"));
     expect(onReact).toHaveBeenCalledWith("🔥");
-    expect(document.querySelector(".fixed.z-\\[60\\]")).toBeNull();
+    expect(document.querySelector("[data-testid='reaction-picker']")).toBeNull();
   });
 
   it("closes on an outside click, including one that lands outside the portal", () => {
     render(<ReactionLayer onReact={vi.fn()} />);
     fireEvent.click(screen.getByLabelText("React"));
-    expect(document.querySelector(".fixed.z-\\[60\\]")).not.toBeNull();
+    expect(document.querySelector("[data-testid='reaction-picker']")).not.toBeNull();
     fireEvent.mouseDown(document.body);
-    expect(document.querySelector(".fixed.z-\\[60\\]")).toBeNull();
+    expect(document.querySelector("[data-testid='reaction-picker']")).toBeNull();
   });
 
   it("disables the button without opening anything", () => {

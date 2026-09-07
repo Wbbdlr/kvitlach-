@@ -46,14 +46,17 @@ describe("the portrait gate's breakpoint", () => {
     expect(gateBlock.slice(0, gateBlock.indexOf("}"))).not.toContain("@media");
   });
 
-  it("keeps the escape hatch for a phone with rotation lock on", () => {
-    // Plenty of people play with rotation lock on, and for them "turn your
-    // phone" is advice they cannot take. Without a way through, the gate is a
-    // dead end with their money on the table. This is the one control that
-    // must never be quietly dropped as "clutter".
-    expect(TABLE_ROOT).toContain("k-rotate-anyway");
-    expect(TABLE_ROOT).toContain("setPortraitOverride(true)");
-    expect(CSS).toContain(".k-rotate-anyway");
+  it("has no escape hatch -- portrait play requires landscape, full stop", () => {
+    // Requested directly, reversing an earlier deliberate decision (see git
+    // history on this test): the table does not meaningfully render below
+    // this width in portrait, so "show it anyway" was a worse version of the
+    // same game, not a real accommodation. Asserting the negative here for
+    // the same reason the positive used to be asserted -- so a future change
+    // that quietly re-adds a bypass gets caught, the same way removing it
+    // once would have been.
+    expect(TABLE_ROOT).not.toContain("k-rotate-anyway");
+    expect(TABLE_ROOT).not.toContain("portraitOverride");
+    expect(CSS).not.toContain(".k-rotate-anyway");
   });
 
   it("hides the table rather than unmounting it", () => {

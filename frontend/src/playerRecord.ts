@@ -1,5 +1,5 @@
 import { CompletedRoundSummary } from "./state";
-import { Turn } from "./types";
+import { LedgerEntry, Turn } from "./types";
 import { isPushTurn } from "./table/selectors";
 
 // A player's own record across every night they have played on this device.
@@ -183,7 +183,12 @@ export interface StandingRow {
   rounds: number;
   wins: number;
   losses: number;
+  /** Won or lost on the cards. Play only -- nothing the banker moved by hand. */
   net: number;
+  /** Chips that moved without a hand: corrections, buy-ins, a stack that left. */
+  adjustments: number;
+  /** net + adjustments. What the banker actually settles on. */
+  settle: number;
 }
 
 /**
@@ -200,23 +205,43 @@ export interface StandingRow {
  * own history is the complete one -- which is exactly why this is the view
  * that gets shown to them and not to a player who joined at round twelve.
  */
-export function tableStandings(rounds: CompletedRoundSummary[]): StandingRow[] {
+/**
+ * Which ledger kinds move what is owed at settlement, and which only record
+ * what happened. See the fold below for the worked example.
+ */
+export const SETTLES: Record<LedgerEntry["kind"], boolean> = {
+  adjust: true,
+  "buy-in": true,
+  "bank-topup": true,
+  kick: false,
+  leave: false,
+};
+
+export function tableStandings(rounds: CompletedRoundSummary[], ledger: LedgerEntry[] = []): StandingRow[] {
   const rows = new Map<string, StandingRow>();
+  const blank = (playerId: string, name: string, isBanker: boolean): StandingRow => ({
+    playerId,
+    name,
+    isBanker,
+    rounds: 0,
+    wins: 0,
+    losses: 0,
+    net: 0,
+    adjustments: 0,
+    settle: 0,
+  });
+
   for (const round of rounds) {
     for (const turn of round.turns ?? []) {
       const player = turn.player;
       if (!player?.id) continue;
       const row =
         rows.get(player.id) ??
-        {
-          playerId: player.id,
-          name: [player.firstName, player.lastName].filter(Boolean).join(" ").trim() || "Player",
-          isBanker: player.type === "admin",
-          rounds: 0,
-          wins: 0,
-          losses: 0,
-          net: 0,
-        };
+        blank(
+          player.id,
+          [player.firstName, player.lastName].filter(Boolean).join(" ").trim() || "Player",
+          player.type === "admin"
+        );
       row.rounds += 1;
       row.net += turnNet(turn);
       if (!isPushTurn(turn)) {
@@ -226,6 +251,29 @@ export function tableStandings(rounds: CompletedRoundSummary[]): StandingRow[] {
       rows.set(player.id, row);
     }
   }
+
+  // Money that moved without a hand being played. Kept in its own column
+  // rather than folded into `net`, because "-$10 on the cards, +$50 from the
+  // banker" is two numbers a table can check, and "+$40" is one number nobody
+  // can. A player the banker handed chips to before they ever played gets a
+  // row from here alone -- omitting someone who is owed money is the same
+  // failure as reporting the wrong amount for them.
+  //
+  // Only the kinds that change what is OWED. The ledger also records what
+  // happened to a stack that left the table (kick, leave), and folding those
+  // in double-counts: Sara buys in at 100, loses 10 on the cards and leaves
+  // holding 90 -- she is down 10, and counting the departing 90 as an
+  // adjustment reports her at -100. Both kinds still appear in the drawer's
+  // "chips moved by hand" list; they are a record of what happened, not a
+  // debt anybody owes.
+  for (const entry of ledger) {
+    if (!entry?.playerId) continue;
+    if (!SETTLES[entry.kind]) continue;
+    const row = rows.get(entry.playerId) ?? blank(entry.playerId, entry.playerName || "Player", false);
+    row.adjustments += entry.amount;
+    rows.set(entry.playerId, row);
+  }
+  for (const row of rows.values()) row.settle = row.net + row.adjustments;
   // Banker first -- the table's counterparty is the row everything else is
   // measured against -- then by net, biggest winner down.
   return [...rows.values()].sort((a, b) => {

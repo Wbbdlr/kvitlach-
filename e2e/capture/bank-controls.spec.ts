@@ -81,7 +81,7 @@ for (const vp of VIEWPORTS) {
         const brandRect = document.querySelector(".k-logo-tag, .k-logo-word")!.getBoundingClientRect();
         const warn = document.createElement("button");
         warn.className = "k-tag warn";
-        warn.textContent = "Bank is empty — tap to add chips";
+        warn.textContent = "Bank is empty - tap to add chips";
         chrome.appendChild(warn);
         const seats = [...document.querySelectorAll(".k-seat")];
         return {

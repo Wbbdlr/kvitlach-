@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay } from "../selectors";
+import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay, REACTION_EMOJIS, REACTION_EMOJI_LABELS } from "../selectors";
 import { Card, Player, Turn } from "../../types";
 
 const banker: Player = { id: "bank", firstName: "Bank", lastName: "", type: "admin", presence: "online" };
@@ -9,6 +9,82 @@ const p2: Player = { id: "p2", firstName: "P2", lastName: "", type: "player", pr
 function makeTurn(player: Player, overrides: Partial<Turn> = {}): Turn {
   return { player, state: "pending", cards: [{ name: "9", attributes: { values: [9] } }], bet: 5, ...overrides };
 }
+
+const TEN: Card = { name: "10", attributes: { values: [10] } };
+const NINE: Card = { name: "9", attributes: { values: [9] } };
+const SIX: Card = { name: "6", attributes: { values: [6] } };
+const ELEV_IGNORED: Card = { name: "11", attributes: { values: [11], eleveroonIgnored: true } };
+
+// A concealed total says "hidden". Reported live: it was saying "0" instead,
+// which is not concealment -- it is a specific, false number, and the table
+// read it as a real hand worth nothing.
+//
+// The cause is one line: bestTotal([]) returns { total: 0 } (selectors.ts),
+// so "nothing visible" and "a hand totalling zero" were indistinguishable to
+// every caller that sliced the hole card off and asked for the remainder.
+// The "--" fallback that was meant to catch this could never run.
+//
+// The wider point, and why these are grouped: the app had TWO vocabularies
+// for the same idea. The banker's branch said "hidden" and the player's said
+// "0" (intending "--"). One concealed total should look like every other one.
+describe("totalDisplay -- concealment says so, and never says 0", () => {
+  it("says hidden for a blatt player holding only their face-down card", () => {
+    // Dealt one card, no wager yet: cards[0] is face-down to the table (the
+    // server's isCardHidden agrees), so there is nothing to total.
+    const turn = makeTurn(p1, { bet: 0, cards: [NINE] });
+    expect(totalDisplay(turn, p2.id).value).toBe("hidden");
+  });
+
+  it("says hidden for the banker holding only their hole card", () => {
+    const turn = makeTurn(banker, { cards: [NINE] });
+    expect(totalDisplay(turn, p2.id).value).toBe("hidden");
+  });
+
+  it("says hidden when the only visible card is one Eleveroon ignored", () => {
+    // The same bug one layer down: the card is present, so a length check
+    // passes, but bestTotal drops it and lands back on 0. The banker always
+    // has Eleveroon active, so this is their ordinary case, not an exotic one.
+    const turn = makeTurn(banker, { cards: [NINE, ELEV_IGNORED] });
+    expect(totalDisplay(turn, p2.id).value).toBe("hidden");
+  });
+
+  it("still totals the blatt cards that ARE public", () => {
+    const turn = makeTurn(p1, { bet: 0, cards: [NINE, TEN] });
+    // Card 0 stays down; the blatt draw after it is public to the whole table.
+    expect(totalDisplay(turn, p2.id).value).toBe("10");
+  });
+
+  it("shows a blatt hand's real total once the round resolves it", () => {
+    // The other half of #9, and the part that was visible for a whole round:
+    // a blatt settles as "won" (calculateEndState treats no wager as a push),
+    // and the blatt branch had no reveal guard -- so it went on slicing the
+    // hole card off a hand the server had already sent face-up, and reported
+    // "0" through showdown and into round complete.
+    const turn = makeTurn(p1, { bet: 0, state: "won", cards: [SIX] });
+    expect(totalDisplay(turn, p2.id).value).toBe("6");
+  });
+
+  it("shows a blatt hand's real total once it busts", () => {
+    const turn = makeTurn(p1, { bet: 0, state: "lost", cards: [TEN, TEN, SIX] });
+    expect(totalDisplay(turn, p2.id).value).toBe("26");
+  });
+
+  it("never renders a bare 0 to a viewer who is being kept out", () => {
+    // The invariant, stated once: whatever the hand, a total withheld from a
+    // viewer reads as withheld.
+    const hands: Card[][] = [[NINE], [ELEV_IGNORED], [NINE, ELEV_IGNORED]];
+    for (const cards of hands) {
+      for (const turn of [makeTurn(p1, { bet: 0, cards }), makeTurn(banker, { cards })]) {
+        expect(totalDisplay(turn, p2.id).value).not.toBe("0");
+      }
+    }
+  });
+
+  it("still shows the owner their own hand, hole card included", () => {
+    const turn = makeTurn(p1, { bet: 0, cards: [NINE] });
+    expect(totalDisplay(turn, p1.id).value).toBe("9");
+  });
+});
 
 describe("totalDisplay -- a standing player's total must not leak before resolution", () => {
   it("hides a standing (not yet resolved) player's total from other viewers", () => {
@@ -267,5 +343,19 @@ describe("statusDisplay -- the bank hitting exactly 21 outright", () => {
       cards: [{ name: "9", attributes: { values: [9] } }, { name: "12", attributes: { values: [12, 9, 10] } }],
     });
     expect(statusDisplay(turn).label).toBe("PUSH");
+  });
+});
+
+describe("REACTION_EMOJI_LABELS", () => {
+  // ReactionLayer.tsx's emoji buttons have no other accessible name -- a
+  // screen reader falls back to the glyph's raw Unicode/CLDR reading, which
+  // isn't always right for what it's standing in for at this table. Every
+  // entry in REACTION_EMOJIS needs a matching label, or one of those buttons
+  // silently goes back to being announced by codepoint.
+  it("has exactly one label per reaction emoji, nothing missing and nothing stale", () => {
+    for (const emoji of REACTION_EMOJIS) {
+      expect(REACTION_EMOJI_LABELS[emoji], `missing a label for ${emoji}`).toBeTruthy();
+    }
+    expect(Object.keys(REACTION_EMOJI_LABELS).length).toBe(REACTION_EMOJIS.length);
   });
 });

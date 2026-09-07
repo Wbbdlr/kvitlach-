@@ -316,3 +316,116 @@ describe("what the sheet calls each hand", () => {
     expect(bankerLines.some((l) => l.includes("BLATT"))).toBe(false);
   });
 });
+
+// The sheet's "By hand" and "To settle" columns are the export's half of the
+// settlement table, and they have to agree with the one on screen
+// (playerRecord.tableStandings) -- the banker settles up from one and the
+// players from the other, and two numbers that disagree is worse than one
+// number that is wrong.
+//
+// The screen learned in 11.6 that `kick` and `leave` record what happened to
+// a stack that walked away WITH its owner, not money still owed; folding them
+// in double-counts. This fold never learned it, so the two drifted apart the
+// moment anyone left a table.
+describe("chips that moved without a hand", () => {
+  const rounds: CompletedRoundSummary[] = [
+    { roundId: "r1", roundNumber: 1, completedAt: 1, turns: [seat("p1", "Sara", 10, "lost"), banker(10)] },
+  ];
+  const entry = (kind: string, amount: number) => ({
+    id: `${kind}-${amount}`,
+    kind,
+    playerId: "p1",
+    playerName: "Sara",
+    actorId: "b",
+    actorName: "Shloime",
+    amount,
+    at: 1,
+  });
+
+  it("counts a banker's correction, which really is owed", () => {
+    const html = buildHistoryHtml({ rounds, ledger: [entry("adjust", 50)] as never });
+    expect(html).toContain("By hand");
+    expect(html).toContain("+$50");
+  });
+
+  // Sara buys in at 100, loses 10 on the cards, and leaves holding 90. She is
+  // down 10. Counting the departing 90 reports her at -100.
+  it("ignores a stack that left the table with its owner", () => {
+    const html = buildHistoryHtml({ rounds, ledger: [entry("leave", -90)] as never });
+    expect(html).not.toContain("By hand");
+    expect(html).not.toContain("$90");
+  });
+
+  it("ignores a kicked player's returned stack for the same reason", () => {
+    const html = buildHistoryHtml({ rounds, ledger: [entry("kick", -90)] as never });
+    expect(html).not.toContain("By hand");
+  });
+
+  it("still counts the corrections when a departure sits beside them", () => {
+    const html = buildHistoryHtml({ rounds, ledger: [entry("adjust", 50), entry("leave", -90)] as never });
+    expect(html).toContain("+$50");
+    expect(html).not.toContain("-$40");
+  });
+});
+
+// Asked for after seeing the first sheet: "Would it be too much to also export
+// the actual hands, meaning showing which cards they had and the bank had for
+// each hand while rendering small little icons of each card in rows?" and
+// "maybe we should put .us after the title [...] and perhaps we should include
+// the TM over there as well as we do in other places on the platform."
+describe("the hands, drawn", () => {
+  const ELEVEN = { name: "11", attributes: { values: [11], eleveroonIgnored: true } };
+  const ROSIER = { name: "2", attributes: { values: [2], type: "rosier" } };
+  const round = (cards: unknown[]): CompletedRoundSummary =>
+    ({
+      roundId: "r1",
+      roundNumber: 1,
+      completedAt: 1,
+      turns: [{ player: { id: "p1", firstName: "Sara", type: "player" }, state: "won", cards, bet: 10 }],
+    }) as never;
+
+  it("draws one little card per card in the hand", () => {
+    const html = buildHistoryHtml({ rounds: [round([{ name: "9", attributes: { values: [9] } }, ROSIER])] });
+    expect((html.match(/<i class="pip/g) ?? []).length).toBe(2);
+  });
+
+  // Names, not values: the 12 is worth 12, 9 or 10 depending on the hand.
+  it("prints the card's own name on it", () => {
+    const html = buildHistoryHtml({ rounds: [round([{ name: "12", attributes: { values: [12, 9, 10] } }])] });
+    expect(html).toContain(">12</i>");
+  });
+
+  // The eleveroon leaves the ignored 11 in the hand and out of the total. A
+  // sheet that drew it as an ordinary card would make its own arithmetic look
+  // wrong to whoever reads it back.
+  it("marks an eleveroon-ignored card as spent rather than hiding it", () => {
+    const html = buildHistoryHtml({ rounds: [round([ELEVEN])] });
+    expect(html).toContain("pip spent");
+  });
+
+  it("marks a rosier, which is an automatic win and worth spotting", () => {
+    const html = buildHistoryHtml({ rounds: [round([ROSIER])] });
+    expect(html).toContain("rosier");
+  });
+
+  // The whole reason these are drawn rather than the real card art: this
+  // file's first test is that the sheet makes no external requests, and the
+  // faces are 946x1438 PNGs.
+  it("draws them without embedding any image", () => {
+    const html = buildHistoryHtml({ rounds: [round([ROSIER, ELEVEN])] });
+    expect(html).not.toMatch(/<img|url\(|data:image/);
+  });
+});
+
+describe("the sheet's own masthead", () => {
+  it("carries the site's name with its domain and its mark", () => {
+    const html = buildHistoryHtml({ rounds: [] });
+    expect(html).toContain('class="tld">.us<');
+    expect(html).toContain("&trade;");
+  });
+
+  it("says the same in the document title, which is what a browser tab shows", () => {
+    const html = buildHistoryHtml({ rounds: [], roomName: "The Kugel Corner" });
+    expect(html).toContain("<title>Kvitlach.us - The Kugel Corner</title>");
+  });
+});

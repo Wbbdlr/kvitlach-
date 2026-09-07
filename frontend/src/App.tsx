@@ -1,10 +1,11 @@
 ﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { tableStandings } from "./playerRecord";
-import { useGameStore, loadLastRoomId } from "./state";
+import { useGameStore, loadLastRoomId, loadAgeAcknowledged, persistAgeAcknowledged } from "./state";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
+import { CARD_DEAL_MS } from "./table/animations";
 
 import { enterImmersive, exitImmersive } from "./table/immersive";
 import { buildHistoryHtml, downloadFile, historyFilename } from "./exportHistory";
@@ -13,9 +14,36 @@ import { bestTotal, isPushTurn, statusDisplay } from "./table/selectors";
 import { useTableData } from "./table/useTableData";
 import { TableRoot } from "./table/TableRoot";
 import { RulesModals } from "./RulesModals";
+import { GameOverModal } from "./GameOverModal";
 import InstallPrompt from "./InstallPrompt";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
+import { NumberField } from "./NumberField";
+
+// One checkbox, rendered on Join/Create/Practice (never Watch -- see
+// state.ts's own comment on why). `id` has to be unique per instance since
+// all three render on the same page at once and `htmlFor` matches by id.
+function AgeAckCheckbox({ id, checked, onChange }: { id: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label htmlFor={id} className="flex items-start gap-2 text-xs text-slate-600">
+      <input
+        id={id}
+        type="checkbox"
+        required
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 shrink-0"
+      />
+      <span>
+        I'm old enough to play. See the{" "}
+        <a href="/disclaimer" className="text-blue-700 hover:underline" target="_blank" rel="noopener noreferrer">
+          Disclaimer
+        </a>
+        .
+      </span>
+    </label>
+  );
+}
 
 export default function App() {
   const store = useGameStore();
@@ -30,6 +58,7 @@ export default function App() {
     notifications,
     bankerSummaryAt,
     reactions,
+    gameOver,
   } = store;
   const [statsPlayerId, setStatsPlayerId] = useState<string | undefined>(undefined);
   const [bankerFirstName, setBankerFirst] = useState("");
@@ -42,7 +71,6 @@ export default function App() {
   const [practiceBuyIn, setPracticeBuyIn] = useState(100);
   const [practiceBankBuyIn, setPracticeBankBuyIn] = useState(400);
   const [practiceBankBuyInManuallySet, setPracticeBankBuyInManuallySet] = useState(false);
-  const [practiceExpanded, setPracticeExpanded] = useState(false);
   const [roomIdInput, setRoomId] = useState("");
   const [roomName, setRoomName] = useState("");
   const [customRoomId, setCustomRoomId] = useState("");
@@ -62,8 +90,36 @@ export default function App() {
   const [sfxEnabled, setSfxEnabled] = useState(true);
   const [motionEnabled, setMotionEnabled] = useState(true);
   const [userInteracted, setUserInteracted] = useState(false);
+  // Independent per form, deliberately -- see state.ts's own comment on
+  // loadAgeAcknowledged for why a single shared flag was tried and reverted.
+  const [joinAgeAcknowledged, setJoinAgeAcknowledgedState] = useState(() => loadAgeAcknowledged("join"));
+  const [createAgeAcknowledged, setCreateAgeAcknowledgedState] = useState(() => loadAgeAcknowledged("create"));
+  const [practiceAgeAcknowledged, setPracticeAgeAcknowledgedState] = useState(() => loadAgeAcknowledged("practice"));
+  const setJoinAgeAcknowledged = (value: boolean) => {
+    persistAgeAcknowledged("join", value);
+    setJoinAgeAcknowledgedState(value);
+  };
+  const setCreateAgeAcknowledged = (value: boolean) => {
+    persistAgeAcknowledged("create", value);
+    setCreateAgeAcknowledgedState(value);
+  };
+  const setPracticeAgeAcknowledged = (value: boolean) => {
+    persistAgeAcknowledged("practice", value);
+    setPracticeAgeAcknowledgedState(value);
+  };
   const audioManager = useMemo(() => new AudioManager(), []);
   const prevRoundRef = useRef<RoundState | undefined>(undefined);
+  // Outcome sounds that are waiting on a card to finish flying in. Held so
+  // they can be dropped if the table goes away first -- a futch horn arriving
+  // after the round is gone belongs to a hand nobody is looking at.
+  const outcomeTimersRef = useRef<number[]>([]);
+  useEffect(
+    () => () => {
+      outcomeTimersRef.current.forEach((id) => window.clearTimeout(id));
+      outcomeTimersRef.current = [];
+    },
+    []
+  );
   const prevActiveTurnIdRef = useRef<string | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
   const formErrors = store.formErrors ?? {};
@@ -96,7 +152,14 @@ export default function App() {
   // the server -- see playerRecord.ts. Only the banker is shown it (the drawer
   // is isAdmin-gated), which is also the only seat whose local history is
   // guaranteed complete: they are there for the whole night.
-  const standings = useMemo(() => tableStandings(roundHistory ?? []), [roundHistory]);
+  // The ledger is the second half of this and was missing until 2026-09-06:
+  // without it these rows report only what the cards did, so any correction
+  // the banker made was absent from the table they settle up from. See
+  // playerRecord.ts.
+  const standings = useMemo(
+    () => tableStandings(roundHistory ?? [], room?.ledger ?? []),
+    [roundHistory, room?.ledger]
+  );
 
   useEffect(() => {
     if (prefilledRoomIdRef.current) return;
@@ -222,6 +285,30 @@ export default function App() {
       // someone else two seats over placed a bet would be obnoxious, so
       // haptics.ts's cues are scoped to the local player's own turn only.
       const isMine = turn.player.id === playerId;
+      const cardLanded = (turn.cards?.length ?? 0) > (prevTurn.cards?.length ?? 0);
+      // Reported from a real table on 11.4: "the winning sound and busting
+      // sound play before his final card animation is even revealed."
+      //
+      // Both used to fire the instant round:state arrived, which is the
+      // moment the card STARTS moving, not the moment it lands -- so the horn
+      // announced the result over a card still in flight and spoiled its own
+      // reveal. The deal whoosh below is correct at t=0 for exactly the same
+      // reason it is wrong here: that one IS the card leaving the shoe.
+      //
+      // Only deferred when this same diff actually dealt a card. A showdown
+      // resolving a hand that already stood animates nothing, and holding the
+      // sound there would just make the table feel unresponsive.
+      const announce = (play: () => void) => {
+        if (!cardLanded) {
+          play();
+          return;
+        }
+        const id = window.setTimeout(() => {
+          outcomeTimersRef.current = outcomeTimersRef.current.filter((t) => t !== id);
+          play();
+        }, CARD_DEAL_MS);
+        outcomeTimersRef.current.push(id);
+      };
       // The banker is excluded because they never place a wager: calculateEndState
       // (round.ts) repurposes the admin turn's `bet` to carry the round's net
       // balance once resolved, so a bank that finished ahead read here as
@@ -258,15 +345,20 @@ export default function App() {
           // horn instead of sharing "lose", a natural 21 gets its own sound
           // instead of sharing the generic showdown "win".
           const justHit21 = prevTurn.state === "pending" && bestTotal(turn.cards).total === 21;
-          if (justHit21) {
-            // audio.ts's natural21 is a real fanfare (see its own comment),
-            // not the old card-slide sample -- it no longer needs "win"
-            // layered underneath to read as its own moment.
-            audioManager.playSfx("natural21");
-          } else {
-            audioManager.playSfx("win");
-          }
-          if (isMine) buzz("win");
+          announce(() => {
+            if (justHit21) {
+              // audio.ts's natural21 is a real fanfare (see its own comment),
+              // not the old card-slide sample -- it no longer needs "win"
+              // layered underneath to read as its own moment.
+              audioManager.playSfx("natural21");
+            } else {
+              audioManager.playSfx("win");
+            }
+            // The buzz travels with the sound, not with the state change --
+            // a phone that vibrates before the card lands gives the result
+            // away exactly the way the horn did.
+            if (isMine) buzz("win");
+          });
         }
         // The futch horn is for going over 21, not for losing. Keying it off
         // state === "lost" got this backwards at both ends: the BANKER's state
@@ -276,8 +368,10 @@ export default function App() {
         // statusDisplay is the one place that already knows the difference.
         if (turn.state === "lost") {
           const busted = statusDisplay(turn).label === "FUTCHED!";
-          audioManager.playSfx(busted ? "bust" : "lose");
-          if (isMine) buzz(busted ? "bust" : "lose");
+          announce(() => {
+            audioManager.playSfx(busted ? "bust" : "lose");
+            if (isMine) buzz(busted ? "bust" : "lose");
+          });
         }
       }
     });
@@ -285,17 +379,25 @@ export default function App() {
     prevRoundRef.current = round;
   }, [audioManager, round, playerId]);
 
-  // "It's your turn" -- the one haptic cue that isn't a round-diff echo of an
+  // "It's your turn" - the one cue that isn't a round-diff echo of an
   // existing sound. Keyed off activeTurnId (useTableData's own notion of
   // whose turn is live, including turn-timer/skip edge cases) rather than
   // re-deriving it here, and only fires on the OFF->this-player edge so
-  // reconnecting mid-turn or the timer just ticking doesn't re-buzz.
+  // reconnecting mid-turn or the timer just ticking doesn't re-fire.
+  //
+  // A phone in a pocket cannot feel a haptic and a table of relatives will
+  // not notice a ring on the felt, so this is where a turn quietly expires on
+  // the 90s timer. The alert is deliberately BOTH: a buzz for a phone in a
+  // hand, and two short notes for one on the table. Both are local to this
+  // client - nothing here is broadcast, and nobody else's device makes a
+  // sound when it becomes your go.
   useEffect(() => {
     if (activeTurnId === playerId && prevActiveTurnIdRef.current !== playerId) {
       buzz("turn");
+      audioManager.playTurnAlert();
     }
     prevActiveTurnIdRef.current = activeTurnId;
-  }, [activeTurnId, playerId]);
+  }, [activeTurnId, playerId, audioManager]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNowTs(Date.now()), 100);
@@ -331,6 +433,11 @@ export default function App() {
   // permanently greyed-out button was a permanent line of text under the
   // dock. The three conditions left are ones where there is nothing to
   // wager at all.
+  //
+  // Still true, with one addition: PlayerDock now DIMS the button on a
+  // shortfall (without disabling it), because looking identical to a live
+  // action is what got BANK! reported as broken -- see that button's own
+  // comment. The explaining still happens in the dialog, as designed here.
   const canBank = Boolean(bankInfo && bankInfo.available > 0 && bankIncrement > 0);
 
   const waitingPlayerIds = room?.waitingPlayerIds ?? [];
@@ -397,15 +504,37 @@ export default function App() {
   // from that player's point of view. See exportHistory.ts -- this used to be
   // 60 lines here, reachable only from the banker's drawer.
   const exportRoundHistoryTxt = (focusPlayerId?: string) => {
-    const rounds = roundHistory ?? [];
+    // Two sources, because the game-over screen exports AFTER the room is
+    // gone: room:closed clears `room` outright, so reading room.roomId /
+    // room.name / room.players there produced an unnamed file for a table
+    // nobody could identify. See GameOverSummary in state.ts.
+    const source = room
+      ? { rounds: roundHistory ?? [], roomId: room.roomId, roomName: room.name, ledger: room.ledger ?? [] }
+      : gameOver
+        ? { rounds: gameOver.rounds, roomId: gameOver.roomId, roomName: gameOver.roomName, ledger: gameOver.ledger ?? [] }
+        : undefined;
+    const rounds = source?.rounds ?? [];
     if (!rounds.length) return;
     const focused = room?.players?.find((p) => p.id === focusPlayerId);
-    const playerName = [focused?.firstName, focused?.lastName].filter(Boolean).join(" ").trim();
+    // The player's own name, for the FILENAME. Off the roster while there is
+    // one; afterwards the rounds themselves are the only place it still
+    // exists, which is the same read tableStandings makes.
+    const nameFromRounds = () => {
+      if (!focusPlayerId) return "";
+      for (const round of rounds) {
+        const turn = round.turns?.find((t) => t.player?.id === focusPlayerId);
+        if (turn) return [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ").trim();
+      }
+      return "";
+    };
+    const playerName = focused
+      ? [focused.firstName, focused.lastName].filter(Boolean).join(" ").trim()
+      : nameFromRounds();
     downloadFile(
       // The names are for the FILE, so it is findable in a Downloads folder
       // months later -- see historyFilename.
-      historyFilename(room?.roomId, Boolean(focusPlayerId), new Date(), {
-        roomName: room?.name,
+      historyFilename(source?.roomId, Boolean(focusPlayerId), new Date(), {
+        roomName: source?.roomName,
         playerName,
       }),
       // Read at export time rather than held in state: these are the exporting
@@ -413,9 +542,10 @@ export default function App() {
       // sheet is a keepsake of the table THEY were looking at.
       buildHistoryHtml({
         rounds,
-        roomId: room?.roomId,
-        roomName: room?.name,
+        roomId: source?.roomId,
+        roomName: source?.roomName,
         focusPlayerId,
+        ledger: source?.ledger,
         felt: loadFelt(),
         chip: loadChip(),
       })
@@ -471,6 +601,7 @@ export default function App() {
         onHit={(options) => store.hit(options)}
         onStand={() => store.stand()}
         onSkip={(pid) => store.skip(pid)}
+        onStandFor={(pid) => store.standFor(pid)}
         onReact={(emoji) => sendReaction(emoji)}
         onTopUp={(amount, note) => store.topUpBanker(amount, note)}
         onSetWatermark={(text) => store.setFeltWatermark(text)}
@@ -483,11 +614,13 @@ export default function App() {
         onRejectBuyIn={(id) => store.rejectBuyIn(id)}
         onRequestBuyIn={(amount, note) => store.requestBuyIn(amount, note)}
         onPracticeTopUp={() => store.practiceTopUp()}
+        onPracticeTopUpBank={(amount) => store.practiceTopUpBank(amount)}
         onShowHowTo={() => {
           setShowWhatIs(false);
           setShowHowTo(true);
         }}
-        onEndRoundDueToBank={() => store.endRoundDueToBank()}
+        onEndGame={() => store.endGameAfterBankDecision()}
+        onPassBank={(targetPlayerId) => store.passBankToPlayer(targetPlayerId)}
         onVoidAbandonedRound={() => store.voidAbandonedRound()}
         onAdjustChips={(id, amount, note) => store.adjustPlayerBankroll(id, amount, note)}
         onKick={(id) => store.kickPlayer(id)}
@@ -499,6 +632,7 @@ export default function App() {
         onExportHistory={exportRoundHistoryTxt}
         onCloseRoom={() => store.closeRoom()}
         onLeave={() => store.leaveGame()}
+        onStepAway={() => store.stepAway()}
         onReshuffleDeck={() => store.reshuffleDeck()}
         onStartNextRound={() => {
           store.startRound(preferredDecks === "" ? undefined : Number(preferredDecks));
@@ -531,8 +665,13 @@ export default function App() {
     </>
   ) : (
     <>
+      {/* Rendered in the LOBBY branch because that is where a closed table
+          lands you -- `room` is undefined by the time this exists. */}
+      {gameOver && (
+        <GameOverModal summary={gameOver} onExport={exportRoundHistoryTxt} onClose={() => store.dismissGameOver()} />
+      )}
       {notifications.length > 0 && (
-        <div className="fixed top-4 left-3 right-3 sm:left-auto sm:right-4 sm:max-w-sm z-50 flex flex-col gap-2">
+        <div className="fixed top-4 left-3 right-3 sm:left-auto sm:right-4 sm:max-w-sm z-[var(--z-scrim)] flex flex-col gap-2">
           {notifications.map((note) => {
             const toneClass =
               note.tone === "success"
@@ -564,7 +703,7 @@ export default function App() {
       )}
       <div className="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-8 flex flex-col gap-4 sm:gap-6">
         {message && !formErrors.join && (
-        <div className="card-surface border border-red-200 bg-red-50 text-red-700 px-4 py-2 text-sm">
+        <div className="card-surface border border-red-200 bg-red-50 text-red-700 px-4 py-2 text-sm" role="alert">
           {message}
         </div>
       )}
@@ -604,7 +743,7 @@ export default function App() {
                 </div>
                 <div className="space-y-1 text-xs text-slate-600">
                   <p>Banker manages the bankroll and payouts; everyone else plays against them.</p>
-                  <p>Most visitors only need the Join form—create a table only if you are the Banker.</p>
+                  <p>Most visitors only need the Join form. Create a table only if you are the Banker.</p>
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -717,10 +856,11 @@ export default function App() {
               />
             </label>
             {formErrors.join && (
-              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">
                 {formErrors.join}
               </div>
             )}
+              <AgeAckCheckbox id="age-ack-join" checked={joinAgeAcknowledged} onChange={setJoinAgeAcknowledged} />
               <div className="flex gap-2">
                 <button
                   type="submit"
@@ -738,167 +878,25 @@ export default function App() {
                 </button>
               </div>
           </form>
-          <form
-            className={clsx("card-surface p-4 flex flex-col", bankerFormExpanded ? "gap-3" : "gap-2")}
-            onSubmit={onCreate}
-          >
-          <header className={clsx("transition-all", bankerFormExpanded ? "pb-3 border-b border-slate-200" : "pb-0")}
-          >
-            <button
-              type="button"
-              className={clsx(
-                "w-full rounded-lg border px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between gap-3",
-                bankerFormExpanded ? "bg-ink text-white border-ink" : "border-slate-300 text-slate-700 hover:bg-slate-100"
-              )}
-              onClick={() => setBankerFormExpanded((v) => !v)}
-              aria-expanded={bankerFormExpanded}
-              aria-controls="banker-create-fields"
-            >
-              <span className="inline-flex items-center gap-2">
-                <svg className="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
-                </svg>
-                <span>Banker: Host the table, set wagers, etc.</span>
-              </span>
-              <svg
-                className={clsx("h-4 w-4 transition-transform", bankerFormExpanded ? "rotate-180" : "rotate-0")}
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.44l3.71-3.21a.75.75 0 111.04 1.08l-4.24 3.67a.75.75 0 01-1.02 0L5.21 8.31a.75.75 0 01.02-1.1z" />
-              </svg>
-            </button>
-          </header>
-          {formErrors.create && (
-            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-              {formErrors.create}
-            </div>
-          )}
-          {bankerFormExpanded && (
-            <div className="flex flex-col gap-3" id="banker-create-fields">
-              <label className="text-sm">Game Name
-                <input
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  value={roomName}
-                  onChange={(e) => setRoomName(e.target.value)}
-                  autoCapitalize="words"
-                />
-              </label>
-              <label className="text-sm">Custom Game ID (optional)
-                <input
-                  className="mt-1 w-full rounded border px-3 py-2 uppercase"
-                  value={customRoomId}
-                  onChange={(e) => setCustomRoomId(e.target.value.toUpperCase())}
-                  placeholder="e.g. CHOLENT-613"
-                  maxLength={20}
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <span className="text-xs text-slate-500">Use 4-20 characters with letters, numbers, or hyphen.</span>
-              </label>
-              <label className="text-sm">First name (required)
-                <input
-                  required
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  value={bankerFirstName}
-                  onChange={(e) => setBankerFirst(e.target.value)}
-                  autoComplete="given-name"
-                  autoCapitalize="words"
-                />
-              </label>
-              <label className="text-sm">Last name (optional)
-                <input
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  value={bankerLastName}
-                  onChange={(e) => setBankerLast(e.target.value)}
-                  autoComplete="family-name"
-                  autoCapitalize="words"
-                />
-              </label>
-              <label className="text-sm">Password (optional for joining)
-                <input
-                  type="password"
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  value={roomPassword}
-                  onChange={(e) => setRoomPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              <label className="text-sm">Buy-in per player
-                <input className="mt-1 w-full rounded border px-3 py-2" type="number" min={1} value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} />
-              </label>
-              <label className="text-sm">Banker starting bankroll
-                <input
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  type="number"
-                  min={1}
-                  value={bankerBankroll}
-                  onChange={(e) => {
-                    if (e.target.value === "") {
-                      setBankerBankroll(buyIn);
-                      setBankerBankrollManuallySet(false);
-                      return;
-                    }
-                    const next = Number(e.target.value);
-                    if (Number.isNaN(next)) return;
-                    setBankerBankroll(next);
-                    setBankerBankrollManuallySet(next !== buyIn);
-                  }}
-                />
-              </label>
-              <div className="flex items-center justify-between text-xs text-slate-500 -mt-1">
-                <span>Defaults to the player buy-in amount.</span>
-                {bankerBankrollManuallySet && (
-                  <button
-                    type="button"
-                    className="text-blue-700 font-semibold"
-                    onClick={() => {
-                      setBankerBankroll(buyIn);
-                      setBankerBankrollManuallySet(false);
-                    }}
-                  >
-                    Match buy-in
-                  </button>
-                )}
-              </div>
-              <label className="text-sm">Decks to use (optional)
-                <input className="mt-1 w-full rounded border px-3 py-2" type="number" min={1} max={16} placeholder="auto" value={preferredDecks} onChange={(e) => setPreferredDecks(e.target.value)} />
-                <span className="text-xs text-slate-500">Set this before starting the first round; leave blank to auto-size by players (supports large tables).</span>
-              </label>
-                <button
-                  type="submit"
-                  className="bg-accent text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent hover:bg-accent/90"
-                >
-                  Create
-                </button>
-            </div>
-          )}
-        </form>
-
-        </section>
-      )}
-
-        {/* Deliberately its own card, not a row in the grid above: this is a
-            solo sandbox (no other humans, no real stakes), and burying it
-            inside the Join form made it easy to miss and easy to confuse
-            with actually joining someone's table. Dashed border + a blue
-            tint reads as "not a real table" without leaving the app's
-            existing color language. */}
-        {!room && (
+          {/* Second grid column, paired with Join -- moved here from below
+              the grid (product-review finding #2, 2026-09-04): a code-less
+              visitor used to have to scroll past the entire Join+Create pair
+              to find this, even though it's an equally valid "start playing
+              right now" path. Join stays first (still the more common,
+              invited-visitor case, per the copy above), Create moves below
+              instead -- it's the rarest of the three actions and was already
+              collapsed behind its own accordion, so demoting its position
+              costs it nothing it didn't already have. */}
           <section className="card-surface p-4 flex flex-col gap-3 border-2 border-dashed border-blue-300 bg-blue-50/60">
             <header className="flex flex-col gap-1 pb-3 border-b border-blue-200">
               <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
-                Practice Against the Computer
+                Play Against the Computer
                 <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
                   Solo
                 </span>
               </h2>
               <p className="text-xs text-slate-500">
-                Learn the flow against computer players -- nobody else needs to be online, and nothing here touches a
-                real table.
+                Nobody else needs to be online, and nothing here touches a real table.
               </p>
             </header>
 
@@ -913,8 +911,10 @@ export default function App() {
               />
             </label>
 
+            <AgeAckCheckbox id="age-ack-practice" checked={practiceAgeAcknowledged} onChange={setPracticeAgeAcknowledged} />
+
             {formErrors.practice && (
-              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">
                 {formErrors.practice}
               </div>
             )}
@@ -922,6 +922,14 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
+                // No <form> here to lean on native `required` validation the
+                // way Join/Create do (see AgeAckCheckbox's own comment) --
+                // this is a plain button, so the check has to be manual, same
+                // as onWatch's own pre-flight checks below.
+                if (!practiceAgeAcknowledged) {
+                  store.setFormError("practice", "Please confirm you're of legal age to play before starting.");
+                  return;
+                }
                 enterImmersive();
                 store.createPracticeRoom(practiceFirstName.trim() || "Guest", {
                   botCount: practiceBotCount,
@@ -931,23 +939,17 @@ export default function App() {
                 });
               }}
               className="w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-accent/85"
-              title="Start a solo table against computer players -- no code needed"
+              title="Start a solo table against computer players - no code needed"
             >
-              Practice Against the Computer
+              Play Against the Computer
             </button>
 
-            <button
-              type="button"
-              className="self-start text-xs font-semibold text-blue-700 hover:text-blue-800"
-              onClick={() => setPracticeExpanded((v) => !v)}
-              aria-expanded={practiceExpanded}
-              aria-controls="practice-settings"
-            >
-              {practiceExpanded ? "Hide table settings" : "Customize table settings"}
-            </button>
-
-            {practiceExpanded && (
-              <div className="flex flex-col gap-4 pt-1" id="practice-settings">
+            {/* Always expanded, no toggle -- player-requested, 2026-09-04:
+                these settings (bot count, decks, both starting stacks) are
+                exactly the kind of thing worth seeing before the first tap,
+                same reasoning as the buy-in/bankroll guidance the real
+                Create form just got. */}
+            <div className="flex flex-col gap-4 pt-1" id="practice-settings">
                 <label className="text-sm flex flex-col gap-1">
                   <span className="flex items-center justify-between">
                     <span>Computer players</span>
@@ -1009,6 +1011,7 @@ export default function App() {
                     }}
                     className="w-full accent-blue-600"
                     aria-label="Your starting money"
+                    aria-valuetext={`$${practiceBuyIn.toLocaleString()}`}
                   />
                 </label>
 
@@ -1031,6 +1034,7 @@ export default function App() {
                       }}
                       className="w-full accent-blue-600"
                       aria-label="Bank's starting money"
+                      aria-valuetext={`$${practiceBankBuyIn.toLocaleString()}`}
                     />
                   </label>
                   <div className="flex items-center justify-between text-xs text-slate-500">
@@ -1050,8 +1054,207 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            )}
           </section>
+
+        </section>
+      )}
+
+        {/* Demoted below the Join+Play grid above (product-review finding
+            #2) -- Create is the rarest of the three lobby actions, already
+            collapsed by default, so it costs nothing to no longer sit beside
+            Join. Own gap-cased-fix while here (finding #8): this form was
+            deciding a real table's money and never said what a reasonable
+            amount looks like, so a first-time banker had nothing to go on
+            beyond a bare number field. */}
+        {!room && (
+          <form
+            className={clsx("card-surface p-4 flex flex-col", bankerFormExpanded ? "gap-3" : "gap-2")}
+            onSubmit={onCreate}
+          >
+          <header className={clsx("transition-all", bankerFormExpanded ? "pb-3 border-b border-slate-200" : "pb-0")}
+          >
+            <button
+              type="button"
+              className={clsx(
+                "w-full rounded-lg border px-4 py-3 text-sm font-semibold transition-colors flex items-center justify-between gap-3",
+                bankerFormExpanded ? "bg-ink text-white border-ink" : "border-slate-300 text-slate-700 hover:bg-slate-100"
+              )}
+              onClick={() => setBankerFormExpanded((v) => !v)}
+              aria-expanded={bankerFormExpanded}
+              aria-controls="banker-create-fields"
+            >
+              <span className="inline-flex items-center gap-2">
+                <svg className="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path d="M10 2l7 3v2h-1v8h1v2H3v-2h1V7H3V5l7-3zm-4 5v8h2V7H6zm4 0v8h2V7h-2zm4 0v8h2V7h-2z" />
+                </svg>
+                <span>Banker: Host the table, set wagers, etc.</span>
+              </span>
+              <svg
+                className={clsx("h-4 w-4 transition-transform", bankerFormExpanded ? "rotate-180" : "rotate-0")}
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.23 7.21a.75.75 0 011.06.02L10 10.44l3.71-3.21a.75.75 0 111.04 1.08l-4.24 3.67a.75.75 0 01-1.02 0L5.21 8.31a.75.75 0 01.02-1.1z" />
+              </svg>
+            </button>
+          </header>
+          {formErrors.create && (
+            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">
+              {formErrors.create}
+            </div>
+          )}
+          {bankerFormExpanded && (
+            <div className="flex flex-col gap-3" id="banker-create-fields">
+              <p className="text-xs text-slate-500 -mt-1">
+                Tables seat up to 11 players at once (more can watch or queue) - size the buy-in and bank
+                below for however many you're expecting tonight.
+              </p>
+              <label className="text-sm">Game Name
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
+                  autoCapitalize="words"
+                />
+              </label>
+              <label className="text-sm">Custom Game ID (optional)
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2 uppercase"
+                  value={customRoomId}
+                  onChange={(e) => setCustomRoomId(e.target.value.toUpperCase())}
+                  placeholder="e.g. CHOLENT-613"
+                  maxLength={20}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <span className="text-xs text-slate-500">Use 4-20 characters with letters, numbers, or hyphen.</span>
+              </label>
+              <label className="text-sm">First name (required)
+                <input
+                  required
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={bankerFirstName}
+                  onChange={(e) => setBankerFirst(e.target.value)}
+                  autoComplete="given-name"
+                  autoCapitalize="words"
+                />
+              </label>
+              <label className="text-sm">Last name (optional)
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={bankerLastName}
+                  onChange={(e) => setBankerLast(e.target.value)}
+                  autoComplete="family-name"
+                  autoCapitalize="words"
+                />
+              </label>
+              <label className="text-sm">Password (optional for joining)
+                <input
+                  type="password"
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={roomPassword}
+                  onChange={(e) => setRoomPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label className="text-sm">Buy-in per player
+                <NumberField
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  min={1}
+                  value={String(buyIn)}
+                  onChange={(next) => setBuyIn(Number(next) || 0)}
+                  label="Buy-in per player"
+                />
+                <span className="text-xs text-slate-500">$50-200 is typical for a casual night.</span>
+              </label>
+              <label className="text-sm">Banker starting bankroll
+                <NumberField
+                  // Deliberately no min: this field answers an EMPTY value by
+                  // falling back to the buy-in (below), and a min would clamp
+                  // "" to 1 before the handler ever saw it -- silently killing
+                  // the only way to undo a manual bankroll. The server
+                  // validates the real bound (normalizeMoney).
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={String(bankerBankroll)}
+                  label="Banker starting bankroll"
+                  onChange={(raw) => {
+                    // Clearing it falls back to the buy-in and forgets that
+                    // the operator had ever set it by hand -- the "Reset to
+                    // buy-in" link below reads that same flag.
+                    // 0 is treated as empty rather than as a value. It
+                    // cannot use min={1} -- that would clamp "" to 1 and kill
+                    // the fall-back above -- and the server refuses a bankroll
+                    // of 0 outright (invalid_bankroll), so without this the
+                    // only feedback would be an error after Create.
+                    if (raw === "" || Number(raw) <= 0) {
+                      setBankerBankroll(buyIn);
+                      setBankerBankrollManuallySet(false);
+                      return;
+                    }
+                    const next = Number(raw);
+                    if (Number.isNaN(next)) return;
+                    setBankerBankroll(next);
+                    setBankerBankrollManuallySet(next !== buyIn);
+                  }}
+                />
+              </label>
+              <div className="flex flex-col gap-1 text-xs text-slate-500 -mt-1">
+                <p>
+                  Defaults to the player buy-in amount, but the bank pays out across every seated player --
+                  with more than one or two, a bank sized like Practice mode's own default (about 4x the
+                  buy-in) gives more room before you need to top up mid-game.
+                </p>
+                <div className="flex items-center gap-3">
+                  {bankerBankrollManuallySet && (
+                    <button
+                      type="button"
+                      className="text-blue-700 font-semibold"
+                      onClick={() => {
+                        setBankerBankroll(buyIn);
+                        setBankerBankrollManuallySet(false);
+                      }}
+                    >
+                      Match buy-in
+                    </button>
+                  )}
+                  {bankerBankroll !== buyIn * 4 && (
+                    <button
+                      type="button"
+                      className="text-blue-700 font-semibold"
+                      onClick={() => {
+                        setBankerBankroll(buyIn * 4);
+                        setBankerBankrollManuallySet(true);
+                      }}
+                    >
+                      Set to 4x buy-in
+                    </button>
+                  )}
+                </div>
+              </div>
+              <label className="text-sm">Decks to use (optional)
+                <NumberField
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  max={16}
+                  placeholder="auto"
+                  value={preferredDecks}
+                  onChange={setPreferredDecks}
+                  label="Decks to use"
+                />
+                <span className="text-xs text-slate-500">Set this before starting the first round; leave blank to auto-size by players (supports large tables).</span>
+              </label>
+              <AgeAckCheckbox id="age-ack-create" checked={createAgeAcknowledged} onChange={setCreateAgeAcknowledged} />
+                <button
+                  type="submit"
+                  className="bg-accent text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent hover:bg-accent/90"
+                >
+                  Create
+                </button>
+            </div>
+          )}
+        </form>
         )}
 
 

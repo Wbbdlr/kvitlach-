@@ -1,7 +1,7 @@
 // Felt theme system for the table UI overhaul.
 // Felt is a per-user preference (like the sound/music toggles), persisted to
 // localStorage so each player's table color sticks across reloads. It only
-// affects the local client's view — never other players'.
+// affects the local client's view - never other players'.
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -44,7 +44,7 @@ export function loadFelt(): FeltName {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (saved && saved in FELTS) return saved as FeltName;
   } catch {
-    /* localStorage unavailable (private mode, etc.) — fall back to default */
+    /* localStorage unavailable (private mode, etc.) - fall back to default */
   }
   return DEFAULT_FELT;
 }

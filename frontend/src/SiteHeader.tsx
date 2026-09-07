@@ -2,6 +2,8 @@ import { cardImages } from "./table/selectors";
 const NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/disclaimer", label: "Disclaimer" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
   { href: "/contact", label: "Contact" },
 ];
 

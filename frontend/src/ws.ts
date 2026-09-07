@@ -176,7 +176,7 @@ export class WSClient {
     if (onReconnect) this.reconnectListeners.add(onReconnect);
     this.closedDeliberately = false;
     // Guard against duplicate concurrent sockets (e.g. React StrictMode's dev-only
-    // double-invoked effects calling connect() twice in quick succession) — a second
+    // double-invoked effects calling connect() twice in quick succession) - a second
     // live socket would race the first to resume the same session token, and the
     // loser's invalid_session error would wipe out the winner's just-restored state.
     if (this.connecting || this.socket?.readyState === WebSocket.OPEN) return;

@@ -34,7 +34,7 @@ export const ERROR_COPY: Record<string, string> = {
   invite_required: "This table is invite-only right now. Enter your access code to play.",
   invalid_invite: "That access code isn't right. Check it and try again.",
   room_capacity:
-    "The server is hosting as many tables as it can right now. Existing games are unaffected — try again in a few minutes.",
+    "The server is hosting as many tables as it can right now. Existing games are unaffected - try again in a few minutes.",
   practice_capacity:
     "All practice tables are busy right now. Try again in a few minutes.",
   rate_limited: "Too many requests. Please slow down.",
@@ -56,10 +56,11 @@ export const ERROR_COPY: Record<string, string> = {
   insufficient_funds: "You don't have enough chips for that.",
   invalid_bet: "That bet isn't valid for this hand.",
   invalid_bankroll: "Enter a valid starting amount for the bank.",
-  invalid_buyin: "Enter a valid buy-in — whole chips, at least 1.",
+  invalid_buyin: "Enter a valid buy-in - whole chips, at least 1.",
   invalid_bank_amount: "Bank wager must equal the remaining bank.",
   bank_empty: "The bank has no chips left.",
   bank_locked: "Bank showdown in progress. Please wait.",
+  bank_not_empty: "The bank still has chips - there is nothing to refill yet.",
   bank_not_in_decision: "No bank decision is pending.",
   banker_deciding: "The banker must decide how to proceed.",
 
@@ -76,7 +77,7 @@ export const ERROR_COPY: Record<string, string> = {
   // The banker, and being acted on by the banker.
   forbidden: "Only the banker can perform that action.",
   banker_missing: "The banker isn't at the table right now.",
-  banker_not_absent: "The banker is back — the round can carry on.",
+  banker_not_absent: "The banker is back - the round can carry on.",
   banker_not_absent_long_enough: "Give the banker another moment to reconnect.",
   buyin_blocked: "The banker has turned off buy-in requests for you.",
   rename_blocked: "The banker has turned off name changes for you.",
@@ -85,6 +86,10 @@ export const ERROR_COPY: Record<string, string> = {
   player_not_found: "That player is no longer at the table.",
   request_not_found: "That request has already been handled.",
   invalid_target: "That action doesn't apply to that player.",
+  banker_cannot_leave:
+    "You're the banker - the bank is your own chips, so the table can't run without you. Pass the bank to another player, or end the game for everyone.",
+  cannot_skip_wagered:
+    "There are chips on that hand, so it can't be skipped. Stand for them instead - the hand plays as dealt, and still wins if the bank busts.",
 };
 
 // Last resort. A code with no entry still beats a blank message, and the
@@ -92,5 +97,17 @@ export const ERROR_COPY: Record<string, string> = {
 // code from the backend should never actually land here.
 export function errorCopy(code: string | undefined): string {
   if (!code) return "Something went wrong.";
+  // The one code the backend builds rather than names: applyBet throws
+  // `bank_limit:${available}`, carrying the number the wager has to fit
+  // inside. A template literal is invisible to errorCopy.test.ts's grep of
+  // the backend for codes, which is why this had no entry at all and fell
+  // through to the underscore-swap -- surfacing as "bank limit:400" to a
+  // player who had just been refused a wager and told nothing useful.
+  if (code.startsWith("bank_limit:")) {
+    const available = Number(code.slice("bank_limit:".length));
+    return Number.isFinite(available)
+      ? `The bank can only cover $${available.toLocaleString()} against your seat right now.`
+      : "That wager is more than the bank can cover right now.";
+  }
   return ERROR_COPY[code] ?? code.replace(/_/g, " ");
 }

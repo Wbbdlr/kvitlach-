@@ -319,14 +319,14 @@ for how to work in this repo.
 - [ ] The backend suite's intermittent full-run flake (found 2026-08-09) is
       now rare but not fully eliminated. Root-caused and fixed 3 confirmed
       instances (`turn-order.test.ts`, `ws-auth.test.ts`,
-      `abandoned-banker.test.ts` — see "Done" below): tests calling
+      `abandoned-banker.test.ts` - see "Done" below): tests calling
       `applyBet`/`applyHit` right after `startRound()` without pinning that
       seat's hand first, so a real crypto-random card can rarely complete a
       natural 21/bust and resolve the turn before the test's own scripted
       moves run. NOT a concurrency race (reproduces with
       `--no-file-parallelism` too). Post-fix measured rate: 1 failure in the
       last ~63 full-suite runs (down from ~20–30%). That one residual
-      failure's specific file/cause wasn't captured — if it recurs, capture
+      failure's specific file/cause wasn't captured - if it recurs, capture
       full output (`npx vitest run > /tmp/out.log 2>&1`) and grep the same
       "randomly-dealt card auto-resolves a turn early" pattern before
       assuming a new bug.
@@ -939,7 +939,7 @@ for how to work in this repo.
       badge wasn't load-bearing for anything. TableRoot.tsx already solves
       the same underlying problem better, inside an active game: its own
       connection tag only renders when `wsStatus !== "connected"`, silent
-      while healthy, a plain-English "Connection lost — reconnecting…"
+      while healthy, a plain-English "Connection lost - reconnecting…"
       only when something's actually wrong -- that's the pattern to follow
       if a lobby-side warning is ever wanted back, not a permanent status
       pill. Also dropped the now-unused `wsUrl` destructure from App.tsx
@@ -1520,7 +1520,7 @@ for how to work in this repo.
       before betting), `ws-auth.test.ts` (same, plus removed the now-
       resolved standing `DEBUG_DUMP` debug line), `abandoned-banker.test.ts`
       (stacked the deck for a bet that was only half-guarded).
-- [x] Richer URLs — distinguishable lobby vs. table (`/table/:roomId`,
+- [x] Richer URLs - distinguishable lobby vs. table (`/table/:roomId`,
       `frontend/src/router.tsx`). Shareable practice-mode link was
       explicitly decided against (practice mode stays single-human). See
       "URL model" below for the current shape and the remount pitfall this
@@ -1535,24 +1535,24 @@ for how to work in this repo.
       press Back, land cleanly on the lobby with no stale session) and with
       5 new tests in `state.test.ts`.
 - [x] `/metrics` endpoint (Prometheus text format, unauthenticated like
-      `/health`) — `backend/src/metrics.ts`. Tracks HTTP request count, WS
+      `/health`) - `backend/src/metrics.ts`. Tracks HTTP request count, WS
       connections (current gauge + total), WS messages received, rounds
       completed, and round duration (histogram, deal to finalize).
-- [x] Retired the root-level legacy Elixir/Phoenix tree — 121 dead files
+- [x] Retired the root-level legacy Elixir/Phoenix tree - 121 dead files
       (~20MB: compiled JS/CSS bundles, `kvitlech-master.zip`, `fly.toml` for
       an old Fly.io deploy, duplicate card art, `mix.exs`/`.ex` sources) removed
       from the working tree; still recoverable from git history if ever needed.
       `notes/2026-01-01-change-summary.md` (a real changelog about the live
       `store.ts`, not legacy code) was kept.
-- [x] Cryptographically secure shuffle RNG — `deck.ts`'s Fisher-Yates now
+- [x] Cryptographically secure shuffle RNG - `deck.ts`'s Fisher-Yates now
       uses `crypto.randomInt` instead of `Math.random()`. Fairness sim
       (`npm run simulate`) confirms unchanged odds/distributions.
-- [x] Automated frontend coverage for key flows — 169 tests across lobby,
+- [x] Automated frontend coverage for key flows - 169 tests across lobby,
       table view, dock, drawers, stage maths, and store/WS handling.
-- [x] Persistence layer so tables survive process restarts — `db.ts`
+- [x] Persistence layer so tables survive process restarts - `db.ts`
       (`rooms` / `rounds` / `connections`), rehydrated by `loadFromDB()`.
       Optional: no `DATABASE_URL` runs fully in-memory.
-- [x] Production deploy recipe — `deploy/docker-compose.yml`,
+- [x] Production deploy recipe - `deploy/docker-compose.yml`,
       `deploy/build-tarball.sh`, and the Cloudflare Tunnel section in the README.
 - [x] Ambient music player with a mute toggle.
 - [x] Sound effects for deal, bet, hit/stand, win, futch, Eleveroon, reshuffle,

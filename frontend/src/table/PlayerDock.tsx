@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Turn } from "../types";
 import { Icon } from "./icons";
+import { NumberField } from "../NumberField";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
 import { useDialogFocus } from "../useDialogFocus";
@@ -86,6 +87,9 @@ export function PlayerDock({
   // portalled panel, since a click landing inside the (now-elsewhere-in-the-
   // DOM) panel is not "outside" either.
   const [quickBetOpen, setQuickBetOpen] = useState(false);
+  // Whether this open session of the tray has already put a chip down -- see
+  // setQuickBet for why the first tap behaves differently from the rest.
+  const [quickBetStacked, setQuickBetStacked] = useState(false);
   const [quickBetAnchor, setQuickBetAnchor] = useState<QuickBetAnchor | null>(null);
   const quickBetRef = useRef<HTMLSpanElement>(null);
   const quickBetTriggerRef = useRef<HTMLButtonElement>(null);
@@ -113,17 +117,12 @@ export function PlayerDock({
         ...(alignRight ? { right: window.innerWidth - rect.right } : { left: rect.left }),
       });
     }
+    setQuickBetStacked(false);
     setQuickBetOpen(true);
   };
 
   const hasBet = (turn.bet ?? 0) > 0;
   const drawLabel = hasBet ? "Hit" : "Blatt";
-
-  // The card that follows a confirmed BANK! is issued by state.ts off that
-  // bet's own ack -- see its pendingBankAutoHit comment for why watching
-  // turn.bet from here could not work (it fired inside the window where
-  // pendingAction still blocks every action, and never fired at all for a
-  // seat that had already bet).
 
   const adjustBet = (delta: number) => {
     setBetAmount((prev) => String(Math.max(1, Math.floor(Number(prev) || 0) + delta)));
@@ -137,19 +136,23 @@ export function PlayerDock({
     setBetError(undefined);
   };
 
-  const handleAmountBlur = () => {
-    setBetAmount(String(Math.max(1, Math.floor(Number(betAmount) || 0))));
-  };
 
   // Fills in the most the player can bet right now -- their own chips, or
-  // the bank's remaining window, whichever is smaller. Nudged $1 under the
-  // bank's exact cap when that's the binding constraint: applyBet on the
-  // server auto-treats a bet landing exactly on the bank's available amount
-  // as a bank-lock (same rule BANK! itself relies on), and that all-in
-  // moment deserves the confirm dialog below, not a same-as-any-other-bet
-  // MAX tap.
-  const rawMax = Math.max(0, Math.min(wallet - (turn.bet ?? 0), bankIncrement));
-  const maxBettable = rawMax > 1 && rawMax === bankIncrement ? rawMax - 1 : rawMax;
+  // the bank's remaining window, whichever is smaller.
+  //
+  // This used to stop $1 SHORT whenever the bank was the binding constraint,
+  // because applyBet auto-treats a bet landing exactly on the bank's
+  // available amount as a bank-lock, and the nudge kept a MAX tap from
+  // silently becoming an all-in showdown. Reported as a bug on its own terms
+  // (2026-09-06): "max bet would not let me wager all that the banker had
+  // available", and the owner's call was that a button named MAX must mean
+  // max -- if that triggers a BANK! showdown, say so rather than quietly
+  // wagering a dollar less than asked. So the amount is honest now and the
+  // warning below carries the meaning the nudge used to carry silently.
+  const maxBettable = Math.max(0, Math.min(wallet - (turn.bet ?? 0), bankIncrement));
+  // True when taking MAX would land exactly on the bank's window, which is
+  // what makes it a bank-lock -- same condition applyBet itself uses.
+  const maxTriggersBank = maxBettable > 0 && maxBettable === bankIncrement;
 
   const handleMax = () => {
     if (maxBettable < 1) return;
@@ -163,10 +166,27 @@ export function PlayerDock({
   // for typing the number, not a different path around it. Closes the panel
   // on selection -- it's a pick, not a settings toggle a player might want
   // to leave open.
+  /**
+   * A tapped chip goes ON the stack, it does not replace it.
+   *
+   * Asked for after playing 11.4: "pressed in succession should add those
+   * chips to the selected total (so if someone hits the 25 in that menu, then
+   * hits it again, it should be 50)." Which is why the tray no longer closes
+   * on a tap -- closing it was what made a second tap impossible.
+   *
+   * The FIRST tap after opening replaces, and only later taps add. Pure
+   * addition is the obvious reading and is wrong in the common case: the
+   * field sits at the $5 default, so a first tap of $25 would land on $30 and
+   * the very example above would produce 30 then 55. "Opening the tray starts
+   * a fresh stack" is a rule a player can hold in their head, and it makes
+   * reopening the tray the way to start over.
+   */
   const setQuickBet = (amount: number) => {
-    setBetAmount(String(amount));
+    setBetAmount((prev) =>
+      quickBetStacked ? String(Math.max(1, Math.floor(Number(prev) || 0) + amount)) : String(amount)
+    );
+    setQuickBetStacked(true);
     setBetError(undefined);
-    setQuickBetOpen(false);
   };
 
   const handleBet = () => {
@@ -207,18 +227,26 @@ export function PlayerDock({
   // containing block for anything position:fixed underneath it.
   return (
     <div className="k-dock">
+      {/* .k-dock itself must stay overflow: visible for DockGrips (below) --
+          see index.css's own comment on .k-dock and .k-dock-content. This
+          wrapper is what actually lays the buttons out and what the compact
+          breakpoint's "last resort" horizontal scroll applies to. */}
+      <div className="k-dock-content">
       <div className="k-betbox">
         <span className="k-cur">$</span>
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          className="k-amt"
+        {/* Our own pad, not the phone's -- see NumberField.tsx. The bet
+            field is the worst place on the felt for an OS keyboard: it sits
+            at the very bottom of a landscape viewport, so Android's IME
+            covered the hand being wagered on. */}
+        <NumberField
           value={betAmount}
-          onChange={(e) => handleAmountChange(e.target.value)}
-          onBlur={handleAmountBlur}
-          onFocus={(e) => e.target.select()}
-          aria-label="Bet amount"
+          onChange={(next) => {
+            handleAmountChange(next);
+          }}
+          min={1}
+          max={Math.max(1, maxBettable)}
+          label="Bet amount"
+          className="k-amt"
         />
         <span className="k-stepper">
           <button type="button" className="k-stepbtn" onClick={() => adjustBet(BET_STEP)} aria-label="Increase bet">
@@ -233,7 +261,11 @@ export function PlayerDock({
           className="k-maxbtn"
           disabled={maxBettable < 1}
           onClick={handleMax}
-          title="Fill in the most you can bet right now (your chips vs. what the bank can cover)."
+          title={
+            maxTriggersBank
+              ? `Fill in $${maxBettable.toLocaleString()} -- the bank's whole window for your seat. Betting it calls BANK!, and the banker must resolve it immediately.`
+              : "Fill in the most you can bet right now (your chips vs. what the bank can cover)."
+          }
         >
           MAX
         </button>
@@ -282,11 +314,26 @@ export function PlayerDock({
                   role="menuitem"
                   className="k-btn ghost sm"
                   onClick={() => setQuickBet(amount)}
-                  aria-label={`Set bet to $${amount}`}
+                  aria-label={`Add $${amount} to the bet`}
                 >
                   ${amount}
                 </button>
               ))}
+              {/* The stack has to be readable without looking away from the
+                  tray -- the bet field is behind it on a phone, which is
+                  exactly where these are tapped. */}
+              <span className="k-quickbet-total" data-testid="quickbet-total">
+                ${Math.max(0, Math.floor(Number(betAmount) || 0)).toLocaleString()}
+              </span>
+              <button
+                type="button"
+                role="menuitem"
+                className="k-btn ghost sm"
+                onClick={() => setQuickBetOpen(false)}
+                title="Close the chip tray - the amount stays in the bet field"
+              >
+                Done
+              </button>
             </div>
           </StageOverlay>
         )}
@@ -302,14 +349,31 @@ export function PlayerDock({
         Stand
       </button>
 
+      {/* Three states, not two. `disabled` stays reserved for "there is
+          nothing to wager at all" (canBank). A seat that simply cannot COVER
+          the bank's window is a different case and deliberately stays
+          pressable, because the confirm dialog's shortfall branch is where
+          the number is worth reading -- that was the original reasoning for
+          leaving it fully live, and it still holds.
+          What did not hold: it also looked identical to a live action. On a
+          practice table the bank's slider floor is the player's own buy-in,
+          so the bank is NEVER smaller than the player, so BANK! was
+          unaffordable on every hand of every solo game -- and reported, on
+          exactly that table, as "the BANK! showdown does not actually
+          trigger or work" (2026-09-06). It triggered fine; it was never
+          affordable, and nothing said so until you had already committed to
+          pressing it. The dimmed style says "blocked, ask me why" at a
+          glance while the dialog still does the explaining. */}
       <button
         type="button"
         className="k-btn bankall sm"
         disabled={!canBank}
-        style={!canBank ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+        style={!canBank || bankShortfall ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
         onClick={() => setBankConfirmOpen(true)}
         title={
-          !canBank && bankDisabledReason
+          bankShortfall
+            ? `BANK! needs $${bankBetAmount.toLocaleString()} -- more than your $${wallet.toLocaleString()} covers.`
+            : !canBank && bankDisabledReason
             ? bankDisabledReason
             : "BANK! wagers the remaining available bank for your seat; the banker must resolve it immediately."
         }
@@ -342,6 +406,18 @@ export function PlayerDock({
           branch when they press BANK! anyway. */}
       {betError && <span className="k-tag bust">{betError}</span>}
 
+      {/* The one thing MAX's tooltip says that a phone can never read: that
+          the amount now sitting in the box is the bank's whole window, so
+          pressing Bet calls a BANK! showdown rather than placing an ordinary
+          wager. MAX used to prevent this case by quietly filling in $1 less
+          (see maxBettable's comment); saying it out loud is what replaced
+          that. Conditioned on the TYPED amount, not on MAX having been
+          pressed -- typing the number by hand lands on the same showdown,
+          and the warning has to follow the money, not the button. */}
+      {!betError && bankIncrement > 0 && Number(betAmount) === bankIncrement && (
+        <span className="k-tag warn">Bet ${bankIncrement.toLocaleString()} calls BANK!</span>
+      )}
+
       {/* Portalled to the body. It is a position:fixed overlay and it lives
           inside .k-dock, which now carries a scale transform whenever the
           player has resized the dock -- and a transformed ancestor becomes the
@@ -363,7 +439,7 @@ export function PlayerDock({
               <>
                 <div className="k-bank-confirm-title">Not enough chips</div>
                 <p className="k-bank-confirm-body">
-                  BANK! wagers ${bankBetAmount.toLocaleString()} -- the bank's full available window -- but you only
+                  BANK! wagers ${bankBetAmount.toLocaleString()} - the bank's full available window - but you only
                   have ${wallet.toLocaleString()} to cover it.
                 </p>
                 <div className="k-bank-confirm-actions">
@@ -377,7 +453,7 @@ export function PlayerDock({
                 <div className="k-bank-confirm-title">Bet BANK!?</div>
                 <p className="k-bank-confirm-body">
                   You're about to wager <b>${bankBetAmount.toLocaleString()}</b> -- the bank's entire available
-                  window for your seat. Everyone at the table will see it. Ready?
+                  window for your seat. The banker has to settle it right away. Ready?
                 </p>
                 <div className="k-bank-confirm-actions">
                   <button type="button" className="k-btn stand" onClick={() => setBankConfirmOpen(false)}>
@@ -393,6 +469,7 @@ export function PlayerDock({
         </div>
         </StageOverlay>
       )}
+      </div>
 
       <DockGrips dockPanel={dockPanel} />
     </div>

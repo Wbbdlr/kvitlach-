@@ -168,6 +168,51 @@ describe("admin panel controls", () => {
     expect(broadcasts).toHaveLength(0);
   });
 
+  // The names the practice tables use. Same wiring risk as limits above, with
+  // a sharper edge: the panel and the store must hold ONE BotNames instance or
+  // an operator saves a list that no table ever draws from. http-server takes
+  // it off the store for exactly that reason, so this asserts through a real
+  // practice room rather than through the settings object.
+  it("changes the names a new practice table deals with", async () => {
+    await post("/admin/bot-names", { banker: "Der Zeide", players: "Alef, Beis, Gimmel" });
+
+    const { room } = store.createPracticeRoom({ firstName: "Rivka", botCount: 3 });
+    expect(room.players.find((p) => p.type === "admin")!.firstName).toBe("Der Zeide");
+    const bots = room.players.filter((p) => p.isBot && p.type === "player").map((p) => p.firstName);
+    expect(bots.sort()).toEqual(["Alef", "Beis", "Gimmel"]);
+  });
+
+  it("puts the built-in names back when reset", async () => {
+    await post("/admin/bot-names", { banker: "Der Zeide", players: "Alef" });
+    expect(store.botNames.isDefault("players")).toBe(false);
+
+    await post("/admin/bot-names", { reset: "1" });
+    expect(store.botNames.isDefault("players")).toBe(true);
+    expect(store.botNames.isDefault("banker")).toBe(true);
+  });
+
+  it("renders the current lists back into the editor's textareas", async () => {
+    await post("/admin/bot-names", { banker: "Der Zeide", players: ["Alef","Beis"].join(String.fromCharCode(10)) });
+    const res = await fetch(`${base}/admin/bot-names`, { headers: { cookie } });
+    const html = await res.text();
+    // Editable means editable: a form that shows an empty box over a saved
+    // list makes every edit a retype, which is how a name gets lost.
+    expect(html).toContain("Der Zeide");
+    expect(html).toContain(["Alef","Beis"].join(String.fromCharCode(10)));
+    await post("/admin/bot-names", { reset: "1" });
+  });
+
+  it("refuses the name editor without a session", async () => {
+    const res = await fetch(`${base}/admin/bot-names`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ players: "Sneaky" }),
+      redirect: "manual",
+    });
+    expect(res.status).toBe(401);
+    expect(store.botNames.isDefault("players")).toBe(true);
+  });
+
   it("refuses every control without a session", async () => {
     const before = access.getModes();
     const res = await fetch(`${base}/admin/access`, {

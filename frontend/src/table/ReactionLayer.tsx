@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { REACTION_EMOJIS, REACTION_PHRASES, REACTION_GAME_CALLS } from "./selectors";
+import { REACTION_EMOJIS, REACTION_EMOJI_LABELS, REACTION_PHRASES, REACTION_GAME_CALLS } from "./selectors";
 import { useClickOutside } from "./clickOutside";
 import { StageOverlay } from "./StageOverlay";
 
@@ -72,7 +72,7 @@ export function ReactionLayer({ onReact, disabled }: ReactionLayerProps) {
   };
 
   return (
-    <div ref={wrapRef} className="relative z-30">
+    <div ref={wrapRef} data-testid="reaction-bar" className="relative z-[var(--z-hud-status)]">
       {open && (
         <StageOverlay>
           {/* Seven columns rather than five takes 26 emoji from six rows to
@@ -84,13 +84,16 @@ export function ReactionLayer({ onReact, disabled }: ReactionLayerProps) {
               actually ended up. */}
           <div
             ref={popoverRef}
-            // z-[60], matching --z-hud-popover's raw value (docs/mobile-ui.md
-            // Part 3) -- the same tier ChromeMenu and the appearance panel
-            // use for a button-anchored popover. Those two stay position:
+            data-testid="reaction-picker"
+            // Carries the token itself rather than a copy of its number --
+            // this comment used to read "z-[60], matching --z-hud-popover's
+            // raw value", hardcoding a token that had never been created.
+            // Same tier ChromeMenu and the appearance panel use for a
+            // button-anchored popover. Those two stay position:
             // absolute because their own ancestor is the unscaled chrome
             // layer; this one is portalled instead, which is why it needs
             // position: fixed and real coordinates rather than a percentage.
-            className="fixed z-[60] w-[min(92vw,340px)] overflow-y-auto overscroll-contain rounded-lg border border-amber-500/30 bg-[rgba(12,20,15,0.96)] p-2 shadow-xl"
+            className="fixed z-[var(--z-popover)] w-[min(92vw,340px)] overflow-y-auto overscroll-contain rounded-lg border border-amber-500/30 bg-[rgba(12,20,15,0.96)] p-2 shadow-xl"
             style={{
               top: anchor.top,
               bottom: anchor.bottom,
@@ -109,6 +112,7 @@ export function ReactionLayer({ onReact, disabled }: ReactionLayerProps) {
                     onReact(emoji);
                     setOpen(false);
                   }}
+                  aria-label={REACTION_EMOJI_LABELS[emoji] ?? emoji}
                 >
                   {emoji}
                 </button>

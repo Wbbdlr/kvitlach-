@@ -9,7 +9,7 @@
 // others were bumped to v2.5. SiteHeader/SiteFooter fixed the duplication;
 // this constant is what keeps the number itself from drifting the same way
 // again now that there's only ever one place to bump it.
-export const APP_VERSION = "10.6";
+export const APP_VERSION = "11.9";
 
 export interface VersionHistoryEntry {
   version: string;
@@ -115,6 +115,19 @@ export const VERSION_HISTORY: VersionHistoryEntry[] = [
   { version: "10.4", date: "2026-09-03" },
   { version: "10.5", date: "2026-09-03" },
   { version: "10.6", date: "2026-09-03" },
+  { version: "10.7", date: "2026-09-04" },
+  { version: "10.8", date: "2026-09-04" },
+  { version: "10.9", date: "2026-09-04" },
+  { version: "11.0", date: "2026-09-04" },
+  { version: "11.1", date: "2026-09-04" },
+  { version: "11.2", date: "2026-09-04" },
+  { version: "11.3", date: "2026-09-06" },
+  { version: "11.4", date: "2026-09-06" },
+  { version: "11.5", date: "2026-09-07" },
+  { version: "11.6", date: "2026-09-07" },
+  { version: "11.7", date: "2026-09-07" },
+  { version: "11.8", date: "2026-09-07" },
+  { version: "11.9", date: "2026-09-07" },
 ];
 
 export function firstPushedDate(version: string): string | undefined {

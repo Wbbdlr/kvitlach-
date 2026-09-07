@@ -45,19 +45,32 @@ async function bankScenario(ackTurnState: string) {
   return { socket, hits: socket.sent.filter((m) => m.type === "turn:hit") };
 }
 
-describe("BANK! auto-hit is driven off the bet's ack", () => {
-  it("deals the follow-up card once the BANK! bet is acked", async () => {
+// A confirmed BANK! deals ONE card, like every other bet.
+//
+// There WAS an auto-hit here: a follow-up card issued off the bet's own ack,
+// on the theory that a seat wagering the bank's whole window had already
+// decided to draw again. It was broken from the day it was written (fired
+// inside the window where pendingAction blocks every action) and reached a
+// real player for the first time in v11.6, who reported it in one line:
+// "when i confirmed BANK! it gave me TWO cards instead of once".
+//
+// handleBet deals exactly one card for a bet of any size, the bank lock
+// stays at stage "player" while that seat is pending, and the player can hit
+// or stand from there like anyone else. The tests below pin that no second
+// card is ever sent -- including the case the old code was most confident
+// about, an ordinary BANK! that leaves the hand live.
+describe("a confirmed BANK! draws one card and hands the turn back", () => {
+  it("sends no follow-up hit when the BANK! bet leaves the hand live", async () => {
     const { hits } = await bankScenario("pending");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].payload.eleveroon).toBe(true); // carried from the wager
+    expect(hits).toHaveLength(0);
   });
 
-  it("does NOT hit when the BANK! bet already resolved the hand", async () => {
+  it("sends no follow-up hit when the BANK! bet resolved the hand outright", async () => {
     const { hits } = await bankScenario("lost");
     expect(hits).toHaveLength(0);
   });
 
-  it("does not attach the auto-hit to a later ordinary bet", async () => {
+  it("sends no follow-up hit after an ordinary bet either", async () => {
     vi.resetModules();
     const { useGameStore } = await import("./state");
     useGameStore.getState().init();

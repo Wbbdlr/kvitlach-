@@ -1,7 +1,7 @@
 # Game rules (developer reference)
 
 Kvitlach is a traditional Chanukah card game. It resembles blackjack but is
-**not** blackjack — several rules below have no blackjack equivalent and are the
+**not** blackjack - several rules below have no blackjack equivalent and are the
 usual source of bugs. This documents the rules *as implemented*; the code
 (`backend/src/deck.ts`, `turn.ts`, `round.ts`) is the source of truth. The
 player-facing explanation lives in `frontend/src/RulesModals.tsx`.
@@ -20,11 +20,11 @@ Card values (`deck.ts`):
 | 1–10 | face value | |
 | 2 | 2 | **rosier** ("framed") |
 | 11 | 11 | **rosier** ("framed") |
-| 12 | **12, 9, or 10** | flexible — see below |
+| 12 | **12, 9, or 10** | flexible - see below |
 
 ## The flexible 12
 
-The 12 is worth 12, 9, *or* 10, and **re-reads itself at every evaluation** —
+The 12 is worth 12, 9, *or* 10, and **re-reads itself at every evaluation** -
 including later in the same hand as more cards arrive. A hand holding a 12 has
 no single total; it has a *set* of achievable totals.
 
@@ -37,7 +37,7 @@ consider that set:
 - "Best total" for display is the highest total not over 21.
 
 Never collapse a 12 to a single value, and never use the best/highest total
-where "any achievable total" is meant — that exact mistake caused a real
+where "any achievable total" is meant - that exact mistake caused a real
 Eleveroon bug (a hand of 12+2 reads best as 14 but is *also* readable as 11).
 
 ## Rosier (framed) pair
@@ -55,7 +55,7 @@ win, regardless of its numeric total. Only ever a two-card hand.
 4. otherwise → **pending**
 
 Note a hand flips to **won** the instant 21 becomes reachable, during the
-player's own turn — before the banker acts. A win decided later at showdown
+player's own turn - before the banker acts. A win decided later at showdown
 arrives as a `standby` turn resolving to `won`. The two are different moments
 and the UI sounds them differently.
 
@@ -63,11 +63,11 @@ and the UI sounds them differently.
 
 A **blatt** is a draw taken with no money wagered. It cannot win or lose money:
 it settles as a **push** whatever the cards say, including a bust. A blatt hand
-also may not keep drawing past 21 — there's no legal move left, so the turn
+also may not keep drawing past 21 - there's no legal move left, so the turn
 ends rather than sitting there dead.
 
 In code, a no-wager turn is `bet === 0 && settledBet === 0`. `calculateEndState`
-must never relabel such a hand as lost — telling a player they lost a hand they
+must never relabel such a hand as lost - telling a player they lost a hand they
 never wagered on is a bug, even though $0 moves either way.
 
 ## Futch
@@ -78,7 +78,7 @@ This distinction matters most for the banker: the banker's `state` also reads
 `"lost"` when they merely finish the round down on money with a perfectly good
 hand. That's why `Turn.busted` is a separate field, set from the cards. Use
 `busted` (or `statusDisplay`'s `FUTCHED!` label) for anything that means "went
-over 21" — the futch sound, the futch banner, the futch tag.
+over 21" - the futch sound, the futch banner, the futch tag.
 
 ## Eleveroon
 
@@ -92,7 +92,7 @@ Two implementation requirements:
   (`getSums(...).includes(11)`), not the best total.
 - The ignored card stays in the hand, flagged `eleveroonIgnored`, and is
   excluded from later sum calculations. It is still rendered (with its own
-  visual treatment) — the player should see what they were saved from.
+  visual treatment) - the player should see what they were saved from.
 
 ## Showdown and the banker
 
@@ -101,7 +101,7 @@ Two implementation requirements:
 - **Ties go to the banker.**
 - If the banker busts, every non-busted player wins regardless of total.
 - The banker's per-round result is reported as both money (`bet` = net) and
-  head-to-head counts (`beat` / `lostTo`) — one big loss can leave the banker
+  head-to-head counts (`beat` / `lostTo`) - one big loss can leave the banker
   down on money while still beating most of the table, and both are shown.
 
 ## BANK!
@@ -116,5 +116,5 @@ amount is treated as a bank-lock too.
 
 One round = every seated player acts in turn order, then the banker. A turn
 timer auto-skips a player who doesn't act. The server enforces turn state
-(`turn_not_pending`, `not_your_turn`) — the client's disabled buttons are a
+(`turn_not_pending`, `not_your_turn`) - the client's disabled buttons are a
 convenience, not the guard.

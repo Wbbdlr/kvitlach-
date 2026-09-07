@@ -20,14 +20,25 @@ import { resolve } from "node:path";
 // exactly that comment.
 const CSS = readFileSync(resolve(__dirname, "../../index.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
-/** selector is a plain class name, e.g. "k-reaction" (no leading dot). */
+/**
+ * selector is a plain class name, e.g. "k-reaction" (no leading dot).
+ *
+ * Resolves through the token scale now: these two carry `var(--z-reaction)`
+ * and `var(--z-fly)` rather than 85 and 80. That indirection is the point of
+ * the scale, and it is also why this test still earns its place -- the
+ * relationship it guards now spans a rule AND a variable declaration, which
+ * is one more place for someone to change half of it.
+ */
 function zIndexOf(selector: string): number {
   const re = new RegExp(`^\\.${selector} \\{([^}]*)\\}`, "m");
   const match = CSS.match(re);
   if (!match) throw new Error(`no top-level '.${selector} {' rule found -- did it move or get renamed?`);
-  const zMatch = match[1].match(/z-index:\s*(\d+)/);
+  const zMatch = match[1].match(/z-index:\s*(?:var\((--z-[a-z-]+)\)|(\d+))/);
   if (!zMatch) throw new Error(`'.${selector}' has no z-index of its own`);
-  return Number(zMatch[1]);
+  if (zMatch[2]) return Number(zMatch[2]);
+  const declared = CSS.match(new RegExp(`${zMatch[1]}:\\s*(\\d+)\\s*;`));
+  if (!declared) throw new Error(`'.${selector}' uses ${zMatch[1]}, which nothing declares`);
+  return Number(declared[1]);
 }
 
 describe("reaction bubbles render above dealt-card animations", () => {

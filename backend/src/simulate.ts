@@ -1,8 +1,8 @@
 /**
- * Kvitlach game simulation — run with: npm run simulate
+ * Kvitlach game simulation - run with: npm run simulate
  *
- * Section 1: Unit tests — verify rules with known inputs (deterministic)
- * Section 2: Statistical simulation — 50K rounds per deck count, checks sanity
+ * Section 1: Unit tests - verify rules with known inputs (deterministic)
+ * Section 2: Statistical simulation - 50K rounds per deck count, checks sanity
  */
 
 import { newDeck } from "./deck.js";
@@ -16,7 +16,7 @@ import { Player, Turn, Card } from "./types.js";
 let passed = 0, failed = 0;
 function assert(cond: boolean, label: string, detail?: string) {
   if (cond) { console.log(`  ✓ ${label}`); passed++; }
-  else       { console.error(`  ✗ ${label}${detail ? ` — ${detail}` : ""}`); failed++; }
+  else       { console.error(`  ✗ ${label}${detail ? ` - ${detail}` : ""}`); failed++; }
 }
 
 function card(name: string, values: number[], type?: "rosier"): Card {
@@ -46,7 +46,7 @@ function makeTurn(pl: Player, cards: Card[], bet = 10, state: Turn["state"] = "s
 // ─── Section 1: Unit tests ────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");
-console.log("  SECTION 1 — Rule unit tests");
+console.log("  SECTION 1 - Rule unit tests");
 console.log("══════════════════════════════════════════\n");
 
 // Deck composition
@@ -67,14 +67,14 @@ console.log("── Deck composition ──");
   assert(identicalPairs === 0, "Shuffle produces unique orderings across 500 pairs");
 }
 
-// Shuffle randomness — chi-square goodness-of-fit against a uniform distribution.
+// Shuffle randomness - chi-square goodness-of-fit against a uniform distribution.
 // Fisher-Yates (used in deck.ts) is unbiased by construction, but this verifies
 // the actual Math.random()-driven output isn't skewed in practice, at several
 // positions in the deck (start, middle, end) and across deck sizes.
 console.log("\n── Shuffle randomness (chi-square goodness-of-fit) ──");
 {
   // Chi-square critical value for 11 degrees of freedom (12 card values - 1) at p=0.01.
-  // A statistic above this would mean "reject uniformity" with 99% confidence —
+  // A statistic above this would mean "reject uniformity" with 99% confidence -
   // i.e. real bias, not sampling noise. We use the looser p=0.01 threshold (vs 0.05)
   // to avoid flaky failures from ordinary statistical variance.
   const CHI_SQUARE_CRITICAL_11DOF_P01 = 24.725;
@@ -106,7 +106,7 @@ console.log("\n── Shuffle randomness (chi-square goodness-of-fit) ──");
     );
   }
 
-  // Multi-deck shoe (2 decks concatenated, each independently shuffled) — same check.
+  // Multi-deck shoe (2 decks concatenated, each independently shuffled) - same check.
   const chiSquareMultiDeck = chiSquareForPosition(2, 0);
   assert(
     chiSquareMultiDeck < CHI_SQUARE_CRITICAL_11DOF_P01,
@@ -168,7 +168,7 @@ console.log("\n── Rosier pair (2 + 11) ──");
   assert(calcState([C2, C11]) === "won",  "2 + 11 → won (rosier pair)");
   assert(calcState([C11, C2]) === "won",  "11 + 2 → won (order reversed)");
   assert(winningNumber([C2, C11]) === 21, "Rosier pair winning number = 21");
-  // Rosier beats a regular 21 — verified via calculateEndState (playerWon isn't
+  // Rosier beats a regular 21 - verified via calculateEndState (playerWon isn't
   // called for rosier hands; calcState returns "won" immediately so the player
   // never reaches standby state)
   {
@@ -211,7 +211,7 @@ console.log("\n── Eleveroon ──");
     "Card 12 + 11 → won via 10+11=21");
 }
 
-// Eleveroon via handleHit — full game path with controlled deck
+// Eleveroon via handleHit - full game path with controlled deck
 console.log("\n── Eleveroon via handleHit (real game path) ──");
 {
   // Helper: build a minimal round state with a specific deck and a player at a known total
@@ -265,7 +265,7 @@ console.log("\n── Eleveroon via handleHit (real game path) ──");
 
   // ── Scenario 4: Eleveroon ON, player at a HARD 12 (two ordinary cards, 4+8),
   //    draws an 11 → no eleveroon, busts. This is NOT the special card "12"
-  //    (which has values [12,9,10] and would instead WIN via 10+11=21 — see
+  //    (which has values [12,9,10] and would instead WIN via 10+11=21 - see
   //    Scenario 4b below, and the calcState-level "Card 12 + 11" test above). ──
   {
     const round = makeRound([C4, C8], [C11, C5]); // hard 12: 4+8=12, deck top = 11
@@ -413,7 +413,7 @@ console.log("\n── calculateEndState ──");
 // ─── Section 2: Statistical simulation ────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");
-console.log("  SECTION 2 — Statistical simulation");
+console.log("  SECTION 2 - Statistical simulation");
 console.log("══════════════════════════════════════════\n");
 
 const DECK_COUNTS = [1, 2, 3];
@@ -503,7 +503,7 @@ for (const deckCount of DECK_COUNTS) {
   console.log(`  Player win     : ${winPct}%   (expected: ~40–50%)`);
   console.log(`  Player loss    : ${lossPct}%`);
   console.log(`  Bust           : ${bustPct}%   (expected: 15–35%)`);
-  console.log(`  Rosier pair    : ${rosierPct}% (expected: ~2.2-2.8% — 4 rosier cards: P=4/24×3/23 single-deck, approaching (4/24)²=~2.8% as decks combine)`);
+  console.log(`  Rosier pair    : ${rosierPct}% (expected: ~2.2-2.8% - 4 rosier cards: P=4/24×3/23 single-deck, approaching (4/24)²=~2.8% as decks combine)`);
   console.log(`  Natural 2-card : ${naturalPct}% (includes rosier + any 2-card 21)`);
   console.log(`  Card 12 start  : ${c12Pct}%   (expected: ~8.3%)`);
   console.log(`  Eleveroon fires: ${elevPct}% of hands`);

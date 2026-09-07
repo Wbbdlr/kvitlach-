@@ -3,6 +3,8 @@ import App from "./App";
 import About from "./About";
 import Disclaimer from "./Disclaimer";
 import Contact from "./Contact";
+import Privacy from "./Privacy";
+import Terms from "./Terms";
 
 // Exported separately from main.tsx so state.ts (a vanilla Zustand store,
 // not a component -- no access to useNavigate()) can import the router's
@@ -27,5 +29,7 @@ export const router = createBrowserRouter([
   { path: "/about", element: <About /> },
   { path: "/disclaimer", element: <Disclaimer /> },
   { path: "/contact", element: <Contact /> },
+  { path: "/privacy", element: <Privacy /> },
+  { path: "/terms", element: <Terms /> },
   { path: "*", element: <App /> },
 ]);

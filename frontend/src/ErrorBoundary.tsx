@@ -36,7 +36,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h1 className="text-lg font-semibold text-slate-900">Something went wrong</h1>
           <p className="mt-2 text-sm text-slate-600">
-            The page hit an unexpected error. Your seat at the table is still there — reloading should
+            The page hit an unexpected error. Your seat at the table is still there - reloading should
             put you straight back in.
           </p>
           <button
@@ -48,7 +48,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </button>
           <p className="mt-4 text-xs text-slate-400">
             v{APP_VERSION}
-            {this.state.error.message ? ` — ${this.state.error.message}` : ""}
+            {this.state.error.message ? `: ${this.state.error.message}` : ""}
           </p>
         </div>
       </div>

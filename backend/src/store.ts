@@ -4,7 +4,8 @@ import { createRound, handleBet, handleSkip, handleStand, calculateBalances, cal
 import { handleHit } from "./round.js";
 import { decideBotAction, decideBotBet, decideBotEleveroon } from "./bot.js";
 import { RuntimeLimits } from "./limits.js";
-import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary } from "./types.js";
+import { BotNames } from "./bot-names.js";
+import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary, LedgerEntry } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 import { metrics } from "./metrics.js";
@@ -14,26 +15,10 @@ const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
 const BOT_THINK_DELAY_MIN_MS = 500;
 const BOT_THINK_DELAY_MAX_MS = 1200;
-// Small, warm, in-community pool -- 2 to 10 are drawn per practice room. "The
-// Gabbai" (a shul's lay administrator, traditionally trusted with its funds)
-// is the fixed banker persona, a deliberately apt pick for a card game's bank.
-// Ten entries, not more: MAX_SEATED_PLAYERS_PER_ROUND below caps a round's
-// non-banker seats at 11 (the felt's own collision math), and the human
-// learner always occupies one of those -- 10 bots is the actual ceiling, not
-// a round number picked on its own.
-const PRACTICE_BANKER_NAME = "The Gabbai";
-const PRACTICE_BOT_NAME_POOL = [
-  "Sruly",
-  "Shimmy",
-  "Shmuely",
-  "Nati",
-  "Josh",
-  "Binyomin",
-  "Shlomo",
-  "Moshe",
-  "Chaim",
-  "Meshulam",
-];
+// Both practice name pools moved to bot-names.ts, where an operator can edit
+// them from the admin panel without a rebuild. The defaults there are the same
+// lists that used to sit here, with one change asked for directly: the banker
+// is a pool that rotates rather than "The Gabbai" every single table.
 // A practice room's "banker" is a bot with no session to approve a real
 // buy-in request through -- self-serve top-ups are how a solo learner
 // recovers from going broke instead. Fixed amount, no form: a button.
@@ -109,7 +94,14 @@ const TURN_TIMEOUT_MS = 90 * 1000;
 // doesn't cost anyone a hand -- the client reconnects on its own well inside
 // this -- and short enough that a table isn't held hostage by a dead battery.
 const BANKER_ABANDON_MS = 2 * 60 * 1000;
+// How long a disconnection is treated as a blip rather than an absence, for
+// the purpose of being dealt into the next round. Deliberately shorter than a
+// single turn timer: a player inside this window has not missed anything yet.
+const OFFLINE_GRACE_MS = 45 * 1000;
 const MAX_ROUND_HISTORY_ENTRIES = 200;
+// Same bound and same reason as round history: this rides along in every
+// room:state broadcast to every player, for the whole night.
+const MAX_LEDGER_ENTRIES = 200;
 const MAX_NAME_LEN = 40;
 const MAX_ROOM_NAME_LEN = 80;
 const MAX_NOTE_LEN = 160;
@@ -190,10 +182,15 @@ export class GameStore {
   // next createRoom without a restart. Defaults to the historical constants
   // when nothing is injected, which is what every test relies on.
   readonly limits: RuntimeLimits;
+  // Who the practice bots are called. Runtime-editable from the admin panel
+  // (bot-names.ts) rather than the pair of const arrays that used to live at
+  // the top of this file.
+  readonly botNames: BotNames;
 
-  constructor(db?: Database, limits: RuntimeLimits = new RuntimeLimits()) {
+  constructor(db?: Database, limits: RuntimeLimits = new RuntimeLimits(), botNames: BotNames = new BotNames()) {
     this.db = db;
     this.limits = limits;
+    this.botNames = botNames;
   }
 
   private sanitizeName(value: string | undefined, max = MAX_NAME_LEN) {
@@ -204,6 +201,47 @@ export class GameStore {
     const trimmed = (value ?? "").trim();
     if (!trimmed) return undefined;
     return trimmed.slice(0, max);
+  }
+
+  /**
+   * Record a chip movement that did not come from playing a hand.
+   *
+   * Deliberately separate from audit() rather than folded into it: audit is a
+   * stdout line for whoever is reading server logs, this is room state the
+   * banker can actually see during the game and export after it. Every caller
+   * does both, because they answer to different people.
+   */
+  private ledgerEntry(
+    roomId: string,
+    kind: LedgerEntry["kind"],
+    actorId: string,
+    playerId: string,
+    amount: number,
+    note?: string
+  ) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) return;
+    const named = (id: string) => {
+      const p = roomRec.room.players.find((x) => x.id === id);
+      return p ? [p.firstName, p.lastName].filter(Boolean).join(" ").trim() || "Player" : "Player";
+    };
+    const entry: LedgerEntry = {
+      id: uuid(),
+      kind,
+      playerId,
+      playerName: named(playerId),
+      actorId,
+      actorName: named(actorId),
+      amount,
+      note,
+      at: Date.now(),
+    };
+    // Default rather than assume: a room restored from Postgres predates this
+    // field, exactly like roundHistory.
+    const existing = roomRec.room.ledger ?? [];
+    // Bounded for the same reason round history is -- this rides along in
+    // every room:state broadcast to every player, all night.
+    roomRec.room.ledger = [...existing, entry].slice(-MAX_LEDGER_ENTRIES);
   }
 
   private audit(action: string, roomId: string, actorId: string, details?: Record<string, unknown>) {
@@ -279,7 +317,27 @@ export class GameStore {
       };
     }
 
-    const sameActive = prev?.turnTimerPlayerId === activeTurnId && typeof prev?.turnTimerExpiresAt === "number";
+    // Did the player whose clock is running just ACT? Every action available
+    // to them (bet, hit, blatt) draws a card, and a bet also moves `bet`, so
+    // comparing those two against the previous frame is the whole test --
+    // and it stays false for a persistRound triggered by anything else (a
+    // reshuffle, another seat's move, a room-level change), which is what
+    // keeps an unrelated write from handing this seat a free 90 seconds.
+    //
+    // Without this the 90s covered the ENTIRE turn rather than the pause
+    // before each decision, so a player who bet, thought, hit, and then sat
+    // on 16 deciding whether to hit again was force-stood mid-thought with
+    // no warning -- reported from the felt exactly that way, during a BANK!,
+    // where there is the most to think about and the most on it. A refill
+    // cannot stall the table: every action that earns one also draws a card,
+    // so the hand runs out of room long before the clock does.
+    const prevActive = prev?.turns.find((turn) => turn.player.id === activeTurnId);
+    const acted =
+      !!prevActive &&
+      (prevActive.cards.length !== activeTurn.cards.length || (prevActive.bet ?? 0) !== (activeTurn.bet ?? 0));
+
+    const sameActive =
+      !acted && prev?.turnTimerPlayerId === activeTurnId && typeof prev?.turnTimerExpiresAt === "number";
     const remainingMs = sameActive ? Math.max((prev?.turnTimerExpiresAt ?? 0) - now, 0) : TURN_TIMEOUT_MS;
 
     if (remainingMs <= 0) {
@@ -558,20 +616,21 @@ export class GameStore {
     }
 
     const humanName = this.sanitizeName(host.firstName) || "You";
-    // Clamped to the name pool's own range (PRACTICE_BOT_NAME_POOL has
-    // exactly 10 entries, one per seat at the cap) -- defaults to 2 to match
-    // every pre-existing caller/test that never passed a count.
+    // Clamped to what the felt can seat, not to the name pool: ten is
+    // MAX_SEATED_PLAYERS_PER_ROUND minus the human learner's own seat. The
+    // pool used to hold exactly ten and this clamp used to be about that too;
+    // now the list is operator-editable and any length, so pickPlayerNames
+    // (bot-names.ts) is what guarantees a name for every seat asked for.
+    // Defaults to 2 to match every caller/test that never passed a count.
     const rawBotCount = Number(host.botCount);
     const botCount = Number.isFinite(rawBotCount) ? Math.min(10, Math.max(2, Math.floor(rawBotCount))) : 2;
-    const bankerBot: Player = { id: uuid(), firstName: PRACTICE_BANKER_NAME, lastName: "", type: "admin", presence: "online", isBot: true };
+    // Drawn per room, not per round: a banker whose name changed mid-night
+    // would read as somebody having taken over the table, which is a real
+    // event here (passBankAfterBankDecision) and must not be faked by a label.
+    const bankerBot: Player = { id: uuid(), firstName: this.botNames.pickBankerName(), lastName: "", type: "admin", presence: "online", isBot: true };
     const human: Player = { id: uuid(), firstName: humanName, lastName: "", type: "player", presence: "online" };
 
-    const pool = [...PRACTICE_BOT_NAME_POOL];
-    const botNames: string[] = [];
-    for (let i = 0; i < botCount && pool.length; i += 1) {
-      botNames.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
-    }
-    const bots: Player[] = botNames.map((name) => ({
+    const bots: Player[] = this.botNames.pickPlayerNames(botCount).map((name) => ({
       id: uuid(),
       firstName: name,
       lastName: "",
@@ -671,11 +730,32 @@ export class GameStore {
     });
   }
 
+  /**
+   * A player giving up their seat deliberately -- "Leave for good" on the
+   * felt, as opposed to "Step away", which is just a disconnect and keeps
+   * everything (see room:leave in ws-server.ts, and the two-door confirmation
+   * the button now opens).
+   *
+   * Deliberately the same complete removal a kick performs, minus the
+   * authorization: a kick is the banker removing somebody else, this is a
+   * player removing themselves, and there is no reason for the table to be
+   * left in a different state depending on which one happened.
+   */
   leaveRoom(roomId: string, playerId: string) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return;
-    roomRec.room.players = roomRec.room.players.filter((p) => p.id !== playerId);
-    roomRec.room.waitingPlayerIds = roomRec.room.waitingPlayerIds.filter((id) => id !== playerId);
+    const leaver = roomRec.room.players.find((p) => p.id === playerId);
+    if (!leaver) return;
+    // The banker cannot delete themselves out of their own table: the bank IS
+    // their wallet, and a room with no admin has no one who can deal, settle
+    // or appoint a successor -- everyone else would be stranded mid-night with
+    // their chips on a table that can never run another round. They have two
+    // real exits already, both of which leave the table in a defined state:
+    // pass the bank to another player, or end the game for everyone.
+    if (leaver.type === "admin") throw new Error("banker_cannot_leave");
+    this.ledgerEntry(roomId, "leave", playerId, playerId, -(roomRec.room.wallets[playerId] ?? 0));
+    this.removePlayerCompletely(roomId, playerId);
+    this.audit("leave", roomId, playerId);
     this.bumpRoomTimer(roomId);
   }
 
@@ -722,8 +802,26 @@ export class GameStore {
     // `type === "admin"` and could deal its own room's rounds.
     const allowed = !actor.isBot && (actor.type === "admin" || (roomRec.room.practice === true && actor.type === "player"));
     if (!allowed) throw new Error("forbidden");
-    const activePlayers = roomRec.room.players.filter((p) => p.presence === "online");
+    // A dropped connection is not the same thing as an empty chair. A screen
+    // that locked, a cell handover, a walk to the kitchen -- all of these land
+    // between rounds at a family game, and a bare presence check dealt the
+    // next round without the player and told nobody. Anyone gone for less than
+    // the grace window is still at the table; if they really are away, the
+    // 90-second turn timer stands them (forceTimeoutStand) and the round moves
+    // on, which is the case this filter was reaching for in the first place.
+    const dealtAt = Date.now();
+    const activePlayers = roomRec.room.players.filter(
+      (p) => p.presence === "online" || dealtAt - (p.offlineSince ?? dealtAt) < OFFLINE_GRACE_MS
+    );
     const basePlayers = activePlayers.length > 0 ? activePlayers : roomRec.room.players;
+    // Who this round is leaving behind. Computed off basePlayers, not
+    // activePlayers, so the all-offline fallback below (everybody plays)
+    // correctly reports nobody -- a sat-out notice on a round that excluded
+    // no one would be worse than the silence it replaces.
+    const seatedIds = new Set(basePlayers.map((p) => p.id));
+    const satOutPlayerIds = roomRec.room.players
+      .filter((p) => p.type === "player" && !p.isBot && !seatedIds.has(p.id))
+      .map((p) => p.id);
     const admin = basePlayers.find((p) => p.type === "admin");
     const others = basePlayers.filter((p) => p.type === "player");
 
@@ -758,6 +856,7 @@ export class GameStore {
       roomRec.deck,
       roomRec.deckJustReshuffledAt !== undefined
     );
+    if (satOutPlayerIds.length > 0) round.satOutPlayerIds = satOutPlayerIds;
     metrics.recordRoundStart(round.roundId);
     const stored = this.persistRound(round.roundId, round);
 
@@ -798,29 +897,54 @@ export class GameStore {
     if (!target) throw new Error("player_not_found");
     if (target.type === "admin") throw new Error("invalid_target");
 
-    // Remove from active round turns if present.
+    // Before the removal: removePlayerCompletely deletes the wallet, and the
+    // stack that vanished with the player is the whole point of the record.
+    this.ledgerEntry(roomId, "kick", adminId, targetPlayerId, -(roomRec.room.wallets[targetPlayerId] ?? 0));
+    this.removePlayerCompletely(roomId, targetPlayerId);
+    this.audit("kick", roomId, adminId, { target: targetPlayerId });
+    this.bumpRoomTimer(roomId);
+    return roomRec.room;
+  }
+
+  /**
+   * Take a player off the table and leave nothing of them behind.
+   *
+   * Every place a player's id can be held has to be cleared together, and the
+   * one that matters most is `wallets`: chips belonging to a seat that no
+   * longer exists are counted by every total the room reports and are
+   * reachable by nobody. A turn left in the live round is just as bad -- the
+   * felt still draws that seat and computeBankWindow still reserves chips
+   * against it.
+   *
+   * Extracted from kickPlayer, which had all of this right, so that leaveRoom
+   * could stop having half of it. leaveRoom used to filter `players` and
+   * `waitingPlayerIds` and stop -- which nobody noticed, because until
+   * 2026-09-06 leaveRoom had no callers at all (see leave-and-return.test.ts).
+   */
+  private removePlayerCompletely(roomId: string, playerId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) return;
+
     const roundId = roomRec.room.roundId;
     if (roundId) {
       const round = this.rounds.get(roundId);
       if (round) {
-        const turns = round.turns.filter((t) => t.player.id !== targetPlayerId);
-        const bankLock = round.bankLock?.playerId === targetPlayerId ? undefined : round.bankLock;
-          const updated: RoundContext = { ...round, turns, bankLock };
-          this.persistRound(roundId, updated, round);
+        const turns = round.turns.filter((t) => t.player.id !== playerId);
+        // A lock naming an absent player freezes the table for everyone still
+        // in it, with nobody able to resolve it.
+        const bankLock = round.bankLock?.playerId === playerId ? undefined : round.bankLock;
+        const updated: RoundContext = { ...round, turns, bankLock };
+        this.persistRound(roundId, updated, round);
       }
     }
 
-    // Remove from room state
-    roomRec.room.players = roomRec.room.players.filter((p) => p.id !== targetPlayerId);
-    delete roomRec.room.wallets[targetPlayerId];
-    roomRec.room.waitingPlayerIds = roomRec.room.waitingPlayerIds.filter((id) => id !== targetPlayerId);
-    roomRec.room.renameRequests = roomRec.room.renameRequests.filter((req) => req.playerId !== targetPlayerId);
-    roomRec.room.buyInRequests = roomRec.room.buyInRequests.filter((req) => req.playerId !== targetPlayerId);
-    roomRec.room.renameBlockedIds = roomRec.room.renameBlockedIds.filter((id) => id !== targetPlayerId);
-    roomRec.room.buyInBlockedIds = roomRec.room.buyInBlockedIds.filter((id) => id !== targetPlayerId);
-    this.audit("kick", roomId, adminId, { target: targetPlayerId });
-    this.bumpRoomTimer(roomId);
-    return roomRec.room;
+    roomRec.room.players = roomRec.room.players.filter((p) => p.id !== playerId);
+    delete roomRec.room.wallets[playerId];
+    roomRec.room.waitingPlayerIds = roomRec.room.waitingPlayerIds.filter((id) => id !== playerId);
+    roomRec.room.renameRequests = roomRec.room.renameRequests.filter((req) => req.playerId !== playerId);
+    roomRec.room.buyInRequests = roomRec.room.buyInRequests.filter((req) => req.playerId !== playerId);
+    roomRec.room.renameBlockedIds = roomRec.room.renameBlockedIds.filter((id) => id !== playerId);
+    roomRec.room.buyInBlockedIds = roomRec.room.buyInBlockedIds.filter((id) => id !== playerId);
   }
 
   closeRoom(roomId: string, adminId: string): void {
@@ -854,6 +978,7 @@ export class GameStore {
     if (updatedTotal < 0) throw new Error("insufficient_bank");
     roomRec.room.wallets[targetPlayerId] = updatedTotal;
     const trimmedNote = this.sanitizeNote(note);
+    this.ledgerEntry(roomId, "adjust", adminId, targetPlayerId, normalizedAmount, trimmedNote);
     this.audit("wallet-adjust", roomId, adminId, { target: targetPlayerId, amount: normalizedAmount, note: trimmedNote });
     this.bumpRoomTimer(roomId);
     return { amount: normalizedAmount, total: updatedTotal, note: trimmedNote };
@@ -872,6 +997,45 @@ export class GameStore {
     roomRec.room.wallets[playerId] = updatedTotal;
     this.bumpRoomTimer(roomId);
     return { amount: PRACTICE_TOPUP_AMOUNT, total: updatedTotal };
+  }
+
+  // Practice only. The banker at a practice table is a bot, so the ordinary
+  // remedy for an emptied bank -- Manage -> BANK -> add chips, which only an
+  // admin can reach -- has nobody to press it, and the table simply stops:
+  // every wager from then on is refused with bank_empty and the felt gives no
+  // way out. Reported after a bot player BANK!ed the bank down to nothing:
+  // "the whole round was broken as a result [...] we need to query the player
+  // if they want to replenish the computer bank."
+  //
+  // Same shape as selfTopUpWallet above -- practice-only, actor taken from
+  // the socket's own session, no admin check because there is no human admin
+  // to ask -- with two conditions that keep it from being a free chip tap:
+  // the banker has to actually be a bot, and the bank has to actually be out.
+  practiceTopUpBank(roomId: string, playerId: string, amount: number) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!roomRec.room.practice) throw new Error("forbidden");
+    if (roomRec.room.wallets[playerId] === undefined) throw new Error("player_not_found");
+    const banker = roomRec.room.players.find((p) => p.type === "admin");
+    if (!banker) throw new Error("banker_missing");
+    if (!banker.isBot) throw new Error("forbidden");
+    if ((roomRec.room.wallets[banker.id] ?? 0) > 0) throw new Error("bank_not_empty");
+    // The player's own number, not this method's. It shipped for one release
+    // as a fixed 4x the buy-in (the practice lobby's own default for a new
+    // table) and was corrected immediately: "Practice bank they should just
+    // be able to select refill amount." The lobby's default is still what the
+    // dialog opens on, which is a suggestion rather than the rule.
+    // normalizeMoney is the same whole-chips-only, MAX_MONEY-capped gate every
+    // other money path in this class goes through.
+    const normalized = normalizeMoney(amount);
+    if (normalized === undefined) throw new Error("invalid_payload");
+    const total = (roomRec.room.wallets[banker.id] ?? 0) + normalized;
+    roomRec.room.wallets[banker.id] = total;
+    // Keeps the felt's bank readout and the next round's window in step --
+    // topUpBanker does the same for the human path.
+    roomRec.room.bankerBuyIn = total;
+    this.bumpRoomTimer(roomId);
+    return { amount: normalized, total };
   }
 
   setFeltWatermark(roomId: string, adminId: string, text: string) {
@@ -1080,6 +1244,22 @@ export class GameStore {
       if (lock.stage === "banker" && bankerId && bankerId !== playerId) throw new Error("bank_locked");
       if (lock.stage === "decision") throw new Error("banker_deciding");
     }
+    // Skip voids a hand: calculateBalances drops "skipped" turns outright, so
+    // no money moves either way. That is the right answer for a seat with
+    // nothing at stake and the wrong one the moment chips are down -- a
+    // skipped player with $30 on the table neither loses it to a better bank
+    // nor collects when the bank FUTCHES, which is the outcome where everyone
+    // still in the hand gets paid. Reported from the felt exactly that way.
+    //
+    // The banker's remedy for an absent player who has already wagered is to
+    // stand them, which is what the turn timer has always done on its own
+    // (forceTimeoutStand) and what a real dealer does with an abandoned hand:
+    // it stands as dealt and competes. Not a free option either -- standing
+    // on one card can lose -- which is precisely what makes it fair to offer.
+    const skipping = round.turns.find((t) => t.player.id === playerId);
+    if (skipping && skipping.player.type !== "admin" && (skipping.bet ?? 0) > 0) {
+      throw new Error("cannot_skip_wagered");
+    }
     const updated = handleSkip(round, playerId);
     const processed = this.processBankLock(updated, roomRec);
     return this.persistRound(roundId, processed, round);
@@ -1135,7 +1315,28 @@ export class GameStore {
     const round = this.rounds.get(roundId);
     if (!round) throw new Error("round_not_found");
     if (round.bankLock?.stage !== "decision") throw new Error("bank_not_in_decision");
-    const resolved = calculateEndState(round.turns).map((turn) => {
+    // A hand with chips on it STANDS AS DEALT rather than being voided.
+    //
+    // Same rule, and same reason, as applySkip's cannot_skip_wagered guard --
+    // reached by a different door, and missed when that one was fixed. This
+    // path rewrites every unresolved player turn to "skipped" outright, and
+    // calculateBalances drops "skipped" turns, so a seat that had wagered and
+    // not yet acted when the bank busted was neither paid nor charged: it lost
+    // its claim on a futched bank, which is the outcome where everyone still
+    // in the hand gets paid. Promoting it to "standby" first lets
+    // calculateEndState resolve it against the banker like any other standing
+    // hand -- it wins on the bust, and can lose to a better bank.
+    //
+    // Only wagered, unsettled hands. A seat with nothing at stake loses
+    // nothing by being skipped, and "skipped" is what the felt correctly
+    // reads as "sat this one out".
+    const standing = round.turns.map((turn) => {
+      if (turn.player.type === "admin") return turn;
+      if (turn.state !== "pending" || turn.settled) return turn;
+      if ((turn.bet ?? 0) === 0) return turn;
+      return { ...turn, state: "standby" as const };
+    });
+    const resolved = calculateEndState(standing).map((turn) => {
       if (turn.player.type !== "admin" && (turn.state === "pending" || turn.state === "standby")) {
         return { ...turn, state: "skipped" as const };
       }
@@ -1143,6 +1344,44 @@ export class GameStore {
     });
     const updated: RoundContext = { ...round, turns: resolved, state: "terminate", bankLock: undefined };
     return this.persistRound(roundId, updated, round);
+  }
+
+  // The third exit from a busted bank, alongside replenishing and simply
+  // ending the round: hand the bank to someone else and let the night carry
+  // on. The new banker plays the bank with THE CHIPS THEY ALREADY HOLD --
+  // there is no transfer, because the bank has never been a separate pot in
+  // this codebase; it is whatever sits in the admin's own wallet (see
+  // computeBankWindow reading room.wallets[bankerId]). So swapping who holds
+  // the admin role IS the handover, and the incoming banker's stack is the
+  // new bank by construction.
+  //
+  // Deliberately ends the current round on the way out rather than trying to
+  // continue it under new management. The round in flight is built around
+  // turn objects that snapshot player.type, holds a half-played hand for the
+  // OLD banker, and got here precisely because the bank could not cover what
+  // was still owed -- continuing it would mean rewriting a live round's
+  // banker seat mid-hand, for a hand nobody can be paid out of. Ending here
+  // is the same resolution endRoundAfterBankDecision already gives, and the
+  // handover lands cleanly on the next round.
+  passBankAfterBankDecision(roomId: string, bankerId: string, targetPlayerId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, bankerId)) throw new Error("forbidden");
+    const target = roomRec.room.players.find((p) => p.id === targetPlayerId);
+    if (!target) throw new Error("player_not_found");
+    // A bot cannot be handed a table to run: nothing drives a bot BANKER's
+    // decisions (syncBotTurn plays bot SEATS), so this would hand the room
+    // to a seat that never acts. Same !isBot reasoning as startRound's own
+    // actor gate.
+    if (target.isBot) throw new Error("invalid_target");
+    if (target.type === "admin") throw new Error("invalid_target");
+    // Ends the round FIRST, while the outgoing banker is still the admin --
+    // endRoundAfterBankDecision authorizes against isAdmin, and switching
+    // the role first would make this fail its own permission check.
+    const ended = this.endRoundAfterBankDecision(roomId, bankerId);
+    this.switchAdmin(roomId, bankerId, targetPlayerId);
+    this.audit("pass-bank", roomId, bankerId, { target: targetPlayerId });
+    return ended;
   }
 
   // Is the table stuck waiting on a banker who isn't coming back? Exported as
@@ -1362,6 +1601,7 @@ export class GameStore {
     const currentWallet = roomRec.room.wallets[targetPlayerId] ?? 0;
     roomRec.room.wallets[targetPlayerId] = currentWallet + request.amount;
     roomRec.room.buyInRequests = roomRec.room.buyInRequests.filter((req) => req.playerId !== targetPlayerId);
+    this.ledgerEntry(roomId, "buy-in", adminId, targetPlayerId, request.amount, request.note);
     this.audit("buyin-approve", roomId, adminId, { target: targetPlayerId, amount: request.amount });
     this.bumpRoomTimer(roomId);
     return { playerId: targetPlayerId, amount: request.amount };
@@ -1428,6 +1668,7 @@ export class GameStore {
     roomRec.room.bankerBuyIn = nextWallet;
     this.bumpRoomTimer(roomId);
     const trimmedNote = this.sanitizeNote(note);
+    this.ledgerEntry(roomId, "bank-topup", adminId, adminId, nextWallet - wallet, trimmedNote);
 
     if (needsResumeDraw && roundCtx) {
       roundCtx.turns[bankerIndex] = {
@@ -1482,6 +1723,30 @@ export class GameStore {
         );
         return round;
       }
+      // An outright win -- 21, or a rosier pair -- is decided at the player's
+      // OWN turn, before the banker acts (docs/GAME_RULES.md), and
+      // settleImmediateTurn has already paid the bank's whole window across
+      // to them. Sending the banker in anyway is what shipped, and it broke
+      // the round two ways at once, reported from a practice table where a
+      // bot BANK!ed into 21: the felt watched the bank play itself out and
+      // stand on 17 against a hand it had already lost to, and then
+      // settleBankOutcome found nothing unsettled left to resolve and
+      // dropped the lock on the floor -- so a bank drained to nothing never
+      // reached the decision prompt, and play carried on against a bank that
+      // could not cover a single chip.
+      if (playerTurn.state === "won") {
+        round.turns = round.turns.map((turn) =>
+          turn.player.id === lock.playerId ? { ...turn, bankRequest: false } : turn
+        );
+        const bankerId = this.getBankerId(round);
+        const bankerWallet = bankerId ? roomRec.room.wallets[bankerId] ?? 0 : 0;
+        // Same two outcomes settleBankOutcome distinguishes when the banker
+        // cannot keep playing: an emptied bank is the banker's decision to
+        // make (top up, pass the bank, or end the round), anything else just
+        // returns the table to ordinary turn order.
+        round.bankLock = bankerId && bankerWallet <= 0 ? { ...lock, stage: "decision" } : undefined;
+        return round;
+      }
       if (playerTurn.state !== "pending") {
         round.bankLock = { ...lock, stage: "banker" };
       }
@@ -1521,7 +1786,15 @@ export class GameStore {
       .filter(({ turn, index }) => turn.player.type !== "admin" && index <= lock.throughIndex && !turn.settled);
 
     if (involvedEntries.length === 0) {
-      round.bankLock = undefined;
+      // Nothing left for this frame to settle -- every seat it covered was
+      // already paid by an earlier one. Dropping the lock is right; dropping
+      // it WITHOUT looking at the bank is not, and that is the same hole the
+      // stage-"player" outright-win branch above was reported through: a bank
+      // already at zero goes back into ordinary turn order and the next seat
+      // plays against nothing. The banker gets the same choice here they get
+      // everywhere else the bank runs out.
+      const bankerWallet = roomRec.room.wallets[bankerId] ?? 0;
+      round.bankLock = bankerWallet <= 0 ? { ...lock, stage: "decision" } : undefined;
       return round;
     }
 

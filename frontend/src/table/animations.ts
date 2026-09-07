@@ -1,9 +1,23 @@
-// Hand-rolled animation helpers (no library — matches the project's existing
+// Hand-rolled animation helpers (no library - matches the project's existing
 // convention of hand-rolled CSS @keyframes for everything). These are small,
 // fire-and-forget DOM utilities used outside React's render tree, the same
 // technique the verified mockup uses for its card fly-in and press-pulse.
 
 const FLY_DURATION_MS = 480;
+
+/**
+ * How long a freshly dealt card spends flying in from the shoe.
+ *
+ * Must stay in step with index.css's `.k-card-in { animation: cardDealIn
+ * 340ms ... }` -- this is the CSS value expressed where JavaScript can read
+ * it, not a second opinion about how long the animation should be.
+ *
+ * Used to hold an OUTCOME sound (win / natural21 / futch) until the card that
+ * caused it has actually landed. Reported from a real table on 11.4: the
+ * horn fired the instant round:state arrived, so the table heard the result
+ * before it saw the card -- the sound spoiled its own reveal.
+ */
+export const CARD_DEAL_MS = 340;
 const PRESS_DURATION_MS = 220;
 
 // Animates a transient card-back node from the deck to a hand container,

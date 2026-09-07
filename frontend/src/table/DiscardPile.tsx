@@ -92,7 +92,7 @@ export function DiscardPile({ entries, onOpen }: { entries: DiscardEntry[]; onOp
       // just every card that's already come out of the shoe and resolved,
       // across every round played since the last actual reshuffle. "Used"
       // says that without the poker-jargon detour.
-      title={`${count} card${count === 1 ? "" : "s"} used this shoe -- tap to see what's left`}
+      title={`${count} card${count === 1 ? "" : "s"} used this shoe - tap to see what's left`}
     >
       <span className="k-discard-stack">
         <span className="k-cardback" />

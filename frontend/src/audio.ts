@@ -49,6 +49,7 @@ export class AudioManager {
   private userInteracted = false;
   private bgm: HTMLAudioElement | null = null;
   private sfxPool: Partial<Record<SfxKey, HTMLAudioElement[]>> = {};
+  private toneCtx: AudioContext | null = null;
 
   noteInteraction() {
     this.userInteracted = true;
@@ -88,6 +89,64 @@ export class AudioManager {
       const arr = this.sfxPool[name] ?? [];
       arr.push(el);
       this.sfxPool[name] = arr;
+    }
+  }
+
+  /**
+   * "It's your turn."
+   *
+   * Synthesised rather than loaded, and that is the point: there is no
+   * turn-alert file in public/sounds and inventing one means picking a
+   * licence, a mastering level and a download for something that should be
+   * two notes and 200ms. Two short sine blips through the Web Audio API cost
+   * nothing to ship, cannot be mis-mastered against the rest of the set, and
+   * are quiet enough to sit under a room full of people talking.
+   *
+   * Local by construction. Nothing about this is broadcast: App.tsx fires it
+   * on the edge where the active turn becomes THIS client's own player, so it
+   * plays on that person's phone and on no one else's - which is what was
+   * asked for ("A sound that only plays for that person on their phone").
+   *
+   * Gated by the same two conditions as playSfx: the SFX toggle, and a real
+   * user interaction having happened, because a browser will not start an
+   * AudioContext before one.
+   */
+  playTurnAlert() {
+    if (!this.sfxEnabled || !this.userInteracted) return;
+    const Ctor: typeof AudioContext | undefined =
+      typeof window !== "undefined"
+        ? window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        : undefined;
+    if (!Ctor) return;
+    try {
+      // One context, kept: creating one per alert leaks them on iOS, which
+      // caps how many a page may open.
+      this.toneCtx = this.toneCtx ?? new Ctor();
+      const ctx = this.toneCtx;
+      // A context created before the first gesture starts suspended.
+      if (ctx.state === "suspended") void ctx.resume();
+      const now = ctx.currentTime;
+      // A rising fifth (A5 -> E6). Rising reads as a prompt; falling reads as
+      // something going wrong, which this is not.
+      [
+        { freq: 880, at: 0, len: 0.11 },
+        { freq: 1318.5, at: 0.1, len: 0.16 },
+      ].forEach(({ freq, at, len }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        // Ramped, not switched: a square-edged gain change is an audible
+        // click on its own, which would be louder than the note.
+        gain.gain.setValueAtTime(0.0001, now + at);
+        gain.gain.exponentialRampToValueAtTime(0.22, now + at + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + at + len);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + at);
+        osc.stop(now + at + len + 0.02);
+      });
+    } catch {
+      /* no audio output available; the haptic buzz still fires */
     }
   }
 

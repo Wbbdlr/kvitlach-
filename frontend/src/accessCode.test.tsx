@@ -23,6 +23,8 @@ vi.mock("./state", () => {
   const noop = () => {};
   return {
     loadLastRoomId: () => undefined,
+    loadAgeAcknowledged: () => false,
+    persistAgeAcknowledged: noop,
     useGameStore: () => ({
       room: undefined,
       round: undefined,

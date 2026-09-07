@@ -14,7 +14,7 @@ browser (React/Zustand) ──WS:3001──> ws-server.ts ──> GameStore (in-
 
 Gameplay is **WebSocket-only**. The Fastify HTTP server serves `/health`, a
 token-gated `/admin` surface for freeing stuck Game IDs, and `/metrics`
-(Prometheus text format, unauthenticated) — nothing else. Do not add gameplay
+(Prometheus text format, unauthenticated) - nothing else. Do not add gameplay
 REST endpoints; the client has no code path for them.
 
 ## Server authority
@@ -23,7 +23,7 @@ REST endpoints; the client has no code path for them.
 
 1. Client sends an intent (`turn:bet`, `turn:hit`, …) with a `requestId`.
 2. `ws-server.ts` resolves the actor from **the socket's own attached session**
-   (`meta?.playerId`) — never from the message payload.
+   (`meta?.playerId`) - never from the message payload.
 3. `GameStore` validates (whose turn, is the turn pending, is the actor the
    banker where required) and mutates.
 4. The result is broadcast to the whole room; the sender also gets an `ack`
@@ -31,7 +31,7 @@ REST endpoints; the client has no code path for them.
 
 The client never derives outcomes. It renders what it's told and uses
 `requestId` correlation to attribute errors to the action that caused them
-(see the `pending*RequestId` variables in `state.ts` — that pattern exists so an
+(see the `pending*RequestId` variables in `state.ts` - that pattern exists so an
 error surfaces on the right form/toast instead of a generic one).
 
 ### What the client is not allowed to know
@@ -40,7 +40,7 @@ error surfaces on the right form/toast instead of a generic one).
 Concealed hands and totals are filtered per-viewer. Two rules follow:
 
 - Anything sent to clients is public. If a value must stay secret, it must not
-  leave the server — hiding it in the UI is not sufficient.
+  leave the server - hiding it in the UI is not sufficient.
 - `totalDisplay` (frontend) mirrors, but does not enforce, that policy. The
   server is the enforcement point.
 
@@ -51,7 +51,7 @@ Concealed hands and totals are filtered per-viewer. Two rules follow:
   round (`nextStart`), seats the first `MAX_SEATED_PLAYERS_PER_ROUND` (11), and
   queues the rest into `waitingPlayerIds`. Rotation guarantees a queued player
   gets seated within N rounds.
-- 11 is a **geometric** limit from `frontend/src/table/layout.ts` — the point at
+- 11 is a **geometric** limit from `frontend/src/table/layout.ts` - the point at
   which seat plates start colliding on the oval. It is pinned by
   `layout.test.ts`. Both numbers must move together.
 - `startRound` deliberately mutates nothing until `createRound` succeeds, so a
@@ -59,7 +59,7 @@ Concealed hands and totals are filtered per-viewer. Two rules follow:
   rather than skipping a player.
 - The shoe **carries across rounds** and is not auto-reshuffled. If it can't
   cover the table, the deal fails with `deck_low` and the banker must reshuffle
-  — the dealer decides when a new shoe comes in, as at a real table.
+  - the dealer decides when a new shoe comes in, as at a real table.
 
 ## Sessions and reconnection
 
@@ -78,7 +78,7 @@ Concealed hands and totals are filtered per-viewer. Two rules follow:
 Postgres is optional and is a **mirror**, not the working store. `db.ts` holds
 three tables (`rooms`, `rounds`, `connections`) with JSONB state blobs; schema
 is created idempotently at boot. `loadFromDB()` rehydrates rooms on start.
-Practice rooms are never written. There are no migrations — changing
+Practice rooms are never written. There are no migrations - changing
 `RoomState`'s shape must stay backward-compatible with blobs already on disk,
 or old rooms will fail to rehydrate.
 
@@ -87,12 +87,12 @@ or old rooms will fail to rehydrate.
 The felt is authored on a fixed **1280 × 760 virtual stage** and scaled to fit
 the viewport. `stage.ts`'s `computeFit()` returns:
 
-- `scale` — uniform zoom. Width always binds first, so the felt reaches both
+- `scale` - uniform zoom. Width always binds first, so the felt reaches both
   side edges (no pillarboxing), capped at `MAX_SCALE`.
-- `vf` — vertical flatten factor (0.5–1). Squashes the oval, seat ellipse and
+- `vf` - vertical flatten factor (0.5–1). Squashes the oval, seat ellipse and
   dealer when the viewport is short (landscape phones), instead of shrinking
   everything.
-- `playTop` — top chrome band reserved above the play area.
+- `playTop` - top chrome band reserved above the play area.
 
 Consequences when changing UI:
 
@@ -101,7 +101,7 @@ Consequences when changing UI:
   counter-scales against `--stage-scale`. That's why those rules look inverted.
 - Chrome living *outside* the scaled stage (`.k-chrome-top`, `.k-controls`)
   uses real pixels and aligns to the felt's rendered box via `--stage-w/h`.
-- `computeFit` is pure and covered by `stage.test.ts` — test layout maths there
+- `computeFit` is pure and covered by `stage.test.ts` - test layout maths there
   rather than by eyeballing the browser, then confirm visually.
 
 ## Bots / practice mode

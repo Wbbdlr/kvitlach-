@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { QuickRequestDialog } from "../QuickRequestDialog";
+import { setNumberField } from "../../testing/numberField";
 
 const CSS = readFileSync(resolve(__dirname, "../../index.css"), "utf8").replace(/\r\n/g, "\n");
 
@@ -51,7 +52,7 @@ describe("QuickRequestDialog", () => {
 
   it("submits the amount and closes itself", () => {
     const { onRequestBuyIn, onClose } = renderDialog({ kind: "chips" });
-    fireEvent.change(screen.getByLabelText(/amount/i), { target: { value: "250" } });
+    setNumberField(/amount/i, "250");
     fireEvent.change(screen.getByLabelText(/note/i), { target: { value: "Lost last round" } });
     fireEvent.submit(screen.getByRole("button", { name: /submit chip request/i }));
     expect(onRequestBuyIn).toHaveBeenCalledWith(250, "Lost last round");

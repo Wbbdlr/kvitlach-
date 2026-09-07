@@ -14,6 +14,8 @@ vi.mock("./state", () => {
     // module, so every export App imports has to be listed here or the render
     // throws at the call site.
     loadLastRoomId: () => undefined,
+    loadAgeAcknowledged: () => false,
+    persistAgeAcknowledged: noop,
     useGameStore: () => ({
       room: undefined,
       round: undefined,
@@ -55,7 +57,7 @@ vi.mock("./state", () => {
 });
 
 // Silence audio in tests
-vi.mock("./audio", () => ({ AudioManager: class { noteInteraction() {} setMusicEnabled() {} setSfxEnabled() {} playSfx() {} } }));
+vi.mock("./audio", () => ({ AudioManager: class { noteInteraction() {} setMusicEnabled() {} setSfxEnabled() {} playSfx() {} playTurnAlert() {} } }));
 
 // Prevent layout-heavy components from needing actual images
 vi.mock("./ws", () => ({ WSClient: class {} }));

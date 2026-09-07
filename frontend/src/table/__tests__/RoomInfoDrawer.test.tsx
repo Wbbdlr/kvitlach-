@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { RoomInfoDrawer } from "../RoomInfoDrawer";
+import { setNumberField } from "../../testing/numberField";
 
 function renderDrawer(overrides: Partial<React.ComponentProps<typeof RoomInfoDrawer>> = {}) {
   const onRequestRename = vi.fn();
@@ -102,9 +103,32 @@ describe("RoomInfoDrawer", () => {
 
   it("submits a buy-in request with the entered amount", () => {
     const { onRequestBuyIn } = renderDrawer({ focus: "chips" });
-    fireEvent.change(screen.getByLabelText(/Amount/), { target: { value: "50" } });
+    setNumberField(/Amount/, "50");
     fireEvent.click(screen.getByText("Submit chip request"));
     expect(onRequestBuyIn).toHaveBeenCalledWith(50, undefined);
+  });
+
+  // Found bug-hunting 11.6. The amount field used to carry `required`, and
+  // the submit handler's own comment said the silent ignore below was safe
+  // BECAUSE of it: "reaching here with a bad value means the field was
+  // bypassed, not mistyped." Swapping in NumberField dropped `required`
+  // (a read-only input cannot satisfy it), so an empty amount now reaches
+  // that guard by the ordinary route -- and the player taps Submit and
+  // nothing happens, with nothing said.
+  it("says why an empty chip request went nowhere instead of silently dropping it", () => {
+    const { onRequestBuyIn } = renderDrawer({ focus: "chips" });
+    fireEvent.click(screen.getByText("Submit chip request"));
+    expect(onRequestBuyIn).not.toHaveBeenCalled();
+    expect(screen.getByText(/Enter an amount/i)).toBeInTheDocument();
+  });
+
+  it("clears that complaint once a real amount is entered", () => {
+    const { onRequestBuyIn } = renderDrawer({ focus: "chips" });
+    fireEvent.click(screen.getByText("Submit chip request"));
+    setNumberField(/Amount/, "50");
+    fireEvent.click(screen.getByText("Submit chip request"));
+    expect(onRequestBuyIn).toHaveBeenCalledWith(50, undefined);
+    expect(screen.queryByText(/Enter an amount/i)).toBeNull();
   });
 
   it("shows a pending-approval message instead of the request button when one is already outstanding", () => {

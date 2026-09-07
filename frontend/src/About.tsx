@@ -52,7 +52,7 @@ export default function About() {
       <section className="space-y-2 border-l-2 border-amber-200 pl-4">
         <h2 className="text-lg font-semibold text-amber-700">What is this?</h2>
         <p>
-          A modern, online table for Kvitlach — the Ashkenazi Chanukah-era 21-variant with a dedicated banker and hand-written
+          A modern, online table for Kvitlach - the Ashkenazi Chanukah-era 21-variant with a dedicated banker and hand-written
           kvitlach (notes). We kept the social flow, added visibility rules that match the original table habits, and layered in
           admin controls for live games.
         </p>
@@ -63,7 +63,7 @@ export default function About() {
         <ol className="list-decimal list-inside space-y-1">
           <li>Create a room (or join one) and set a banker bankroll. Banker owns the bank for the session.</li>
           <li>Blatt (draw for free) to peek at cards before you wager. Multiple blatts are allowed.</li>
-          <li>Place a wager (or BANK! to challenge the banker) — bet adds a card and locks your stake.</li>
+          <li>Place a wager (or BANK! to challenge the banker) - bet adds a card and locks your stake.</li>
           <li>Act on your turn: Hit (draw), Stand, or Skip. Eleveroon toggle ignores busting elevens in a row when your total was 11; leave it off and an 11 at 11 will bust.</li>
           <li>Banker resolves at the end: plays out the bank hand, pays winners, collects losses, pushes ties.</li>
         </ol>

@@ -136,10 +136,35 @@ export interface RoundState {
   turnTimerDurationMs?: number;
   // The table gave up on an absent banker and voided this round.
   voided?: boolean;
+  // Seats that were at the table when this round was dealt but were left out
+  // of it, because they had been disconnected too long to be dealt in. Absent
+  // when nobody was. The player named here is told why they are sitting this
+  // one out; the banker is told who is missing.
+  satOutPlayerIds?: string[];
   // See BankFrameResult -- only present the instant a BANK! forces a redeal;
   // never cleared back to undefined afterward, so diff `settledAt`, not
   // presence, the same way deckReshuffledAt works.
   lastBankFrame?: BankFrameResult;
+}
+
+/**
+ * One movement of chips that did not come from playing a hand -- a banker's
+ * correction, an approved buy-in, a bank top-up, or a stack that left with a
+ * kicked or departing player.
+ *
+ * Mirrors backend/src/types.ts. `amount` is signed as the change to that
+ * player's own stack, so the list is summable without interpreting `kind`.
+ */
+export interface LedgerEntry {
+  id: string;
+  kind: "adjust" | "buy-in" | "bank-topup" | "kick" | "leave";
+  playerId: string;
+  playerName: string;
+  actorId: string;
+  actorName: string;
+  amount: number;
+  note?: string;
+  at: number;
 }
 
 export interface RoomState {
@@ -163,6 +188,8 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  /** Chips that moved without a hand being played. See LedgerEntry. */
+  ledger?: LedgerEntry[];
   practice?: boolean;
 }
 

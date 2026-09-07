@@ -17,7 +17,7 @@ cd backend  && npm run simulate                    # ~150k hands, odds/rules
 ```
 
 - **`npx vite build` is the frontend typecheck.** Do **not** use `npx tsc
-  --noEmit` there — it reports many pre-existing, unrelated errors from
+  --noEmit` there - it reports many pre-existing, unrelated errors from
   vite/vitest ambient types. Backend `npm run build` is clean and is the
   backend typecheck.
 - **jsdom has no `ResizeObserver`.** Guard any code that uses it or component
@@ -26,11 +26,11 @@ cd backend  && npm run simulate                    # ~150k hands, odds/rules
   win/bust logic.
 - `frontend`'s `npm test` runs once; `npm run test:watch` for watch mode.
 
-## The known flake — check before believing a red suite
+## The known flake - check before believing a red suite
 
 The full backend suite fails intermittently (~20–30% of runs), confirmed
 pre-existing as of 2026-08-09 and not caused by any specific change. A
-different real-WebSocket/real-timer file fails each time — seen:
+different real-WebSocket/real-timer file fails each time - seen:
 `ws-auth.test.ts`, `abandoned-banker.test.ts`, `turn-order.test.ts`,
 `live-play.test.ts`. **Every one passes cleanly run alone.**
 
@@ -54,7 +54,7 @@ cd backend && npx vitest run src/__tests__/<file>.test.ts
   target to chase. Raise them when real coverage rises; never lower one to
   turn a build green without saying why in the same commit.
 - **Module-scope state leaks between tests.** `pwa.ts`'s deferred install
-  prompt is the live example — tests dispatch `appinstalled` in `beforeEach`
+  prompt is the live example - tests dispatch `appinstalled` in `beforeEach`
   to reset it. A shared instance passed into a constructor (`new
   GameStore(undefined, limits)`) must be the *same* instance the code under
   test mutates.
@@ -66,7 +66,7 @@ cd backend && npx vitest run src/__tests__/<file>.test.ts
 
 `.github/workflows/ci.yml` runs all three suites on every push and PR: backend
 (tests + coverage + `tsc`), frontend (tests + `vite build`), and the Playwright
-e2e package. **It does not deploy anything** — deploys stay RDP-driven.
+e2e package. **It does not deploy anything** - deploys stay RDP-driven.
 
 ## e2e
 
@@ -79,12 +79,12 @@ so it never touches a developer's `npm run dev` session.
 cd e2e && npm install && npx playwright test
 ```
 
-Not part of the default "narrowest relevant check" — run it when a change
+Not part of the default "narrowest relevant check" - run it when a change
 touches real WS or multi-client behaviour.
 
 ## Don't browser-verify what a test pins
 
 The browser is for layout, art, and things only a real engine shows. A jsdom
 test is cheaper and it stays. Conversely, **verify UI changes at a real
-viewport rather than by reasoning** — the felt layout is genuinely subtle, and
+viewport rather than by reasoning** - the felt layout is genuinely subtle, and
 practice mode is the fastest way to a live table.

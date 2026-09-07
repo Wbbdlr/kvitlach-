@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BuyInRequest, RenameRequest } from "../types";
+import { NumberField } from "../NumberField";
 
 // The two things a seated player can ask the banker for: a spelling fix on
 // their name, and more chips. Both need banker approval, so both are a form
@@ -100,6 +101,7 @@ export interface ChipRequestFormProps {
 export function ChipRequestForm({ pending, onSubmit, onDone, autoFocus }: ChipRequestFormProps) {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [error, setError] = useState<string | undefined>(undefined);
   return (
     <>
       {pending && (
@@ -113,10 +115,19 @@ export function ChipRequestForm({ pending, onSubmit, onDone, autoFocus }: ChipRe
         onSubmit={(e) => {
           e.preventDefault();
           const parsed = Number(amount);
-          // Silently ignored rather than reported: `required` and min=1 keep
-          // the browser from submitting anything else, so reaching here with
-          // a bad value means the field was bypassed, not mistyped.
-          if (!Number.isFinite(parsed) || parsed <= 0) return;
+          // Reported, not silently ignored. This used to return quietly, and
+          // the reasoning was sound at the time: `required` on a native input
+          // meant the browser refused to submit an empty amount, so anything
+          // reaching here had bypassed the field rather than mistyped it.
+          // NumberField is read-only (the phone keyboard covered the felt),
+          // and a read-only input cannot satisfy `required` -- so an empty
+          // amount now arrives by the ordinary route, and a player who taps
+          // Submit deserves to know why nothing happened.
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            setError("Enter an amount of at least $1.");
+            return;
+          }
+          setError(undefined);
           onSubmit(parsed, note || undefined);
           setAmount("");
           setNote("");
@@ -126,13 +137,15 @@ export function ChipRequestForm({ pending, onSubmit, onDone, autoFocus }: ChipRe
         <div className="flex flex-col gap-2">
           <label className="text-xs">
             Amount (required)
-            <input
+            <NumberField
               className="mt-1 w-full rounded border px-3 py-2"
-              type="number"
               min={1}
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
+              onChange={setAmount}
+              label="Buy-in amount"
+              // QuickRequestDialog opens purely to collect this number, so
+              // the pad opens with it -- the prop was left dangling and
+              // unused when this stopped being a native input.
               autoFocus={autoFocus}
             />
           </label>
@@ -146,6 +159,7 @@ export function ChipRequestForm({ pending, onSubmit, onDone, autoFocus }: ChipRe
             />
           </label>
         </div>
+        {error && <p className="text-xs font-semibold text-rose-400">{error}</p>}
         <button type="submit" className="bg-accent text-white rounded px-3 py-2 text-sm font-semibold">
           Submit chip request
         </button>

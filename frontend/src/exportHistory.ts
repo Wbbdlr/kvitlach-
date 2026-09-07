@@ -1,6 +1,7 @@
-import { Turn } from "./types";
+import { LedgerEntry, Turn } from "./types";
 import type { CompletedRoundSummary } from "./state";
 import { statusDisplay } from "./table/selectors";
+import { SETTLES } from "./playerRecord";
 import { CHIPS, ChipName, DEFAULT_CHIP, DEFAULT_FELT, FELTS, FeltName } from "./theme";
 
 // The keepsake.
@@ -188,6 +189,15 @@ const style = (feltName: FeltName, chipName: ChipName): string => {
     box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden}
   .top{background:#12271c;color:#f3ede4;padding:26px 30px 22px;text-align:center}
   .brand{font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:${chip.swatch}}
+  /* The site's own wordmark, not a generic heading: the sheet is the one
+     thing that leaves the site, so it should be recognisable as having come
+     from it. The .us is dimmed rather than hidden because the domain IS the
+     name here, and the TM is the same unregistered-use claim SiteHeader.tsx
+     carries (see Disclaimer.tsx's ownership section for what it points at).
+     letter-spacing is cancelled on both so they read as marks on the word
+     rather than as more of the wordmark's own spaced-out capitals. */
+  .brand .tld{opacity:.62;letter-spacing:.12em}
+  .brand .tm{font-size:.62em;letter-spacing:0;margin-left:.18em;vertical-align:super;opacity:.75}
   .table-name{font-size:24px;margin:8px 0 2px}
   .when{font-size:12px;opacity:.66;letter-spacing:.04em}
   .hero{padding:26px 30px 4px;text-align:center}
@@ -212,7 +222,28 @@ const style = (feltName: FeltName, chipName: ChipName): string => {
   .round{padding:12px 30px;border-top:1px solid #efe9de}
   .round h3{margin:0 0 6px;font-size:13px;font-weight:600}
   .round h3 span{font-weight:400;color:#8a8175;font-size:11px;margin-left:8px}
-  .hand{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:2px 0}
+  .hand{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0}
+  .hand .who{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+  /* One row of little cards per hand. inline-flex with a small gap rather
+     than overlapping them the way the felt does: on the felt a fan saves
+     space it does not have, and here the whole point is that every card is
+     readable at a glance. */
+  .pips{display:inline-flex;gap:3px;flex-wrap:wrap}
+  .pip{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:17px;height:23px;padding:0 3px;
+    border:1px solid rgba(60,44,26,.34);border-radius:3px;
+    background:#fbf7ee;color:#2c2418;
+    font-family:Georgia,'Times New Roman',serif;font-style:normal;
+    font-size:12px;font-weight:700;line-height:1;
+    box-shadow:0 1px 0 rgba(0,0,0,.06);
+  }
+  /* A rosier (the framed 2 and 11) is an automatic win as a pair, so it is
+     worth being able to spot in a row of otherwise identical shapes. */
+  .pip.rosier{border-color:${chip.swatch};box-shadow:0 0 0 1px ${chip.swatch} inset}
+  /* The eleveroon's ignored 11: still dealt, still shown, excluded from the
+     total. Struck through so the sheet's arithmetic reads correctly. */
+  .pip.spent{opacity:.45;text-decoration:line-through}
   .hand.me{font-weight:700}
   .muted{color:#8a8175;font-size:11px;letter-spacing:.08em;font-weight:400}
   .foot{padding:20px 30px 26px;text-align:center;color:#8a8175;font-size:11px;border-top:1px solid #e7e0d5}
@@ -228,6 +259,12 @@ export interface ExportOptions {
   roomName?: string;
   /** When set, the sheet is written from this player's point of view. */
   focusPlayerId?: string;
+  /**
+   * Chips that moved without a hand being played. Without these the sheet
+   * reports only what the cards did, which is exactly how the settlement
+   * table came out wrong after any banker correction -- see playerRecord.ts.
+   */
+  ledger?: LedgerEntry[];
   /** The exporting player's own table colours -- see style(). */
   felt?: FeltName;
   chip?: ChipName;
@@ -244,6 +281,7 @@ export function buildHistoryHtml({
   roomId,
   roomName,
   focusPlayerId,
+  ledger = [],
   // Bound under different names than the option keys on purpose: `chip` is
   // already a module-level helper here (it renders a stat tile), and
   // destructuring over it shadowed the function inside this scope.
@@ -289,12 +327,35 @@ export function buildHistoryHtml({
         <p class="verdict">${rounds.length === 1 ? "round" : "rounds"} played · ${totals.length} at the table</p>
       </div><div class="chips"></div>`;
 
+  // Summed per player rather than merged into `net`: the sheet has to keep
+  // saying what the cards did, or the number is unauditable months later.
+  const byHand = new Map<string, number>();
+  for (const entry of ledger) {
+    if (!entry?.playerId) continue;
+    // Only the kinds that change what is OWED, exactly as the on-screen
+    // settlement table does (playerRecord.ts's SETTLES, shared rather than
+    // restated so the two cannot drift again). `kick` and `leave` record what
+    // happened to a stack that walked away WITH its owner; folding those in
+    // double-counts -- Sara buys in at 100, loses 10 on the cards and leaves
+    // holding 90, and counting the departing 90 reports her at -100.
+    //
+    // The screen learned this in 11.6 and this fold did not, so from that
+    // release until now the sheet and the felt disagreed about every player
+    // who had left the table. Two settlement numbers that disagree is worse
+    // than one that is wrong: the banker reads this one and the players read
+    // theirs.
+    if (!SETTLES[entry.kind]) continue;
+    byHand.set(entry.playerId, (byHand.get(entry.playerId) ?? 0) + entry.amount);
+  }
+  const anyByHand = [...byHand.values()].some((n) => n !== 0);
+
   const standings = totals
     .map(
       (row, i) => `<tr class="${row.playerId === focusPlayerId ? "me" : ""}">
         <td class="rank">${i + 1}</td>
         <td>${esc(row.name)}${row.isBanker ? ' <span class="muted">Banker</span>' : ""}</td>
         <td class="num ${tone(row.net)}">${esc(signed(row.net))}</td>
+        ${anyByHand ? `<td class="num ${tone(byHand.get(row.playerId) ?? 0)}">${esc(signed(byHand.get(row.playerId) ?? 0))}</td><td class="num ${tone(row.net + (byHand.get(row.playerId) ?? 0))}">${esc(signed(row.net + (byHand.get(row.playerId) ?? 0)))}</td>` : ""}
         <td class="num">${row.rounds}</td>
         <td class="num">${row.wins}–${row.losses}</td>
         <td class="num">${esc(money(row.wagered))}</td>
@@ -312,7 +373,29 @@ export function buildHistoryHtml({
           const { stake, net } = turnMoney(turn);
           // Card NAMES, not values: the 12 is worth 12, 9 or 10 depending on
           // the hand, so one printed number would misreport what was dealt.
-          const cards = (turn.cards ?? []).map((c) => c.name).join(" · ");
+          //
+          // Drawn as little cards rather than printed as "9 · 8", asked for
+          // directly: the sheet is how a hand gets re-read weeks later, and a
+          // row of cards is what anyone actually remembers of it.
+          //
+          // DRAWN, not the real card art. The faces are PNGs (cardMark.ts:
+          // 946x1438 each) and this file's own first test is that it makes no
+          // external requests, so using them would mean data-URI-ing up to 24
+          // images into a sheet somebody emails to their family. A rounded
+          // rect with the card's own numeral costs bytes rather than
+          // megabytes, prints cleanly in black and white, and is legible at
+          // 18px, which the real art is not.
+          const cards = (turn.cards ?? [])
+            .map((c) => {
+              // The eleveroon rule leaves the ignored 11 IN the hand and
+              // excludes it from the totals (docs/GAME_RULES.md), and the
+              // felt renders it with its own treatment. A sheet that drew it
+              // as an ordinary card would make the arithmetic look wrong.
+              const ignored = c.attributes?.eleveroonIgnored ? " spent" : "";
+              const rosier = c.attributes?.type === "rosier" ? " rosier" : "";
+              return `<i class="pip${ignored}${rosier}">${esc(c.name)}</i>`;
+            })
+            .join("");
           // statusDisplay already separates FUTCHED! (went over 21) from LOST
           // (the banker simply had the better hand), which is the distinction
           // that matters most when you read this back weeks later. The one
@@ -324,7 +407,7 @@ export function buildHistoryHtml({
           const isBlatt = turn.player.type !== "admin" && turn.state !== "skipped" && stake === 0;
           const label = isBlatt ? "BLATT" : statusDisplay(turn).label || turn.state;
           return `<div class="hand${turn.player.id === focusPlayerId ? " me" : ""}">
-            <span>${esc(playerName(turn))}${turn.player.type === "admin" ? ' <span class="muted">Banker</span>' : ""}${cards ? ` <span class="muted">${esc(cards)}</span>` : ""}</span>
+            <span class="who">${esc(playerName(turn))}${turn.player.type === "admin" ? ' <span class="muted">Banker</span>' : ""}${cards ? `<span class="pips">${cards}</span>` : ""}</span>
             <span><span class="muted">${esc(label)}</span> <b class="${tone(net)}">${esc(signed(net))}</b></span>
           </div>`;
         })
@@ -339,18 +422,18 @@ export function buildHistoryHtml({
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Kvitlach — ${esc(me ? me.name : roomName || roomId || "table")}</title>
+<title>Kvitlach.us - ${esc(me ? me.name : roomName || roomId || "table")}</title>
 <style>${style(feltName, chipName)}</style></head>
 <body><div class="sheet">
   <div class="top">
-    <div class="brand">Kvitlach</div>
+    <div class="brand">Kvitlach<span class="tld">.us</span><sup class="tm">&trade;</sup></div>
     <div class="table-name">${esc(roomName || "A Chanukah table")}</div>
     <div class="when">${esc(when)}${roomId ? ` · ${esc(roomId)}` : ""}</div>
   </div>
   ${hero}
   <h2>Final standings</h2>
   <div class="wrap"><table>
-    <thead><tr><th class="rank"></th><th>Player</th><th class="num">Net</th><th class="num">Rounds</th><th class="num">W–L</th><th class="num">Wagered</th></tr></thead>
+    <thead><tr><th class="rank"></th><th>Player</th><th class="num">Net</th>${anyByHand ? '<th class="num">By hand</th><th class="num">To settle</th>' : ""}<th class="num">Rounds</th><th class="num">W–L</th><th class="num">Wagered</th></tr></thead>
     <tbody>${standings}</tbody>
   </table></div>
   <h2>Round by round</h2>

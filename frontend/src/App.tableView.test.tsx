@@ -1,7 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { render, fireEvent, act } from "@testing-library/react";
 import App from "./App";
 import { Player, RoomState, RoundState, Turn } from "./types";
+import { CARD_DEAL_MS } from "./table/animations";
 
 const bankerId = "admin-1";
 const playerAId = "player-a";
@@ -53,6 +54,10 @@ vi.mock("./state", () => {
     // module, so every export App imports has to be listed here or the render
     // throws at the call site.
     loadLastRoomId: () => undefined,
+    // Same reasoning as loadLastRoomId above: the age-ack checkbox's own
+    // guarded localStorage helpers, mocked out for the same reason.
+    loadAgeAcknowledged: () => false,
+    persistAgeAcknowledged: noop,
     useGameStore: () => ({
       get room() {
         return mockState.room;
@@ -92,6 +97,7 @@ vi.mock("./state", () => {
       approveBuyIn: noop,
       rejectBuyIn: noop,
       practiceTopUp: noop,
+      practiceTopUpBank: noop,
       topUpBanker: noop,
       endRoundDueToBank: noop,
       kickPlayer: noop,
@@ -112,6 +118,7 @@ vi.mock("./state", () => {
 const { playSfxMock } = vi.hoisted(() => ({ playSfxMock: vi.fn() }));
 vi.mock("./audio", () => ({
   AudioManager: class {
+    playTurnAlert() {}
     noteInteraction() {}
     setMusicEnabled() {}
     setSfxEnabled() {}
@@ -453,6 +460,13 @@ describe("the felt table is the only in-room view", () => {
 
     beforeEach(() => {
       playSfxMock.mockClear();
+      // Outcome sounds are deferred by the card-deal animation now, so these
+      // need to be able to move the clock deliberately.
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
     it("plays natural21 (not win) when a hand hits exactly 21 mid-turn", () => {
@@ -462,9 +476,98 @@ describe("the felt table is the only in-room view", () => {
 
       mockState.round = { ...mockState.round, turns: [natural21Turn, adminTurn] };
       rerender(<App />);
+      // The card that made 21 is still flying (see the outcome-sound block
+      // below) -- the fanfare is for when it lands.
+      act(() => {
+        vi.advanceTimersByTime(CARD_DEAL_MS);
+      });
 
       expect(playSfxMock).toHaveBeenCalledWith("natural21");
       expect(playSfxMock).not.toHaveBeenCalledWith("win");
+    });
+
+    // Reported from a real table on 11.4: "the winning sound and busting
+    // sound play before his final card animation is even revealed." Both
+    // were fired the instant round:state arrived, while the card that caused
+    // the outcome was still mid-flight from the shoe (cardDealIn, 340ms in
+    // index.css). The horn spoiled the card.
+    describe("an outcome sound waits for the card that caused it", () => {
+      const bustTurn: Turn = {
+        ...playerTurn,
+        bet: 25,
+        state: "lost",
+        cards: [
+          { name: "12", attributes: { values: [12, 9, 10] } },
+          { name: "12", attributes: { values: [12, 9, 10] } },
+          { name: "10", attributes: { values: [10] } },
+        ],
+      };
+
+      it("holds the fanfare until the winning card has landed", () => {
+        mockState.round = { ...round, roundId: "R-hold-win", turns: [pendingTurn, adminTurn] };
+        const { rerender } = render(<App />);
+        playSfxMock.mockClear();
+
+        mockState.round = { ...mockState.round, turns: [natural21Turn, adminTurn] };
+        rerender(<App />);
+
+        // The deal whoosh is correct at t=0 -- the card starts moving now.
+        expect(playSfxMock).toHaveBeenCalledWith("deal");
+        expect(playSfxMock).not.toHaveBeenCalledWith("natural21");
+
+        act(() => {
+          vi.advanceTimersByTime(CARD_DEAL_MS);
+        });
+        expect(playSfxMock).toHaveBeenCalledWith("natural21");
+      });
+
+      it("holds the futch horn until the busting card has landed", () => {
+        const twoCards: Turn = { ...bustTurn, state: "pending", cards: bustTurn.cards.slice(0, 2) };
+        mockState.round = { ...round, roundId: "R-hold-bust", turns: [twoCards, adminTurn] };
+        const { rerender } = render(<App />);
+        playSfxMock.mockClear();
+
+        mockState.round = { ...mockState.round, turns: [bustTurn, adminTurn] };
+        rerender(<App />);
+        expect(playSfxMock).not.toHaveBeenCalledWith("bust");
+
+        act(() => {
+          vi.advanceTimersByTime(CARD_DEAL_MS);
+        });
+        expect(playSfxMock).toHaveBeenCalledWith("bust");
+      });
+
+      it("does not wait when no card was dealt -- a showdown resolves nothing visually", () => {
+        const standby: Turn = { ...playerTurn, bet: 25, state: "standby", cards: pendingTurn.cards };
+        const won: Turn = { ...playerTurn, bet: 25, state: "won", cards: pendingTurn.cards };
+        mockState.round = { ...round, roundId: "R-showdown-now", turns: [standby, adminTurn] };
+        const { rerender } = render(<App />);
+        playSfxMock.mockClear();
+
+        mockState.round = { ...mockState.round, turns: [won, adminTurn] };
+        rerender(<App />);
+
+        // Nothing is flying, so nothing is being spoiled -- delaying here
+        // would just make the table feel unresponsive.
+        expect(playSfxMock).toHaveBeenCalledWith("win");
+      });
+
+      it("drops a pending outcome sound when the component goes away", () => {
+        mockState.round = { ...round, roundId: "R-unmount", turns: [pendingTurn, adminTurn] };
+        const { rerender, unmount } = render(<App />);
+        playSfxMock.mockClear();
+
+        mockState.round = { ...mockState.round, turns: [natural21Turn, adminTurn] };
+        rerender(<App />);
+        unmount();
+
+        act(() => {
+          vi.advanceTimersByTime(CARD_DEAL_MS * 4);
+        });
+        // A fanfare arriving after the table is gone belongs to a hand
+        // nobody is looking at any more.
+        expect(playSfxMock).not.toHaveBeenCalledWith("natural21");
+      });
     });
 
     it("plays only win (not natural21) for an ordinary showdown win", () => {
@@ -490,6 +593,11 @@ describe("the felt table is the only in-room view", () => {
   describe("the banker's repurposed bet field must not drive bet sounds", () => {
     beforeEach(() => {
       playSfxMock.mockClear();
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
     it("does not clink a chip when the banker's resolved net goes up", () => {
@@ -524,8 +632,57 @@ describe("the felt table is the only in-room view", () => {
 
       mockState.round = { ...mockState.round, turns: [playerTurn, bankerNatural21] };
       rerender(<App />);
+      // The bank drew that 12 -- its fanfare waits for the card, same as a
+      // player's does.
+      act(() => {
+        vi.advanceTimersByTime(CARD_DEAL_MS);
+      });
 
       expect(playSfxMock).toHaveBeenCalledWith("natural21");
     });
+  });
+});
+
+// A practice table's banker is a bot, and the ordinary remedy for an emptied
+// bank -- Manage -> BANK -> add chips -- is admin-only, so it reaches nobody
+// there. One BANK! wager that drains the bank used to end the table for good:
+// every wager after it is refused with bank_empty and the felt offers no way
+// through. Reported after a bot BANK!ed into 21, "the whole round was broken
+// as a result [...] we need to query the player if they want to replenish the
+// computer bank."
+describe("refilling a practice table's bot bank", () => {
+  const botBanker: Player = { ...adminPlayer, isBot: true };
+  const practiceRoom = (bankWallet: number): RoomState => ({
+    ...room,
+    practice: true,
+    players: [botBanker, playerA],
+    wallets: { [bankerId]: bankWallet, [playerAId]: 100 },
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    mockState.playerId = playerAId;
+    mockState.round = undefined;
+  });
+
+  it("offers the refill once the bot bank is out", () => {
+    mockState.room = practiceRoom(0);
+    const { getByText } = render(<App />);
+    expect(getByText(/bank is out of chips/i)).toBeTruthy();
+  });
+
+  it("says nothing while the bank still has chips", () => {
+    mockState.room = practiceRoom(500);
+    const { queryByText } = render(<App />);
+    expect(queryByText(/bank is out of chips/i)).toBeNull();
+  });
+
+  // A real table's empty bank is the banker's to fix, and they have their own
+  // prompt for it (bankIsEmpty). Offering this one there would let any player
+  // mint chips into somebody else's wallet.
+  it("stays off a real table, where the banker is a person with their own remedy", () => {
+    mockState.room = { ...practiceRoom(0), practice: false, players: [adminPlayer, playerA] };
+    const { queryByText } = render(<App />);
+    expect(queryByText(/bank is out of chips/i)).toBeNull();
   });
 });

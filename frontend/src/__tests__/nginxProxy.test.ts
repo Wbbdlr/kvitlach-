@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// The frontend origin is the only thing on the internet. It reaches the backend
-// for exactly one path -- /api/about -- and the config is asserted here because
-// nothing else can catch a widening of it.
+// The frontend origin is the only thing on the internet. It reaches the
+// backend for exactly three paths -- /api/about, /api/contact,
+// /api/disclaimer, the public GET side of the three operator-authored-copy
+// pages -- and the config is asserted here because nothing else can catch a
+// widening of it.
 //
 // The backend's HTTP port also serves /admin, /metrics and /health/detail, and
 // the only thing keeping those off the internet is ADMIN_BIND binding that port
@@ -57,24 +59,39 @@ function locations(): { modifier: string; path: string; body: string }[] {
   return out;
 }
 
+// The complete, deliberate list of public backend routes. Adding a fourth
+// means adding it here too, in the same review -- that duplication is the
+// point, not an accident to DRY away.
+const PUBLIC_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer"];
+
 describe("the frontend origin's backend proxy", () => {
-  it("proxies exactly one path and no more", () => {
+  it("proxies exactly the known paths and no more", () => {
     const passes = CONF.match(/proxy_pass\s+[^;]+;/g) ?? [];
     expect(
       passes,
-      "A second proxy_pass is a second public backend route. If one is genuinely " +
-        "needed it must be its own exact-match location, and this test updated to name it."
-    ).toHaveLength(1);
-    expect(passes[0]).toContain("/api/about");
+      "A proxy_pass count that does not match PUBLIC_ROUTES is a public backend route this " +
+        "test does not know about. If one is genuinely needed it must be its own exact-match " +
+        "location, and PUBLIC_ROUTES above updated to name it."
+    ).toHaveLength(PUBLIC_ROUTES.length);
+    for (const route of PUBLIC_ROUTES) {
+      expect(passes.some((p) => p.includes(route)), `no proxy_pass found for ${route}`).toBe(true);
+    }
   });
 
-  it("reaches the backend only through an exact match", () => {
+  it("reaches the backend only through exact matches, one per known route", () => {
     const proxying = locations().filter((loc) => loc.body.includes("proxy_pass"));
-    expect(proxying).toHaveLength(1);
-    expect(
-      { modifier: proxying[0].modifier, path: proxying[0].path },
-      "`location =` is the exact match. A prefix match here publishes /admin."
-    ).toEqual({ modifier: "=", path: "/api/about" });
+    expect(proxying).toHaveLength(PUBLIC_ROUTES.length);
+    for (const loc of proxying) {
+      expect(
+        { modifier: loc.modifier, path: loc.path },
+        "`location =` is the exact match. A prefix match here publishes /admin."
+      ).toEqual({ modifier: "=", path: expect.stringMatching(new RegExp(`^(${PUBLIC_ROUTES.join("|")})$`)) });
+    }
+    // And the reverse: every known route actually has its own location, not
+    // just N locations that happen to be exact matches of SOMETHING.
+    for (const route of PUBLIC_ROUTES) {
+      expect(proxying.some((loc) => loc.path === route), `no exact-match location for ${route}`).toBe(true);
+    }
   });
 
   it("never prefix-matches /api or /admin", () => {
@@ -87,9 +104,11 @@ describe("the frontend origin's backend proxy", () => {
     }
   });
 
-  it("is GET-only, because the copy is written from /admin and never from the app", () => {
-    const about = locations().find((loc) => loc.path === "/api/about");
-    expect(about?.body).toContain("limit_except GET");
+  it("every known route is GET-only, because each copy is written from /admin and never from the app", () => {
+    for (const route of PUBLIC_ROUTES) {
+      const loc = locations().find((l) => l.path === route);
+      expect(loc?.body, `no location block found for ${route}`).toContain("limit_except GET");
+    }
   });
 
   // Not a proxy property, but the same blast radius: the SPA fallback is what

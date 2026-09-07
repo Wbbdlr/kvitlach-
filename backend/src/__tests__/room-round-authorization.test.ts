@@ -69,7 +69,7 @@ function send(ws: WebSocket, type: string, payload: unknown): Promise<any> {
   });
 }
 
-describe("room:get / round:get authorization — a bystander is not a member", () => {
+describe("room:get / round:get authorization - a bystander is not a member", () => {
   it("refuses room:get to a socket that never joined that room, and never leaks the password", async () => {
     const banker = await connect();
     const bystander = await connect();

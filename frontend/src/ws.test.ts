@@ -86,7 +86,7 @@ describe("WSClient", () => {
     MockWebSocket.instances[0].triggerOpen();
     MockWebSocket.instances[0].triggerClose();
     // onclose schedules its own retry via setTimeout, so an explicit connect() here
-    // would be a no-op only while genuinely mid-connect/open — after a real close,
+    // would be a no-op only while genuinely mid-connect/open - after a real close,
     // a fresh manual connect() should be allowed to create a new socket.
     client.connect();
     expect(MockWebSocket.instances).toHaveLength(2);

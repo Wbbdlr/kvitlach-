@@ -20,6 +20,10 @@ export interface DealerProps {
   onHit?: () => void;
   onStand?: () => void;
   deckCount?: number;
+  /** Server timestamp of the last reshuffle. Only ever compared for CHANGE,
+   *  never displayed -- a new value means a fresh shoe just arrived and the
+   *  shoe should visibly say so (see the animation below). */
+  deckReshuffledAt?: number;
   onOpenStats?: (playerId: string) => void;
   // See Seat.tsx -- same round-scoped-key/first-paint-gate/shoe-flight
   // mechanism, applied to the bank's own hand.
@@ -61,6 +65,7 @@ export function Dealer({
   onHit,
   onStand,
   deckCount,
+  deckReshuffledAt,
   onOpenStats,
   roundId,
   pastFirstPaint,
@@ -72,6 +77,41 @@ export function Dealer({
   reserved = 0,
   reactionEmoji,
 }: DealerProps) {
+  // A fresh shoe is otherwise completely silent on the felt -- the count
+  // jumps and nothing else moves, which is why a banker who had just
+  // reshuffled mid-round could not tell it had worked and reported the
+  // dialog as stuck (2026-09-06; see ManageDrawer's own note). One shuffle
+  // animation on the shoe answers "did that do anything?" without a toast
+  // the felt has to make room for.
+  //
+  // Keyed off the SERVER's timestamp rather than a local click, so it fires
+  // for everyone at the table -- a reshuffle is a table-wide event, and the
+  // player who pressed the button is the one person who least needs telling.
+  //
+  // roundId is tracked alongside the timestamp, and that pairing is the whole
+  // correctness argument. deckReshuffledAt is a PERSISTENT field on the round
+  // (round.ts sets it at creation for a between-rounds reshuffle, and it then
+  // stays set for that round's whole life), so "the value went from undefined
+  // to a number" does NOT mean a shuffle just happened -- it also happens to
+  // anyone who arrives mid-round, because this component mounts before the
+  // first round:state lands and then receives a round carrying an old
+  // timestamp. Seeding a ref on first render alone did not cover that: at
+  // that point there is no round yet, so the seed is undefined and the
+  // arriving round reads as a change. Refusing to animate until we have seen
+  // a round at all (prev.roundId defined) is what actually distinguishes "a
+  // shuffle happened while I was watching" from "I just got here".
+  const [shuffling, setShuffling] = useState(false);
+  const lastSeenRef = useRef<{ roundId?: string; at?: number }>({ roundId, at: deckReshuffledAt });
+  useEffect(() => {
+    const prev = lastSeenRef.current;
+    lastSeenRef.current = { roundId, at: deckReshuffledAt };
+    if (prev.roundId === undefined) return; // first round we have seen -- baseline only
+    if (!deckReshuffledAt || deckReshuffledAt === prev.at) return;
+    setShuffling(true);
+    const id = window.setTimeout(() => setShuffling(false), 900);
+    return () => window.clearTimeout(id);
+  }, [deckReshuffledAt, roundId]);
+
   // NOTE: round.state === "final" means the banker's turn has just BEGUN
   // (all other players are resolved), not that the banker is done -- see
   // getGameState in round.ts. Only an explicit forceBankerReveal or the
@@ -293,21 +333,35 @@ export function Dealer({
           />
         )}
 
+        {/* Not `sm`, and not on the felt's ordinary button sizing: see
+            .k-bank-act in index.css. These sit on the SCALED stage, so they
+            were the smallest targets in the whole app on a phone despite
+            being the ones pressed every round. */}
         {canAct && (
-          <div className="flex gap-2">
-            <button className="k-btn hit sm" onClick={onHit}>
+          <div className="k-bank-act flex">
+            <button className="k-btn hit" onClick={onHit}>
               Hit
             </button>
-            <button className="k-btn stand sm" onClick={onStand}>
+            <button className="k-btn stand" onClick={onStand}>
               Stand
             </button>
           </div>
         )}
       </div>
 
-      <div className="k-shoe" title={`${deckCount ?? 0} cards left in the shoe`}>
+      <div
+        className={clsx("k-shoe", shuffling && "is-shuffling")}
+        title={`${deckCount ?? 0} cards left in the shoe`}
+      >
+        {/* Two extra backs, rendered only while shuffling, so the stack has
+            something to riffle against -- the resting shoe is a single card
+            back and one card cannot look like a shuffle on its own. */}
+        {shuffling && <span className="k-cardback k-shoe-riffle a" aria-hidden="true" />}
+        {shuffling && <span className="k-cardback k-shoe-riffle b" aria-hidden="true" />}
         <span className="k-cardback" />
-        <span className="k-shoe-count">{deckCount ?? 0} left</span>
+        <span className="k-shoe-count">
+          {shuffling ? "Shuffling…" : `${deckCount ?? 0} left`}
+        </span>
       </div>
     </>
   );

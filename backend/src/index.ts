@@ -1,4 +1,7 @@
 import { AboutContent, AboutRecord } from "./about.js";
+import { BotNames, BotNamesRecord } from "./bot-names.js";
+import { ContactContent, ContactRecord } from "./contact.js";
+import { DisclaimerContent, DisclaimerRecord } from "./disclaimer.js";
 import { createHttpServer } from "./http-server.js";
 import { GameStore } from "./store.js";
 import { WSServer } from "./ws-server.js";
@@ -10,9 +13,37 @@ import { metrics } from "./metrics.js";
 
 const PORT_WS = Number(process.env.WS_PORT || 3001);
 const PORT_HTTP = Number(process.env.PORT || 3000);
+
+// A PORT/WS_PORT collision does NOT fail loudly on its own, and that's the
+// trap. WSServer's constructor (ws-server.ts) does `new WebSocketServer({
+// port })` with no `host`, so the `ws` package's internal HTTP server binds
+// Node's unspecified address ("::", IPv6 dual-stack) -- while app.listen()
+// below is given an explicit `host: "0.0.0.0"` (IPv4-only). Those are two
+// different sockets, so when the two ports are equal, BOTH binds can succeed
+// with no EADDRINUSE: Fastify's own "listening" log is completely truthful
+// and the boot looks clean. What actually happens is an address-family
+// split -- confirmed on Windows 10 + Node 22, `curl http://127.0.0.1:PORT`
+// reaches Fastify fine, but `curl http://localhost:PORT` resolves to ::1
+// first and lands on ws's internal server instead, which answers every
+// plain request with a bare 426 Upgrade Required -- every REST/admin route
+// silently 426s while the startup log claims success. Refuse to boot at all
+// rather than ship that trap; this must run before either server is built.
+if (PORT_HTTP === PORT_WS) {
+  console.error(
+    `Refusing to start: PORT and WS_PORT are both ${PORT_HTTP}. The HTTP (Fastify) and ` +
+      `WebSocket servers cannot share a port -- set them to different values ` +
+      `(e.g. PORT=3000 WS_PORT=3001). Easy to hit by accident from an ambient ` +
+      `$PORT or $WS_PORT already set in your shell.`,
+  );
+  process.exit(1);
+}
+
 const ACCESS_SETTING_KEY = "access";
 const LIMITS_SETTING_KEY = "limits";
 const ABOUT_SETTING_KEY = "about";
+const BOT_NAMES_SETTING_KEY = "bot-names";
+const CONTACT_SETTING_KEY = "contact";
+const DISCLAIMER_SETTING_KEY = "disclaimer";
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL;
@@ -25,7 +56,23 @@ async function main() {
     void db?.putSetting(LIMITS_SETTING_KEY, record).catch((e) => console.error("db putSetting(limits)", e));
   });
   limits.hydrate(limitsFromEnv());
-  const store = new GameStore(db, limits);
+  // Practice-mode bot names. Same settings-row shape as About/Contact, and
+  // hydrated BEFORE the store is built because the store holds this instance
+  // for the life of the process -- the admin panel edits it in place, which is
+  // what makes a saved list take effect on the next practice table without a
+  // restart.
+  const botNames = new BotNames((record) => {
+    void db?.putSetting(BOT_NAMES_SETTING_KEY, record).catch((e) => console.error("db putSetting(bot-names)", e));
+  });
+  if (db) {
+    try {
+      botNames.hydrate(await db.getSetting<BotNamesRecord>(BOT_NAMES_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(bot-names); using the built-in name lists", e);
+    }
+  }
+
+  const store = new GameStore(db, limits, botNames);
   await store.loadFromDB();
 
   // ONE AccessControl, shared by the HTTP admin page that mutates it and the
@@ -71,6 +118,32 @@ async function main() {
     }
   }
 
+  // Same reasoning as About, same shape: no env default, an unconfigured
+  // server just shows Contact.tsx's built-in copy.
+  const contact = new ContactContent((record) => {
+    void db?.putSetting(CONTACT_SETTING_KEY, record).catch((e) => console.error("db putSetting(contact)", e));
+  });
+  if (db) {
+    try {
+      contact.hydrate(await db.getSetting<ContactRecord>(CONTACT_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(contact); Contact page will show its built-in copy only", e);
+    }
+  }
+
+  // Per-section overrides for the Disclaimer page -- see disclaimer.ts for
+  // why this is six fields and not one.
+  const disclaimer = new DisclaimerContent((record) => {
+    void db?.putSetting(DISCLAIMER_SETTING_KEY, record).catch((e) => console.error("db putSetting(disclaimer)", e));
+  });
+  if (db) {
+    try {
+      disclaimer.hydrate(await db.getSetting<DisclaimerRecord>(DISCLAIMER_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(disclaimer); Disclaimer page will show its built-in copy only", e);
+    }
+  }
+
   const auth = adminAuthFromEnv();
   if (!auth.enabled && !process.env.ADMIN_TOKEN) {
     console.warn("admin panel disabled: set ADMIN_USERNAME + ADMIN_PASSWORD_HASH (or ADMIN_TOKEN)");
@@ -87,6 +160,8 @@ async function main() {
 
   const app = createHttpServer(store, {
     about,
+    contact,
+    disclaimer,
     access,
     limits,
     auth,

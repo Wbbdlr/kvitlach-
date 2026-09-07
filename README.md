@@ -2,7 +2,7 @@
 
 Modern take on the traditional Chanukah twenty-one variant featuring a dedicated banker. The active stack is Node.js (Fastify + WebSocket) for the backend and React + Vite + Tailwind for the frontend.
 
-> **Working on this repo with Claude Code?** Start with [CLAUDE.md](CLAUDE.md) — it carries the project rules, invariants, and the non-obvious test/build commands.
+> **Working on this repo with Claude Code?** Start with [CLAUDE.md](CLAUDE.md) - it carries the project rules, invariants, and the non-obvious test/build commands.
 
 ## Table of Contents
 - [Features](#features)
@@ -35,7 +35,7 @@ Modern take on the traditional Chanukah twenty-one variant featuring a dedicated
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | Working rules, invariants, commands. Read this first when changing code. |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Server authority, sessions, persistence, seating/rotation, the scaled-stage coordinate system. |
-| [docs/GAME_RULES.md](docs/GAME_RULES.md) | Rules as implemented — deck composition, the flexible 12, blatt, futch, Eleveroon, showdown. |
+| [docs/GAME_RULES.md](docs/GAME_RULES.md) | Rules as implemented - deck composition, the flexible 12, blatt, futch, Eleveroon, showdown. |
 | [TASKS.md](TASKS.md) | Current backlog. |
 
 ## Project Structure
@@ -94,7 +94,7 @@ The frontend defaults to this pattern automatically, but explicit `VITE_WS_URL` 
 Backend (turn/round resolution, store, WS auth, seating, persistence):
 
 ```bash
-cd backend && npm test          # vitest run — one-shot
+cd backend && npm test          # vitest run - one-shot
 ```
 
 Frontend (lobby, table view, dock, drawers, stage maths, store/WS handling):
@@ -108,7 +108,7 @@ Typecheck: `npm run build` in `backend/`, and `npx vite build` in `frontend/`.
 ambient-type errors and is not a useful signal.)
 
 Run the Monte Carlo simulator (50k rounds per deck count) to check rules and the
-Banker/Player edge — worth running after any change to deck composition, card
+Banker/Player edge - worth running after any change to deck composition, card
 values, or win/bust logic:
 
 ```bash
@@ -132,16 +132,16 @@ cd backend && npm run simulate
 - Server → client envelope: `{ type, roomId?, playerId?, requestId?, payload, error? }`
 - `ack` responses echo the originating `requestId`; failures use `error` with `{ message, code?, details? }`.
 
-Gameplay is WebSocket-only — the HTTP server exposes `/health`, a token-gated `/admin`, and `/metrics` (Prometheus text format; unauthenticated, like `/health` — see `backend/src/metrics.ts`). The authoritative list of message types is the `switch` in `backend/src/ws-server.ts`; the main ones:
+Gameplay is WebSocket-only - the HTTP server exposes `/health`, a token-gated `/admin`, and `/metrics` (Prometheus text format; unauthenticated, like `/health` - see `backend/src/metrics.ts`). The authoritative list of message types is the `switch` in `backend/src/ws-server.ts`; the main ones:
 
 - Client: `room:create`, `room:create-practice`, `room:join`, `room:resume`, `room:switch-admin`, `room:get`, `room:close`, `round:start`, `round:get`, `round:banker-end`, `round:void-abandoned`, `turn:bet`, `turn:hit`, `turn:stand`, `turn:skip`, `player:react`, rename (`player:rename-request|approve|reject|block|cancel`), buy-in (`player:buyin-request|approve|reject|block|cancel`, `player:practice-topup`), admin tools (`player:kick`, `player:bank-adjust`, `room:set-watermark`, `room:reshuffle-deck`), and `room:banker-topup`.
 - Server: `room:state`, `round:state`, `round:ended`, `round:banker-ended`, `room:closed`, `reaction:new`, `room:banker-topup`, `player:bank-adjusted`, `ack`, `error`.
 
-**Actor identity always comes from the socket's authenticated session, never from a `playerId` in the payload** — see [CLAUDE.md](CLAUDE.md) and `backend/src/__tests__/ws-auth.test.ts`.
+**Actor identity always comes from the socket's authenticated session, never from a `playerId` in the payload** - see [CLAUDE.md](CLAUDE.md) and `backend/src/__tests__/ws-auth.test.ts`.
 
 ### URLs
 
-Routing lives in `frontend/src/router.tsx`: `/about`, `/disclaimer`, `/contact`, and a catch-all `*` for everything else (lobby, waiting, live table — still one `App` component, switching on store state, not on the route). The active room shows in the path as `/table/CODE`; a plain `?room=CODE` remains the invite-link format, pre-filling the join form for someone who hasn't joined yet. Entering a room pushes a history entry via the router's own `navigate()`; reconnects and other updates to the same room replace in place instead, so they don't pile up duplicate entries. The browser Back button while in a room tears the session down and returns to the lobby (`state.ts`'s `popstate` listener) rather than leaving the site. A stale `/table/CODE` (no matching session) folds back into `/?room=CODE` on load. Reconnection itself uses a session token in `localStorage`, not the URL either way.
+Routing lives in `frontend/src/router.tsx`: `/about`, `/disclaimer`, `/contact`, and a catch-all `*` for everything else (lobby, waiting, live table - still one `App` component, switching on store state, not on the route). The active room shows in the path as `/table/CODE`; a plain `?room=CODE` remains the invite-link format, pre-filling the join form for someone who hasn't joined yet. Entering a room pushes a history entry via the router's own `navigate()`; reconnects and other updates to the same room replace in place instead, so they don't pile up duplicate entries. The browser Back button while in a room tears the session down and returns to the lobby (`state.ts`'s `popstate` listener) rather than leaving the site. A stale `/table/CODE` (no matching session) folds back into `/?room=CODE` on load. Reconnection itself uses a session token in `localStorage`, not the URL either way.
 
 Deck sizing defaults to an auto calculation (`recommendedDeckCount` in `round.ts`: ~4 cards/hand × 8 rounds per seat, divided by the 24-card Kvitlach deck -- 2 copies of each of 1-12, not a standard playing-card deck -- capped at 16 decks). A 50-player table auto-selects the 16-deck cap; override via deck input if desired.
 

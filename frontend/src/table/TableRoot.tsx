@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { cardImages } from "./selectors";
 import { clsx } from "clsx";
 import { StandingRow } from "../playerRecord";
@@ -8,7 +8,7 @@ import { UINotification } from "../state";
 import { useChip, useFelt } from "../theme";
 import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTurnsBySeat, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH, viewerHandScale } from "./layout";
 import { fullName, statusDisplay, reservedAgainst } from "./selectors";
-import { useStageScale } from "./stage";
+import { DOCK_SCALE_MAX, DOCK_SCALE_MIN, useStageScale } from "./stage";
 import { usePinchZoom } from "./pinchZoom";
 import { useMediaQuery } from "../useMediaQuery";
 import { installNudgeDue, snoozeInstallNudge, useInstallPrompt } from "../pwa";
@@ -25,6 +25,7 @@ import { ChromeMenu } from "./ChromeMenu";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { ManageDrawer } from "./ManageDrawer";
 import { RoomInfoDrawer } from "./RoomInfoDrawer";
+import { PracticeBankDialog } from "./PracticeBankDialog";
 import { QuickRequestDialog, QuickRequestKind } from "./QuickRequestDialog";
 import { WaitingListDrawer, WaitingListEntry } from "./WaitingListDrawer";
 import { StatsModal } from "./StatsModal";
@@ -38,6 +39,7 @@ import { StageOverlay } from "./StageOverlay";
 import { useFullscreen } from "./fullscreen";
 import { useWakeLock } from "./wakeLock";
 import { isIOS, isStandaloneDisplay } from "./platform";
+import { isHandheld } from "./immersive";
 
 // Shown on the felt until a banker sets their own watermark via Manage ->
 // table settings -- a fixed default rather than the room's own (randomly
@@ -98,6 +100,7 @@ export interface TableRootProps {
   onHit: (options: { eleveroon: boolean }) => void;
   onStand: () => void;
   onSkip: (playerId?: string) => void;
+  onStandFor: (playerId: string) => void;
   onReact: (emoji: string) => void;
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
@@ -110,8 +113,11 @@ export interface TableRootProps {
   onRejectBuyIn: (playerId: string) => void;
   onRequestBuyIn: (amount: number, note?: string) => void;
   onPracticeTopUp: () => void;
+  /** Practice tables only -- the bot banker cannot refill its own bank. */
+  onPracticeTopUpBank: (amount: number) => void;
   onShowHowTo: () => void;
-  onEndRoundDueToBank: () => void;
+  /** Ends the round AND the night -- see the prompt this drives. */
+  onEndGame: () => void;
   onVoidAbandonedRound: () => void;
   onAdjustChips: (playerId: string, amount: number, note?: string) => void;
   onKick: (playerId: string) => void;
@@ -119,8 +125,13 @@ export interface TableRootProps {
   onExportHistory: (focusPlayerId?: string) => void;
   onCloseRoom: () => void;
   onStartNextRound: () => void;
+  /** Give up the seat for good -- the server removes it, chips and all. */
   onLeave: () => void;
+  /** Disconnect but keep the seat and the stack; returning resumes it. */
+  onStepAway: () => void;
   onReshuffleDeck: () => void;
+  /** Hand the bank to another player after a BANK! wager emptied it. */
+  onPassBank: (targetPlayerId: string) => void;
   notifications: UINotification[];
   onDismissNotification: (id: string) => void;
   statsData?: StatsData;
@@ -164,6 +175,7 @@ export function TableRoot({
   onHit,
   onStand,
   onSkip,
+  onStandFor,
   onReact,
   onTopUp,
   onSetWatermark,
@@ -176,8 +188,9 @@ export function TableRoot({
   onRejectBuyIn,
   onRequestBuyIn,
   onPracticeTopUp,
+  onPracticeTopUpBank,
   onShowHowTo,
-  onEndRoundDueToBank,
+  onEndGame,
   onVoidAbandonedRound,
   onAdjustChips,
   onKick,
@@ -185,7 +198,9 @@ export function TableRoot({
   onCloseRoom,
   onStartNextRound,
   onLeave,
+  onStepAway,
   onReshuffleDeck,
+  onPassBank,
   notifications,
   onDismissNotification,
   statsData,
@@ -224,30 +239,114 @@ export function TableRoot({
   // instead of it -- see pinchZoom.ts. feltRef is only ever written to by that
   // hook (CSS custom properties, no React state per frame).
   const feltRef = useRef<HTMLDivElement>(null);
+
+  // The control bar: movable and resizable, as one unit.
+  //
+  // A tighter range than the hook's own default 0.75-1.8. The bar already
+  // only just fits one line on a 640px phone (index.css's compact block is a
+  // measured 428 of 433 available), so growth is what has to be bounded
+  // tightly here -- shrinking is what was actually asked for. The ceiling
+  // used to be a flat 1.25 alongside the floor; it is measured now, because
+  // 1.25 turned out to be past the bottom seat on every landscape phone this
+  // table supports (see StageFit.maxDockScale).
+  //
+  // Both positionStyle AND scale go on the ROW, never on the stack that
+  // wraps it, because the stack also holds the viewer's readout and that
+  // panel is position:fixed once its own player has moved it. A transform on
+  // the stack would make the stack its containing block and quietly drag the
+  // readout around with the bar -- correctly avoided for scale below, but
+  // position:fixed is the identical hazard through a different property, and
+  // that half used to be missed: position:fixed ALSO makes its element a
+  // containing block for position:fixed descendants, same as transform does,
+  // so putting it on the stack dragged the (still in-flow, not yet
+  // independently moved) readout along with the bar exactly the same way a
+  // transform would have. Reported live: "dragged the moving handle for the
+  // main control bar, it moved the floating player tile too." ref moves with
+  // it -- the hook measures whatever element it is handed, and that has to
+  // be the box actually being dragged, not the box merely wrapping it.
+  const dockRowRef = useRef<HTMLDivElement>(null);
+
   // playerTurns.length, not room.players.length: it's exactly the count that
   // feeds seatPositions()/seatScale() below (the dealer never shrinks, see
   // dealDeltaFor's own comment), so computeFit's crowding correction shrinks
   // its reservation by the same amount the seats themselves actually shrink.
-  const { wrapRef, dockRef, scale, stageHeight, vf, playTop, compact } = useStageScale(playerTurns.length);
-  const { zoomed, reset: resetZoom } = usePinchZoom(wrapRef, feltRef, scale);
-
-  // The control bar: movable and resizable, as one unit.
-  //
-  // 0.7 to 1.25 rather than the hook's default 0.75-1.8. The bar already only
-  // just fits one line on a 640px phone (index.css's compact block is a
-  // measured 428 of 433 available), so growth is what has to be bounded
-  // tightly here -- shrinking is what was actually asked for.
-  //
-  // positionStyle goes on the STACK and scale on the ROW inside it, rather
-  // than both on one element, because the stack also holds the viewer's
-  // readout and that panel is position:fixed once its own player has moved it.
-  // A transform on the stack would make the stack its containing block and
-  // quietly drag the readout around with the bar.
-  const dockStackRef = useRef<HTMLDivElement>(null);
-  const dockPanel = useDraggablePanel(dockStackRef, "dock", {
-    bounds: { min: 0.7, max: 1.25 },
+  const { wrapRef, dockRef, scale, stageHeight, vf, playTop, compact, maxDockScale } = useStageScale(
+    playerTurns.length,
+    dockRowRef
+  );
+  const dockPanel = useDraggablePanel(dockRowRef, "dock", {
+    // The STORED bounds stay constant on purpose, and the layout's own
+    // tighter ceiling (StageFit.maxDockScale) is applied at render time
+    // instead -- see appliedDockScale below.
+    //
+    // Handing the dynamic ceiling to the hook was tried first and is wrong:
+    // the hook re-clamps its state whenever its bounds tighten, so a bar
+    // sized on a desktop and then opened on a phone would be clamped down,
+    // and clamping is one-way -- coming back to the roomier viewport never
+    // restores it. Rotating a phone twice would ratchet the bar smaller and
+    // smaller with nothing the player did. What someone chose is theirs to
+    // keep; what fits is this screen's business.
+    bounds: { min: DOCK_SCALE_MIN, max: DOCK_SCALE_MAX },
     flowOrigin: "bottom center",
   });
+  // What actually goes on the element: the player's own size, capped by what
+  // this viewport can give it without the bar growing up over their cards.
+  // Never persisted -- see the bounds note above.
+  const appliedDockScale = Math.min(dockPanel.scale, maxDockScale);
+
+  const { zoomed, reset: resetZoom } = usePinchZoom(wrapRef, feltRef, scale);
+
+
+  // .k-dock-stack still collapses the instant the row leaves ITS flow for
+  // position: fixed -- the row was the stack's only in-flow child (the
+  // readout is position: absolute and never counted), so with it gone the
+  // stack has nothing left to size itself by, .k-controls' justify-content
+  // re-centres the now-empty box, and the readout's `left: 0` anchor jumps
+  // to wherever that empty box landed. Caught live, dragging the move grip
+  // with a fresh readout: the readout's rect moved from x -15 to x 322 even
+  // though NEITHER element received the drag's own positioning any more --
+  // the same bug the ref/style move onto the row was meant to end, back
+  // through a second door.
+  // Fixed by freezing the stack's box at whatever it measured a moment
+  // before the row could leave flow -- pointerdown on the move grip, not
+  // pointerdown on the row itself, and only for a MOVE: a resize alone never
+  // takes the row out of flow (a scale transform does not affect layout
+  // sizing), so it never needs this and is left untouched.
+  //
+  // Width/height alone was not the whole fix. Below 520px/440px (phone
+  // landscape -- index.css's own compact block) the readout is NOT the
+  // position: absolute panel described above at all: it switches to
+  // `position: static`, a genuine in-flow flex child sitting beside the row
+  // rather than floating above it. Freeze only the box and the row leaving
+  // flow still leaves the readout as the frozen box's ONLY remaining flex
+  // item, and justify-content: center (the base rule, for centering the
+  // dock as a GROUP) centres that one leftover item into the empty space
+  // instead -- caught live, the readout's rect jumped from x -15 to x 322,
+  // dead centre of the frozen 834px box. flex-start pins it to the box's
+  // start edge instead, which is where it always rendered anyway (it is
+  // the stack's first child, and the stack's un-frozen width is its
+  // content, so centring content that already fills the box is a no-op --
+  // this only ever mattered once freezing left empty space to centre into).
+  // No-op in the non-compact, position: absolute case: justify-content
+  // never touches an out-of-flow child, so nothing here changes for it.
+  const dockStackRef = useRef<HTMLDivElement>(null);
+  const [frozenStackSize, setFrozenStackSize] = useState<{ width: number; height: number } | null>(null);
+  const dockFloating = dockPanel.positionStyle.position === "fixed";
+  useEffect(() => {
+    if (!dockFloating) setFrozenStackSize(null);
+  }, [dockFloating]);
+  const dockPanelForGrips = {
+    ...dockPanel,
+    moveProps: {
+      onPointerDown: (event: ReactPointerEvent) => {
+        if (!frozenStackSize) {
+          const rect = dockStackRef.current?.getBoundingClientRect();
+          if (rect && rect.width > 0) setFrozenStackSize({ width: rect.width, height: rect.height });
+        }
+        dockPanel.moveProps.onPointerDown(event);
+      },
+    },
+  };
   useWakeLock(true); // the felt table is the only in-room view, so it's mounted for the whole session
 
   // Shoe-scoped discard tally: earlier rounds' resolved cards (shoeDiscards,
@@ -272,9 +371,17 @@ export function TableRoot({
   // fullscreen.ts), so it can never auto-start -- nudge new visitors to tap
   // it themselves instead, once, and never again once they've either done
   // so or dismissed the hint.
+  // Long enough to read one short sentence and decide, short enough that it
+  // is off the felt before the first hand matters.
+  const FULLSCREEN_HINT_MS = 9000;
   const FULLSCREEN_HINT_KEY = "kvitlach.fullscreenHintSeen";
   const [showFullscreenHint, setShowFullscreenHint] = useState(() => {
     if (typeof window === "undefined" || !window.localStorage) return false;
+    // Only where the advice is true. It said "TAP for fullscreen -- best in
+    // landscape" on a 1440x900 desktop, where there is nothing to tap and no
+    // landscape to get to. isHandheld is the same predicate immersive.ts uses
+    // to decide whether any of this behaviour applies at all.
+    if (!isHandheld()) return false;
     try {
       return window.localStorage.getItem(FULLSCREEN_HINT_KEY) !== "1";
     } catch {
@@ -294,6 +401,17 @@ export function TableRoot({
     if (isFullscreen) dismissFullscreenHint();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullscreen]);
+  // A nudge that never leaves is not a nudge. This one hangs off chrome-top
+  // over the top-right of the felt, which is seat space -- a player who does
+  // not tap "Got it" had it sitting on the table for the whole night. It
+  // counts as seen either way: it was shown, it was ignored, and asking again
+  // next load is nagging rather than helping.
+  useEffect(() => {
+    if (!showFullscreenHint) return;
+    const id = window.setTimeout(() => dismissFullscreenHint(), FULLSCREEN_HINT_MS);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFullscreenHint]);
 
   // Must stay identical to index.css's own .k-rotate-hint rule. That banner
   // is position:fixed at the top-centre of the screen, and both one-time
@@ -321,13 +439,13 @@ export function TableRoot({
   // grep for the literal before changing either copy.
   const rotateHintShowing = useMediaQuery("(orientation: portrait) and (max-width: 540px)");
 
-  // The one-way escape hatch for a phone with rotation lock on, who cannot
-  // take the gate's advice. Session state on purpose -- not localStorage: it
-  // is an override for right now, not a preference, and a player who dismissed
-  // it once on a friend's phone should not be silently handed the squashed
-  // table forever after.
-  const [portraitOverride, setPortraitOverride] = useState(false);
-  const portraitBlocked = rotateHintShowing && !portraitOverride;
+  // No override, on purpose -- the table plainly does not render below this
+  // width in portrait (the felt's own stage math bottoms out around 0.30
+  // scale), so "show it anyway" was never really an offer, just a worse
+  // version of the same game. Requested directly: portrait play should
+  // require landscape, full stop, rather than hand someone a caricature of
+  // the table they then have to ask about.
+  const portraitBlocked = rotateHintShowing;
 
   // The felt/chip swatches are the only chrome-top controls that carry no
   // shape-based icon of their own -- everything else there (music note,
@@ -385,7 +503,7 @@ export function TableRoot({
   const bankBannerText =
     bankLockStage === "banker"
       ? `The bank is playing out ${bankActorName}'s BANK! wager…`
-      : `${bankActorName} bets BANK! — $${(bankLock?.exposure ?? 0).toLocaleString()}`;
+      : `${bankActorName} bets BANK! - $${(bankLock?.exposure ?? 0).toLocaleString()}`;
 
   // The bank busting is the biggest possible moment for the table -- every
   // player still in the hand wins at once. bankLock always clears well
@@ -419,6 +537,24 @@ export function TableRoot({
   // `?? 1` so an absent round never reads as an empty shoe -- deckRemaining is
   // undefined before the first deal, and a prompt on the lobby-side of a fresh
   // table would be nonsense.
+  // Who the busted banker may hand the table to. Mirrors the server's own
+  // guards in passBankAfterBankDecision exactly (not a bot, not already the
+  // admin, actually seated) -- offering a name the server will refuse is how
+  // a picker becomes a button that throws.
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  // Named in the leave dialog, because "give up your seat" and "give up your
+  // seat and your $75" are different decisions and only one of them is honest.
+  const viewerStack = playerId ? room.wallets?.[playerId] : undefined;
+  const [passBankOpen, setPassBankOpen] = useState(false);
+  // Ending the night disconnects everyone, so it asks twice -- the same
+  // two-step the Manage drawer's own End the game uses, inline here for the
+  // same reason the picker below is inline.
+  const [endGameOpen, setEndGameOpen] = useState(false);
+  const passBankCandidates = useMemo(
+    () => room.players.filter((p) => !p.isBot && p.type === "player"),
+    [room.players]
+  );
+
   const shoeEmpty = (round?.deckRemaining ?? 1) === 0;
   // Mirrors the server's own allowance (store.ts reshuffleDeck): the banker,
   // or the single human in a practice room, whose banker is a bot with no
@@ -428,6 +564,18 @@ export function TableRoot({
   // is the more urgent of the two because it is the one with money on it.
   const shoeDecisionPending = shoeEmpty && !bankDecisionPending;
   const bankerDecisionRequired = Boolean(isAdmin && bankDecisionPending);
+  // Both of these are choices being made INSIDE one bank-decision moment, so
+  // neither must outlive it. Without this they are ordinary React state that
+  // survives the prompt unmounting: open the picker, have the round end some
+  // other way (a replenish, a void, a timeout), and the NEXT time a BANK!
+  // wager empties the bank the prompt opens straight into a stale player list
+  // -- or, worse, into a primed "end the night" confirmation.
+  useEffect(() => {
+    if (!bankerDecisionRequired) {
+      setPassBankOpen(false);
+      setEndGameOpen(false);
+    }
+  }, [bankerDecisionRequired]);
   const waitingOnBankDecision = Boolean(!isAdmin && bankDecisionPending);
 
   // An empty bank stops the whole table -- players see "Bank is empty" on
@@ -435,6 +583,21 @@ export function TableRoot({
   // had nothing telling them so. Mirrors the players' own out-of-chips CTA.
   const bankIsEmpty = Boolean(
     isAdmin && bankerPlayer && (room.wallets?.[bankerPlayer.id] ?? 0) === 0 && !bankerDecisionRequired
+  );
+
+  // The same dead end on a practice table, where the banker is a bot and so
+  // the prompt above reaches nobody. Without a way through, one BANK! wager
+  // that empties the bank ends the table for good: every later wager is
+  // refused with bank_empty and the felt says only "the bank has no chips
+  // left". Reported after a bot BANK!ed into 21 -- "we need to query the
+  // player if they want to replenish the computer bank."
+  const [practiceBankOpen, setPracticeBankOpen] = useState(false);
+  const practiceBankIsEmpty = Boolean(
+    room.practice &&
+      !isAdmin &&
+      bankerPlayer?.isBot &&
+      (room.wallets?.[bankerPlayer.id] ?? 0) <= 0 &&
+      !bankerDecisionRequired
   );
 
   // A seated (non-banker, non-spectator) player at exactly $0 can't cover
@@ -616,7 +779,7 @@ export function TableRoot({
           </button>
           {showFullscreenHint && !isFullscreen && !rotateHintShowing && (
             <div className="k-fs-hint">
-              Tap for fullscreen -- best in landscape.
+              Tap for fullscreen - best in landscape.
               <button type="button" onClick={dismissFullscreenHint}>
                 Got it
               </button>
@@ -698,7 +861,7 @@ export function TableRoot({
       type="button"
       className="k-chip-btn"
       onClick={() => setManageOpen(true)}
-      title={pendingApprovals > 0 ? `Manage table -- ${pendingApprovals} waiting for approval` : "Manage table"}
+      title={pendingApprovals > 0 ? `Manage table - ${pendingApprovals} waiting for approval` : "Manage table"}
     >
       <Icon name="users" size={13} />
       <span className="k-ctl-label">Manage</span>
@@ -712,7 +875,14 @@ export function TableRoot({
     </button>
   );
 
-  const quickRequestControls = !isAdmin && (
+  // Both buttons ask a human banker for something. A practice room's banker
+  // is a bot with no session to approve anything (same fact canReshuffle and
+  // showOutOfChips above are built on) -- so on a practice table these would
+  // sit there as a dead end: submit a request that sits "pending" forever,
+  // nobody ever there to clear it. Out-of-chips already has its own instant
+  // self-serve path for practice (onPracticeTopUp, below); a rename has no
+  // such need, since the player already typed their name to start the table.
+  const quickRequestControls = !isAdmin && !room.practice && (
     <>
       <button
         type="button"
@@ -759,7 +929,7 @@ export function TableRoot({
             landing on top of the swatches while doing it. */}
         {showThemeHint && !compact && !rotateHintShowing && !showFullscreenHint && (
           <div className="k-fs-hint k-fs-hint--left">
-            Table colors live here -- change your felt or chips, just for your view.
+            Table colors live here - change your felt or chips, just for your view.
             <button type="button" onClick={dismissThemeHint}>
               Got it
             </button>
@@ -848,8 +1018,16 @@ export function TableRoot({
         <button
           type="button"
           className="k-chip-btn"
+          // Dismisses the phone's collapsed chrome menu on the way through
+          // (inert on desktop, where these render inline and there is no
+          // panel to close). Without it the menu stayed open ON TOP of the
+          // felt after a reshuffle -- so the shoe's own "Shuffling..."
+          // animation, the entire point of which is telling you it worked,
+          // was behind the panel you had just tapped. Same complaint the
+          // ManageDrawer fix answers, on the surface phones actually use.
+          data-closes-menu
           onClick={onReshuffleDeck}
-          title="Practice mode -- reshuffle the shoe instantly, no confirmation needed."
+          title="Practice mode - reshuffle the shoe instantly, no confirmation needed."
           aria-label="Reshuffle deck"
         >
           <Icon name="shuffle" size={13} />
@@ -921,11 +1099,73 @@ export function TableRoot({
             <h2>Turn your phone sideways</h2>
             <p>
               Kvitlach deals across a wide table. Rotate to landscape and the felt, your hand and the
-              controls all come back -- you are still in the round, nothing was lost.
+              controls all come back - you are still in the round, nothing was lost.
             </p>
-            <button type="button" className="k-rotate-anyway" onClick={() => setPortraitOverride(true)}>
-              Show the table anyway
-            </button>
+          </div>
+        </StageOverlay>
+      )}
+      {/* Leaving is two different things wearing one word.
+          Found by playing (2026-09-06): a player with $75 tapped Leave -- no
+          confirmation, instant reload -- and came back to find her old seat
+          still sitting there with her chips and a second, brand-new seat under
+          the same name. The server had never been told she left. Asking which
+          one she meant is what makes the two outcomes honest, and naming the
+          stack is what stops "Leave for good" being tapped blind.
+          Portalled like the gate above: it must not be scaled with the stage. */}
+      {leaveOpen && (
+        <StageOverlay>
+          <div className="k-dialog-scrim" onClick={() => setLeaveOpen(false)}>
+            <div
+              className="k-dialog max-w-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Leave the table"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="space-y-3 text-sm k-dialog-strong">
+                <h2 className="text-lg font-semibold">Leave the table?</h2>
+                <button
+                  type="button"
+                  className="w-full rounded-lg border k-dialog-line px-3 py-2 text-left"
+                  onClick={() => {
+                    setLeaveOpen(false);
+                    onStepAway();
+                  }}
+                >
+                  <div className="font-semibold">Step away</div>
+                  <div className="text-[11px] k-dialog-sub leading-snug">
+                    Your seat{viewerStack !== undefined ? ` and your $${viewerStack.toLocaleString()}` : ""} stay
+                    exactly as they are. Open this table again on this device and you pick up where you left off.
+                  </div>
+                </button>
+                {/* The banker has no "for good" door: the bank is their own
+                    wallet, so removing themselves would strand everyone at a
+                    table that can never deal again. Their exits are passing
+                    the bank or ending the game, both of which already exist. */}
+                {!isAdmin && (
+                  <button
+                    type="button"
+                    className="w-full rounded-lg border border-rose-400/30 bg-rose-500/12 px-3 py-2 text-left"
+                    onClick={() => {
+                      setLeaveOpen(false);
+                      onLeave();
+                    }}
+                  >
+                    <div className="font-semibold text-rose-300">Leave for good</div>
+                    <div className="text-[11px] k-dialog-sub leading-snug">
+                      Give up your seat
+                      {viewerStack !== undefined ? ` and your $${viewerStack.toLocaleString()}` : ""}. Coming back
+                      later means buying in again as a new player.
+                    </div>
+                  </button>
+                )}
+                <div className="flex justify-end border-t k-dialog-line pt-3">
+                  <button type="button" className="k-dialog-sub text-xs" onClick={() => setLeaveOpen(false)}>
+                    Stay at the table
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </StageOverlay>
       )}
@@ -998,6 +1238,7 @@ export function TableRoot({
             onHit={() => onHit({ eleveroon: true })}
             onStand={onStand}
             deckCount={round?.deckRemaining ?? 0}
+            deckReshuffledAt={round?.deckReshuffledAt}
             onOpenStats={onOpenStats}
             roundId={round?.roundId}
             pastFirstPaint={pastFirstPaint}
@@ -1038,6 +1279,7 @@ export function TableRoot({
               handScale={handAt}
               isBankActor={bankLock?.playerId === turn.player.id}
               onSkipOther={isAdmin ? onSkip : undefined}
+              onStandOther={isAdmin ? onStandFor : undefined}
               onOpenStats={onOpenStats}
               roundId={round?.roundId}
               pastFirstPaint={pastFirstPaint}
@@ -1145,16 +1387,76 @@ export function TableRoot({
           {bankerDecisionRequired ? (
             <>
               <div className="subline">
-                {bankActorName}&apos;s BANK! wager emptied the bank. Add chips to play it out, or end the round here.
+                {bankActorName}&apos;s BANK! wager emptied the bank. Add chips to play it out, pass the bank to
+                another player, or end the night here.
               </div>
-              <div className="flex gap-2">
-                <button type="button" className="k-btn bet sm" onClick={() => setManageOpen(true)}>
-                  Replenish bank
-                </button>
-                <button type="button" className="k-btn stand sm" onClick={onEndRoundDueToBank}>
-                  End round now
-                </button>
-              </div>
+              {/* Three exits, not two. Passing the bank was missing entirely
+                  until 2026-09-06 even though it is part of the rule: a
+                  busted banker may hand the role to another player, who
+                  banks with the chips they already hold. The picker is
+                  inline rather than a modal -- this prompt is already the
+                  centre of the screen and already blocking, and stacking a
+                  dialog on top of a dialog to choose one name is more
+                  ceremony than the moment needs. */}
+              {passBankOpen ? (
+                <div className="flex flex-col gap-2">
+                  <div className="subline">Who takes the bank? They keep the chips they already have.</div>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {passBankCandidates.length === 0 && (
+                      <span className="subline">No one else at the table can take it.</span>
+                    )}
+                    {passBankCandidates.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="k-btn bet sm"
+                        onClick={() => {
+                          onPassBank(p.id);
+                          setPassBankOpen(false);
+                        }}
+                      >
+                        {fullName(p) || p.firstName}
+                        <span className="k-bankall-amt"> ${(room.wallets?.[p.id] ?? 0).toLocaleString()}</span>
+                      </button>
+                    ))}
+                    <button type="button" className="k-btn stand sm" onClick={() => setPassBankOpen(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : endGameOpen ? (
+                <div className="flex flex-col gap-2">
+                  <div className="subline">
+                    This ends the night for everyone at the table. They all see the final standings and can save a
+                    copy.
+                  </div>
+                  <div className="flex justify-center gap-2">
+                    <button type="button" className="k-btn stand sm" onClick={() => setEndGameOpen(false)}>
+                      Cancel
+                    </button>
+                    <button type="button" className="k-btn bet sm" onClick={onEndGame}>
+                      End the game
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button type="button" className="k-btn bet sm" onClick={() => setManageOpen(true)}>
+                    Replenish bank
+                  </button>
+                  <button type="button" className="k-btn bet sm" onClick={() => setPassBankOpen(true)}>
+                    Pass the bank
+                  </button>
+                  {/* Was "End round now", and only ended the round -- which
+                      left the table sitting on a dead bank with no hand in
+                      progress and no way forward but the Manage drawer. The
+                      rule was always "replenish, pass the bank, or end round
+                      AND game"; this is the second half finally arriving. */}
+                  <button type="button" className="k-btn stand sm" onClick={() => setEndGameOpen(true)}>
+                    End the game
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <div className="subline">
@@ -1202,9 +1504,19 @@ export function TableRoot({
             type="button"
             className="k-tag warn"
             onClick={() => setManageOpen(true)}
-            title="Nobody can wager against an empty bank -- add chips to keep the table going."
+            title="Nobody can wager against an empty bank - add chips to keep the table going."
           >
-            Bank is empty — tap to add chips
+            Bank is empty - tap to add chips
+          </button>
+        )}
+        {practiceBankIsEmpty && (
+          <button
+            type="button"
+            className="k-tag warn"
+            onClick={() => setPracticeBankOpen(true)}
+            title="The computer's bank is out of chips - choose how much to put back."
+          >
+            The bank is out of chips - tap to refill it
           </button>
         )}
         {showOutOfChips &&
@@ -1213,9 +1525,9 @@ export function TableRoot({
               type="button"
               className="k-tag warn"
               onClick={onPracticeTopUp}
-              title="Practice mode -- add play chips instantly, no approval needed."
+              title="Practice mode - add play chips instantly, no approval needed."
             >
-              Out of chips — tap to add ${PRACTICE_TOPUP_DISPLAY}
+              Out of chips - tap to add ${PRACTICE_TOPUP_DISPLAY}
             </button>
           ) : (
             <button
@@ -1224,7 +1536,7 @@ export function TableRoot({
               onClick={() => setQuickRequest("chips")}
               title="Ask the banker for more chips."
             >
-              {myBuyInRequest ? "Chip request pending…" : "Out of chips — tap to request more"}
+              {myBuyInRequest ? "Chip request pending…" : "Out of chips - tap to request more"}
             </button>
           ))}
         {wsStatus !== "connected" && (
@@ -1240,7 +1552,7 @@ export function TableRoot({
             aria-live="polite"
             title="Your connection to the table"
           >
-            {wsStatus === "disconnected" ? "Connection lost — reconnecting…" : "Connecting…"}
+            {wsStatus === "disconnected" ? "Connection lost - reconnecting…" : "Connecting…"}
           </span>
         )}
         {waitingInfo && (
@@ -1248,16 +1560,23 @@ export function TableRoot({
             type="button"
             className="k-tag muted"
             onClick={() => setWaitingListOpen(true)}
-            title={`${waitingInfo.namesLabel} will join after this round ends -- tap to see the full list.`}
+            title={`${waitingInfo.namesLabel} will join after this round ends - tap to see the full list.`}
           >
             {waitingInfo.isViewerWaiting
               ? waitingInfo.count > 1
                 ? `You + ${waitingInfo.count - 1} queued`
-                : "You're queued — next round"
+                : "You're queued - next round"
               : `${waitingInfo.count} queued for next round`}
           </button>
         )}
-        <button type="button" className="k-chip-btn" onClick={onLeave} title="Leave this game and return to the join screen">
+        {/* Opens a choice rather than acting. There are two intentions behind
+            this button and they want opposite things -- see the dialog. */}
+        <button
+          type="button"
+          className="k-chip-btn"
+          onClick={() => setLeaveOpen(true)}
+          title="Step away or leave this table"
+        >
           <Icon name="door" size={13} />
           Leave
         </button>
@@ -1318,12 +1637,24 @@ export function TableRoot({
             is full-width and centres this stack; the stack's width is its
             content, so `left: 0` on the readout is the same x the dock starts
             at, at every viewport, with nothing measured. */}
-        <div className="k-dock-stack" ref={dockStackRef} style={dockPanel.positionStyle}>
+        <div
+          className="k-dock-stack"
+          ref={dockStackRef}
+          style={
+            frozenStackSize
+              ? { width: frozenStackSize.width, height: frozenStackSize.height, justifyContent: "flex-start" }
+              : undefined
+          }
+        >
           {/* The viewer's own readout, out of flow (position: absolute) so it
               cannot widen the stack it is aligning itself to. It sits OUTSIDE
-              the row below on purpose: untouched it rides along above the bar
-              wherever the bar is put, and once its own player has moved it, its
-              fixed coordinates are its own and the bar cannot reach it. */}
+              the row below on purpose: untouched, it still rides along as the
+              row's own LAYOUT shifts (new dock content, a wrap, a round
+              boundary) -- but the row's drag position lives on the ROW itself,
+              not on this stack (see dockPanel's own comment above), so
+              manually dragging the bar elsewhere no longer drags the readout
+              along with it. Once the readout's own player has moved IT, its
+              fixed coordinates are its own regardless of either. */}
           {myPlayerTurn && (
             <ViewerHud
               turn={myPlayerTurn}
@@ -1343,7 +1674,13 @@ export function TableRoot({
             the picker across the screen from the controls it belongs with. */}
         <div
           className="k-dock-row"
-          style={dockPanel.scale === 1 ? undefined : { transform: `scale(${dockPanel.scale})`, transformOrigin: "bottom center" }}
+          ref={dockRowRef}
+          style={{
+            ...dockPanel.positionStyle,
+            ...(appliedDockScale === 1
+              ? null
+              : { transform: `scale(${appliedDockScale})`, transformOrigin: "bottom center" }),
+          }}
         >
         {/* The banker has dropped and the table is waiting on them. Nothing else
             can move this round: the banker is the dealer, not a seat, so no turn
@@ -1353,13 +1690,14 @@ export function TableRoot({
             away and get every wager back. */}
         {abandonedBanker && !roundOver && (
           <div className="k-dock">
+            <div className="k-dock-content">
             <span className="k-tag muted">{abandonedBanker.name} has dropped out.</span>
             {abandonedBanker.canVoid ? (
               <button
                 type="button"
                 className="k-btn stand sm"
                 onClick={onVoidAbandonedRound}
-                title="End this round with no winners or losers -- every wager is returned"
+                title="End this round with no winners or losers - every wager is returned"
               >
                 Void the round, refund all bets
               </button>
@@ -1368,7 +1706,8 @@ export function TableRoot({
                 Waiting {abandonedBanker.secondsLeft}s for them to reconnect…
               </span>
             )}
-            <DockGrips dockPanel={dockPanel} />
+            </div>
+            <DockGrips dockPanel={dockPanelForGrips} />
           </div>
         )}
 
@@ -1383,12 +1722,13 @@ export function TableRoot({
             onBet={onBet}
             onHit={onHit}
             onStand={onStand}
-            dockPanel={dockPanel}
+            dockPanel={dockPanelForGrips}
           />
         )}
 
         {(roundOver || preRound) && (
           <div className="k-dock">
+            <div className="k-dock-content">
             {/* A busted banker always terminates the round (getGameState: the
                 banker acts last, so their turn resolving leaves nothing
                 pending), so this dock is guaranteed to be on screen whenever
@@ -1426,7 +1766,8 @@ export function TableRoot({
                 Waiting for the banker to {preRound ? "deal" : "start the next round"}…
               </span>
             )}
-            <DockGrips dockPanel={dockPanel} />
+            </div>
+            <DockGrips dockPanel={dockPanelForGrips} />
           </div>
         )}
           <div className="k-chrome-react">
@@ -1447,6 +1788,7 @@ export function TableRoot({
           buyInRequests={room.buyInRequests ?? []}
           roundHistoryCount={roundHistoryCount}
           standings={standings}
+          ledger={room.ledger ?? []}
           bankerWallet={bankerWallet}
           feltWatermark={room.feltWatermark}
           onTopUp={onTopUp}
@@ -1470,6 +1812,13 @@ export function TableRoot({
 
       {bankSummaryOpen && <BankSummaryModal summary={bankSummary} onClose={onDismissBankSummary} />}
 
+      <PracticeBankDialog
+        open={practiceBankOpen && practiceBankIsEmpty}
+        buyIn={room.buyIn ?? 100}
+        bankerName={bankerPlayer ? fullName(bankerPlayer) || bankerPlayer.firstName : "The bank"}
+        onClose={() => setPracticeBankOpen(false)}
+        onRefill={onPracticeTopUpBank}
+      />
       <QuickRequestDialog
         kind={quickRequest}
         onClose={() => setQuickRequest(undefined)}
@@ -1488,6 +1837,7 @@ export function TableRoot({
         hasPassword={Boolean(room.passwordHash)}
         buyIn={room.buyIn}
         isAdmin={isAdmin}
+        isPractice={room.practice === true}
         playerId={playerId}
         renameRequests={room.renameRequests ?? []}
         buyInRequests={room.buyInRequests ?? []}

@@ -579,9 +579,183 @@ describe("deck reshuffle notification", () => {
     expect(notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
   });
 
-  it("auto-dismisses a notification after ~8 seconds without a manual Dismiss", async () => {
-    // Was 15-20s (18s, unmeasured); reported as staying up too long with up
-    // to 5 stacked, see NOTIFICATION_AUTO_DISMISS_MS's own comment.
+  // Sitting a round out. The server side of this (satOutPlayerIds, and the
+  // 45-second grace window before anyone is left out at all) is pinned by
+  // backend/src/__tests__/offline-and-skip.test.ts; these cover the half that
+  // was actually reported from the felt -- that it happened in SILENCE.
+  const roomWith = (players: any[]) => ({ roomId: "ROOM1", wallets: {}, players }) as any;
+  const MOSHE = { id: "p2", firstName: "Moshe", lastName: "B", type: "player", presence: "offline" };
+  const SARA = { id: "p3", firstName: "Sara", lastName: "K", type: "player", presence: "offline" };
+  const ZEIDE = { id: "p1", firstName: "Zeide", lastName: "", type: "admin", presence: "online" };
+
+  // Reported from a real table on 11.6: "I had 10 and tried betting BANK! and
+  // it would let me, just wouldn't deal a card, no matter how many times I hit
+  // bet or BANK! and confirmed."
+  //
+  // The server was refusing the wager correctly. The client put the reason in
+  // `state.message` -- which App.tsx renders ONLY in the lobby branch
+  // (`return room ? <TableRoot/> : <lobby/>`), so at the felt it is rendered
+  // nowhere at all. Every refused bet, hit, stand and skip was silent: the
+  // player taps, nothing happens, and the app never says why.
+  it("says out loud when the table refuses a wager, instead of only in the lobby", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({
+      room: { roomId: "ROOM1", wallets: { p1: 10 }, players: [{ id: "p1", firstName: "A", lastName: "", type: "player", presence: "online" }] } as any,
+      playerId: "p1",
+      round: { ...baseRound } as any,
+    });
+
+    useGameStore.getState().bet(400, { bank: true });
+    const req = socket.sent.find((m) => m.type === "turn:bet")!;
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "error", requestId: req.requestId, error: { message: "insufficient_funds" } }),
+    });
+
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts.some((t) => /don't have enough chips/i.test(t))).toBe(true);
+  });
+
+  it("unblocks the controls after a refused wager", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({
+      room: { roomId: "ROOM1", wallets: { p1: 10 }, players: [] } as any,
+      playerId: "p1",
+      round: { ...baseRound } as any,
+    });
+
+    useGameStore.getState().bet(400, { bank: true });
+    const req = socket.sent.find((m) => m.type === "turn:bet")!;
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "error", requestId: req.requestId, error: { message: "bank_limit:40" } }),
+    });
+
+    // "no matter how many times I hit bet" -- a stuck pendingAction would
+    // swallow every retry silently on top of the invisible error.
+    expect(useGameStore.getState().pendingAction).toBeUndefined();
+  });
+
+  it("tells the player who was left out why, and that they are back in next round", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({ room: roomWith([ZEIDE, MOSHE]), playerId: "p2" });
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: { ...baseRound, roundId: "R2", satOutPlayerIds: ["p2"] } }),
+    });
+
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts.some((t) => /sitting it out/i.test(t) && /back in for the next one/i.test(t))).toBe(true);
+  });
+
+  it("tells the banker who is missing, by name", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({ room: roomWith([ZEIDE, MOSHE, SARA]), playerId: "p1" });
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "round:state",
+        payload: { ...baseRound, roundId: "R2", satOutPlayerIds: ["p2", "p3"] },
+      }),
+    });
+
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts.some((t) => t === "Moshe B and Sara K were offline and sat this round out.")).toBe(true);
+  });
+
+  it("says nothing to the other players, who can already see the empty chair", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({ room: roomWith([ZEIDE, MOSHE, SARA]), playerId: "p3" });
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "round:state", payload: { ...baseRound, roundId: "R2", satOutPlayerIds: ["p2"] } }),
+    });
+
+    expect(useGameStore.getState().notifications).toHaveLength(0);
+  });
+
+  it("says it once per round, not on every broadcast of the same round", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({ room: roomWith([ZEIDE, MOSHE]), playerId: "p2" });
+
+    const payload = { ...baseRound, roundId: "R2", satOutPlayerIds: ["p2"] };
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload }) });
+    // A later broadcast of the SAME round -- a card landing, say.
+    const laterTurn = { player: MOSHE, state: "pending", cards: [], bet: 0 };
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: { ...payload, turns: [laterTurn] } }) });
+
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts.filter((t) => /sitting it out/i.test(t))).toHaveLength(1);
+  });
+
+  // The case the unit tests above all missed and a live run caught: the
+  // player who was left out is, by definition, the one who was NOT connected
+  // when the round was dealt. They never see the round:state broadcast at
+  // all -- they learn about it on the ack that reconnects them, which is a
+  // different code path, and one where state.playerId is not set yet.
+  it("tells a reconnecting player they sat the round out, off the resume ack", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+
+    const round = { ...baseRound, roundId: "R2", satOutPlayerIds: ["p2"] };
+    // The real sequence: ws-server broadcasts the round BEFORE it acks, so
+    // this frame arrives while the store still has no playerId. It must not
+    // consume the announcement.
+    socket.onmessage?.({ data: JSON.stringify({ type: "round:state", payload: round }) });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "ack",
+        requestId: "resume-1",
+        payload: {
+          room: roomWith([ZEIDE, MOSHE]),
+          round,
+          session: { roomId: "ROOM1", playerId: "p2", token: "t" },
+        },
+      }),
+    });
+
+    const texts = useGameStore.getState().notifications.map((n) => n.message);
+    expect(texts.some((t) => /sitting it out/i.test(t))).toBe(true);
+  });
+
+  it("sends turn:stand at another player when the banker stands for them", async () => {
+    const useGameStore = await freshState();
+    useGameStore.getState().init();
+    const socket = MockWebSocket.instances[0];
+    socket.triggerOpen();
+    useGameStore.setState({ room: roomWith([ZEIDE, MOSHE]), playerId: "p1", round: { ...baseRound } as any });
+
+    useGameStore.getState().standFor("p2");
+
+    // Not turn:skip: a skipped hand is dropped by the settlement entirely, so
+    // an absent player with chips down neither loses them nor collects when
+    // the bank busts. Standing resolves it like the real hand it is.
+    const sent = socket.sent.find((m) => m.type === "turn:stand");
+    expect(sent?.payload).toMatchObject({ roundId: "R1", playerId: "p2" });
+  });
+
+  it("auto-dismisses a notification after ~6 seconds without a manual Dismiss", async () => {
+    // Was 15-20s (18s, unmeasured), then 8s; both still reported as staying
+    // up too long with up to 5 stacked, see NOTIFICATION_AUTO_DISMISS_MS's
+    // own comment.
     vi.useFakeTimers();
     try {
       const useGameStore = await freshState();
@@ -594,10 +768,10 @@ describe("deck reshuffle notification", () => {
       });
       expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
 
-      vi.advanceTimersByTime(7999);
+      vi.advanceTimersByTime(5999);
       expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(true);
 
-      vi.advanceTimersByTime(1001); // past 8s total
+      vi.advanceTimersByTime(1001); // past 6s total
       expect(useGameStore.getState().notifications.some((n) => n.message.includes("Fresh deck shuffled in"))).toBe(false);
     } finally {
       vi.useRealTimers();
@@ -1349,5 +1523,100 @@ describe("the banker is told when a request arrives", () => {
     useGameStore.setState({ room: room(), playerId: "p3" });
     push(socket, room({ buyInRequests: [{ playerId: "p2", amount: 250, requestedAt: 1 }] }));
     expect(useGameStore.getState().notifications.map((n) => n.message)).toEqual([]);
+  });
+
+  // "End round now" ended only the round, which was never the rule: the
+  // banker's third exit from a dead bank is meant to end the night. Ordering
+  // is the part worth pinning -- the round has to be ended (and folded into
+  // history) BEFORE the room closes, or the last hand is missing from the
+  // standings everyone is about to be shown.
+  describe("ending the game from the bank decision", () => {
+    it("ends the round first, then closes the room", async () => {
+      const { useGameStore, socket } = await asBanker();
+      const before = socket.sent.length;
+
+      useGameStore.getState().endGameAfterBankDecision();
+
+      const types = socket.sent.slice(before).map((m) => m.type);
+      expect(types).toEqual(["round:banker-end", "room:close"]);
+    });
+
+    it("sends nothing at all for a player who is not the banker", async () => {
+      const useGameStore = await freshState();
+      useGameStore.getState().init();
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+      useGameStore.setState({ room: room(), playerId: "p2" });
+      const before = socket.sent.length;
+
+      useGameStore.getState().endGameAfterBankDecision();
+
+      expect(socket.sent).toHaveLength(before);
+    });
+  });
+
+  // The wipe on room:closed is deliberate and stays; what it must NOT do any
+  // more is take the night with it. Everything the game-over screen and its
+  // export read has to survive being cleared -- that was the whole bug.
+  describe("room:closed leaves a summary behind", () => {
+    const closed = (socket: MockWebSocket) =>
+      socket.onmessage?.({ data: JSON.stringify({ type: "room:closed", payload: { reason: "banker_closed" } }) });
+
+    const history = [
+      { roundId: "R1", roundNumber: 1, turns: [], balances: [], completedAt: 10 },
+    ] as any;
+
+    it("captures the room, the seat and the rounds before clearing them", async () => {
+      const { useGameStore, socket } = await asBanker();
+      useGameStore.setState({ room: room({ name: "Zeide's table" }), playerId: banker.id, roundHistory: history });
+
+      closed(socket);
+
+      const state = useGameStore.getState();
+      expect(state.room).toBeUndefined();
+      expect(state.playerId).toBeUndefined();
+      expect(state.gameOver).toMatchObject({
+        roomId: "ROOM1",
+        roomName: "Zeide's table",
+        playerId: banker.id,
+        wasBanker: true,
+        rounds: history,
+      });
+    });
+
+    it("knows an ordinary player was not the banker", async () => {
+      const useGameStore = await freshState();
+      useGameStore.getState().init();
+      const socket = MockWebSocket.instances[0];
+      socket.triggerOpen();
+      useGameStore.setState({ room: room(), playerId: "p2", roundHistory: history });
+
+      closed(socket);
+
+      expect(useGameStore.getState().gameOver?.wasBanker).toBe(false);
+    });
+
+    it("replaces the old toast rather than stacking on top of the screen", async () => {
+      const { useGameStore, socket } = await asBanker();
+      closed(socket);
+      expect(useGameStore.getState().notifications).toEqual([]);
+    });
+
+    it("clears once the player is in a room again", async () => {
+      const { useGameStore, socket } = await asBanker();
+      useGameStore.setState({ roundHistory: history });
+      closed(socket);
+      expect(useGameStore.getState().gameOver).toBeDefined();
+
+      push(socket, room({ roomId: "ROOM2" }));
+      expect(useGameStore.getState().gameOver).toBeUndefined();
+    });
+
+    it("clears when dismissed", async () => {
+      const { useGameStore, socket } = await asBanker();
+      closed(socket);
+      useGameStore.getState().dismissGameOver();
+      expect(useGameStore.getState().gameOver).toBeUndefined();
+    });
   });
 });

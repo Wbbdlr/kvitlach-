@@ -65,6 +65,43 @@ export const REACTION_EMOJIS = [
   "💤",
 ];
 
+// A screen reader has no other way to know what these mean -- the glyph
+// alone either falls back to a raw Unicode codepoint reading or, at best,
+// a generic CLDR name that doesn't always match what it's standing in for
+// at this table (e.g. "money bag" over "😏", which is here for chip-talk
+// smugness, not actual money). One label per REACTION_EMOJIS entry, same
+// order and same length on purpose -- see the accessibility-pass test that
+// checks the two arrays line up. Kept short (one or two words) since it's
+// read out loud, not displayed.
+export const REACTION_EMOJI_LABELS: Record<string, string> = {
+  "👏": "Clapping",
+  "😂": "Laughing",
+  "😮": "Surprised",
+  "❤️": "Heart",
+  "🔥": "Fire",
+  "👍": "Thumbs up",
+  "😢": "Crying",
+  "🤯": "Mind blown",
+  "😎": "Cool",
+  "🙌": "Celebrating",
+  "😡": "Angry",
+  "🤔": "Thinking",
+  "🎉": "Party",
+  "🤞": "Fingers crossed",
+  "🙏": "Thank you",
+  "🍀": "Good luck",
+  "🍻": "Cheers",
+  "🍕": "Pizza",
+  "💯": "One hundred",
+  "🤑": "Money face",
+  "😭": "Sobbing",
+  "🥳": "Partying",
+  "🃏": "Joker",
+  "💰": "Money bag",
+  "😏": "Smirking",
+  "💤": "Sleeping",
+};
+
 // Short Yiddish/Hebrew exclamations, alongside the emoji above -- rendered
 // as text pills rather than single glyphs (see ReactionLayer.tsx). Kept to a
 // tasteful handful rather than an exhaustive phrasebook.
@@ -187,20 +224,46 @@ export function totalDisplay(
 } {
   const prefix = "Total:";
   const { total, bustedTotal } = bestTotal(turn.cards);
+  // The ONE way this app says "you are not being shown this".
+  //
+  // There used to be two. The banker's branch below said "hidden" and the
+  // player's said "--", and the player's could never actually reach its own
+  // fallback: bestTotal([]) returns { total: 0 } (see it above -- an empty
+  // hand legitimately sums to zero), so "nothing visible" arrived at the
+  // caller indistinguishable from "a hand worth zero" and the seat plate
+  // printed `Total: 0`. Reported live on 11.4: every seat read "Total: 0" the
+  // moment a round was dealt, while actually holding a card.
+  //
+  // A concealed total is not a number. Anything that withholds one returns
+  // this, so the two can never drift apart again.
+  const concealed = () => ({
+    prefix,
+    value: "hidden",
+    wrapperClassName: "text-slate-500",
+    valueClassName: "text-slate-500",
+  });
+  // What a non-owner can actually add up, once the cards they may not see are
+  // taken out. Length is not the question -- an Eleveroon-ignored card is
+  // present but contributes nothing, and the banker always plays with
+  // Eleveroon active, so a bank showing [hole, ignored-11] hit the same bug
+  // with a card sitting right there on the felt.
+  const visibleTotal = (cards: Card[]) =>
+    usableCards(cards).length === 0 ? undefined : bestTotal(cards);
   const isOwnerView = viewerId === turn.player.id;
   const isBanker = turn.player.type === "admin";
   const isBlattPhase = (turn.bet ?? 0) === 0;
   const bankerResolved = turn.state === "lost" || turn.state === "standby" || turn.state === "won";
+  // A hand the server has stopped redacting (ws-server's isCardHidden opens
+  // on exactly these). Deliberately NOT "standby" -- standing does not reveal
+  // a wagered hand to anyone still deciding theirs.
+  const handRevealed = turn.state === "won" || turn.state === "lost";
   const forceBankerReveal = opts?.forceBankerReveal;
 
   if (!isOwnerView && isBanker && !bankerResolved && !forceBankerReveal) {
-    const visible = turn.cards.slice(1);
-    if (visible.length === 0)
-      return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
+    const shown = visibleTotal(turn.cards.slice(1));
+    if (!shown) return concealed();
+    if (shown.total !== undefined) return { prefix, value: `${shown.total}` };
+    return { prefix, value: `${shown.bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
   }
   // A player's total is NOT revealed just because they stood (turn.state
   // "standby") -- their wager cards stay face-down to everyone else at that
@@ -223,18 +286,26 @@ export function totalDisplay(
   // hole card and showing a stale, non-busted number instead of the real
   // bust total (reported live 2026-08-27: "the banker busted but his tally
   // didn't reflect the busted total").
-  if (!isOwnerView && !isBanker && isBlattPhase) {
-    const visible = turn.cards.slice(1);
-    const { total: vTotal, bustedTotal: vBusted } = bestTotal(visible);
-    if (vTotal !== undefined) return { prefix, value: `${vTotal}` };
-    if (vBusted !== undefined) return { prefix, value: `${vBusted}`, valueClassName: "text-rose-700 font-bold" };
-    return { prefix, value: "--", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
+  // `!handRevealed` is the second half of the same report, and the half that
+  // was wrong for a whole round rather than a moment: a blatt settles as
+  // "won" (calculateEndState reads no wager as a push), and this branch had
+  // no reveal guard at all -- so once the round ended it went on slicing the
+  // hole card off a hand the SERVER had already sent face-up and reported the
+  // remainder. A player who finished a blatt hand on 6 showed "Total: 0" to
+  // the table through showdown and into round complete. The states checked
+  // here are exactly the ones ws-server's isCardHidden stops redacting on, so
+  // the two stay mirrors of each other.
+  if (!isOwnerView && !isBanker && isBlattPhase && !handRevealed) {
+    const shown = visibleTotal(turn.cards.slice(1));
+    if (!shown) return concealed();
+    if (shown.total !== undefined) return { prefix, value: `${shown.total}` };
+    return { prefix, value: `${shown.bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
   }
 
   const canRevealTotal = isOwnerView || turn.state === "won" || turn.state === "lost" || forceBankerReveal;
   const revealForOwnerStandby = isOwnerView && turn.state === "standby";
   if (!canRevealTotal && !revealForOwnerStandby) {
-    return { prefix, value: "hidden", wrapperClassName: "text-slate-500", valueClassName: "text-slate-500" };
+    return concealed();
   }
   if (turn.state === "lost" && total === undefined && bustedTotal !== undefined) {
     return { prefix, value: `${bustedTotal}`, valueClassName: "text-rose-700 font-bold" };
@@ -330,7 +401,7 @@ export function statusDisplay(turn: Turn): { label: string; className: string } 
 }
 
 export function betDisplay(turn: Turn, includeBanker = false): { label: string; className: string } {
-  if (turn.player.type === "admin" && !includeBanker) return { label: "—", className: "text-slate-400" };
+  if (turn.player.type === "admin" && !includeBanker) return { label: "-", className: "text-slate-400" };
   if (turn.player.type === "admin" && includeBanker && typeof turn.settledNet === "number") {
     const signed = turn.settledNet >= 0 ? `+$${Math.abs(turn.settledNet)}` : `-$${Math.abs(turn.settledNet)}`;
     const tone = turn.settledNet >= 0 ? "text-emerald-600 font-semibold" : "text-rose-600 font-semibold";

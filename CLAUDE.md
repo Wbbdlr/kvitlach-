@@ -4,7 +4,7 @@ Operating notes for Claude Code in this repo. The code is the source of truth;
 this file exists to stop you rediscovering things that cost real time.
 
 **This file is charged to every session, so it holds only what you can break
-without knowing you were near it** — invariants, traps, "X was tried and does
+without knowing you were near it** - invariants, traps, "X was tried and does
 not work". Everything procedural lives in a skill or in `docs/`, loaded on
 demand. Adding a paragraph here is a recurring bill; think before you do.
 
@@ -21,37 +21,38 @@ demand. Adding a paragraph here is a recurring bill; think before you do.
 
 ## Project
 
-**Kvitlach** — real-time multiplayer web version of a traditional Chanukah card
+**Kvitlach** - real-time multiplayer web version of a traditional Chanukah card
 game (21-style, against a *banker*, not a dealer). One banker hosts; everyone
 else plays against them. Built for family and community game nights (~50 people,
 one shared table). Live at kvitlach.us, self-hosted via Docker Compose behind a
 Cloudflare Tunnel.
 
 React 18 + TypeScript + Vite + Tailwind + Zustand (`state.ts`), Vitest/jsdom on
-the front; Node ESM + Fastify + raw `ws` on the back. **Postgres is optional** —
+the front; Node ESM + Fastify + raw `ws` on the back. **Postgres is optional** -
 no `DATABASE_URL` means fully in-memory (rooms vanish on restart). No ORM and no
 migration tool; the schema is `CREATE TABLE IF NOT EXISTS` in `db.ts:init()`, so
 a new setting belongs in the existing `settings` key/value row.
 
 ## Architecture
 
-Two processes: HTTP on 3000 (health, admin, `/metrics`, `/api/about`) and
+Two processes: HTTP on 3000 (health, admin, `/metrics`, `/api/about`,
+`/api/contact`, `/api/disclaimer`) and
 **WebSocket on 3001, where all gameplay happens**. There is no gameplay REST API.
 
 Authoritative state is `GameStore` (`backend/src/store.ts`), an in-memory `Map`
 of rooms. **Postgres is a persistence mirror for restart recovery, not the
-working store** — read `store.ts`, not SQL, to understand game state. Practice
+working store** - read `store.ts`, not SQL, to understand game state. Practice
 rooms are never persisted. The client is a thin renderer: it sends intents and
 re-renders from `room:state` / `round:state`. It never computes outcomes.
 
 Deeper detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Code map — only the parts that bite
+## Code map - only the parts that bite
 
 `store.ts` (~1500 lines) and `state.ts` (~1200) are the two hearts. **Grep
 before reading either whole.** `table/` holds the felt UI (`TableRoot.tsx`
 composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
-`useTableData.ts` hold derived display logic — prefer these over inlining).
+`useTableData.ts` hold derived display logic - prefer these over inlining).
 
 - **`router.tsx` is a deliberate single catch-all `*` route. Don't "clean it
   up" into per-path routes.** Two route objects rendering the same element still
@@ -61,25 +62,67 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
 - **`errorCopy.ts` is the only place backend error codes become player-facing
   text.** Don't inline an `errorMessage === "..."` ternary anywhere else.
   `errorCopy.test.ts` parses every code out of `backend/src` and fails naming
-  any with no entry — it caught eleven falling through to a raw
+  any with no entry - it caught eleven falling through to a raw
   `code.replace(/_/g, " ")`, including `insufficient_funds` and `invalid_bet`.
 - **`ws-server.ts`: every per-room `Map` entry must be deleted once its last
   socket closes**, not merely have the socket removed from its `Set`. An empty
   Set left behind is a permanent leak in a process meant to run for months.
 - **`index.ts`'s `unhandledRejection`/`uncaughtException` handlers are a
   backstop, not a fix.** Anything reaching that log line is a bug to fix at
-  source — Node kills the process on an unhandled rejection by default, and one
+  source - Node kills the process on an unhandled rejection by default, and one
   dropped socket's failed DB write once took down every room on the server.
-- **`useEscapeKey.ts`** — new dialogs use it, not a bespoke `keydown`.
-- **Every audio asset's source and license is already recorded** — `audio.ts`'s
+- **`useEscapeKey.ts`** - new dialogs use it, not a bespoke `keydown`.
+- **Every audio asset's source and license is already recorded** - `audio.ts`'s
   own comments (natural21: Mixkit, free/no attribution) and `About.tsx`'s
   Credits section (Kenney CC0 casino pack: deal/win/shuffle/chip/lose; Micha
   Gamerman: `bgm.m4a`). **`futch.mp3` and `eleveroon.mp3` are the two
-  exceptions** — original recordings made for this game, no external source,
+  exceptions** - original recordings made for this game, no external source,
   which is why they carry no Credits entry and are the only sounds named in
   Disclaimer.tsx's Ownership section. Don't re-derive this from git log again;
   it took one. Extend the proprietary claim to another asset only once its own
   provenance is actually confirmed, the same way this one was.
+- **About, Contact and Disclaimer are all admin-editable without a build** -
+  asked for directly ("I don't want to have to fix code every time I want to
+  change something on the pages"). `about.ts`/`contact.ts` are one settings
+  row each (heading + body, free text, additive: an empty record means the
+  page shows only its hardcoded copy). `disclaimer.ts` is deliberately a
+  DIFFERENT shape - six independent per-section overrides
+  (`DISCLAIMER_SLUGS`), because that page carries the no-gambling/liability/
+  ownership language and a single free-text field with no version history is
+  how an admin fat-fingers a legal section away with nothing to catch it. A
+  section's heading is fixed in code, never editable, only its body. Routes:
+  `GET /api/<page>` (public), `GET`/`POST /admin/<page>` (session or
+  `?token=`, plain-HTML form, no JS - see admin-ops skill). A public route
+  needs its own exact-match `location = /api/<page>` in `frontend/nginx.conf`
+  (pinned by `nginxProxy.test.ts`) or it 404s in prod despite working in dev.
+- **The practice bots' names are the same kind of setting** (`bot-names.ts`,
+  `GET`/`POST /admin/bot-names`) - they used to be two `const` arrays at the
+  top of `store.ts`, which made renaming a bot a rebuild. Don't put them back.
+  The panel edits `store.botNames` *in place* rather than holding its own
+  instance, so a saved list takes effect on the next practice table without a
+  restart; keep that. The banker draws a name **per room, never per round** -
+  a dealer whose name changed mid-night would read as somebody having taken
+  over the table, which is a real event here (`passBankAfterBankDecision`).
+- **`Privacy.tsx` is deliberately static, code-only** - unlike the three
+  above, it makes factual claims about what the code does with data, so it
+  should change when the data-handling code changes (a commit), not drift
+  independently via an admin form. If that tradeoff ever gets revisited, say
+  so explicitly rather than silently making it editable.
+- **The age/legal checkbox (`AgeAckCheckbox` in `App.tsx`) gates Join, Create
+  and Practice - never Watch**, which does not wager or "play" in the
+  Disclaimer's own sense. One shared `ageAcknowledged` flag, remembered via
+  `state.ts`'s `loadAgeAcknowledged`/`persistAgeAcknowledged` (same guarded-
+  localStorage shape as the access code) - check it once anywhere, every form
+  shows it checked. Frontend-only; there is no server-side enforcement, same
+  as virtually every consent checkbox on the web.
+- **Practice mode is user-facing as "Play Against the Computer" now, not
+  "Practice"** (2026-09-04, direct request) - the framing moved from a demo/
+  tutorial mode to a real standalone way to play. `room.practice` (the
+  internal flag/logic) is unchanged; only the lobby copy changed. Queued,
+  not built: difficulty levels for the bots, bot commentary/"AI remarks"
+  during a hand, and other polish for this mode specifically - surface
+  toward the user proactively if a session ends up in `bot.ts` or the
+  practice-lobby JSX, rather than waiting to be asked.
 
 ## Local development
 
@@ -88,30 +131,30 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   backend it silently connects you to the **live server** instead of erroring.
   Don't mistake that for a working local setup, and don't create or join rooms
   there while testing. Run the backend and set `frontend/.env.local`
-  (gitignored — recreate after a fresh clone) to `VITE_WS_URL=ws://localhost:3001`.
+  (gitignored - recreate after a fresh clone) to `VITE_WS_URL=ws://localhost:3001`.
 - **Two tabs on the same `localhost` origin share `localStorage`**, including
   the session-resume token. A second tab resumes as whichever player most
-  recently joined in *any* tab — it is not a second identity. Use a second
+  recently joined in *any* tab - it is not a second identity. Use a second
   browser profile or incognito.
 
 ## Game rules that cause bugs
 
 Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 
-- **A Kvitlach deck is 24 cards** — 1–12, two copies each. Not 52 or 48.
+- **A Kvitlach deck is 24 cards** - 1–12, two copies each. Not 52 or 48.
 - **The 12 is flexible**: 12, 9, *or* 10, re-read at every evaluation. Never
   collapse it to one value. Totals are the set of achievable sums (`getSums`).
 - **Blatt** = a draw with no wager. Never wins or loses money; settles as a push
   even if the cards bust.
-- **Futch** = over 21. Distinct from losing the showdown — the banker's
+- **Futch** = over 21. Distinct from losing the showdown - the banker's
   `state === "lost"` also fires when they merely end down on money, which is why
   `busted` is a separate field.
-- **Eleveroon** — opt-in; a drawn 11 that would bust a hand *currently readable
+- **Eleveroon** - opt-in; a drawn 11 that would bust a hand *currently readable
   as exactly 11* is ignored. Check every achievable total, not the best one. It
   saves the player from a futch; it does not save the eleven.
 - Ties go to the banker. **The banker never wagers.**
 
-## Server authority — breaking these is a security bug
+## Server authority - breaking these is a security bug
 
 1. **Actor identity comes from the socket's session, never the payload.** Always
    `meta?.playerId` in `ws-server.ts`. Pinned by `ws-auth.test.ts`.
@@ -121,7 +164,7 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
    frontend's rendering rule) and `sanitizeRound`/`isCardHidden` (the
    server's own mirror of that same rule, in `ws-server.ts`) have to agree,
    or one is decorative. Until a security pass, only the frontend enforced
-   this — `sanitizeRound` stripped the deck and nothing else, so the
+   this - `sanitizeRound` stripped the deck and nothing else, so the
    banker's hole card and a standing player's hand were in every
    `round:state` broadcast to every socket in the room, in full, readable
    straight out of devtools by anyone already seated. `broadcastRound` is
@@ -130,21 +173,21 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
    `concealed-cards.test.ts`.
 4. **`room:get` and `round:get` require the caller to already belong to the
    room being asked about** (`meta.roomId === roomId`, the same
-   server-set-only field every other handler already trusts) — a socket that
+   server-set-only field every other handler already trusts) - a socket that
    had never sent `room:create`/`join`/`resume`/`watch` used to get the
    room's full state back for the price of knowing its id, `passwordHash`
    included, and a round's full state (unredacted) for the price of knowing
    its `roundId`. Pinned by `room-round-authorization.test.ts`.
 5. Banker-only actions go through `isAdmin` checks in `store.ts`. The reverse
    also holds: **`applyBet` rejects a bet from the admin's own turn** (the
-   banker never wagers — see the rules above). Found the day the bot banker
+   banker never wagers - see the rules above). Found the day the bot banker
    bug was fixed: the first tests for that fix passed with the fix reverted,
    because the bot's stray wager sometimes SUCCEEDED and the round looked
    normal. Before this guard a client that sent `bet` on the admin's turn was
    unopposed, and `calculateEndState` then overwrites `bet` with the round's
    net, erasing the evidence once the round resolved. Pinned by
    `money-validation.test.ts`.
-6. **For money, use `normalizeMoney`** (`store.ts`) — whole chips, bounded by
+6. **For money, use `normalizeMoney`** (`store.ts`) - whole chips, bounded by
    `MAX_MONEY`, `undefined` on anything else. `Number.isFinite` alone passes
    `10.5` (wallets are floats forever after) and `1e308` (turns `Infinity` on
    the first addition). Found because `createRoom` validated `bankerBankroll`
@@ -156,10 +199,11 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 8. **`room:resume` is never gated, in any access mode.** Lockdown closes the
    door; it does not eject people mid-hand.
 9. **Operator-authored text is stored raw and rendered as text.** Never escape
-   on the way in and never assign it as HTML on the way out (`about.ts`).
+   on the way in and never assign it as HTML on the way out (`about.ts`,
+   `contact.ts`, `disclaimer.ts` - see the code map entry below).
 10. **A room's password is never stored or compared as plain text.**
     `RoomState.passwordHash` is a scrypt hash (`admin-auth.ts`'s own
-    `hashPassword`/`verifyPassword`, reused rather than reinvented) — the
+    `hashPassword`/`verifyPassword`, reused rather than reinvented) - the
     plaintext lived in every Postgres backup and, unredacted, in every
     `room:state` broadcast to every player. `RoomInfoDrawer` can no longer
     show the banker their own password back (a one-way hash can't be
@@ -167,9 +211,9 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
     `room-password-hashing.test.ts`.
 11. **`room:create`/`room:create-practice` carry their own per-IP throttle**
     (`ws-server.ts`), independent of the generic per-socket message-rate
-    limiter — that one alone let a single connection exhaust `limits.ts`'s
+    limiter - that one alone let a single connection exhaust `limits.ts`'s
     `maxRooms` in under a minute. A windowed count (5 per IP per 60s), not a
-    flat cooldown after one success — see the constant's own comment for why
+    flat cooldown after one success - see the constant's own comment for why
     a hard cooldown was tried and rejected (more than one banker can share a
     home NAT on a real night). Pinned by `room-create-throttle.test.ts`.
 12. **Per-IP checks (`client-ip.ts`'s `resolveClientIp`) key off
@@ -177,7 +221,7 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
     `CF-Connecting-IP` itself and overwrites it on every request; it
     APPENDS to `X-Forwarded-For` rather than replacing it, so reading that
     header's first entry (the old code, in both `http-server.ts` and
-    `ws-server.ts`) returned whatever a client had put there — a working
+    `ws-server.ts`) returned whatever a client had put there - a working
     spoof of the WS connection cap and the admin-login brute-force throttle
     alike. `X-Forwarded-For` is still the fallback for a path that bypasses
     Cloudflare (local dev, a direct Tailscale connection). Pinned by
@@ -190,9 +234,9 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 - Don't refactor, rename, reformat or "tidy" code you were not asked to touch.
 - Don't add dependencies or build a parallel system for something that exists.
 - **Comments explain *why*, not *what*.** This codebase's comments carry real
-  history — measured numbers, rejected alternatives, post-mortems. Match that.
+  history - measured numbers, rejected alternatives, post-mortems. Match that.
 - **No emoji in UI.** Inline SVG via `table/icons.tsx`. (Emoji in player
-  *reactions* are user content — a deliberate exception.)
+  *reactions* are user content - a deliberate exception.)
 - **`MAX_SEATED_PLAYERS_PER_ROUND = 11` is derived from `layout.ts` collision
   maths** and pinned by `layout.test.ts`. Changing one without the other breaks
   the table, and it must never become a runtime setting. Overflow players queue.
@@ -201,7 +245,7 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 ## Mobile UI & layout
 
 Most players are on a phone, in landscape.
-**[docs/mobile-ui.md](docs/mobile-ui.md) is the design contract — read Part 1
+**[docs/mobile-ui.md](docs/mobile-ui.md) is the design contract - read Part 1
 (the scene / HUD split) and Part 2 (the rules) before writing any layout code.**
 It holds the hard nevers, the z-index tiers, the spacing defaults, the
 orientation model and the verification loop. What produced each rule is in
@@ -209,8 +253,8 @@ orientation model and the verification loop. What produced each rule is in
 looks arbitrary.
 
 The two facts you need before opening it: the felt is a **fixed 1280×760 virtual
-stage scaled to the viewport** (`stage.ts`) — position in stage units, never
-viewport pixels — and it is **plain DOM + CSS**, no canvas or engine, so
+stage scaled to the viewport** (`stage.ts`) - position in stage units, never
+viewport pixels - and it is **plain DOM + CSS**, no canvas or engine, so
 z-index, flex/grid and media queries are the real tools and DevTools sees
 everything. Card faces are PNG with a live SVG overlay (`table/cardMark.ts`).
 Dev server on **5173**; in Docker nginx serves `dist/` on **4173**. Minimum
@@ -223,7 +267,7 @@ Context is the scarce resource in a long session, not tokens on a bill.
 - **Default to concise reports.** Lead with what changed, what it fixed, and the
   verification result. Keep reasoning to what the reader needs to make a
   decision; offer the detail rather than including it.
-- **Never paste large tool output into chat** — measurement dumps, element
+- **Never paste large tool output into chat** - measurement dumps, element
   enumerations, whole files, long logs. Write them to a file and summarise in a
   few lines. A number and its meaning beat the table it came from.
 - **Read the part of the file you need**, not the whole file, when a targeted
@@ -232,23 +276,23 @@ Context is the scarce resource in a long session, not tokens on a bill.
 
 ## Constraints
 
-- **Never `docker compose down -v`** — it destroys the Postgres volume.
+- **Never `docker compose down -v`** - it destroys the Postgres volume.
 - **`DOCKER_BUILDKIT=0`** when building on the server; BuildKit can't resolve
   DNS through its resolver.
-- **The backend runtime image holds `dist/` and nothing else** — no `src/`, no
+- **The backend runtime image holds `dist/` and nothing else** - no `src/`, no
   `scripts/`. Anything run as `docker compose exec backend <path>` must be in
   `dist` or inlined (`node -e`). `setup-admin.sh` shipped broken once for this.
 - **Never write a value containing `$` into `deploy/.env`.** Compose expands it
-  to nothing — a scrypt password hash arrived as the bare word `scrypt` and
+  to nothing - a scrypt password hash arrived as the bare word `scrypt` and
   every admin login failed against the right password. Shells, `sed` and editors
   eat it too.
 - **Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 before a tarball,
-  then run `npx vite build` AFTER the bump** — a scripted bump once truncated
+  then run `npx vite build` AFTER the bump** - a scripted bump once truncated
   the file to zero bytes and broke the server build.
 - **Never add a `dns:` block to a compose file** deployed to the adguard host.
   Container DNS goes through AdGuard by daemon config; a per-service `dns:`
   silently recreates the bypass. A container that can't resolve something has
-  hit a blocklist match — check the query log, don't pin a public resolver.
+  hit a blocklist match - check the query log, don't pin a public resolver.
   Full context: `homeserver/CLAUDE.md`.
 - **`frontend/nginx.conf`'s `location = /api/about` must stay an exact match.**
   The backend port also serves `/admin`, and the 127.0.0.1 binding that protects
@@ -259,7 +303,7 @@ Context is the scarce resource in a long session, not tokens on a bill.
 Credits here are limited. These are the mistakes **this repo has paid for**.
 
 - **Check the shape before writing code against it.** Two files were written in
-  one session against guessed types and both needed rewriting — `exportHistory`
+  one session against guessed types and both needed rewriting - `exportHistory`
   assumed `RoundHistoryEntry` when the store holds `CompletedRoundSummary`, and
   a whole `adminRoomList()` was written before noticing `listRoomsForAdmin()`
   existed. One grep first is cheaper than either.
@@ -269,11 +313,11 @@ Credits here are limited. These are the mistakes **this repo has paid for**.
 - **Verify what you cannot test locally, or choose an approach you can.** When
   Docker wasn't available to prove a `$$` escape, switching to a `$`-free format
   was cheaper than shipping another guess.
-- **Round trips cost more than edits.** When a choice has variants — a font, a
-  placement, a fade — put **all** of them in one sheet and send it once, proofed
+- **Round trips cost more than edits.** When a choice has variants - a font, a
+  placement, a fade - put **all** of them in one sheet and send it once, proofed
   at the size it will actually be seen. The maker's mark was approved on a
   full-resolution sheet and was invisible on a 92px card.
 - **Diagnose "it didn't ship" before rebuilding it.** Hash the live asset
-  against the local one — caching, a bad build and a too-subtle design look
+  against the local one - caching, a bad build and a too-subtle design look
   identical to the person reporting it.
 - **Write findings down as they are found**, not at session end.

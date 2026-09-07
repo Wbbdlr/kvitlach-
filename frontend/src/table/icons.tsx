@@ -1,4 +1,4 @@
-// Icon set for the "around the table" redesign — real inline SVGs, no emoji,
+// Icon set for the "around the table" redesign - real inline SVGs, no emoji,
 // ported verbatim from the verified mockup (scratchpad/build_artifact.py's
 // ICONS dict). Deliberately simple primitives (circles, lines, short paths)
 // rather than complex bezier art, kept easy to verify by eye.
@@ -8,6 +8,7 @@ export type IconName =
   | "clock"
   | "coins"
   | "skip"
+  | "stand"
   | "chart"
   | "user-x"
   | "play"
@@ -50,12 +51,14 @@ export type IconName =
   | "swatch";
 
 // Inner <svg> markup for each icon, static and developer-authored (no user
-// data ever flows through this map) — safe to inject verbatim.
+// data ever flows through this map) - safe to inject verbatim.
 const ICON_PATHS: Record<IconName, string> = {
   bank: '<path d="M3 10l9-6 9 6"/><path d="M5 10v9M9 10v9M15 10v9M19 10v9"/><path d="M3 21h18"/>',
   clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   coins: '<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v11.5c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6"/><path d="M5 11.75c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>',
   skip: '<path d="M6 5l11 7-11 7V5z"/><path d="M18 5v14"/>',
+  // An arrow coming down onto a line: this hand goes no further.
+  stand: '<path d="M12 4v8.5"/><path d="M8.5 9L12 12.5 15.5 9"/><path d="M5 17.5h14"/>',
   chart: '<path d="M5 21V10"/><path d="M12 21V4"/><path d="M19 21v-8"/>',
   "user-x": '<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4.4 3.1-8 7-8s7 3.6 7 8"/><path d="M17 8l4.5 4.5M21.5 8L17 12.5"/>',
   play: '<path d="M6 4l13 8-13 8V4z"/>',

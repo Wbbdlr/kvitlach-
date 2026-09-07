@@ -426,11 +426,25 @@ export class WSServer {
           break;
         }
         case "turn:stand": {
-          const { roundId } = (payload as any) || {};
+          // Takes an optional target for the same reason turn:skip does, and
+          // under the same authorization: the banker acting for a seat the
+          // table is stuck waiting on. Standing a wagered hand is now the
+          // ONLY way to move past an absent player who has chips down (see
+          // GameStore.applySkip's cannot_skip_wagered), so this path is what
+          // keeps the table moving without voiding anyone's money.
+          const { roundId, playerId: targetId } = (payload as any) || {};
           const meta = this.meta.get(socket);
           const actorId = meta?.playerId;
           if (!roundId || !actorId) throw new Error("invalid_payload");
-          const round = this.store.applyStand(roundId, actorId);
+          const roundCtx = this.store.getRound(roundId);
+          if (!roundCtx) throw new Error("round_not_found");
+          const effectivePlayerId = targetId ?? actorId;
+          // Without this, ending a rival's turn on one card is a message
+          // anyone can send.
+          if (targetId && targetId !== actorId && !this.store.isAdmin(roundCtx.roomId, actorId)) {
+            throw new Error("forbidden");
+          }
+          const round = this.store.applyStand(roundId, effectivePlayerId);
           this.handleRoundUpdate(round);
           this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
@@ -468,6 +482,32 @@ export class WSServer {
           if (!roomId || !actorId) throw new Error("invalid_payload");
           const round = this.store.endRoundAfterBankDecision(roomId, actorId);
           this.handleRoundUpdate(round);
+          this.broadcast(roomId, { type: "round:banker-ended", roomId });
+          this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
+          break;
+        }
+        // The third exit from a busted bank (replenish / end / hand it over).
+        // Ends the round AND transfers the banker role in one step -- see
+        // GameStore.passBankAfterBankDecision for why those are inseparable.
+        // targetPlayerId comes from the payload rather than meta: unlike every
+        // actor id, this names SOMEONE ELSE, and the store validates it (must
+        // exist, must not be a bot, must not already be the admin) before
+        // anything moves.
+        case "round:pass-bank": {
+          const { targetPlayerId } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || typeof targetPlayerId !== "string" || !targetPlayerId) {
+            throw new Error("invalid_payload");
+          }
+          const round = this.store.passBankAfterBankDecision(roomId, actorId, targetPlayerId);
+          this.handleRoundUpdate(round);
+          // Room broadcast as well as the round: the handover changed who
+          // holds `type: "admin"`, and every client keys its banker-only UI
+          // off that. Without this the table would keep drawing the OLD
+          // banker's controls until some unrelated room:state happened by.
+          this.broadcastRoom(roomId);
           this.broadcast(roomId, { type: "round:banker-ended", roomId });
           this.sendAck(socket, requestId, { round: this.sanitizeRound(round, meta?.playerId) });
           break;
@@ -626,6 +666,32 @@ export class WSServer {
           this.sendAck(socket, requestId, { room: updatedRoom });
           break;
         }
+        case "room:leave": {
+          // A player giving up their seat on purpose. Note what is NOT read
+          // here: the payload's playerId. The actor is the socket's own
+          // session (CLAUDE.md server authority #1) -- taking it from the
+          // payload would make this a way to throw anyone off the table,
+          // the banker included, for the price of knowing their id.
+          //
+          // There was no handler here at all until 2026-09-06. The Leave
+          // button cleared the browser's session token and reloaded, and the
+          // server was never told, so the seat sat there holding its chips
+          // forever while the returning player arrived as a stranger. See
+          // leave-and-return.test.ts.
+          const meta = this.meta.get(socket);
+          const roomId = meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          const round = this.store.getRoom(roomId)?.roundId;
+          this.store.leaveRoom(roomId, actorId);
+          this.broadcastRoom(roomId);
+          if (round) {
+            const updated = this.store.getRound(round);
+            if (updated) this.broadcastRound(updated);
+          }
+          this.sendAck(socket, requestId, {});
+          break;
+        }
         case "room:close": {
           const { roomId: roomFromPayload } = (payload as any) || {};
           const meta = this.meta.get(socket);
@@ -665,6 +731,22 @@ export class WSServer {
           const actorId = meta?.playerId;
           if (!roomId || !actorId) throw new Error("invalid_payload");
           const result = this.store.selfTopUpWallet(roomId, actorId);
+          const room = this.store.getRoom(roomId);
+          this.broadcastRoom(roomId);
+          this.sendAck(socket, requestId, { room, topUp: result });
+          break;
+        }
+        // The practice-table twin of room:banker-topup below. Same authority
+        // model as player:practice-topup above: the actor comes from the
+        // socket's own session and the store refuses anything that is not a
+        // practice room with a bot banker holding an empty bank.
+        case "bank:practice-topup": {
+          const { amount } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || !Number.isFinite(amount)) throw new Error("invalid_payload");
+          const result = this.store.practiceTopUpBank(roomId, actorId, amount);
           const room = this.store.getRoom(roomId);
           this.broadcastRoom(roomId);
           this.sendAck(socket, requestId, { room, topUp: result });
