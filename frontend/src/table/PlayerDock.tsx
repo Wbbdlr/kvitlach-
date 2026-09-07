@@ -9,11 +9,38 @@ import { useClickOutside } from "./clickOutside";
 import { DraggablePanel } from "./draggablePanel";
 import { DockGrips } from "./DockGrips";
 
-const DEFAULT_BET = 5;
 const BET_STEP = 1;
 // Player-requested, 2026-09-03: a one-tap way to reach a common amount
 // instead of typing it or walking the +/- stepper up one dollar at a time.
-const QUICK_BET_CHIPS = [5, 10, 25];
+//
+// They were a hardcoded [5, 10, 25], and the opening bet a hardcoded 5, which
+// is 5/10/25% of the $100 table they were chosen on and nonsense on any other
+// one: timid to the point of useless on a $500 table, and more than a third
+// of the stack on a $20 one. The table's own buy-in is the only number that
+// makes them mean the same thing everywhere, so they are struck from it at
+// the same three fractions and snapped to a round figure -- $100 still gives
+// exactly 5/10/25, so nothing changes for the common table.
+const QUICK_BET_FRACTIONS = [0.05, 0.1, 0.25];
+
+// Chips people actually push across a table. Below $10 whole dollars are the
+// only sensible unit; above it, a preset reading $23 looks like a bug.
+function roundChip(value: number): number {
+  if (value < 10) return Math.max(1, Math.round(value));
+  return Math.round(value / 5) * 5;
+}
+
+export function quickBetChips(buyIn: number): number[] {
+  const base = buyIn > 0 ? buyIn : 100;
+  const chips = QUICK_BET_FRACTIONS.map((fraction) => roundChip(base * fraction));
+  // Rounding can collapse two fractions onto the same figure on a small
+  // table ($20 gives 1, 2, 5; $12 would give 1, 1, 3). Three buttons showing
+  // the same amount is worse than two showing different ones.
+  return [...new Set(chips)].sort((a, b) => a - b);
+}
+
+export function defaultBet(buyIn: number): number {
+  return quickBetChips(buyIn)[0];
+}
 // Same two constants ReactionLayer.tsx's own picker uses, for the same
 // anchor math -- breathing room between the panel and the trigger, and
 // between the panel and the screen edge.
@@ -32,6 +59,8 @@ export interface PlayerDockProps {
   wallet: number;
   bankAvailable?: number;
   bankIncrement: number;
+  /** The table's buy-in, which the quick-bet chips are struck from. */
+  buyIn: number;
   canBank: boolean;
   bankDisabledReason?: string;
   onBet: (amount: number, options: { bank: boolean; eleveroon: boolean }) => void;
@@ -52,6 +81,7 @@ export function PlayerDock({
   wallet,
   bankAvailable,
   bankIncrement,
+  buyIn,
   canBank,
   bankDisabledReason,
   onBet,
@@ -62,7 +92,7 @@ export function PlayerDock({
   // Tracked as a string (not a number) so the field can sit empty mid-edit
   // while the player retypes it -- a number-backed value would fight any
   // attempt to clear the field before entering a new amount.
-  const [betAmount, setBetAmount] = useState(String(DEFAULT_BET));
+  const [betAmount, setBetAmount] = useState(String(defaultBet(buyIn)));
   const [eleveroonSelected, setEleveroonSelected] = useState(false);
   const [betError, setBetError] = useState<string | undefined>(undefined);
   const [bankConfirmOpen, setBankConfirmOpen] = useState(false);
@@ -202,7 +232,7 @@ export function PlayerDock({
     }
     onBet(amount, { bank: false, eleveroon: eleveroonSelected });
     setBetError(undefined);
-    setBetAmount(String(DEFAULT_BET));
+    setBetAmount(String(defaultBet(buyIn)));
   };
 
   // BANK! wagers the bank's entire available window in one shot -- a real
@@ -307,7 +337,7 @@ export function PlayerDock({
                 right: quickBetAnchor.right,
               }}
             >
-              {QUICK_BET_CHIPS.map((amount) => (
+              {quickBetChips(buyIn).map((amount) => (
                 <button
                   key={amount}
                   type="button"

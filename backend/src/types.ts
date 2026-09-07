@@ -19,6 +19,18 @@ export interface Player {
   type: PlayerType;
   presence: Presence;
   isBot?: boolean;
+  // Set only when this player's full name already belongs to somebody else at
+  // the table: 2 for the second Rivka S, 3 for the third. Rendered as
+  // "Rivka S (2)" wherever a name is shown.
+  //
+  // This is a family game and the review's "no duplicate-name detection"
+  // finding was first read as a reason to REFUSE the second Rivka. It is not:
+  // three cousins with one name is the normal case here, and a table that
+  // will not seat them is broken in a worse way than one that seats them
+  // confusingly. So the name is never refused -- it is made unambiguous, once,
+  // by the server, so the roster, the felt and the settlement sheet all say
+  // the same thing without anyone having to invent a nickname at the door.
+  nameTag?: number;
   // When this player last went offline. Only the banker's actually matters:
   // the table cannot proceed without them and they have no turn timer (they
   // are the dealer, not a seat being waited on), so this is what tells the
@@ -31,6 +43,24 @@ export interface RenameRequest {
   playerId: string;
   firstName: string;
   lastName: string;
+  requestedAt: number;
+}
+
+// Somebody rejoining a table they were already at, asking for their OLD seat
+// back rather than a new one with a fresh buy-in.
+//
+// It is a request rather than an automatic match because the room code is
+// semi-public by design (it gets read aloud, shared in a group chat, put on a
+// screen) and a seat carries real chips. Name plus code alone would let
+// anyone who overheard both walk into somebody's stack. The banker is already
+// the authority for renames, buy-ins and kicks, and is standing in the room
+// looking at the person, so they are the right check here too.
+export interface SeatClaim {
+  id: string;
+  /** The existing seat being claimed, with its wallet intact. */
+  playerId: string;
+  firstName: string;
+  lastName?: string;
   requestedAt: number;
 }
 
@@ -233,6 +263,9 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  // Optional for the same reason roundHistory is: rooms persisted before this
+  // existed come back from loadFromDB() without it. Every site defaults to [].
+  seatClaims?: SeatClaim[];
   // How long a seat gets to decide, in seconds. Optional and defaulted at
   // every read (DEFAULT_TURN_SECONDS): rooms persisted before this field
   // existed come back from loadFromDB() without it, same as roundHistory.

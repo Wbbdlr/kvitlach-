@@ -139,6 +139,15 @@ export class WSServer {
   private store: GameStore;
   private rooms = new Map<string, Set<WebSocket>>();
   private meta = new WeakMap<WebSocket, ConnectionMeta>();
+  // Sockets waiting on a banker's answer to a seat claim, keyed by claim id.
+  //
+  // A claimant has no session and is in no room, so none of the ordinary
+  // broadcast paths reach them -- this is the only way the approval, and the
+  // session token it issues, gets back to the browser that asked. A plain Map
+  // (not Weak) because the claim id is the key and the socket is the value;
+  // entries are deleted on answer and on close, so a claimant who walks away
+  // leaves nothing behind.
+  private claimSockets = new Map<string, WebSocket>();
   private connsByIp = new Map<string, Set<WebSocket>>();
   private msgCount = new WeakMap<WebSocket, { count: number; resetAt: number }>();
   // Admin "Watch" grants, minted by the admin page and redeemed by room:watch.
@@ -200,6 +209,14 @@ export class WSServer {
 
   private onClose(socket: WebSocket) {
     metrics.wsConnectionClosed();
+    // A claimant who closed the tab before the banker answered. The claim
+    // itself stays on the room (the banker should still see and clear it, and
+    // the seat is still theirs on a later resume) but the dead socket must
+    // not be held here -- an entry kept past its socket is exactly the leak
+    // this file's own rule is about, in a process meant to run for months.
+    for (const [claimId, waiting] of this.claimSockets) {
+      if (waiting === socket) this.claimSockets.delete(claimId);
+    }
     const info = this.meta.get(socket);
     if (info?.ip) {
       const ipSet = this.connsByIp.get(info.ip);
@@ -323,10 +340,17 @@ export class WSServer {
           break;
         }
         case "room:join": {
-          const { roomId, firstName, lastName, password, spectator, accessCode } = (payload as any) || {};
+          const { roomId, firstName, lastName, password, spectator, accessCode, allowDuplicateName } =
+            (payload as any) || {};
           this.access.assertAllowed("join", accessCode);
           if (!roomId || !firstName) throw new Error("invalid_payload");
-          const { room, player, sessionToken } = this.store.joinRoom(roomId, { firstName, lastName, password, spectator: Boolean(spectator) });
+          const { room, player, sessionToken } = this.store.joinRoom(roomId, {
+            firstName,
+            lastName,
+            password,
+            spectator: Boolean(spectator),
+            allowDuplicateName: Boolean(allowDuplicateName),
+          });
           await this.attach(socket, room.roomId, player.id);
           this.sendAck(socket, requestId, {
             room,
@@ -335,6 +359,66 @@ export class WSServer {
           });
           this.broadcastRoom(room.roomId);
           await this.broadcastConnections(room.roomId);
+          break;
+        }
+        // Somebody rejoining a table asking for their OLD seat, with its
+        // chips, instead of a new one. Unauthenticated in exactly the way
+        // room:join is -- it is a way into a room, not an action inside one
+        // -- and it grants nothing on its own: the banker has to approve it
+        // before any session exists.
+        case "room:claim-seat": {
+          const { roomId, firstName, lastName, password, accessCode } = (payload as any) || {};
+          this.access.assertAllowed("join", accessCode);
+          if (!roomId || !firstName) throw new Error("invalid_payload");
+          const { room, claim, wallet } = this.store.requestSeatClaim(roomId, { firstName, lastName, password });
+          this.claimSockets.set(claim.id, socket);
+          this.sendAck(socket, requestId, { claim, wallet, roomId: room.roomId });
+          this.broadcastRoom(room.roomId);
+          break;
+        }
+        case "room:claim-approve": {
+          const { claimId, roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || !claimId) throw new Error("invalid_payload");
+          const { room, player, sessionToken } = this.store.approveSeatClaim(roomId, actorId, claimId);
+          this.sendAck(socket, requestId, { room });
+          // The claimant may have closed the tab while waiting. The seat is
+          // theirs either way -- it was always theirs -- so the approval
+          // stands and they pick it up on their next resume.
+          const waiting = this.claimSockets.get(claimId);
+          this.claimSockets.delete(claimId);
+          if (waiting && waiting.readyState === waiting.OPEN) {
+            await this.attach(waiting, room.roomId, player.id);
+            this.send(waiting, {
+              type: "seat:claim-approved",
+              roomId: room.roomId,
+              payload: {
+                room,
+                player,
+                session: { roomId: room.roomId, playerId: player.id, token: sessionToken },
+              },
+            });
+          }
+          this.broadcastRoom(room.roomId);
+          await this.broadcastConnections(room.roomId);
+          break;
+        }
+        case "room:claim-reject": {
+          const { claimId, roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || !claimId) throw new Error("invalid_payload");
+          const { room } = this.store.rejectSeatClaim(roomId, actorId, claimId);
+          this.sendAck(socket, requestId, { room });
+          const waiting = this.claimSockets.get(claimId);
+          this.claimSockets.delete(claimId);
+          if (waiting && waiting.readyState === waiting.OPEN) {
+            this.send(waiting, { type: "seat:claim-rejected", roomId: room.roomId, payload: {} });
+          }
+          this.broadcastRoom(room.roomId);
           break;
         }
         // The admin panel's Watch link. A watcher is subscribed to the room's

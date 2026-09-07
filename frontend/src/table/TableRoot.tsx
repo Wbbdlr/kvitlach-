@@ -105,6 +105,8 @@ export interface TableRootProps {
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
   onSetTurnSeconds: (seconds: number) => void;
+  onApproveSeatClaim?: (claimId: string) => void;
+  onRejectSeatClaim?: (claimId: string) => void;
   roundHistoryCount: number;
   standings: StandingRow[];
   onApproveRename: (playerId: string) => void;
@@ -181,6 +183,8 @@ export function TableRoot({
   onTopUp,
   onSetWatermark,
   onSetTurnSeconds,
+  onApproveSeatClaim,
+  onRejectSeatClaim,
   roundHistoryCount,
   standings,
   onApproveRename,
@@ -1719,6 +1723,7 @@ export function TableRoot({
             wallet={room.wallets?.[playerId ?? ""] ?? 0}
             bankAvailable={bankInfo?.available}
             bankIncrement={bankIncrement}
+            buyIn={room.buyIn ?? 100}
             canBank={canBank}
             bankDisabledReason={bankDisabledReason}
             onBet={onBet}
@@ -1788,6 +1793,9 @@ export function TableRoot({
           wallets={room.wallets ?? {}}
           renameRequests={room.renameRequests ?? []}
           buyInRequests={room.buyInRequests ?? []}
+          seatClaims={room.seatClaims ?? []}
+          onApproveSeatClaim={onApproveSeatClaim}
+          onRejectSeatClaim={onRejectSeatClaim}
           roundHistoryCount={roundHistoryCount}
           standings={standings}
           ledger={room.ledger ?? []}

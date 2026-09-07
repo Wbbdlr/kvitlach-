@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
-import { totalDisplay, statusDisplay, betDisplay, tagVariant } from "./selectors";
+import { totalDisplay, statusDisplay, betDisplay, tagVariant, fullName } from "./selectors";
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
 import { Icon } from "./icons";
@@ -123,7 +123,7 @@ export function Seat({
   const totalInfo = totalDisplay(turn, viewerId, roundState, { forceBankerReveal: shouldForceReveal });
   const statusInfo = statusDisplay(turn);
   const betInfo = betDisplay(turn);
-  const displayName = [turn.player.firstName, turn.player.lastName].filter(Boolean).join(" ") || turn.player.firstName;
+  const displayName = fullName(turn.player) || turn.player.firstName;
   // Once a wager is down, Skip is the wrong action and the server refuses it
   // (GameStore.applySkip -- a skipped hand is dropped by calculateBalances,
   // so it can neither lose nor collect when the bank busts). Standing the

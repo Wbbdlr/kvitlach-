@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay, REACTION_EMOJIS, REACTION_EMOJI_LABELS } from "../selectors";
+import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay, fullName, REACTION_EMOJIS, REACTION_EMOJI_LABELS } from "../selectors";
 import { Card, Player, Turn } from "../../types";
 
 const banker: Player = { id: "bank", firstName: "Bank", lastName: "", type: "admin", presence: "online" };
@@ -27,6 +27,29 @@ const ELEV_IGNORED: Card = { name: "11", attributes: { values: [11], eleveroonIg
 // The wider point, and why these are grouped: the app had TWO vocabularies
 // for the same idea. The banker's branch said "hidden" and the player's said
 // "0" (intending "--"). One concealed total should look like every other one.
+// Two cousins really are both called Rivka S at this table, so the server
+// tags the second one and fullName is the single place that tag becomes
+// text -- the felt plates, the roster, the settlement table and the export
+// sheet all read their name through here.
+describe("a name shared by more than one player", () => {
+  const player = (over: Record<string, unknown> = {}) =>
+    ({ id: "p", firstName: "Rivka", lastName: "S", type: "player", presence: "online", ...over }) as any;
+
+  it("leaves the first one exactly as it was", () => {
+    expect(fullName(player())).toBe("Rivka S");
+    expect(fullName(player({ nameTag: 1 }))).toBe("Rivka S");
+  });
+
+  it("marks the second and third so the banker can tell who they paid", () => {
+    expect(fullName(player({ nameTag: 2 }))).toBe("Rivka S (2)");
+    expect(fullName(player({ nameTag: 3 }))).toBe("Rivka S (3)");
+  });
+
+  it("still handles a player with no last name", () => {
+    expect(fullName(player({ lastName: "", nameTag: 2 }))).toBe("Rivka (2)");
+  });
+});
+
 describe("totalDisplay -- concealment says so, and never says 0", () => {
   it("says hidden for a blatt player holding only their face-down card", () => {
     // Dealt one card, no wager yet: cards[0] is face-down to the table (the

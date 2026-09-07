@@ -86,7 +86,40 @@ interface UIState {
   init: () => void;
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
   createPracticeRoom: (firstName: string, options?: { botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => void;
-  joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => void;
+  joinRoom: (
+    roomId: string,
+    firstName: string,
+    lastName?: string,
+    password?: string,
+    spectator?: boolean,
+    allowDuplicateName?: boolean
+  ) => void;
+  /**
+   * The one question a join is ever stopped for: an EMPTY seat under this
+   * name with chips still on it. "Is this you coming back, or a different
+   * Rivka?" -- a real question at a family table, and the only one whose
+   * wrong answer costs somebody their stack.
+   *
+   * A same-named player who is still connected raises no question at all:
+   * that is plainly somebody else, they are seated without being asked, and
+   * the server tags the name so the felt can tell them apart.
+   *
+   * The attempt is kept so either answer can be acted on without making the
+   * player retype a name and password they just entered.
+   */
+  seatPrompt?: {
+    roomId: string;
+    firstName: string;
+    lastName?: string;
+    password?: string;
+  };
+  /** A claim sent, waiting on the banker. */
+  seatClaimPending?: { roomId: string; wallet: number };
+  claimSeat: () => void;
+  joinAsSomeoneElse: () => void;
+  dismissSeatPrompt: () => void;
+  approveSeatClaim: (claimId: string) => void;
+  rejectSeatClaim: (claimId: string) => void;
   // The admin panel's Watch link, which is NOT joinRoom(spectator: true). That
   // seats a named spectator the table can see; this subscribes with no player
   // identity at all. `watching` is what the felt keys its read-only mode off:
@@ -365,6 +398,11 @@ export const loadLastRoomId = (): string | undefined => {
   return undefined;
 };
 
+// The lobby's "you were at table X" row offers a way to say "not me". It has
+// to clear the SAME key the prefill reads, so it lives here next to it rather
+// than reaching into localStorage from a component.
+export const forgetLastRoom = () => persistLastRoomId(undefined);
+
 const persistLastRoomId = (roomId?: string) => {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
@@ -565,6 +603,9 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
   // `invite_required` has to land on the form the player is actually looking
   // at -- and nothing in the error envelope says which that was.
   let lastLobbyAction: "create" | "join" | "practice" | undefined;
+  let lastJoinAttempt: { roomId: string; firstName: string; lastName?: string; password?: string } | undefined;
+  let pendingJoinRequestId: string | undefined;
+  let pendingClaimRequestId: string | undefined;
   // Which room the player last tried to JOIN by hand. Only ever read to
   // decide whether a room_not_found means the remembered table is gone (see
   // the error handler), and never to decide anything about the round.
@@ -1020,7 +1061,8 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     return updates;
   };
 
-  const handleMessage = (msg: ServerEnvelope) => {
+  const handleMessage = (incoming: ServerEnvelope) => {
+    let msg = incoming;
     if (msg.type === "room:state" && msg.payload)
       set((state: UIState) => analyzeRoomTransition(state, msg.payload as RoomState));
     if (msg.type === "round:state" && msg.payload) {
@@ -1172,6 +1214,30 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     }
     if (msg.type === "error" && msg.error) {
       const errorMessage = msg.error?.message;
+      // The refusal that is really a question. "You already have a seat here"
+      // is not something a player can act on by reading it in a red box --
+      // it needs a way to take the seat back, and a way to say you are a
+      // different Rivka. Turned into a prompt here rather than left to
+      // formErrors.join.
+      const isJoinError = Boolean(msg.requestId && msg.requestId === pendingJoinRequestId);
+      if (isJoinError && errorMessage === "seat_claimable") {
+        pendingJoinRequestId = undefined;
+        const attempt = lastJoinAttempt;
+        if (attempt) {
+          set({ seatPrompt: { ...attempt }, formErrors: {} });
+          return;
+        }
+      }
+      if (isJoinError) pendingJoinRequestId = undefined;
+      const isClaimError = Boolean(msg.requestId && msg.requestId === pendingClaimRequestId);
+      if (isClaimError) {
+        pendingClaimRequestId = undefined;
+        set((state: UIState) => ({
+          seatClaimPending: undefined,
+          formErrors: { ...state.formErrors, join: errorCopy(errorMessage) },
+        }));
+        return;
+      }
       const isAutoResumeError = Boolean(msg.requestId && msg.requestId === autoResumeRequestId);
       if (isAutoResumeError) autoResumeRequestId = undefined;
       const isWatermarkError = Boolean(msg.requestId && msg.requestId === pendingWatermarkRequestId);
@@ -1452,6 +1518,41 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }, 10000);
       return;
     }
+    // The banker said yes. This arrives unsolicited -- the claimant has no
+    // session and is in no room, so nothing they sent is being answered --
+    // but its payload is exactly an ack's (room + player + session), and the
+    // ack branch below already knows how to adopt one: persist the session,
+    // set the URL, remember the room, seat the player. Rewriting the type
+    // here rather than repeating that block is the difference between one
+    // adoption path and two that have to be kept in step.
+    if (msg.type === "seat:claim-approved" && msg.payload) {
+      useGameStore.setState({ seatClaimPending: undefined, seatPrompt: undefined });
+      msg = { ...msg, type: "ack" };
+    }
+    if (msg.type === "seat:claim-rejected") {
+      useGameStore.setState((state: UIState) => ({
+        seatClaimPending: undefined,
+        seatPrompt: undefined,
+        formErrors: {
+          ...state.formErrors,
+          join: "The banker did not recognise that seat as yours. Join with a different name to take a new one.",
+        },
+      }));
+      return;
+    }
+    // The claim was LODGED, not granted -- this payload deliberately carries
+    // no room and no session. Nothing seats the player until the banker
+    // answers and seat:claim-approved arrives above.
+    if (msg.type === "ack" && msg.requestId && msg.requestId === pendingClaimRequestId) {
+      pendingClaimRequestId = undefined;
+      const claimPayload = (msg.payload as any) || {};
+      useGameStore.setState({
+        seatClaimPending: { roomId: claimPayload.roomId, wallet: Number(claimPayload.wallet) || 0 },
+        seatPrompt: undefined,
+        formErrors: {},
+      });
+      return;
+    }
     if (msg.type === "ack") {
       if (msg.requestId && msg.requestId === autoResumeRequestId) autoResumeRequestId = undefined;
       if (msg.requestId && msg.requestId === pendingWatermarkRequestId) {
@@ -1683,7 +1784,14 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       lastLobbyAction = "practice";
         pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options, accessCode: get().accessCode || undefined });
     },
-    joinRoom: (roomId: string, firstName: string, lastName?: string, password?: string, spectator?: boolean) => {
+    joinRoom: (
+      roomId: string,
+      firstName: string,
+      lastName?: string,
+      password?: string,
+      spectator?: boolean,
+      allowDuplicateName?: boolean
+    ) => {
       if (!roomId) {
         set((s) => ({ formErrors: { ...s.formErrors, join: "Enter a room ID to join." } }));
         return;
@@ -1694,7 +1802,48 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
       lastLobbyAction = "join";
       lastJoinAttemptRoomId = roomId;
-        client.send("room:join", { roomId, firstName, lastName, password, spectator: Boolean(spectator), accessCode: get().accessCode || undefined });
+      // Remembered for the seat prompt below, which has to be able to re-send
+      // this exact join (or turn it into a claim) without making the player
+      // retype a name and password they just entered.
+      lastJoinAttempt = { roomId, firstName, lastName, password };
+      pendingJoinRequestId = client.send("room:join", {
+        roomId,
+        firstName,
+        lastName,
+        password,
+        spectator: Boolean(spectator),
+        allowDuplicateName: Boolean(allowDuplicateName),
+        accessCode: get().accessCode || undefined,
+      });
+    },
+    claimSeat: () => {
+      const attempt = lastJoinAttempt;
+      if (!attempt) return;
+      set({ seatPrompt: undefined });
+      pendingClaimRequestId = client.send("room:claim-seat", {
+        roomId: attempt.roomId,
+        firstName: attempt.firstName,
+        lastName: attempt.lastName,
+        password: attempt.password,
+        accessCode: get().accessCode || undefined,
+      });
+    },
+    joinAsSomeoneElse: () => {
+      const attempt = lastJoinAttempt;
+      if (!attempt) return;
+      set({ seatPrompt: undefined });
+      get().joinRoom(attempt.roomId, attempt.firstName, attempt.lastName, attempt.password, false, true);
+    },
+    dismissSeatPrompt: () => set({ seatPrompt: undefined, seatClaimPending: undefined }),
+    approveSeatClaim: (claimId: string) => {
+      const roomId = get().room?.roomId;
+      if (!roomId) return;
+      client.send("room:claim-approve", { roomId, claimId });
+    },
+    rejectSeatClaim: (claimId: string) => {
+      const roomId = get().room?.roomId;
+      if (!roomId) return;
+      client.send("room:claim-reject", { roomId, claimId });
     },
     watchRoom: (roomId: string, token: string) => {
       if (!roomId || !token) return;

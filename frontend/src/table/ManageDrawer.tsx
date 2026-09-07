@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { BuyInRequest, LedgerEntry, Player, RenameRequest } from "../types";
+import { BuyInRequest, LedgerEntry, Player, RenameRequest, SeatClaim } from "../types";
 import { Icon } from "./icons";
+import { fullName } from "./selectors";
 import { StandingRow } from "../playerRecord";
 import { StageOverlay } from "./StageOverlay";
 import { useEscapeKey } from "../useEscapeKey";
@@ -23,6 +24,12 @@ export interface ManageDrawerProps {
   players: Player[];
   wallets: Record<string, number>;
   renameRequests: RenameRequest[];
+  // Optional, defaulted to [] at the destructure, for the same reason
+  // room.roundHistory is: a room persisted before seat claims existed comes
+  // back without the field at all.
+  seatClaims?: SeatClaim[];
+  onApproveSeatClaim?: (claimId: string) => void;
+  onRejectSeatClaim?: (claimId: string) => void;
   buyInRequests: BuyInRequest[];
   roundHistoryCount: number;
   /**
@@ -72,6 +79,9 @@ export function ManageDrawer({
   players,
   wallets,
   renameRequests,
+  seatClaims = [],
+  onApproveSeatClaim,
+  onRejectSeatClaim,
   buyInRequests,
   roundHistoryCount,
   // Defaulted rather than required: a drawer opened before any round has
@@ -124,7 +134,7 @@ export function ManageDrawer({
   if (!open) return null;
 
   const nonAdminPlayers = players.filter((p) => p.type !== "admin");
-  const pendingCount = renameRequests.length + buyInRequests.length;
+  const pendingCount = renameRequests.length + buyInRequests.length + seatClaims.length;
 
   const applyAdjust = () => {
     if (!adjustTarget) return;
@@ -156,7 +166,7 @@ export function ManageDrawer({
 
   const nameOf = (playerId: string) => {
     const p = players.find((pl) => pl.id === playerId);
-    return p ? [p.firstName, p.lastName].filter(Boolean).join(" ") : "Player";
+    return p ? fullName(p) : "Player";
   };
 
   return (
@@ -217,6 +227,31 @@ export function ManageDrawer({
                   </button>
                   <button type="button" className="rounded bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white" onClick={() => onRejectRename(req.playerId)}>
                     Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+            {/* Somebody rejoining who says an empty seat is theirs. The
+                banker is the check because the room code is semi-public by
+                design -- read aloud, put in a group chat -- and the seat has
+                real chips on it. The wallet is shown because it is the whole
+                stake of the decision: approving hands over that stack. */}
+            {seatClaims.map((claim) => (
+              <div key={`claim-${claim.id}`} className="flex items-center justify-between gap-2 rounded-lg border k-dialog-line k-dialog-inset px-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">
+                    {[claim.firstName, claim.lastName].filter(Boolean).join(" ")}
+                  </div>
+                  <div className="text-xs k-dialog-sub">
+                    Asking for their seat back (${(wallets[claim.playerId] ?? 0).toLocaleString()})
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <button type="button" className="rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white" onClick={() => onApproveSeatClaim?.(claim.id)}>
+                    It is them
+                  </button>
+                  <button type="button" className="rounded bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white" onClick={() => onRejectSeatClaim?.(claim.id)}>
+                    No
                   </button>
                 </div>
               </div>
@@ -386,7 +421,7 @@ export function ManageDrawer({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-sm font-semibold">
                   <span className={`h-2 w-2 rounded-full ${p.presence === "online" ? "bg-emerald-500/120" : "bg-slate-300"}`} />
-                  {[p.firstName, p.lastName].filter(Boolean).join(" ")}
+                  {fullName(p)}
                   <span className="font-normal k-dialog-sub">${wallets[p.id] ?? 0}</span>
                 </div>
                 <div className="flex gap-2">

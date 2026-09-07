@@ -180,8 +180,16 @@ export function bestTotal(cards: Card[]): { total?: number; bustedTotal?: number
   return { bustedTotal: Math.min(...totals) };
 }
 
+// The single place a player's name becomes text. Everything that shows a name
+// goes through here or through the same value passed down as a prop -- the
+// felt plates, the roster, the settlement table, the export sheet -- which is
+// why the disambiguating tag belongs here rather than at each of them: this
+// is a family game, three cousins really are all called Rivka, and a table
+// that renders two identical nameplates is one where the banker cannot tell
+// who they just paid.
 export function fullName(player: Player): string {
-  return [player.firstName, player.lastName].filter(Boolean).join(" ").trim();
+  const name = [player.firstName, player.lastName].filter(Boolean).join(" ").trim();
+  return player.nameTag && player.nameTag > 1 ? `${name} (${player.nameTag})` : name;
 }
 
 export function formatNames(names: string[]): string {

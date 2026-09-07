@@ -1,6 +1,6 @@
 import { CompletedRoundSummary } from "./state";
 import { LedgerEntry, Turn } from "./types";
-import { isPushTurn } from "./table/selectors";
+import { isPushTurn, fullName } from "./table/selectors";
 
 // A player's own record across every night they have played on this device.
 //
@@ -239,7 +239,7 @@ export function tableStandings(rounds: CompletedRoundSummary[], ledger: LedgerEn
         rows.get(player.id) ??
         blank(
           player.id,
-          [player.firstName, player.lastName].filter(Boolean).join(" ").trim() || "Player",
+          fullName(player) || "Player",
           player.type === "admin"
         );
       row.rounds += 1;

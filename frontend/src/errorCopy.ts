@@ -59,6 +59,13 @@ export const ERROR_COPY: Record<string, string> = {
   invalid_buyin: "Enter a valid buy-in - whole chips, at least 1.",
   invalid_bank_amount: "Bank wager must equal the remaining bank.",
   invalid_turn_seconds: "Turn time has to be between 10 and 300 seconds.",
+  // Seat recovery. seat_claimable is never a dead end -- the lobby turns it
+  // into a choice (take the seat back, or come in as a different person of
+  // the same name) -- so this copy is the fallback for anywhere that does
+  // not, and it reads as an explanation rather than a failure.
+  seat_claimable: "You already have a seat at this table. Ask the banker to give it back to you, chips and all.",
+  no_seat_to_claim: "There is no empty seat under that name at this table.",
+  seat_claim_pending: "That seat has already been asked for. The banker is deciding.",
   bank_empty: "The bank has no chips left.",
   bank_locked: "Bank showdown in progress. Please wait.",
   bank_not_empty: "The bank still has chips - there is nothing to refill yet.",

@@ -1,7 +1,7 @@
 ﻿import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { tableStandings } from "./playerRecord";
-import { useGameStore, loadLastRoomId, loadAgeAcknowledged, persistAgeAcknowledged } from "./state";
+import { useGameStore, loadLastRoomId, forgetLastRoom, loadAgeAcknowledged, persistAgeAcknowledged } from "./state";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
@@ -122,7 +122,10 @@ export default function App() {
   );
   const prevActiveTurnIdRef = useRef<string | undefined>(undefined);
   const prefilledRoomIdRef = useRef(false);
+  const [rememberedRoomId, setRememberedRoomId] = useState<string | undefined>(undefined);
   const formErrors = store.formErrors ?? {};
+  const seatPrompt = store.seatPrompt;
+  const seatClaimPending = store.seatClaimPending;
   const watching = store.watching;
   const accessCodeRequired = store.accessCodeRequired;
   const accessCode = store.accessCode;
@@ -187,6 +190,13 @@ export default function App() {
     if (lastRoom) {
       setRoomId(lastRoom);
       prefilledRoomIdRef.current = true;
+      // Tracked separately from the prefill itself. A code arriving in the URL
+      // needs no explanation -- somebody just handed it to you. A code
+      // arriving from THIS DEVICE'S memory does: until now it simply appeared
+      // in the field, and a player coming back to a table they were already
+      // in got a box with a code in it and nothing telling them why, or that
+      // rejoining was even the thing to do.
+      setRememberedRoomId(lastRoom);
     }
   }, []);
 
@@ -606,6 +616,8 @@ export default function App() {
         onTopUp={(amount, note) => store.topUpBanker(amount, note)}
         onSetWatermark={(text) => store.setFeltWatermark(text)}
         onSetTurnSeconds={(seconds) => store.setTurnSeconds(seconds)}
+        onApproveSeatClaim={(claimId) => store.approveSeatClaim(claimId)}
+        onRejectSeatClaim={(claimId) => store.rejectSeatClaim(claimId)}
         roundHistoryCount={roundHistory?.length ?? 0}
         standings={standings}
         onApproveRename={(id) => store.approveRename(id)}
@@ -732,6 +744,81 @@ export default function App() {
                 spellCheck={false}
               />
             </label>
+          </section>
+        )}
+        {/* Only when the code came from this device's memory, and only while
+            the field still holds it -- once the visitor edits the code they
+            have moved on to a different table and the row is answering a
+            question nobody is asking any more. */}
+        {!room && rememberedRoomId && roomIdInput === rememberedRoomId && (
+          <section className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-emerald-900">
+              <span className="font-semibold">Welcome back.</span> You were at table{" "}
+              <span className="font-mono font-semibold">{rememberedRoomId}</span>. Your code is filled in below - add
+              your name to take your seat again.
+            </div>
+            <button
+              type="button"
+              className="text-xs font-semibold text-emerald-800 underline"
+              onClick={() => {
+                forgetLastRoom();
+                setRememberedRoomId(undefined);
+                setRoomId("");
+              }}
+            >
+              Not me, clear it
+            </button>
+          </section>
+        )}
+        {/* The one question a join is ever stopped for. There is an empty seat
+            under this name with chips on it, and only the person standing
+            there knows whether it is theirs. Both answers are one tap and
+            neither is a dead end -- the wrong default in either direction
+            either strands somebody's stack or hands it to a cousin. */}
+        {!room && seatPrompt && !seatClaimPending && (
+          <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex flex-col gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-amber-900">
+                There is already a seat here under that name
+              </h2>
+              <p className="mt-1 text-xs text-amber-800">
+                Somebody called {[seatPrompt.firstName, seatPrompt.lastName].filter(Boolean).join(" ")} has a seat at
+                this table and is not connected right now. If that is you, ask for it back and you keep the chips you
+                left on it.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm"
+                onClick={() => store.claimSeat()}
+              >
+                That is my seat, ask the banker
+              </button>
+              <button
+                type="button"
+                className="rounded border border-amber-400 bg-white px-4 py-2 text-sm font-semibold text-amber-900"
+                onClick={() => store.joinAsSomeoneElse()}
+              >
+                I am a different person, seat me separately
+              </button>
+            </div>
+          </section>
+        )}
+        {!room && seatClaimPending && (
+          <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex flex-col gap-2">
+            <h2 className="text-sm font-semibold text-amber-900">Waiting for the banker</h2>
+            <p className="text-xs text-amber-800">
+              They are confirming the seat is yours. It still holds ${seatClaimPending.wallet.toLocaleString()}. Keep
+              this page open - you will be seated as soon as they say yes.
+            </p>
+            <button
+              type="button"
+              className="self-start text-xs font-semibold text-amber-900 underline"
+              onClick={() => store.dismissSeatPrompt()}
+            >
+              Cancel
+            </button>
           </section>
         )}
         {!room && (
@@ -878,6 +965,16 @@ export default function App() {
                   Watch
                 </button>
               </div>
+              {/* Watch sits beside Join with equal weight and, until now, its
+                  only explanation was that `title` -- which does not exist on
+                  a phone, where most people are. Somebody tapping it had no
+                  way to know they would not be dealt in, and no way to know
+                  the difference mattered. One line under the pair costs
+                  nothing and answers it for both buttons at once. */}
+              <p className="text-xs text-slate-500">
+                Join takes a seat and a stack of chips. Watch lets you follow the table without being dealt in - you
+                can join properly later.
+              </p>
           </form>
           {/* Second grid column, paired with Join -- moved here from below
               the grid (product-review finding #2, 2026-09-04): a code-less

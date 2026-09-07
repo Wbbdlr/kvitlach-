@@ -5,7 +5,7 @@ import { handleHit } from "./round.js";
 import { decideBotAction, decideBotBet, decideBotEleveroon } from "./bot.js";
 import { RuntimeLimits } from "./limits.js";
 import { BotNames } from "./bot-names.js";
-import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary, LedgerEntry } from "./types.js";
+import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary, LedgerEntry, SeatClaim } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 import { metrics } from "./metrics.js";
@@ -45,6 +45,16 @@ const MAX_MONEY = 1_000_000_000;
 // Returns undefined when the value can't be a legitimate chip amount, so
 // callers decide between a fallback and an error rather than getting a
 // silently coerced number.
+// The tag the next player sharing a name should wear. 2 for the second, and
+// the lowest free number after that -- a seat that leaves gives its number
+// back rather than making the count climb for the rest of the night.
+function nextNameTag(sameName: Player[]): number {
+  const taken = new Set(sameName.map((player) => player.nameTag ?? 1));
+  let tag = 2;
+  while (taken.has(tag)) tag += 1;
+  return tag;
+}
+
 function normalizeMoney(raw: unknown): number | undefined {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return undefined;
@@ -700,7 +710,30 @@ export class GameStore {
     return { room: this.rooms.get(roomId)!.room, player: human, sessionToken };
   }
 
-    joinRoom(roomId: string, info: { firstName: string; lastName?: string; password?: string; spectator?: boolean }) {
+    joinRoom(
+      roomId: string,
+      info: {
+        firstName: string;
+        lastName?: string;
+        password?: string;
+        spectator?: boolean;
+        /**
+         * "Yes, I know there is already a Rivka here, I am a different one."
+         *
+         * Without this the join is refused, because the two things that
+         * refusal prevents are both real: a returning player silently getting
+         * a SECOND seat and a fresh buy-in while their old stack is stranded
+         * (one tap used to invent $100 and orphan $75), and a table where two
+         * identical nameplates make the roster, the felt and the settlement
+         * sheet ambiguous with nobody warned.
+         *
+         * The client turns the refusal into a choice rather than a dead end:
+         * claim the seat back, or say you are somebody else and come through
+         * here.
+         */
+        allowDuplicateName?: boolean;
+      }
+    ) {
       const normalizedId = roomId.trim().toUpperCase();
       const roomRec = this.rooms.get(normalizedId);
     if (!roomRec) throw new Error("room_not_found");
@@ -711,12 +744,28 @@ export class GameStore {
       throw new Error("invalid_password");
     }
     if (roomRec.room.players.length >= this.limits.maxPlayersPerRoom) throw new Error("room_full");
+    // The ONE thing worth stopping to ask about: an empty seat under this
+    // name, with chips still on it. Left alone, this join mints a new id and
+    // a fresh buy-in and strands that stack somewhere nobody can reach --
+    // reproduced live as one tap inventing $100 and orphaning $75.
+    //
+    // A same-named seat that is still CONNECTED is not this case. That is a
+    // different person who shares a name, which at this table is ordinary,
+    // and they are seated without a word (and tagged below).
+    if (!info.spectator && !info.allowDuplicateName && this.findClaimableSeat(normalizedId, info.firstName, info.lastName)) {
+      throw new Error("seat_claimable");
+    }
+    const sameName = info.spectator ? [] : this.seatsMatchingName(roomRec.room, info.firstName, info.lastName);
     const player: Player = {
       id: uuid(),
       firstName: this.sanitizeName(info.firstName),
       lastName: this.sanitizeName(info.lastName),
       type: info.spectator ? "spectator" : "player",
       presence: "online",
+      // Lowest free number from 2 up, rather than count+1: a table that has
+      // seen Rivka, Rivka (2) and Rivka (3) and then loses Rivka (2) should
+      // reuse 2 for the next one instead of climbing forever.
+      ...(sameName.length > 0 ? { nameTag: nextNameTag(sameName) } : {}),
     };
     roomRec.room.players.push(player);
     if (!info.spectator) roomRec.room.wallets[player.id] = roomRec.room.buyIn;
@@ -729,6 +778,110 @@ export class GameStore {
       this.bumpRoomTimer(roomRec.room.roomId);
     const sessionToken = this.issueSession(roomRec.room.roomId, player.id);
     return { room: roomRec.room, player, sessionToken };
+  }
+
+  // Name matching for seat recovery and duplicate detection. Deliberately
+  // loose -- case, surrounding space and a missing last name all have to
+  // match the way a person would match them, because the whole point is
+  // recognising somebody who typed their name again from memory rather than
+  // reproducing a string exactly.
+  // nameAlreadySeated is gone with the refusal it existed for; seatsMatchingName
+  // is what both the claim lookup and the tagging read now.
+  private nameKey(firstName: string, lastName?: string): string {
+    return [this.sanitizeName(firstName), this.sanitizeName(lastName ?? "")]
+      .join(" ")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  }
+
+  private seatsMatchingName(room: RoomState, firstName: string, lastName?: string): Player[] {
+    const key = this.nameKey(firstName, lastName);
+    return room.players.filter(
+      (player) => player.type === "player" && this.nameKey(player.firstName, player.lastName) === key
+    );
+  }
+
+  /**
+   * The seat a returning player would be claiming, if there is one.
+   *
+   * Only an OFFLINE seat is claimable. A same-named seat whose socket is
+   * still connected is a different person who happens to share a name (three
+   * cousins called Rivka is not an edge case at this table), and handing
+   * their chips to whoever typed the name second would be the same bug in the
+   * opposite direction.
+   */
+  findClaimableSeat(roomId: string, firstName: string, lastName?: string): Player | undefined {
+    const roomRec = this.rooms.get(roomId.trim().toUpperCase());
+    if (!roomRec) return undefined;
+    return this.seatsMatchingName(roomRec.room, firstName, lastName).find(
+      (player) => player.presence !== "online"
+    );
+  }
+
+  requestSeatClaim(roomId: string, info: { firstName: string; lastName?: string; password?: string }) {
+    const normalizedId = roomId.trim().toUpperCase();
+    const roomRec = this.rooms.get(normalizedId);
+    if (!roomRec) throw new Error("room_not_found");
+    // The same password gate joinRoom applies. A claim is a way INTO a room,
+    // so it cannot be a way around the room's own door.
+    if (roomRec.room.passwordHash && !verifyPassword(roomRec.room.passwordHash, info.password ?? "")) {
+      throw new Error("invalid_password");
+    }
+    const seat = this.findClaimableSeat(normalizedId, info.firstName, info.lastName);
+    if (!seat) throw new Error("no_seat_to_claim");
+    const existing = (roomRec.room.seatClaims ?? []).find((claim) => claim.playerId === seat.id);
+    if (existing) throw new Error("seat_claim_pending");
+    const claim: SeatClaim = {
+      id: uuid(),
+      playerId: seat.id,
+      firstName: seat.firstName,
+      lastName: seat.lastName,
+      requestedAt: Date.now(),
+    };
+    roomRec.room.seatClaims = [...(roomRec.room.seatClaims ?? []), claim];
+    this.audit("seat-claim-request", normalizedId, seat.id, { claimId: claim.id });
+    this.bumpRoomTimer(normalizedId);
+    return { room: roomRec.room, claim, wallet: roomRec.room.wallets[seat.id] ?? 0 };
+  }
+
+  approveSeatClaim(roomId: string, adminId: string, claimId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    const claim = (roomRec.room.seatClaims ?? []).find((entry) => entry.id === claimId);
+    if (!claim) throw new Error("request_not_found");
+    const player = roomRec.room.players.find((entry) => entry.id === claim.playerId);
+    // The seat can be gone by the time the banker taps approve -- kicked, or
+    // the room closed and reopened. Drop the claim rather than issuing a
+    // session for a player that no longer exists.
+    if (!player) {
+      roomRec.room.seatClaims = (roomRec.room.seatClaims ?? []).filter((entry) => entry.id !== claimId);
+      throw new Error("request_not_found");
+    }
+    roomRec.room.seatClaims = (roomRec.room.seatClaims ?? []).filter((entry) => entry.id !== claimId);
+    roomRec.room.players = roomRec.room.players.map((entry) =>
+      entry.id === player.id ? { ...entry, presence: "online", offlineSince: undefined } : entry
+    );
+    this.audit("seat-claim-approve", roomId, adminId, { claimId, playerId: player.id });
+    this.bumpRoomTimer(roomId);
+    // The existing player id, and therefore the existing wallet. That is the
+    // entire point: a fresh join would mint a new id and hand out another
+    // buy-in, leaving the old stack stranded and unreachable.
+    const sessionToken = this.issueSession(roomId, player.id);
+    return { room: roomRec.room, player, sessionToken };
+  }
+
+  rejectSeatClaim(roomId: string, adminId: string, claimId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    const claim = (roomRec.room.seatClaims ?? []).find((entry) => entry.id === claimId);
+    if (!claim) throw new Error("request_not_found");
+    roomRec.room.seatClaims = (roomRec.room.seatClaims ?? []).filter((entry) => entry.id !== claimId);
+    this.audit("seat-claim-reject", roomId, adminId, { claimId });
+    this.bumpRoomTimer(roomId);
+    return { room: roomRec.room, claim };
   }
 
   setPresence(roomId: string, playerId: string, presence: Player["presence"]) {

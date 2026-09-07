@@ -19,6 +19,8 @@ export interface Player {
   type: PlayerType;
   presence: Presence;
   isBot?: boolean;
+  /** 2 for the second Rivka S at the table, 3 for the third. Server-assigned. */
+  nameTag?: number;
   // When this player went offline. Only the banker's is acted on: they have no
   // turn timer, so this is what tells the table how long it has been stranded.
   offlineSince?: number;
@@ -188,6 +190,7 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  seatClaims?: SeatClaim[];
   /** Thinking time per decision. Absent on rooms made before the setting existed. */
   turnSeconds?: number;
   /** Chips that moved without a hand being played. See LedgerEntry. */
@@ -208,6 +211,14 @@ export interface ReactionEvent {
   playerId: string;
   emoji: string;
   reactedAt: number;
+}
+
+export interface SeatClaim {
+  id: string;
+  playerId: string;
+  firstName: string;
+  lastName?: string;
+  requestedAt: number;
 }
 
 export interface ServerEnvelope<T = unknown> {
