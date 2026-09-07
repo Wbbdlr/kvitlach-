@@ -21,8 +21,17 @@ function activeSeat(store: GameStore, roundId: string) {
 }
 
 describe("the turn clock refills on every action, not once per turn", () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  // Block bodies, not expression bodies: `() => vi.useFakeTimers()` RETURNS
+  // VitestUtils, and a Vitest hook's return type is Awaitable<void>. vitest
+  // itself does not care and never type-checks, so the suite ran green here
+  // and broke `tsc -p tsconfig.json` -- which is the backend image's own
+  // build step, so it failed on the server rather than on this machine.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("gives a player who just acted a fresh 90s to decide on the next move", () => {
     const store = new GameStore();

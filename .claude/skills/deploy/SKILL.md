@@ -50,7 +50,17 @@ previous turn already said three of them.
    exported`. Never edit a file by opening it for writing in the same
    expression that reads it - read into a variable first, or use `sed`.
 
-3. **Build with `bash deploy/build-tarball.sh`. Never `git archive`.**
+3. **Run `npm run build` in `backend/` before packaging.** That is `tsc -p
+   tsconfig.json`, which is also the backend image's own build step - and it
+   type-checks `src/__tests__` along with everything else. `npm test` is
+   vitest, which never type-checks, so a test file can be green locally and
+   still fail the image build on the server. It has: a `beforeEach(() =>
+   vi.useFakeTimers())` returns VitestUtils where the hook wants void, which
+   passed 470 tests and then broke the v11.9 deploy at Step 6/16. The frontend
+   cannot fail this way (`vite build` is esbuild, no type-check), so this is
+   a backend-only check.
+
+4. **Build with `bash deploy/build-tarball.sh`. Never `git archive`.**
    That has actually happened too. `git archive` writes wherever you point it
    and silently omits anything uncommitted, so the user's next RDP copy grabs
    the stale `kvitlach-deploy.tar.gz` still sitting in Downloads and deploys
@@ -62,7 +72,7 @@ previous turn already said three of them.
    not the repo. It packages `backend frontend deploy` from the **working
    tree**, excluding `node_modules`, `dist`, `.git`, `.env`, `.env.local`.
 
-4. **Give exactly one block.** Never "run this, then run that" - the user
+5. **Give exactly one block.** Never "run this, then run that" - the user
    pastes into an RDP terminal, and multiple blocks means multiple paste
    operations and more chances for error. Chain with `&&` instead.
 
@@ -74,7 +84,7 @@ previous turn already said three of them.
    `docker compose cp`-and-restart path here. `DOCKER_BUILDKIT=0` is required
    - BuildKit can't resolve DNS through this server's resolver.
 
-5. Report the sha256 and byte size.
+6. Report the sha256 and byte size.
 
 ## Before shipping a change to anything in `deploy/`
 
