@@ -31,7 +31,9 @@ import { Card } from "./types.js";
  */
 const TEMPERAMENTS = [
   { lo: 0.02, hi: 0.06 }, // timid
+  { lo: 0.04, hi: 0.09 }, // careful
   { lo: 0.05, hi: 0.12 }, // steady
+  { lo: 0.08, hi: 0.15 }, // game
   { lo: 0.1, hi: 0.2 }, // bold
 ] as const;
 
@@ -53,11 +55,34 @@ function hashId(id: string): number {
 // invariant predates the temperaments above and outranks them: a bot that
 // wants 20% of its wallet and can only have $2 bets $2. Returns 0 (don't bet
 // -- play it as a blatt/no-wager draw instead) when there's no room at all.
-export function decideBotBet(wallet: number, available: number, playerId = ""): number {
+export function decideBotBet(wallet: number, available: number, playerId = "", buyIn = 0): number {
   const ceiling = Math.min(wallet, available);
   if (ceiling < 1) return 0;
   const { lo, hi } = TEMPERAMENTS[hashId(playerId) % TEMPERAMENTS.length];
-  const target = wallet * (lo + Math.random() * (hi - lo));
+  // The percentage is of the wallet, and a wallet only ever shrinks -- so a
+  // bot that has been losing bets less and less, and a table an hour into a
+  // session settles into everybody pushing $1. Measured on the $100 default:
+  // five bots down to $15 each all bet $1-$3, which is the "practice tables
+  // feel inert and the bank barely moves" report, arriving late rather than
+  // at the start.
+  //
+  // A real player who is down does not shrink to a nervous dollar; they keep
+  // betting something that looks like a bet for the table they are at. So the
+  // stake is struck from the larger of the wallet and a floor set by the
+  // TABLE (a third of the buy-in), which is a number that does not decay --
+  // and then clamped to the wallet below like everything else, so a short
+  // stack still cannot bet money it does not have. It only ever raises a
+  // wallet that has fallen below that floor; a healthy stack is untouched.
+  //
+  // The floor is capped at 40% of the real stack, because lifting it without
+  // one just trades the inert table for the opposite failure this file
+  // already warns about two comments up: an $8 bot on a $100 table would
+  // stake $5, be broke in two hands, and spend the rest of the night playing
+  // $0 blatts -- which looks exactly like the problem the floor was added to
+  // solve.
+  const basis = Math.max(wallet, buyIn / 3);
+  const raw = basis * (lo + Math.random() * (hi - lo));
+  const target = Math.min(raw, Math.max(1, wallet * 0.4));
   // Whole chips only, same as every other money path (normalizeMoney in
   // store.ts). Rounding rather than flooring keeps a timid bot on a small
   // wallet off a permanent $1: 2% of $60 is $1.2, which floors to 1 every

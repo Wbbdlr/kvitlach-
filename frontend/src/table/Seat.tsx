@@ -359,11 +359,21 @@ export function Seat({
             )}
           </span>
         </span>
+        {/* Offline was a grey dot and a 55%-opacity plate, and nothing else.
+            The dot is 8px on a stage the phone scales to about half, so it
+            lands at roughly four physical pixels -- a banker scanning eleven
+            plates has no chance of catching it, and "faded" reads as a style
+            long before it reads as "this person is not here". The word is
+            what makes it a state rather than a texture. It is drawn only when
+            somebody IS away, so the ordinary plate spends no room on it. */}
         <span
-          className={clsx("h-2 w-2 rounded-full flex-none", isOffline ? "bg-slate-400" : "bg-emerald-500")}
+          className={clsx("k-presence flex-none", isOffline && "is-away")}
           aria-label={isOffline ? "Offline" : "Online"}
-          title={isOffline ? "Offline" : "Online"}
-        />
+          title={isOffline ? "Not connected right now" : "Online"}
+        >
+          <span className="k-presence-dot" aria-hidden="true" />
+          {isOffline && <span className="k-presence-word">Away</span>}
+        </span>
       </button>
       )}
 

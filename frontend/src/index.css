@@ -696,9 +696,44 @@ body:has(.k-fit) {
   border-color: #e6a44b;
   box-shadow: 0 0 0 1px rgba(230, 164, 75, 0.6), 0 3px 10px rgba(0, 0, 0, 0.3);
 }
+/* 0.55 was doing all the work of saying "not here" on its own, and it is not
+   a signal, it is a texture -- reported as easy to miss entirely when
+   scanning a table of eleven. The AWAY tag next to the presence dot now
+   carries the meaning, so the fade can stop straining to and come back up to
+   where the name and wallet are still comfortably readable. */
 .k-plate.is-offline {
-  opacity: 0.55;
+  opacity: 0.7;
   filter: grayscale(1);
+}
+.k-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.k-presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  flex: none;
+}
+.k-presence.is-away .k-presence-dot {
+  background: #94a3b8;
+}
+/* Counter-scaled, same treatment as .k-plate-name and .k-tag: this is
+   glance-and-know text on a stage that shrinks to fit a phone, so a plain
+   font-size would arrive at the size the dot already failed at. */
+.k-presence-word {
+  font-size: clamp(8px, calc(7px / var(--stage-scale, 1)), 11px);
+  line-height: 1.45;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #d8dee8;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  border-radius: 4px;
+  padding: 0 3px;
+  white-space: nowrap;
 }
 /* Anyone who has actually asked their OS for more contrast gets the solid
    plate back. The transparency above is a look; legibility of a player's own

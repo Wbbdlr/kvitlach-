@@ -243,8 +243,27 @@ export function tableStandings(rounds: CompletedRoundSummary[], ledger: LedgerEn
           player.type === "admin"
         );
       row.rounds += 1;
-      row.net += turnNet(turn);
-      if (!isPushTurn(turn)) {
+      const net = turnNet(turn);
+      row.net += net;
+      // The banker's W/L cannot be read off turn.state the way a player's
+      // can. The banker plays ONE hand against the whole table, so their
+      // state doubles as a money result and collapses a mixed round into a
+      // single word: a banker who beat everyone by showdown resolves to
+      // "standby", which is neither "won" nor "lost", so the branch below
+      // counted it as nothing at all. Seen as Zeide showing 0W/1L after a
+      // night he opened by beating the table and then futched -- the money
+      // (+$10) was right and the record was wrong, which is the worse half,
+      // because the record is what people argue from.
+      //
+      // Their own net for the round is the honest answer and the one already
+      // in the next column: up on the round is a win, down is a loss, level
+      // (no wagers, or a round that washed) is neither. It also keeps
+      // wins + losses <= rounds, which counting beat and lostTo separately
+      // would not -- a banker who beat three and paid one is not both.
+      if (player.type === "admin") {
+        if (net > 0) row.wins += 1;
+        else if (net < 0) row.losses += 1;
+      } else if (!isPushTurn(turn)) {
         if (turn.state === "won") row.wins += 1;
         else if (turn.state === "lost") row.losses += 1;
       }

@@ -207,6 +207,65 @@ describe("tableStandings", () => {
     expect(byId.me.rounds).toBe(2);
   });
 
+  // The banker plays ONE hand against the whole table, so turn.state doubles
+  // as a money result and collapses a mixed round into a single word. A
+  // banker who beat everyone by showdown resolves to "standby", which is
+  // neither "won" nor "lost" -- so their W/L counted it as nothing at all.
+  // Reported as Zeide showing 0W/1L after a night he opened by beating the
+  // table and then futched: the money was right, the record was not, and the
+  // record is what people argue from.
+  describe("the banker's own win/loss record", () => {
+    it("counts a showdown win the state calls standby", () => {
+      const rows = tableStandings([round(1, 100, [turn(me, "lost", 5), turn(bank, "standby", 5)])]);
+      const bk = rows.find((r) => r.playerId === "bk")!;
+      expect(bk.wins).toBe(1);
+      expect(bk.losses).toBe(0);
+      expect(bk.net).toBe(5);
+    });
+
+    it("still counts a round the bank lost money on", () => {
+      const rows = tableStandings([round(1, 100, [turn(me, "won", 8), turn(bank, "lost", -8)])]);
+      const bk = rows.find((r) => r.playerId === "bk")!;
+      expect(bk.wins).toBe(0);
+      expect(bk.losses).toBe(1);
+    });
+
+    // A round nobody wagered on is not a win and not a loss. Counting it
+    // either way is the same class of error as the original bug.
+    it("counts a level round as neither", () => {
+      const rows = tableStandings([round(1, 100, [turn(bank, "standby", 0)])]);
+      const bk = rows.find((r) => r.playerId === "bk")!;
+      expect(bk.wins).toBe(0);
+      expect(bk.losses).toBe(0);
+      expect(bk.rounds).toBe(1);
+    });
+
+    // Wins + losses must never exceed rounds played -- which counting the
+    // banker's beat and lostTo tallies separately would have allowed, since a
+    // banker who beat three seats and paid one is not both in the same round.
+    it("never reports more results than rounds played", () => {
+      const rows = tableStandings([
+        round(1, 100, [turn(me, "lost", 5), turn(bank, "standby", 5)]),
+        round(2, 200, [turn(me, "won", 9), turn(bank, "lost", -9)]),
+        round(3, 300, [turn(me, "won", 0, { settledBet: 0 }), turn(bank, "standby", 0)]),
+      ]);
+      const bk = rows.find((r) => r.playerId === "bk")!;
+      expect(bk.wins + bk.losses).toBeLessThanOrEqual(bk.rounds);
+      expect(bk.rounds).toBe(3);
+      expect(bk.wins).toBe(1);
+      expect(bk.losses).toBe(1);
+    });
+
+    // The players' own counting is unchanged and must stay that way: their
+    // state is a hand result, not a money result.
+    it("leaves a player's own record alone", () => {
+      const rows = tableStandings(rounds);
+      const meRow = rows.find((r) => r.playerId === "me")!;
+      expect(meRow.wins).toBe(1);
+      expect(meRow.losses).toBe(1);
+    });
+  });
+
   it("puts the bank first, then the biggest winner down", () => {
     // The bank is the counterparty every other row is measured against, so it
     // is not just another row in the ranking.
