@@ -105,6 +105,8 @@ export interface TableRootProps {
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
   onSetTurnSeconds: (seconds: number) => void;
+  onSetDeckCount?: (decks: number) => void;
+  onUndoCorrection?: () => void;
   onApproveSeatClaim?: (claimId: string) => void;
   onRejectSeatClaim?: (claimId: string) => void;
   roundHistoryCount: number;
@@ -183,6 +185,8 @@ export function TableRoot({
   onTopUp,
   onSetWatermark,
   onSetTurnSeconds,
+  onSetDeckCount,
+  onUndoCorrection,
   onApproveSeatClaim,
   onRejectSeatClaim,
   roundHistoryCount,
@@ -1802,9 +1806,13 @@ export function TableRoot({
           bankerWallet={bankerWallet}
           feltWatermark={room.feltWatermark}
           turnSeconds={room.turnSeconds}
+          deckCount={room.deckCount}
+          deckRemaining={round?.deckRemaining ?? 0}
+          onSetDeckCount={onSetDeckCount}
           onTopUp={onTopUp}
           onSetWatermark={onSetWatermark}
           onSetTurnSeconds={onSetTurnSeconds}
+          onUndoCorrection={onUndoCorrection}
           onApproveRename={onApproveRename}
           onRejectRename={onRejectRename}
           onApproveBuyIn={onApproveBuyIn}

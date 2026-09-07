@@ -344,6 +344,11 @@ export function buildHistoryHtml({
     // who had left the table. Two settlement numbers that disagree is worse
     // than one that is wrong: the banker reads this one and the players read
     // theirs.
+    // Undone corrections are skipped here for the same reason and by the same
+    // rule as playerRecord's own fold. Missing it here would recreate the
+    // exact disagreement the comment above is about, just from the other
+    // side: the felt would show the undo and the sheet would not.
+    if (entry.undoneAt) continue;
     if (!SETTLES[entry.kind]) continue;
     byHand.set(entry.playerId, (byHand.get(entry.playerId) ?? 0) + entry.amount);
   }

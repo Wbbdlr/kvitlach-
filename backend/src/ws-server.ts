@@ -858,6 +858,29 @@ export class WSServer {
           this.sendAck(socket, requestId, { room, topUp: result });
           break;
         }
+        case "room:undo-correction": {
+          const { roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          const { undone } = this.store.undoLastCorrection(roomId, actorId);
+          this.sendAck(socket, requestId, { undone });
+          this.broadcastRoom(roomId);
+          await this.broadcastConnections(roomId);
+          break;
+        }
+        case "room:set-deck-count": {
+          const { decks, roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || typeof decks !== "number") throw new Error("invalid_payload");
+          const result = this.store.setDeckCount(roomId, actorId, decks);
+          this.broadcastRoom(roomId);
+          this.sendAck(socket, requestId, { result });
+          break;
+        }
         case "room:set-turn-seconds": {
           const { seconds, roomId: roomFromPayload } = (payload as any) || {};
           const meta = this.meta.get(socket);
@@ -1060,6 +1083,21 @@ export class WSServer {
       ...rest,
       turns: turns.map((turn) => redactTurn(turn, viewerId, roundTerminated)),
       deckRemaining: deck?.length ?? 0,
+      // The server's own clock, stamped on every round it sends.
+      //
+      // turnTimerExpiresAt is an absolute epoch timestamp made HERE, and the
+      // client was subtracting it from its OWN Date.now(). That silently
+      // assumes the two machines agree about what time it is, and a phone
+      // with a hand-set clock does not. As a bar the error was invisible --
+      // a constant offset just shifts the fill a little -- but the bar now
+      // has a number beside it, and a device a minute out would read "0s" to
+      // a player who still has their whole turn, or count down from a number
+      // that was never true.
+      //
+      // One field, and the client derives its offset from it (state.ts's
+      // clockSkewMs). Cheaper and steadier than sending a duration, which
+      // would go stale in flight and on every re-render between snapshots.
+      serverNow: Date.now(),
     };
   }
 

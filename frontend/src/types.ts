@@ -125,6 +125,8 @@ export interface RoundState {
   // held in dealing order, so shipping it would let any player read the next
   // cards out of devtools.
   deckRemaining?: number;
+  /** The server's clock when this snapshot was made -- see state.ts's clockSkewMs. */
+  serverNow?: number;
   turns: Turn[];
   state: RoundPhase;
   deckCount?: number;
@@ -159,7 +161,7 @@ export interface RoundState {
  */
 export interface LedgerEntry {
   id: string;
-  kind: "adjust" | "buy-in" | "bank-topup" | "kick" | "leave";
+  kind: "adjust" | "buy-in" | "bank-topup" | "kick" | "leave" | "undo";
   playerId: string;
   playerName: string;
   actorId: string;
@@ -167,6 +169,9 @@ export interface LedgerEntry {
   amount: number;
   note?: string;
   at: number;
+  /** Set when the banker took this correction back. The entry stays. */
+  undoneAt?: number;
+  undoneBy?: string;
 }
 
 export interface RoomState {
@@ -193,6 +198,8 @@ export interface RoomState {
   seatClaims?: SeatClaim[];
   /** Thinking time per decision. Absent on rooms made before the setting existed. */
   turnSeconds?: number;
+  /** The banker's standing shoe size. Absent means auto-size by players. */
+  deckCount?: number;
   /** Chips that moved without a hand being played. See LedgerEntry. */
   ledger?: LedgerEntry[];
   practice?: boolean;

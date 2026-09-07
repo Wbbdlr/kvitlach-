@@ -16,6 +16,7 @@ const LEDGER_LABEL: Record<string, string> = {
   "bank-topup": "added to the bank",
   kick: "removed from the table",
   leave: "left the table",
+  undo: "undone by the banker",
 };
 
 export interface ManageDrawerProps {
@@ -44,9 +45,13 @@ export interface ManageDrawerProps {
   bankerWallet: number;
   feltWatermark?: string;
   turnSeconds?: number;
+  deckCount?: number;
+  deckRemaining?: number;
+  onSetDeckCount?: (decks: number) => void;
   onTopUp: (amount: number, note?: string) => void;
   onSetWatermark: (text: string) => void;
   onSetTurnSeconds: (seconds: number) => void;
+  onUndoCorrection?: () => void;
   onApproveRename: (playerId: string) => void;
   onRejectRename: (playerId: string) => void;
   onApproveBuyIn: (playerId: string) => void;
@@ -72,6 +77,10 @@ export interface ManageDrawerProps {
 // Bounded by MIN/MAX_TURN_SECONDS on the server, which is what actually
 // enforces them -- these are the four a banker would plausibly want.
 const TURN_SECOND_CHOICES = [30, 45, 60, 90];
+// null is "auto" -- let the server size the shoe by player count
+// (recommendedDeckCount). The rest are the sizes a banker would reach for; 16
+// is the server's own ceiling.
+const DECK_CHOICES: (number | null)[] = [null, 2, 4, 6, 8];
 
 export function ManageDrawer({
   open,
@@ -92,9 +101,13 @@ export function ManageDrawer({
   bankerWallet,
   feltWatermark,
   turnSeconds,
+  deckCount,
+  deckRemaining,
+  onSetDeckCount,
   onTopUp,
   onSetWatermark,
   onSetTurnSeconds,
+  onUndoCorrection,
   onApproveRename,
   onRejectRename,
   onApproveBuyIn,
@@ -135,6 +148,11 @@ export function ManageDrawer({
 
   const nonAdminPlayers = players.filter((p) => p.type !== "admin");
   const pendingCount = renameRequests.length + buyInRequests.length + seatClaims.length;
+  // Mirrors the server's UNDOABLE set (store.ts). A banker should not be
+  // shown a button that is going to answer "nothing to undo".
+  const undoableCount = ledger.filter(
+    (entry) => !entry.undoneAt && entry.kind !== "leave" && entry.kind !== "undo"
+  ).length;
 
   const applyAdjust = () => {
     if (!adjustTarget) return;
@@ -367,13 +385,46 @@ export function ManageDrawer({
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Deck</label>
+          {/* Cards left, first, because it is the number that tells the
+              banker whether they need either control below. */}
+          <div className="flex items-baseline justify-between text-xs">
+            <span className="k-dialog-sub">Cards left in the shoe</span>
+            <span className="font-semibold">{deckRemaining ?? 0}</span>
+          </div>
+          {/* Shoe size. This existed ONLY on the lobby's create form, set
+              once before the table was made and unchangeable afterwards -- a
+              banker who sized a shoe for four people and then seated twelve
+              had to close the table and open another. Auto is the default and
+              is marked, same shape as the turn clock above. */}
+          <div className="flex gap-1.5">
+            {DECK_CHOICES.map((choice) => {
+              const active = (deckCount ?? 0) === (choice ?? 0);
+              return (
+                <button
+                  key={choice ?? "auto"}
+                  type="button"
+                  aria-pressed={active}
+                  className={`flex-1 rounded border px-2 py-1.5 text-xs font-semibold ${
+                    active ? "border-emerald-400 bg-emerald-600/25 text-emerald-100" : "k-dialog-line k-dialog-inset k-dialog-strong"
+                  }`}
+                  onClick={() => onSetDeckCount?.(choice ?? 0)}
+                >
+                  {choice === null ? "Auto *" : `${choice}`}
+                </button>
+              );
+            })}
+          </div>
+          <div className="text-[11px] k-dialog-sub">
+            Decks in the shoe. Auto (*) sizes it to the number of players. Takes effect on the next shuffle or the
+            next round - the hand on the table now is untouched.
+          </div>
           {!confirmReshuffle ? (
             <button
               type="button"
-              className="self-start text-xs font-semibold text-sky-300 underline"
+              className="self-start rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white"
               onClick={() => setConfirmReshuffle(true)}
             >
-              Reshuffle deck
+              Shuffle a fresh shoe
             </button>
           ) : (
             <div className="flex flex-col gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs">
@@ -566,6 +617,25 @@ export function ManageDrawer({
         {ledger.length > 0 && (
           <div className="rounded-lg border k-dialog-line px-3 py-2">
             <div className="text-xs font-semibold uppercase tracking-wide k-dialog-sub">Chips moved by hand</div>
+            {/* The whole undo surface: one button, on the list it acts on.
+                It reverses the most recent chip correction that has not
+                already been taken back -- an adjust, an approved buy-in, a
+                bank top-up, or a kick (which puts the seat and its stack
+                back, offline, so the player's own "that is my seat" route
+                carries them in from there).
+                Deliberately not a per-row control. A banker mis-tapping in a
+                list of twelve entries is the same class of mistake this
+                exists to fix, and "take back the thing I just did" is what
+                they actually want. */}
+            {onUndoCorrection && undoableCount > 0 && (
+              <button
+                type="button"
+                className="mt-1.5 self-start text-xs font-semibold text-sky-300 underline"
+                onClick={onUndoCorrection}
+              >
+                Undo the last chip correction
+              </button>
+            )}
             <div className="mt-1.5 flex flex-col gap-1">
               {[...ledger]
                 .reverse()
@@ -575,6 +645,12 @@ export function ManageDrawer({
                     <span className="min-w-0">
                       <span className="truncate">{entry.playerName}</span>
                       <span className="k-dialog-sub"> - {LEDGER_LABEL[entry.kind] ?? entry.kind}</span>
+                      {/* Struck through rather than removed. The record of a
+                          mistake AND its correction is what lets a table
+                          settle up without arguing about whether an entry
+                          ever existed; a line that simply vanished is how
+                          that argument starts. */}
+                      {entry.undoneAt && <span className="k-dialog-sub"> (undone)</span>}
                       {entry.note && <span className="k-dialog-sub"> “{entry.note}”</span>}
                     </span>
                     <span

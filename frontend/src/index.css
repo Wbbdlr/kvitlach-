@@ -4107,6 +4107,30 @@ body:has(.k-fit) {
 /* The track is always in the seat column (Seat.tsx explains why), so it has to
    be invisible when no turn is being timed while still occupying its row. The
    space is the point; the paint is only for a live turn. */
+/* The bar and its seconds, side by side. The row reserves its height whether
+   or not a turn is being timed, for the same reason the bar always did: the
+   seat column must not reflow the instant somebody's clock starts. */
+.k-turnrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 3px;
+}
+/* Counter-scaled like .k-plate-name and .k-tag -- this is glance-and-know
+   text on a stage the phone shrinks to about half, so a plain font-size
+   would land at the size the presence dot already failed at. */
+.k-turnsecs {
+  font-size: clamp(8px, calc(7.5px / var(--stage-scale, 1)), 11px);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #cbd5e1;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+.k-turnsecs.is-urgent {
+  color: #fca5a5;
+}
 .k-turnbar {
   background: transparent;
   border-radius: 999px;

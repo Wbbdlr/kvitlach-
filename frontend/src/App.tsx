@@ -409,10 +409,17 @@ export default function App() {
     prevActiveTurnIdRef.current = activeTurnId;
   }, [activeTurnId, playerId, audioManager]);
 
+  // Ticks on the SERVER's clock, not the device's. Everything downstream
+  // compares this against timestamps the server made (a turn's expiry, a
+  // reaction's `at`), so applying the offset once here is what keeps a phone
+  // with a hand-set clock from running a turn timer that is wrong by exactly
+  // that much -- see state.ts's clockSkewMs. It is 0 on a device that agrees
+  // with the server, which is almost all of them.
+  const clockSkewMs = store.clockSkewMs ?? 0;
   useEffect(() => {
-    const interval = window.setInterval(() => setNowTs(Date.now()), 100);
+    const interval = window.setInterval(() => setNowTs(Date.now() + clockSkewMs), 100);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [clockSkewMs]);
 
   useEffect(() => {
     if (!bankerBankrollManuallySet) {
@@ -616,6 +623,8 @@ export default function App() {
         onTopUp={(amount, note) => store.topUpBanker(amount, note)}
         onSetWatermark={(text) => store.setFeltWatermark(text)}
         onSetTurnSeconds={(seconds) => store.setTurnSeconds(seconds)}
+        onSetDeckCount={(decks) => store.setDeckCount(decks)}
+        onUndoCorrection={() => store.undoLastCorrection()}
         onApproveSeatClaim={(claimId) => store.approveSeatClaim(claimId)}
         onRejectSeatClaim={(claimId) => store.rejectSeatClaim(claimId)}
         roundHistoryCount={roundHistory?.length ?? 0}

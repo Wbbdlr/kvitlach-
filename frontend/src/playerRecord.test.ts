@@ -266,6 +266,47 @@ describe("tableStandings", () => {
     });
   });
 
+  // Undo has to be real in the one place it matters: what people are OWED.
+  // A correction the banker took back must leave the settlement exactly where
+  // it started, or undo is decoration.
+  describe("a correction the banker undid", () => {
+    const led = (over: Record<string, unknown> = {}) => ({
+      id: "l1",
+      kind: "adjust" as const,
+      playerId: "me",
+      playerName: "Me",
+      actorId: "bk",
+      actorName: "Banker",
+      amount: 50,
+      at: 1,
+      ...over,
+    });
+
+    it("stops counting toward what anybody is owed", () => {
+      const live = tableStandings(rounds, [led()]);
+      expect(live.find((r) => r.playerId === "me")!.adjustments).toBe(50);
+
+      const undone = tableStandings(rounds, [led({ undoneAt: 2, undoneBy: "bk" })]);
+      expect(undone.find((r) => r.playerId === "me")!.adjustments).toBe(0);
+    });
+
+    // The undo entry is a RECORD that it happened, not the unwinding itself
+    // -- the original being skipped is what unwinds it. Counting both would
+    // subtract the same $50 twice.
+    it("does not subtract the same chips a second time", () => {
+      const rows = tableStandings(rounds, [
+        led({ undoneAt: 2, undoneBy: "bk" }),
+        led({ id: "l2", kind: "undo" as const, amount: -50, at: 2 }),
+      ]);
+      expect(rows.find((r) => r.playerId === "me")!.adjustments).toBe(0);
+    });
+
+    it("leaves a correction that was NOT undone alone", () => {
+      const rows = tableStandings(rounds, [led(), led({ id: "l2", amount: 10, at: 3 })]);
+      expect(rows.find((r) => r.playerId === "me")!.adjustments).toBe(60);
+    });
+  });
+
   it("puts the bank first, then the biggest winner down", () => {
     // The bank is the counterparty every other row is measured against, so it
     // is not just another row in the ranking.

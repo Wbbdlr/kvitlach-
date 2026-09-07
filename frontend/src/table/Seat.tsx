@@ -288,22 +288,36 @@ export function Seat({
           The banker never takes a timed turn (showTurnTimer excludes them), so
           they get no row and no reserved space for one. */}
       {!isBanker && (
-        <div
-          className={clsx(
-            "k-turnbar w-[110px] h-[3px]",
-            showTurnTimer && "is-live",
-            showTurnTimer && timerTone === "urgent" && "is-urgent"
-          )}
-          aria-hidden={!showTurnTimer}
-        >
+        <div className="k-turnrow" aria-hidden={!showTurnTimer}>
+          <div
+            className={clsx(
+              "k-turnbar w-[110px] h-[3px]",
+              showTurnTimer && "is-live",
+              showTurnTimer && timerTone === "urgent" && "is-urgent"
+            )}
+          >
+            {showTurnTimer && (
+              <div
+                className={clsx(
+                  "k-turnbar-fill",
+                  timerTone === "urgent" ? "is-urgent" : timerTone === "warning" ? "is-warning" : ""
+                )}
+                style={{ width: `${turnTimer?.percent ?? 0}%` }}
+              />
+            )}
+          </div>
+          {/* The seconds, in words. The bar alone is a proportion, and a
+              proportion of an amount you were never told is not a countdown:
+              a player who glanced away had no way to know whether they had
+              thirty seconds or three, and the first thing that told them was
+              the auto-skip. Now that the banker can set the clock per table
+              (30s to 90s), the bar means even less on its own -- half a bar
+              is fifteen seconds on one table and forty-five on another.
+              Rounded UP, so it never shows 0 while the turn is still live. */}
           {showTurnTimer && (
-            <div
-              className={clsx(
-                "k-turnbar-fill",
-                timerTone === "urgent" ? "is-urgent" : timerTone === "warning" ? "is-warning" : ""
-              )}
-              style={{ width: `${turnTimer?.percent ?? 0}%` }}
-            />
+            <span className={clsx("k-turnsecs", timerTone === "urgent" && "is-urgent")}>
+              {Math.ceil(timerMsLeft / 1000)}s
+            </span>
           )}
         </div>
       )}

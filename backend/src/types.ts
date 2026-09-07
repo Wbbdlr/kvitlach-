@@ -233,7 +233,11 @@ export interface RoundState {
 // cards -- they only ever needed the count behind the shoe badge, so that's
 // all that crosses the wire. See WsServer.sanitizeRound, the single choke
 // point every round payload passes through.
-export type PublicRoundState = Omit<RoundState, "deck"> & { deckRemaining: number };
+export type PublicRoundState = Omit<RoundState, "deck"> & {
+  deckRemaining: number;
+  /** The server's clock when this snapshot was made. See sanitizeRound. */
+  serverNow: number;
+};
 
 export interface RoomState {
   roomId: string;
@@ -270,6 +274,8 @@ export interface RoomState {
   // every read (DEFAULT_TURN_SECONDS): rooms persisted before this field
   // existed come back from loadFromDB() without it, same as roundHistory.
   turnSeconds?: number;
+  /** The banker's standing shoe size for this table. Absent means auto-size by players. */
+  deckCount?: number;
   // Chips that moved without a hand being played, plus the banker actions that
   // destroyed a stack. Optional for the same reason roundHistory is: rooms
   // persisted before this field existed come back from loadFromDB() without
@@ -293,7 +299,13 @@ export interface RoomState {
  */
 export interface LedgerEntry {
   id: string;
-  kind: "adjust" | "buy-in" | "bank-topup" | "kick" | "leave";
+  // "undo" is the record of a correction being taken back, never the taking
+  // back itself: the entry it reverses is marked undoneAt rather than
+  // deleted, so the drawer can still show that it happened AND that it was
+  // undone. Both are true, and a banker settling up at the end of the night
+  // needs to see both -- an entry that simply vanished is how a table ends up
+  // arguing about whether it ever existed.
+  kind: "adjust" | "buy-in" | "bank-topup" | "kick" | "leave" | "undo";
   playerId: string;
   /** Captured at the time -- the player may not be at the table any more. */
   playerName: string;
@@ -302,6 +314,9 @@ export interface LedgerEntry {
   amount: number;
   note?: string;
   at: number;
+  /** Set when a banker took this correction back. The entry stays. */
+  undoneAt?: number;
+  undoneBy?: string;
 }
 
 export interface ConnectionSummary {

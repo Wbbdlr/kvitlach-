@@ -59,6 +59,9 @@ export const ERROR_COPY: Record<string, string> = {
   invalid_buyin: "Enter a valid buy-in - whole chips, at least 1.",
   invalid_bank_amount: "Bank wager must equal the remaining bank.",
   invalid_turn_seconds: "Turn time has to be between 10 and 300 seconds.",
+  nothing_to_undo: "There is no chip correction left to undo.",
+  invalid_deck_count: "The shoe has to be between 1 and 16 decks.",
+  already_seated: "That player is back at the table already.",
   // Seat recovery. seat_claimable is never a dead end -- the lobby turns it
   // into a choice (take the seat back, or come in as a different person of
   // the same name) -- so this copy is the fallback for anywhere that does

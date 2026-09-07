@@ -163,6 +163,21 @@ interface UIState {
   adjustPlayerBankroll: (playerId: string, amount: number, note?: string) => void;
   setFeltWatermark: (text: string) => void;
   setTurnSeconds: (seconds: number) => void;
+  setDeckCount: (decks: number) => void;
+  /**
+   * serverClock - deviceClock, in ms, measured off the last round snapshot.
+   *
+   * Every timestamp the server sends (a turn's expiry, a reaction's `at`) is
+   * on ITS clock, and the felt was comparing them against the device's. A
+   * phone with a hand-set clock therefore ran a turn timer that was wrong by
+   * exactly that much -- invisible while the timer was only a bar, and
+   * unmissable now that the bar has a number beside it.
+   *
+   * Zero on a device that agrees with the server, which is almost all of
+   * them, so this normally changes nothing.
+   */
+  clockSkewMs: number;
+  undoLastCorrection: () => void;
   reshuffleDeck: () => void;
   closeRoom: () => void;
   /** Disconnect but keep the seat, the stack and the way back. */
@@ -1063,6 +1078,17 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
 
   const handleMessage = (incoming: ServerEnvelope) => {
     let msg = incoming;
+    // Re-measured on every round snapshot rather than once at connect: a
+    // device whose clock is corrected mid-game (an NTP sync, a manual fix)
+    // would otherwise keep the stale offset for the rest of the night.
+    // Rounds arrive on several paths -- round:state, and acks carrying a
+    // round -- so this sits above all of them rather than in each.
+    const roundish = (msg.payload as { round?: RoundState } | RoundState | undefined) ?? undefined;
+    const stamped =
+      (roundish as { round?: RoundState } | undefined)?.round ?? (roundish as RoundState | undefined);
+    if (stamped && typeof stamped.serverNow === "number") {
+      useGameStore.setState({ clockSkewMs: stamped.serverNow - Date.now() });
+    }
     if (msg.type === "room:state" && msg.payload)
       set((state: UIState) => analyzeRoomTransition(state, msg.payload as RoomState));
     if (msg.type === "round:state" && msg.payload) {
@@ -1743,6 +1769,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     wsUrl: WS_URL,
     pendingAction: undefined,
     formErrors: {},
+    clockSkewMs: 0,
     accessCode: loadAccessCode(),
     accessCodeRequired: false,
     watching: false,
@@ -2111,6 +2138,34 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("player:bank-adjust", { roomId, playerId, amount: normalizedAmount, note });
+    },
+    undoLastCorrection: () => {
+      const roomId = get().room?.roomId;
+      const actorId = get().playerId;
+      if (!roomId || !actorId) {
+        set({ message: "Join a game first." });
+        return;
+      }
+      const actor = get().room?.players.find((p) => p.id === actorId);
+      if (actor?.type !== "admin") {
+        set({ message: "Only the banker can undo a correction." });
+        return;
+      }
+      client.send("room:undo-correction", { roomId });
+    },
+    setDeckCount: (decks: number) => {
+      const roomId = get().room?.roomId;
+      const actorId = get().playerId;
+      if (!roomId || !actorId) {
+        set({ message: "Join a game first." });
+        return;
+      }
+      const actor = get().room?.players.find((p) => p.id === actorId);
+      if (actor?.type !== "admin") {
+        set({ message: "Only the banker can change the shoe." });
+        return;
+      }
+      client.send("room:set-deck-count", { roomId, decks });
     },
     setTurnSeconds: (seconds: number) => {
       const roomId = get().room?.roomId;

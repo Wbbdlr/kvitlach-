@@ -55,6 +55,17 @@ function nextNameTag(sameName: Player[]): number {
   return tag;
 }
 
+// Which ledger kinds a banker can take back. See undoLastCorrection for why
+// "leave" and mid-round state are not on this list.
+const UNDOABLE: Record<LedgerEntry["kind"], boolean> = {
+  adjust: true,
+  "buy-in": true,
+  "bank-topup": true,
+  kick: true,
+  leave: false,
+  undo: false,
+};
+
 function normalizeMoney(raw: unknown): number | undefined {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return undefined;
@@ -109,6 +120,11 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 // can read their hand and press a button, and past 5 minutes an away player
 // stalls everyone else for as long as they like, which is the exact problem
 // the clock was added to solve.
+// Shoe size a banker may choose. The upper bound is the same one
+// sanitizeDeckCount already enforces in round.ts, restated here so the
+// setting refuses a bad value outright rather than silently clamping one.
+export const MIN_DECK_COUNT = 1;
+export const MAX_DECK_COUNT = 16;
 export const DEFAULT_TURN_SECONDS = 60;
 export const MIN_TURN_SECONDS = 10;
 export const MAX_TURN_SECONDS = 300;
@@ -265,6 +281,83 @@ export class GameStore {
     // Bounded for the same reason round history is -- this rides along in
     // every room:state broadcast to every player, all night.
     roomRec.room.ledger = [...existing, entry].slice(-MAX_LEDGER_ENTRIES);
+  }
+
+  /**
+   * Take back the banker's last chip correction.
+   *
+   * The product had no undo of any kind. The only correction mechanism was
+   * the raw wallet adjust, so a banker who fat-fingered one had to fix it
+   * with ANOTHER adjust -- two wrong entries in the record instead of one,
+   * and no way to say which was the mistake. For an unpaid volunteer running
+   * a table for relatives, every slip was permanent.
+   *
+   * Scope is deliberately the money: adjust, buy-in, bank-topup and kick.
+   * Those are the four that move chips and the four a banker actually
+   * misfires. Two are excluded on purpose:
+   *   * "leave" -- the player chose it, so it is not the banker's to reverse,
+   *     and somebody who left and wants back in has a route of their own now
+   *     (requestSeatClaim).
+   *   * a skipped turn or a settled round -- mid-round state with cards and a
+   *     bank window behind it. Rewinding that is a different feature with a
+   *     different risk profile, not a bigger version of this one.
+   *
+   * Only the LAST un-undone correction, which is the natural bound: no window
+   * to tune, no way to reach back into a round three hands ago, and the
+   * banker is undoing the thing they just did rather than picking through
+   * history.
+   */
+  undoLastCorrection(roomId: string, adminId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    const ledger = roomRec.room.ledger ?? [];
+    const entry = [...ledger].reverse().find((e) => UNDOABLE[e.kind] && !e.undoneAt);
+    if (!entry) throw new Error("nothing_to_undo");
+
+    if (entry.kind === "kick") {
+      // The stack that vanished with the player is stored as a negative, so
+      // the seat comes back holding exactly what it held when it went.
+      //
+      // Restored OFFLINE, not online: this puts the SEAT back, and the person
+      // is not necessarily at the table -- their session died with the kick.
+      // Offline is also what makes the seat claimable, so the ordinary "that
+      // is my seat" route carries them the rest of the way in. Nothing here
+      // needs to know how to hand out a session.
+      if (roomRec.room.players.some((p) => p.id === entry.playerId)) {
+        throw new Error("already_seated");
+      }
+      if (roomRec.room.players.length >= this.limits.maxPlayersPerRoom) throw new Error("room_full");
+      const [firstName, ...rest] = (entry.playerName || "Player").split(" ");
+      roomRec.room.players = [
+        ...roomRec.room.players,
+        {
+          id: entry.playerId,
+          firstName: this.sanitizeName(firstName),
+          lastName: this.sanitizeName(rest.join(" ")),
+          type: "player",
+          presence: "offline",
+          offlineSince: Date.now(),
+        },
+      ];
+      roomRec.room.wallets[entry.playerId] = Math.max(0, -entry.amount);
+    } else {
+      // adjust / buy-in / bank-topup all recorded the SIGNED movement they
+      // made to one wallet, so subtracting it is the whole reversal. Floored
+      // at zero rather than allowed negative: the chips may have been played
+      // since, and a wallet that goes below zero is a worse state than a
+      // correction that could not fully unwind.
+      const current = roomRec.room.wallets[entry.playerId] ?? 0;
+      roomRec.room.wallets[entry.playerId] = Math.max(0, current - entry.amount);
+    }
+
+    roomRec.room.ledger = ledger.map((e) =>
+      e.id === entry.id ? { ...e, undoneAt: Date.now(), undoneBy: adminId } : e
+    );
+    this.ledgerEntry(roomId, "undo", adminId, entry.playerId, -entry.amount, `Undid: ${entry.kind}`);
+    this.audit("undo-correction", roomId, adminId, { entryId: entry.id, kind: entry.kind });
+    this.bumpRoomTimer(roomId);
+    return { room: roomRec.room, undone: entry };
   }
 
   private audit(action: string, roomId: string, actorId: string, details?: Record<string, unknown>) {
@@ -1018,7 +1111,11 @@ export class GameStore {
     const round = createRound(
       playersForRound,
       roomId,
-      deckCount ?? roomRec.lastDeckCount,
+      // The explicit request wins, then the banker's standing choice for this
+      // table, then whatever the last round used. Without the middle term the
+      // setting would apply to nothing: the client sends no deckCount on an
+      // ordinary "deal the next round".
+      deckCount ?? roomRec.room.deckCount ?? roomRec.lastDeckCount,
       roundNumber,
       roomRec.deck,
       roomRec.deckJustReshuffledAt !== undefined
@@ -1229,6 +1326,27 @@ export class GameStore {
     return { turnSeconds: whole };
   }
 
+  // The banker's standing choice of shoe size, per table.
+  //
+  // "Decks to use" existed only on the lobby's create form, set once before
+  // the table was made, and there was no way to change it afterwards -- a
+  // banker who sized the shoe for four people and then seated twelve had to
+  // close the table and start another one. Stored on the room rather than
+  // passed per round so it survives the banker's next deal without being
+  // re-entered, exactly like turnSeconds.
+  setDeckCount(roomId: string, adminId: string, count: number) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
+    if (!Number.isFinite(count)) throw new Error("invalid_payload");
+    const whole = Math.floor(count);
+    if (whole < MIN_DECK_COUNT || whole > MAX_DECK_COUNT) throw new Error("invalid_deck_count");
+    roomRec.room.deckCount = whole;
+    this.audit("set-deck-count", roomId, adminId, { decks: whole });
+    this.bumpRoomTimer(roomId);
+    return { deckCount: whole };
+  }
+
   setFeltWatermark(roomId: string, adminId: string, text: string) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");
@@ -1268,7 +1386,12 @@ export class GameStore {
     if (roomRec.room.roundId) {
       const round = this.rounds.get(roomRec.room.roundId);
       if (!round) throw new Error("round_not_found");
-      round.deck = buildShoe(round.deckCount ?? recommendedDeckCount(roomRec.room.players.length));
+      // Same precedence as startRound. A banker who changes the shoe size and
+      // then reshuffles expects the new size, not the size this round was
+      // dealt with -- that is the whole reason they reached for reshuffle.
+      const shoeDecks = roomRec.room.deckCount ?? round.deckCount ?? recommendedDeckCount(roomRec.room.players.length);
+      round.deckCount = shoeDecks;
+      round.deck = buildShoe(shoeDecks);
       round.deckReshuffledAt = Date.now();
       // persistRound rather than a bare rounds.set, because bringing cards
       // back is only half of what a stuck table needs. If the shoe ran dry on

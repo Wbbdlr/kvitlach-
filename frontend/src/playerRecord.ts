@@ -215,6 +215,11 @@ export const SETTLES: Record<LedgerEntry["kind"], boolean> = {
   "bank-topup": true,
   kick: false,
   leave: false,
+  // The undo entry is a RECORD that a correction was taken back, not the
+  // taking back itself -- the original is marked undoneAt and skipped by the
+  // fold below, which is what actually unwinds the money. Counting this too
+  // would subtract it a second time.
+  undo: false,
 };
 
 export function tableStandings(rounds: CompletedRoundSummary[], ledger: LedgerEntry[] = []): StandingRow[] {
@@ -287,6 +292,12 @@ export function tableStandings(rounds: CompletedRoundSummary[], ledger: LedgerEn
   // debt anybody owes.
   for (const entry of ledger) {
     if (!entry?.playerId) continue;
+    // An undone correction never happened, as far as what anybody is OWED is
+    // concerned. It still shows in the drawer's "chips moved by hand" list,
+    // struck through, because the record of a mistake and its correction is
+    // worth keeping -- but folding it into the settlement would make undo
+    // cosmetic in the one place it has to be real.
+    if (entry.undoneAt) continue;
     if (!SETTLES[entry.kind]) continue;
     const row = rows.get(entry.playerId) ?? blank(entry.playerId, entry.playerName || "Player", false);
     row.adjustments += entry.amount;
