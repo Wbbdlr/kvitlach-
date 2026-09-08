@@ -95,9 +95,13 @@ interface ConnectionMeta {
 // all share one IP and get throttled together. Was 40 -- too tight for the
 // ~50-person night this app is meant to host (the waiting-list drawer only
 // helps once someone's actually connected).
-const MAX_CONNS_PER_IP = 80;
-const MAX_MSGS_PER_WINDOW = 30;
-const MSG_WINDOW_MS = 10_000;
+// All four of the numbers this comment and the ones below describe now live in
+// limits.ts, editable from the admin panel, and are read HERE at the moment
+// each check runs -- never captured into a local. A limiter that reads its
+// threshold once at boot gives you a panel that reports a new limit and
+// enforces the old one, and because throttles only bite under load, that is
+// discovered on the night it matters. The reasoning for each value is kept
+// with the value, in limits.ts's LIMIT_META.
 // `ws` defaults maxPayload to 100 MiB. The rate limiter below counts MESSAGES,
 // not bytes, so at the default one socket could push ~30 x 100 MiB per window
 // through data.toString() + JSON.parse before it ever tripped -- an easy
@@ -107,9 +111,17 @@ const MSG_WINDOW_MS = 10_000;
 // and set-watermark is capped at 60 chars server-side. 32 KiB is enormous
 // headroom for that while making the attack pointless. Oversized frames are
 // closed by `ws` itself with 1009 before any of our code sees them.
-const MAX_MESSAGE_BYTES = 32 * 1024;
+//
+// This one is TWO numbers, and the split is forced rather than chosen. `ws`
+// reads maxPayload once, when the server socket is constructed, so it cannot
+// be a live setting; what it can be is a hard ceiling equal to the highest
+// value the panel will accept. The operator's actual limit is then enforced
+// below, on arrival, before JSON.parse -- which is the byte that matters, and
+// is live. Keep this equal to limits.ts's maxMessageKb ceiling: lower, and the
+// panel would accept a size `ws` silently refuses.
+const MAX_MESSAGE_BYTES_CEILING = 256 * 1024;
 
-// Independent of MAX_MSGS_PER_WINDOW above: that one bounds a single
+// Independent of the message rate above: that one bounds a single
 // SOCKET's total message rate, but room:create has no cost of its own
 // beyond it, so one connection sending room:create in a loop could exhaust
 // the platform-wide room cap (limits.ts's maxRooms, 150 by default) in
@@ -119,7 +131,7 @@ const MAX_MESSAGE_BYTES = 32 * 1024;
 //
 // A WINDOWED COUNT, not a flat cooldown after one success: a flat "one per
 // 30s" was tried first and rejected before it shipped, on the same grounds
-// MAX_CONNS_PER_IP's own comment already documents -- dozens of players are
+// the socket cap's own note in limits.ts already documents -- dozens of players are
 // commonly behind the same home-WiFi NAT, and on a night with more than one
 // household hosting, a SECOND real banker on that NAT creating their own
 // table minutes after the first is entirely ordinary, not abuse. A window
@@ -128,10 +140,10 @@ const MAX_MESSAGE_BYTES = 32 * 1024;
 // minimum 30 minutes, from one IP" -- enough that an operator has time to
 // notice and reach for the admin page's lockdown, which is the actual goal;
 // this was never going to stop a determined attacker rotating addresses
-// (nothing per-IP does -- see MAX_CONNS_PER_IP's own comment on that), only
+// (nothing per-IP does -- see the socket cap's note on that), only
 // raise the floor on an accidental or lazy one.
-const ROOM_CREATE_WINDOW_MS = 60_000;
-const MAX_ROOM_CREATES_PER_WINDOW = 5;
+// (window and count: limits.ts, roomCreateWindowSeconds and
+// maxRoomCreatesPerWindow)
 const MAX_TRACKED_ROOM_CREATE_IPS = 500;
 
 /** The four throttles this server enforces, in the order the panel lists them. */
@@ -185,7 +197,7 @@ export class WSServer {
   private watchTokens = new Map<string, { roomId: string; expires: number }>();
   // Successful room:create count per IP within the current window, and the
   // same for room:create-practice, kept SEPARATE -- see
-  // ROOM_CREATE_WINDOW_MS above. One map for both would block the entirely
+  // the shared room-create window. One map for both would block the entirely
   // ordinary "try the practice table, then create a real one" sequence; the
   // two draw from different capacity pools (limits.ts's maxRooms vs
   // maxPracticeRooms) and deserve independent throttles.
@@ -238,6 +250,7 @@ export class WSServer {
    */
   protectionSnapshot(top = 25): ProtectionSnapshot {
     const now = Date.now();
+    const limits = this.store.limits;
     const connectionsByIp = Array.from(this.connsByIp.entries())
       .map(([ip, sockets]) => ({ ip, count: sockets.size }))
       .sort((a, b) => b.count - a.count || a.ip.localeCompare(b.ip))
@@ -250,10 +263,10 @@ export class WSServer {
 
     return {
       kinds: ([
-        { kind: "connections", limit: MAX_CONNS_PER_IP, windowMs: undefined },
-        { kind: "messages", limit: MAX_MSGS_PER_WINDOW, windowMs: MSG_WINDOW_MS },
-        { kind: "roomCreates", limit: MAX_ROOM_CREATES_PER_WINDOW, windowMs: ROOM_CREATE_WINDOW_MS },
-        { kind: "practiceCreates", limit: MAX_ROOM_CREATES_PER_WINDOW, windowMs: ROOM_CREATE_WINDOW_MS },
+        { kind: "connections", limit: limits.maxConnectionsPerIp, windowMs: undefined },
+        { kind: "messages", limit: limits.maxMessagesPerWindow, windowMs: limits.messageWindowMs },
+        { kind: "roomCreates", limit: limits.maxRoomCreatesPerWindow, windowMs: limits.roomCreateWindowMs },
+        { kind: "practiceCreates", limit: limits.maxRoomCreatesPerWindow, windowMs: limits.roomCreateWindowMs },
       ] as Array<{ kind: ProtectionKind; limit: number; windowMs?: number }>).map((row) => ({
         ...row,
         rejected: this.rejections[row.kind].count,
@@ -280,7 +293,7 @@ export class WSServer {
   constructor(store: GameStore, port: number, private readonly access: AccessControl = new AccessControl()) {
     this.store = store;
     this.store.setRoundUpdateListener((round) => this.handleRoundUpdate(round));
-    this.wss = new WebSocketServer({ port, maxPayload: MAX_MESSAGE_BYTES });
+    this.wss = new WebSocketServer({ port, maxPayload: MAX_MESSAGE_BYTES_CEILING });
     this.wss.on("connection", (socket: WebSocket, request: IncomingMessage) => this.onConnection(socket, request));
     console.log(`WebSocket listening on ws://0.0.0.0:${port}`);
   }
@@ -291,7 +304,7 @@ export class WSServer {
     const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
 
     const existing = this.connsByIp.get(ipKey) ?? new Set();
-    if (existing.size >= MAX_CONNS_PER_IP) {
+    if (existing.size >= this.store.limits.maxConnectionsPerIp) {
       console.warn(`Rate limit: too many connections from ${ipKey} (${existing.size}), dropping`);
       this.recordRejection("connections", ipKey);
       socket.close(1008, "too_many_connections");
@@ -302,7 +315,7 @@ export class WSServer {
     metrics.wsConnectionOpened();
 
     this.meta.set(socket, { ip: ipKey, userAgent: userAgent ?? undefined });
-    this.msgCount.set(socket, { count: 0, resetAt: Date.now() + MSG_WINDOW_MS });
+    this.msgCount.set(socket, { count: 0, resetAt: Date.now() + this.store.limits.messageWindowMs });
     socket.on("message", (data: RawData) => void this.onMessage(socket, data));
     socket.on("close", () => this.onClose(socket));
     socket.on("error", (err: Error) => console.error("ws error", err));
@@ -367,12 +380,26 @@ export class WSServer {
 
   private async onMessage(socket: WebSocket, data: RawData) {
     metrics.wsMessageReceived();
+    const limits = this.store.limits;
+    // The operator's own size cap, enforced before JSON.parse. `ws` has already
+    // refused anything over MAX_MESSAGE_BYTES_CEILING with a 1009 -- this is the
+    // live half of that pair, and the reason the pair exists at all is that
+    // maxPayload is read once when the server socket is built.
+    const bytes = Array.isArray(data)
+      ? data.reduce((sum, chunk) => sum + chunk.length, 0)
+      : (data as Buffer).length;
+    if (bytes > limits.maxMessageBytes) {
+      this.recordRejection("messages", this.meta.get(socket)?.ip ?? "unknown");
+      this.send(socket, { type: "error", error: { message: "message_too_large" } });
+      socket.close(1009, "message_too_large");
+      return;
+    }
     const rate = this.msgCount.get(socket);
     if (rate) {
       const now = Date.now();
-      if (now > rate.resetAt) { rate.count = 0; rate.resetAt = now + MSG_WINDOW_MS; }
+      if (now > rate.resetAt) { rate.count = 0; rate.resetAt = now + limits.messageWindowMs; }
       rate.count++;
-      if (rate.count > MAX_MSGS_PER_WINDOW) {
+      if (rate.count > limits.maxMessagesPerWindow) {
         this.recordRejection("messages", this.meta.get(socket)?.ip ?? "unknown");
         this.send(socket, { type: "error", error: { message: "rate_limited" } });
         socket.close(1008, "rate_limited");
@@ -403,12 +430,12 @@ export class WSServer {
           this.access.assertAllowed("create", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const createIp = this.meta.get(socket)?.ip ?? "unknown";
-          if (WSServer.createThrottled(this.roomCreatesByIp, createIp)) {
+          if (WSServer.createThrottled(this.roomCreatesByIp, createIp, this.store.limits.maxRoomCreatesPerWindow)) {
             this.recordRejection("roomCreates", createIp);
             throw new Error("room_create_throttled");
           }
           const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll });
-          WSServer.recordCreate(this.roomCreatesByIp, createIp);
+          WSServer.recordCreate(this.roomCreatesByIp, createIp, this.store.limits.roomCreateWindowMs);
           await this.attach(socket, room.roomId, player.id);
           this.sendAck(socket, requestId, {
             room,
@@ -424,12 +451,12 @@ export class WSServer {
           this.access.assertAllowed("practice", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const practiceIp = this.meta.get(socket)?.ip ?? "unknown";
-          if (WSServer.createThrottled(this.practiceCreatesByIp, practiceIp)) {
+          if (WSServer.createThrottled(this.practiceCreatesByIp, practiceIp, this.store.limits.maxRoomCreatesPerWindow)) {
             this.recordRejection("practiceCreates", practiceIp);
             throw new Error("room_create_throttled");
           }
           const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount, buyIn, bankBuyIn, deckCount });
-          WSServer.recordCreate(this.practiceCreatesByIp, practiceIp);
+          WSServer.recordCreate(this.practiceCreatesByIp, practiceIp, this.store.limits.roomCreateWindowMs);
           await this.attach(socket, room.roomId, player.id);
           // Unlike room:create, a round is already underway here (no human
           // banker exists to click Start) -- the client only ever populates
@@ -1259,13 +1286,17 @@ export class WSServer {
     return grant.roomId === roomId;
   }
 
-  private static createThrottled(map: Map<string, { count: number; resetAt: number }>, ip: string): boolean {
+  // `limit` and `windowMs` are arguments rather than reads inside these two,
+  // only because they are static (the maps are passed in, so there is no
+  // `this`). The callers read them off the live limits at the moment of the
+  // check, which is the property that matters.
+  private static createThrottled(map: Map<string, { count: number; resetAt: number }>, ip: string, limit: number): boolean {
     const entry = map.get(ip);
     if (!entry || Date.now() > entry.resetAt) return false; // no entry, or the window has rolled over
-    return entry.count >= MAX_ROOM_CREATES_PER_WINDOW;
+    return entry.count >= limit;
   }
 
-  private static recordCreate(map: Map<string, { count: number; resetAt: number }>, ip: string): void {
+  private static recordCreate(map: Map<string, { count: number; resetAt: number }>, ip: string, windowMs: number): void {
     const now = Date.now();
     const entry = map.get(ip);
     if (!entry || now > entry.resetAt) {
@@ -1287,7 +1318,7 @@ export class WSServer {
         }
         if (oldestKey !== undefined) map.delete(oldestKey);
       }
-      map.set(ip, { count: 1, resetAt: now + ROOM_CREATE_WINDOW_MS });
+      map.set(ip, { count: 1, resetAt: now + windowMs });
     } else {
       entry.count += 1;
     }

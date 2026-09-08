@@ -79,6 +79,17 @@ export class Database {
         value JSONB NOT NULL,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
+
+      CREATE TABLE IF NOT EXISTS audit (
+        id BIGSERIAL PRIMARY KEY,
+        at TIMESTAMPTZ NOT NULL,
+        action TEXT NOT NULL,
+        room_id TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_at ON audit (at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_room ON audit (room_id, at DESC);
     `);
   }
 
@@ -99,6 +110,58 @@ export class Database {
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
       [key, JSON.stringify(value)]
     );
+  }
+
+  // The audit trail. Unlike `rooms` and `rounds`, this is NOT a mirror of
+  // in-memory state -- it is the only durable copy, which is why it is the one
+  // table here with a retention sweep rather than a delete tied to a room's
+  // lifetime. Deliberately not cleaned up by deleteRoom: "who deleted that
+  // table" is unanswerable if deleting the table deletes the answer.
+  async appendAudit(entry: { at: number; action: string; roomId: string; actorId: string; details: Record<string, unknown> }): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO audit (at, action, room_id, actor_id, details) VALUES (to_timestamp($1 / 1000.0), $2, $3, $4, $5)`,
+      [entry.at, entry.action, entry.roomId, entry.actorId, JSON.stringify(entry.details)]
+    );
+  }
+
+  async listAudit(query: { roomId?: string; action?: string; actorId?: string; limit: number }) {
+    // Parameterized, and the LIMIT too -- this is reached from an admin form
+    // whose fields are typed by a person, and the one place a string could
+    // become SQL is the one place it must not.
+    const where: string[] = [];
+    const params: unknown[] = [];
+    for (const [column, value] of [["room_id", query.roomId], ["action", query.action], ["actor_id", query.actorId]] as const) {
+      if (value) {
+        params.push(value);
+        where.push(`${column} = $${params.length}`);
+      }
+    }
+    params.push(query.limit);
+    const result = await this.pool.query(
+      `SELECT at, action, room_id, actor_id, details FROM audit
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY at DESC, id DESC LIMIT $${params.length}`,
+      params
+    );
+    return result.rows.map((row) => ({
+      at: new Date(row.at).getTime(),
+      action: row.action as string,
+      roomId: row.room_id as string,
+      actorId: row.actor_id as string,
+      details: (row.details ?? {}) as Record<string, unknown>,
+    }));
+  }
+
+  /** Deletes entries older than `cutoff` (epoch ms). Returns how many went. */
+  async pruneAudit(cutoff: number): Promise<number> {
+    const result = await this.pool.query(`DELETE FROM audit WHERE at < to_timestamp($1 / 1000.0)`, [cutoff]);
+    return result.rowCount ?? 0;
+  }
+
+  /** Distinct actions actually present, so the panel's filter offers what exists. */
+  async auditActions(): Promise<string[]> {
+    const result = await this.pool.query(`SELECT DISTINCT action FROM audit ORDER BY action`);
+    return result.rows.map((row) => row.action as string);
   }
 
   async logConnection(params: { roomId: string; playerId: string; ip?: string; userAgent?: string }) {

@@ -10,11 +10,14 @@ import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 import { metrics } from "./metrics.js";
 import { hashPassword, verifyPassword } from "./admin-auth.js";
+import { AuditLog } from "./audit.js";
 
-const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
-const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
-const BOT_THINK_DELAY_MIN_MS = 500;
-const BOT_THINK_DELAY_MAX_MS = 1200;
+// The room-expiry windows, the bot think delays, the bank-decision pause, the
+// offline grace, the abandoned-banker threshold and the session lifetime are
+// all in limits.ts now, editable from the admin panel and read at the point of
+// use. The reasoning that used to live on each constant lives with its value
+// there; the two paragraphs that were too long for a settings table are kept
+// below, where the code that depends on them can see them.
 // The bank-decision pause is NOT the think delay above, and sharing it was a
 // real bug: 500-1200ms is the right length for "the dealer considers another
 // card", and the wrong length for a prompt the player is meant to READ.
@@ -30,7 +33,8 @@ const BOT_THINK_DELAY_MAX_MS = 1200;
 // and short enough that a table nobody is reading does not feel stalled. It
 // is the whole fix: nothing else about the decision stage changes, and a
 // HUMAN banker is still never hurried -- their decision has no timer at all.
-const BOT_BANK_DECISION_DELAY_MS = 3000;
+// (Now limits.botBankDecisionMs. Setting it back to the think delay's range
+// reintroduces the bug above.)
 // Both practice name pools moved to bot-names.ts, where an operator can edit
 // them from the admin panel without a rebuild. The defaults there are the same
 // lists that used to sit here, with one change asked for directly: the banker
@@ -139,7 +143,6 @@ const MAX_SEATED_PLAYERS_PER_ROUND = 11;
 function seatsDealtPerRound(playerCount: number): number {
   return Math.min(playerCount, MAX_SEATED_PLAYERS_PER_ROUND + 1);
 }
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 // A seat's thinking time, in seconds. 90 was the original and was cut to 60
 // on the banker's own report that it felt slack at a real table -- the clock
 // now refills on every action (see syncTurnTimer), so 60 is 60 seconds per
@@ -156,18 +159,13 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 // setting refuses a bad value outright rather than silently clamping one.
 export const MIN_DECK_COUNT = 1;
 export const MAX_DECK_COUNT = 16;
+// The platform default beneath a room's own turnSeconds. Still exported and
+// still 60, because it is what limits.ts defaults to and what a RuntimeLimits
+// nobody configured reports -- but nothing reads it to decide a turn any more;
+// turnTimeoutMs reads the live setting.
 export const DEFAULT_TURN_SECONDS = 60;
 export const MIN_TURN_SECONDS = 10;
 export const MAX_TURN_SECONDS = 300;
-// How long a banker must be gone before the seats they left behind may throw
-// the round away. Long enough that a tunnel blip or a phone changing cells
-// doesn't cost anyone a hand -- the client reconnects on its own well inside
-// this -- and short enough that a table isn't held hostage by a dead battery.
-const BANKER_ABANDON_MS = 2 * 60 * 1000;
-// How long a disconnection is treated as a blip rather than an absence, for
-// the purpose of being dealt into the next round. Deliberately shorter than a
-// single turn timer: a player inside this window has not missed anything yet.
-const OFFLINE_GRACE_MS = 45 * 1000;
 const MAX_ROUND_HISTORY_ENTRIES = 200;
 // Same bound and same reason as round history: this rides along in every
 // room:state broadcast to every player, for the whole night.
@@ -305,11 +303,17 @@ export class GameStore {
   // (bot-names.ts) rather than the pair of const arrays that used to live at
   // the top of this file.
   readonly botNames: BotNames;
+  // Constructed here rather than injected, unlike the three above: nothing
+  // outside this store writes to it, and the admin page only reads it. The
+  // reason AccessControl and BotNames ARE injected is that the panel mutates
+  // those, and two instances would mean a setting the game never sees.
+  readonly auditLog: AuditLog;
 
   constructor(db?: Database, limits: RuntimeLimits = new RuntimeLimits(), botNames: BotNames = new BotNames()) {
     this.db = db;
     this.limits = limits;
     this.botNames = botNames;
+    this.auditLog = new AuditLog(limits, db);
   }
 
   private sanitizeName(value: string | undefined, max = MAX_NAME_LEN) {
@@ -440,10 +444,11 @@ export class GameStore {
     return { room: roomRec.room, undone: entry };
   }
 
+  // Every consequential action on this store goes through here. It used to end
+  // at console.info and nowhere else, which meant "who deleted that table" died
+  // with the container. See audit.ts for the two sinks and why there are two.
   private audit(action: string, roomId: string, actorId: string, details?: Record<string, unknown>) {
-    const payload = { ts: new Date().toISOString(), roomId, actorId, action, ...(details ?? {}) };
-    // Lightweight audit log; replace with structured logging sink if needed.
-    console.info(JSON.stringify({ audit: payload }));
+    this.auditLog.record(action, roomId, actorId, details ?? {});
   }
 
   setRoundUpdateListener(listener: (round: RoundContext) => void) {
@@ -579,8 +584,8 @@ export class GameStore {
       const banker = bankerId ? next.turns.find((t) => t.player.id === bankerId) : undefined;
       clearPrev();
       if (!banker?.player.isBot || !bankerId) return { ...next, botTimer: undefined };
-      // See BOT_BANK_DECISION_DELAY_MS: deliberately not botThinkDelay().
-      const timer = setTimeout(() => this.playBotBankDecision(roundId, bankerId), BOT_BANK_DECISION_DELAY_MS);
+      // See limits.botBankDecisionMs: deliberately not botThinkDelay().
+      const timer = setTimeout(() => this.playBotBankDecision(roundId, bankerId), this.limits.botBankDecisionMs);
       return { ...next, botTimer: timer };
     }
 
@@ -595,7 +600,8 @@ export class GameStore {
   }
 
   private botThinkDelay(): number {
-    return BOT_THINK_DELAY_MIN_MS + Math.random() * (BOT_THINK_DELAY_MAX_MS - BOT_THINK_DELAY_MIN_MS);
+    const min = this.limits.botThinkMinMs;
+    return min + Math.random() * (this.limits.botThinkMaxMs - min);
   }
 
   private playBotBankDecision(roundId: string, bankerId: string) {
@@ -1168,7 +1174,7 @@ export class GameStore {
     // on, which is the case this filter was reaching for in the first place.
     const dealtAt = Date.now();
     const activePlayers = roomRec.room.players.filter(
-      (p) => p.presence === "online" || dealtAt - (p.offlineSince ?? dealtAt) < OFFLINE_GRACE_MS
+      (p) => p.presence === "online" || dealtAt - (p.offlineSince ?? dealtAt) < this.limits.offlineGraceMs
     );
     const basePlayers = activePlayers.length > 0 ? activePlayers : roomRec.room.players;
     // Who this round is leaving behind. Computed off basePlayers, not
@@ -1300,7 +1306,7 @@ export class GameStore {
    * that is a pure function of when the banker deals.
    *
    * Never removes: the banker (the table cannot proceed without them, and
-   * BANKER_ABANDON_MS is the mechanism for a banker who has gone), bots (they
+   * the abandoned-banker threshold is the mechanism for a banker who has gone), bots (they
    * do not act on their own schedule and have no session to lose), or anyone
    * in a practice room (single-human sandboxes that expire in 30 minutes
    * anyway). A seat with no recorded action yet is measured from when the room
@@ -1482,7 +1488,7 @@ export class GameStore {
 
   private turnTimeoutMs(roomId: string): number {
     const seconds = this.rooms.get(roomId)?.room.turnSeconds;
-    return (typeof seconds === "number" && seconds > 0 ? seconds : DEFAULT_TURN_SECONDS) * 1000;
+    return (typeof seconds === "number" && seconds > 0 ? seconds : this.limits.defaultTurnSeconds) * 1000;
   }
 
   // The banker's own call, per table, for the night. Deliberately NOT applied
@@ -1926,7 +1932,7 @@ export class GameStore {
     if (!waitingOnBanker) return { stuck: false };
 
     const since = banker.offlineSince ?? Date.now();
-    return { stuck: true, since, eligibleAt: since + BANKER_ABANDON_MS };
+    return { stuck: true, since, eligibleAt: since + this.limits.bankerAbandonMs };
   }
 
   // The escape hatch a stranded table pulls itself out with. Any seated player
@@ -2521,7 +2527,7 @@ export class GameStore {
 
   private issueSession(roomId: string, playerId: string) {
     const token = uuid();
-    const expiresAt = Date.now() + SESSION_TTL_MS;
+    const expiresAt = Date.now() + this.limits.sessionTtlMs;
     this.sessions.set(playerId, { token, roomId, expiresAt });
     return token;
   }
@@ -2544,7 +2550,7 @@ export class GameStore {
     if (!roomRec) return;
     if (roomRec.timer) clearTimeout(roomRec.timer);
     const isPractice = roomRec.room.practice === true;
-    const window = isPractice ? PRACTICE_INACTIVITY_TIMEOUT_MS : INACTIVITY_TIMEOUT_MS;
+    const window = isPractice ? this.limits.practiceIdleMs : this.limits.roomIdleMs;
     const elapsed = Date.now() - (roomRec.lastActivityAt ?? Date.now());
     roomRec.timer = setTimeout(() => {
       this.rooms.delete(roomId);

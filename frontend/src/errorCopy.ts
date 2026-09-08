@@ -38,6 +38,10 @@ export const ERROR_COPY: Record<string, string> = {
   practice_capacity:
     "All practice tables are busy right now. Try again in a few minutes.",
   rate_limited: "Too many requests. Please slow down.",
+  // The size cap, which a player cannot reach by playing -- the largest real
+  // message is a table being created with a few short strings in it. Worded for
+  // the case that does happen: a very long name or watermark pasted in.
+  message_too_large: "That was too long to send. Try shortening it.",
   room_create_throttled: "You just created a table. Give it a moment before starting another.",
 
   // Getting to a table.

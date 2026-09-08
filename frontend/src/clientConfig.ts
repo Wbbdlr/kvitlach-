@@ -12,6 +12,8 @@
 // values are already correct, so the failure mode is the shipped look, which is
 // why nothing below ever throws or reports.
 
+import { applyChip, applyFelt, loadChip, loadFelt, setHouseTheme } from "./theme";
+
 /** Mirrors CardEffectsRecord in backend/src/client-config.ts. */
 interface CardEffects {
   winColor: string;
@@ -81,6 +83,22 @@ export function applyCardEffects(raw: Partial<CardEffects> | undefined | null): 
 }
 
 /**
+ * Hands the house felt and chip defaults to theme.ts and repaints if -- and
+ * only if -- this browser has never chosen its own.
+ *
+ * theme.ts owns the precedence rule (saved choice beats house beats shipped);
+ * this repaint exists because the React hooks may already have mounted and
+ * applied the shipped default before this fetch landed, and CSS custom
+ * properties do not re-evaluate on their own.
+ */
+export function applyHouseTheme(theme: { felt?: unknown; chip?: unknown } | undefined | null): void {
+  if (!theme || typeof theme !== "object") return;
+  setHouseTheme(theme.felt, theme.chip);
+  applyFelt(loadFelt());
+  applyChip(loadChip());
+}
+
+/**
  * Fetches the config and applies it. Never rejects, never reports.
  *
  * Not awaited by the caller: React must not wait on a network round trip to
@@ -90,7 +108,10 @@ export function loadClientConfig(): void {
   try {
     fetch("/api/config", { headers: { accept: "application/json" } })
       .then((res) => (res.ok ? res.json() : null))
-      .then((doc) => applyCardEffects(doc?.cardEffects))
+      .then((doc) => {
+        applyCardEffects(doc?.cardEffects);
+        applyHouseTheme(doc?.theme);
+      })
       .catch(() => {});
   } catch {
     // fetch itself throwing (no such API, a hostile polyfill) is not worth a

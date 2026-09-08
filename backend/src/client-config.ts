@@ -40,9 +40,50 @@ export interface CardEffectsRecord {
   futchSaturate: number;
 }
 
+/**
+ * The house's own felt and chip colours.
+ *
+ * These are DEFAULTS, not a setting imposed on anyone. The precedence is a
+ * decision rather than an accident of implementation: a returning player's own
+ * saved choice always wins. Somebody who picked burgundy in December opens
+ * their table in burgundy however the house feels about it, and the house
+ * default only ever reaches a browser that has never chosen -- a first visit, a
+ * new device, a cleared cache.
+ *
+ * The values are enumerated rather than free strings for the same reason the
+ * colours above are strict hex: this ends up selecting a CSS custom-property
+ * set on the player's page, and an unknown name must land on the shipped
+ * default rather than on nothing.
+ */
+export interface ThemeRecord {
+  felt: string;
+  chip: string;
+}
+
 export interface ClientConfigRecord {
   cardEffects: CardEffectsRecord;
+  theme: ThemeRecord;
   updatedAt: number;
+}
+
+// Restated from frontend/src/theme.ts's FELTS and CHIPS, which is where they
+// are actually defined -- there is no shared package between the two halves of
+// this repo. client-config.test.ts fails if the two lists ever diverge, by
+// reading the frontend file, so this cannot rot quietly.
+export const FELT_NAMES = ["green", "burgundy", "navy"] as const;
+export const CHIP_NAMES = ["gold", "ruby", "sapphire", "silver"] as const;
+
+// Matches DEFAULT_FELT and DEFAULT_CHIP in that same file.
+export const THEME_DEFAULTS: ThemeRecord = { felt: "navy", chip: "gold" };
+
+function normalizeTheme(raw: Partial<ThemeRecord> | undefined | null): ThemeRecord {
+  const src = raw ?? {};
+  const pick = (value: unknown, allowed: readonly string[], fallback: string) =>
+    typeof value === "string" && allowed.includes(value) ? value : fallback;
+  return {
+    felt: pick(src.felt, FELT_NAMES, THEME_DEFAULTS.felt),
+    chip: pick(src.chip, CHIP_NAMES, THEME_DEFAULTS.chip),
+  };
 }
 
 // The values that were literals in index.css before this module existed, and
@@ -147,19 +188,38 @@ export function normalizeCardEffects(raw: Partial<CardEffectsRecord> | undefined
 
 export class ClientConfig {
   private cardEffects: CardEffectsRecord = { ...CARD_EFFECT_DEFAULTS };
+  private theme: ThemeRecord = { ...THEME_DEFAULTS };
   private updatedAt = 0;
 
   constructor(private readonly onChange?: (record: ClientConfigRecord) => void) {}
 
   toRecord(): ClientConfigRecord {
-    return { cardEffects: { ...this.cardEffects }, updatedAt: this.updatedAt };
+    return { cardEffects: { ...this.cardEffects }, theme: { ...this.theme }, updatedAt: this.updatedAt };
   }
 
   /** True when nothing has been moved off the shipped defaults. */
   isDefault(): boolean {
-    return (Object.keys(CARD_EFFECT_DEFAULTS) as (keyof CardEffectsRecord)[]).every(
-      (key) => this.cardEffects[key] === CARD_EFFECT_DEFAULTS[key],
+    return (
+      (Object.keys(CARD_EFFECT_DEFAULTS) as (keyof CardEffectsRecord)[]).every(
+        (key) => this.cardEffects[key] === CARD_EFFECT_DEFAULTS[key],
+      ) &&
+      this.theme.felt === THEME_DEFAULTS.felt &&
+      this.theme.chip === THEME_DEFAULTS.chip
     );
+  }
+
+  toThemeRecord(): ThemeRecord {
+    return { ...this.theme };
+  }
+
+  /** Returns true if anything actually changed, so the caller can report it. */
+  setTheme(raw: Partial<ThemeRecord> | undefined | null): boolean {
+    const next = normalizeTheme(raw);
+    if (next.felt === this.theme.felt && next.chip === this.theme.chip) return false;
+    this.theme = next;
+    this.updatedAt = Date.now();
+    this.onChange?.(this.toRecord());
+    return true;
   }
 
   // Boot-time load. Does not fire onChange, for the same reason none of the
@@ -168,6 +228,7 @@ export class ClientConfig {
   hydrate(record: Partial<ClientConfigRecord> | undefined | null): void {
     if (!record) return;
     this.cardEffects = normalizeCardEffects(record.cardEffects);
+    this.theme = normalizeTheme(record.theme);
     if (typeof record.updatedAt === "number" && Number.isFinite(record.updatedAt)) {
       this.updatedAt = record.updatedAt;
     }
@@ -185,6 +246,8 @@ export class ClientConfig {
   }
 
   reset(): boolean {
-    return this.setCardEffects({ ...CARD_EFFECT_DEFAULTS });
+    const effects = this.setCardEffects({ ...CARD_EFFECT_DEFAULTS });
+    const theme = this.setTheme({ ...THEME_DEFAULTS });
+    return effects || theme;
   }
 }

@@ -20,6 +20,7 @@ export default function Privacy() {
           <li>The room code you join or create, and a password if the table has one. A password is never stored as plain text - only a one-way hash, which cannot be reversed back into the password.</li>
           <li>Gameplay itself: bets, cards, and results, so the table keeps working across reconnects and, on tables that are running with a database, survives a server restart.</li>
           <li>Your IP address and browser user-agent, logged per connection against the room and player you connected as. This is for abuse prevention and troubleshooting, not for tracking you across visits.</li>
+          <li>A record of consequential actions at a table - chips adjusted, a player kicked or a seat swept for going idle, the bank topped up, a table deleted - with the table's code, who did it, and the amount where there was one. Money moves at a banker's discretion here, and this is what makes "who decided that" answerable afterwards.</li>
         </ul>
       </section>
 
@@ -55,6 +56,16 @@ export default function Privacy() {
                 planning notes if that changes. */}
             Connection logs (IP address and user-agent) currently have no automatic expiry and are not deleted
             when a room is. We're aware this is broader than it needs to be and are evaluating a retention window.
+          </li>
+          <li>
+            {/* The window is limits.ts's auditRetentionDays, default 90, and
+                audit.ts prunes to it. This page is code-only precisely so a
+                claim like this cannot drift from what the code does: if that
+                default or its bounds change, this sentence changes in the
+                same commit. */}
+            The record of table actions above is kept for 90 days and then deleted permanently. It is
+            deliberately not removed when a table is deleted - an account of who deleted something is
+            worth nothing if deleting it takes the account with it.
           </li>
         </ul>
       </section>

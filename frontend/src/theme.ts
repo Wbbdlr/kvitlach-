@@ -39,14 +39,50 @@ export const DEFAULT_FELT: FeltName = "navy";
 
 const STORAGE_KEY = "kvitlach.felt";
 
-export function loadFelt(): FeltName {
+// The operator's chosen defaults, if this client has heard them. Held in module
+// scope rather than written into localStorage, and that is the important part:
+// writing them would record a choice the player never made, and a later change
+// to the house theme would then never reach them -- they would look, to this
+// code, exactly like somebody who had picked that felt on purpose.
+//
+// Precedence, decided rather than fallen into: SAVED CHOICE beats HOUSE beats
+// SHIPPED DEFAULT. A player who chose burgundy in December opens in burgundy
+// however the house feels about it.
+let houseFelt: FeltName | null = null;
+let houseChip: ChipName | null = null;
+
+/** Fires when the house defaults land, so the hooks below can catch up. */
+export const HOUSE_THEME_EVENT = "kvitlach:house-theme";
+
+/**
+ * Applied by clientConfig.ts when GET /api/config resolves -- which may be
+ * before or after React mounts, hence the event. Unknown names are ignored
+ * rather than stored, so a payload naming a felt this build does not have
+ * leaves the player on the shipped one.
+ */
+export function setHouseTheme(felt: unknown, chip: unknown): void {
+  if (typeof felt === "string" && felt in FELTS) houseFelt = felt as FeltName;
+  if (typeof chip === "string" && chip in CHIPS) houseChip = chip as ChipName;
   try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved && saved in FELTS) return saved as FeltName;
+    window.dispatchEvent(new Event(HOUSE_THEME_EVENT));
   } catch {
-    /* localStorage unavailable (private mode, etc.) - fall back to default */
+    /* no window (tests, SSR) -- the values above are still set */
   }
-  return DEFAULT_FELT;
+}
+
+/** The raw stored value, or null. What separates "chose this" from "never chose". */
+function stored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function loadFelt(): FeltName {
+  const saved = stored(STORAGE_KEY);
+  if (saved && saved in FELTS) return saved as FeltName;
+  return houseFelt ?? DEFAULT_FELT;
 }
 
 export function saveFelt(name: FeltName): void {
@@ -79,6 +115,18 @@ export function useFelt(): [FeltName, (name: FeltName) => void] {
   useEffect(() => {
     applyFelt(felt);
   }, [felt]);
+
+  // The config fetch can land after this mounts. Without this the CSS would
+  // take the house felt while the switcher went on showing the shipped one as
+  // selected. Guarded on there being no saved choice, so a player who has
+  // picked one is never moved off it.
+  useEffect(() => {
+    const onHouse = () => {
+      if (!stored(STORAGE_KEY)) setFeltState(loadFelt());
+    };
+    window.addEventListener(HOUSE_THEME_EVENT, onHouse);
+    return () => window.removeEventListener(HOUSE_THEME_EVENT, onHouse);
+  }, []);
 
   const setFelt = useCallback((name: FeltName) => {
     setFeltState(name);
@@ -123,13 +171,9 @@ export const DEFAULT_CHIP: ChipName = "gold";
 const CHIP_STORAGE_KEY = "kvitlach.chip";
 
 export function loadChip(): ChipName {
-  try {
-    const saved = window.localStorage.getItem(CHIP_STORAGE_KEY);
-    if (saved && saved in CHIPS) return saved as ChipName;
-  } catch {
-    /* localStorage unavailable (private mode, etc.) -- fall back to default */
-  }
-  return DEFAULT_CHIP;
+  const saved = stored(CHIP_STORAGE_KEY);
+  if (saved && saved in CHIPS) return saved as ChipName;
+  return houseChip ?? DEFAULT_CHIP;
 }
 
 export function saveChip(name: ChipName): void {
@@ -154,6 +198,15 @@ export function useChip(): [ChipName, (name: ChipName) => void] {
   useEffect(() => {
     applyChip(chip);
   }, [chip]);
+
+  // Same catch-up as useFelt, for the same reason.
+  useEffect(() => {
+    const onHouse = () => {
+      if (!stored(CHIP_STORAGE_KEY)) setChipState(loadChip());
+    };
+    window.addEventListener(HOUSE_THEME_EVENT, onHouse);
+    return () => window.removeEventListener(HOUSE_THEME_EVENT, onHouse);
+  }, []);
 
   const setChip = useCallback((name: ChipName) => {
     setChipState(name);

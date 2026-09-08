@@ -1,9 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createHttpServer } from "../http-server.js";
 import { GameStore } from "../store.js";
 import { AdminAuth, hashPassword } from "../admin-auth.js";
 import type { ClientConfigRecord } from "../client-config.js";
 import {
+  CHIP_NAMES,
+  FELT_NAMES,
+  THEME_DEFAULTS,
   CARD_EFFECT_BOUNDS,
   CARD_EFFECT_DEFAULTS,
   ClientConfig,
@@ -28,7 +33,7 @@ const base = `http://127.0.0.1:${PORT}`;
 let cookie = "";
 
 const save = (fields: Record<string, string>) =>
-  fetch(`${base}/admin/card-effects`, {
+  fetch(`${base}/admin/appearance`, {
     method: "POST",
     headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields),
@@ -112,6 +117,34 @@ describe("normalizing the effects record", () => {
   });
 });
 
+describe("the theme name lists", () => {
+  // Restated on the backend because there is no shared package between the two
+  // halves of this repo. Restating is fine; diverging is not -- a felt the
+  // panel offers and the client has never heard of would silently do nothing.
+  const THEME_SRC = readFileSync(resolve(__dirname, "../../../frontend/src/theme.ts"), "utf8");
+
+  const namesIn = (constant: string) => {
+    const start = THEME_SRC.indexOf(`export const ${constant}: Record<`);
+    if (start === -1) throw new Error(`${constant} moved or was renamed in frontend/src/theme.ts`);
+    const end = THEME_SRC.indexOf("\n};", start);
+    const block = THEME_SRC.slice(start, end);
+    return [...block.matchAll(/^ {2}([a-z]+): \{/gm)].map((m) => m[1]).sort();
+  };
+
+  it("matches the felts the client actually has", () => {
+    expect([...FELT_NAMES].sort()).toEqual(namesIn("FELTS"));
+  });
+
+  it("matches the chip themes the client actually has", () => {
+    expect([...CHIP_NAMES].sort()).toEqual(namesIn("CHIPS"));
+  });
+
+  it("defaults to what the client would have picked on its own", () => {
+    expect(THEME_SRC).toContain(`export const DEFAULT_FELT: FeltName = "${THEME_DEFAULTS.felt}"`);
+    expect(THEME_SRC).toContain(`export const DEFAULT_CHIP: ChipName = "${THEME_DEFAULTS.chip}"`);
+  });
+});
+
 describe("the public config endpoint", () => {
   it("serves the shipped defaults to a client with no session", async () => {
     const res = await fetch(`${base}/api/config`);
@@ -123,11 +156,17 @@ describe("the public config endpoint", () => {
   it("carries nothing operator-private", async () => {
     // This is reachable by anyone through nginx. If a field would interest
     // somebody attacking the server, it belongs behind the admin session.
-    const body = await (await fetch(`${base}/api/config`)).text();
-    for (const leak of ["code", "password", "maxRooms", "limit", "token", "ip"]) {
-      expect(body.toLowerCase()).not.toContain(leak.toLowerCase());
-    }
-    expect(Object.keys(JSON.parse(body)).sort()).toEqual(["cardEffects", "updatedAt"]);
+    //
+    // Asserted as an exact key set at every level rather than by scanning the
+    // body for suspicious words. A word scan reads as thorough and is not: it
+    // both misses a new field with an innocent name, and trips on an innocent
+    // one that happens to contain a flagged substring -- "chip" contains "ip",
+    // which is how the first version of this test failed. An exact shape fails
+    // the moment ANY field is added, which is exactly when a person should look.
+    const doc = (await (await fetch(`${base}/api/config`)).json()) as ClientConfigRecord;
+    expect(Object.keys(doc).sort()).toEqual(["cardEffects", "theme", "updatedAt"]);
+    expect(Object.keys(doc.cardEffects).sort()).toEqual(Object.keys(CARD_EFFECT_DEFAULTS).sort());
+    expect(Object.keys(doc.theme).sort()).toEqual(["chip", "felt"]);
   });
 
   it("reflects a save, which is the whole point of the channel", async () => {
@@ -154,7 +193,7 @@ describe("the public config endpoint", () => {
   });
 
   it("shows the saved colours back on the editor, not the form's guess at them", async () => {
-    const html = await (await fetch(`${base}/admin/card-effects`, { headers: { cookie } })).text();
+    const html = await (await fetch(`${base}/admin/appearance`, { headers: { cookie } })).text();
     expect(html).toContain('value="#33ff99"');
     // The swatch is drawn from the saved record as an rgb triplet -- if this
     // ever stops matching, the page is previewing something players do not see.
@@ -168,11 +207,32 @@ describe("the public config endpoint", () => {
     expect(doc.cardEffects).toEqual(CARD_EFFECT_DEFAULTS);
   });
 
+  it("serves the house theme, and takes a change to it", async () => {
+    expect(((await (await fetch(`${base}/api/config`)).json()) as ClientConfigRecord).theme).toEqual(THEME_DEFAULTS);
+
+    expect((await save({ felt: "burgundy", chip: "ruby" })).status).toBe(302);
+    const doc = (await (await fetch(`${base}/api/config`)).json()) as ClientConfigRecord;
+    expect(doc.theme).toEqual({ felt: "burgundy", chip: "ruby" });
+    // Saving the theme must not have touched the effects on the same page.
+    expect(doc.cardEffects).toEqual(CARD_EFFECT_DEFAULTS);
+  });
+
+  it("ignores a felt or chip this build does not have", async () => {
+    await save({ felt: "burgundy", chip: "ruby" });
+    await save({ felt: "plaid", chip: "../../etc/passwd" });
+    const doc = (await (await fetch(`${base}/api/config`)).json()) as ClientConfigRecord;
+    // Falls back to the shipped default rather than to nothing: an unknown name
+    // selects a custom-property set that does not exist, which is an unstyled
+    // table.
+    expect(doc.theme).toEqual(THEME_DEFAULTS);
+    await save({ reset: "1" });
+  });
+
   it("keeps the editor behind the admin session", async () => {
-    const page = await fetch(`${base}/admin/card-effects`, { redirect: "manual" });
+    const page = await fetch(`${base}/admin/appearance`, { redirect: "manual" });
     expect([401, 404]).toContain(page.status);
 
-    const post = await fetch(`${base}/admin/card-effects`, {
+    const post = await fetch(`${base}/admin/appearance`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ winColor: "#000000" }),

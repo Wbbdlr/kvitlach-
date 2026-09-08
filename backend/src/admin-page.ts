@@ -1,5 +1,5 @@
 import { AccessControl, GATED_ACTIONS, GatedAction } from "./access.js";
-import { DEFAULT_LIMITS, LIMIT_KEYS, LimitKey, RuntimeLimits, limitBounds } from "./limits.js";
+import { DEFAULT_LIMITS, LIMIT_GROUPS, LIMIT_META, LIMIT_KEYS, LimitKey, RuntimeLimits, limitBounds, limitsInGroup } from "./limits.js";
 import { BotNames, BOT_NAME_MAX, DEFAULT_BANKER_NAMES, DEFAULT_PLAYER_NAMES } from "./bot-names.js";
 import { AboutContent, ABOUT_MAX } from "./about.js";
 import { ContactContent, CONTACT_MAX } from "./contact.js";
@@ -10,7 +10,8 @@ import type { ConnectionSummary, LedgerEntry } from "./types.js";
 import type { ProtectionKind, ProtectionSnapshot } from "./ws-server.js";
 import type { AdminLoginSnapshot } from "./http-server.js";
 import type { ClientErrorLog } from "./client-errors.js";
-import { CARD_EFFECT_BOUNDS, CARD_EFFECT_DEFAULTS, ClientConfig, type CardEffectsRecord } from "./client-config.js";
+import { CARD_EFFECT_BOUNDS, CARD_EFFECT_DEFAULTS, CHIP_NAMES, ClientConfig, FELT_NAMES, THEME_DEFAULTS, type CardEffectsRecord } from "./client-config.js";
+import { AUDIT_ACTIONS, type AuditEntry } from "./audit.js";
 import { metrics } from "./metrics.js";
 
 // The admin page's HTML. Split out of http-server.ts once it stopped being a
@@ -426,7 +427,112 @@ function hexTriplet(hex: string): string {
  * SAVED record, never from the form -- this page has no JavaScript, by the
  * same rule as the rest of the panel, so what you see is what is live.
  */
-export function renderCardEffectsEditor({
+export interface AuditPageDeps {
+  entries: AuditEntry[];
+  source: "database" | "memory";
+  hasDatabase: boolean;
+  retentionDays: number;
+  filter: { roomId: string; action: string; actorId: string };
+  query: string;
+  refresh: boolean;
+}
+
+/**
+ * The audit trail.
+ *
+ * Before this, every one of these actions reached console.info and nowhere
+ * else, so "who deleted that table" and "who moved those chips" were both
+ * unanswerable once the container had been restarted -- which, given the
+ * restart is usually what you did about the problem, was most of the time.
+ *
+ * The source line is not decoration. An entry list read out of this process's
+ * own memory covers only since the last restart, and an operator reading a
+ * short list needs to know whether that means "nothing happened" or "this
+ * server started an hour ago". Every deployment with a database reads the
+ * table; the memory case is a server running without one, plus the fallback
+ * when a query fails.
+ *
+ * Details are rendered as JSON rather than prose. They are already small, they
+ * differ per action, and a formatter per action would be a place for the
+ * display and the record to disagree -- which is the one thing an audit trail
+ * may not do.
+ */
+export function renderAuditPage({
+  entries,
+  source,
+  hasDatabase,
+  retentionDays,
+  filter,
+  query,
+  refresh,
+}: AuditPageDeps): string {
+  const act = (path: string) => `${path}${query}`;
+  const tokenValue = query.startsWith("?token=") ? decodeURIComponent(query.slice("?token=".length)) : "";
+
+  const rows = entries
+    .map(
+      (e) => `<tr>
+        <td class="meta" style="white-space:nowrap">${escapeHtml(formatStamp(e.at))}</td>
+        <td><code>${escapeHtml(e.action)}</code></td>
+        <td><a href="${act(`/admin/rooms/${encodeURIComponent(e.roomId)}`)}"><code>${escapeHtml(e.roomId)}</code></a></td>
+        <td class="meta"><code>${escapeHtml(e.actorId)}</code></td>
+        <td class="meta"><code>${escapeHtml(JSON.stringify(e.details))}</code></td>
+      </tr>`
+    )
+    .join("\n");
+
+  const options = AUDIT_ACTIONS.map(
+    (a) => `<option value="${a}"${filter.action === a ? " selected" : ""}>${a}</option>`
+  ).join("");
+
+  return shell(
+    "Audit trail",
+    `<div class="topbar">
+      <h1 style="margin:0">Audit trail</h1>
+      <span class="meta">
+        <a href="${act("/admin")}">&larr; panel</a>
+        &middot; <a href="${act(refresh ? "/admin/audit?refresh=0" : "/admin/audit")}">${
+          refresh ? "stop auto-refresh" : "start auto-refresh"
+        }</a>
+      </span>
+    </div>
+
+    <form method="get" action="/admin/audit" class="row">
+      ${tokenValue ? `<input type="hidden" name="token" value="${escapeHtml(tokenValue)}" />` : ""}
+      ${refresh ? "" : '<input type="hidden" name="refresh" value="0" />'}
+      <label for="a-room">Game ID</label>
+      <input id="a-room" type="text" name="roomId" value="${escapeHtml(filter.roomId)}" placeholder="any" style="width:8rem" />
+      <label for="a-action">Action</label>
+      <select id="a-action" name="action"><option value="">any</option>${options}</select>
+      <label for="a-actor">Actor</label>
+      <input id="a-actor" type="text" name="actorId" value="${escapeHtml(filter.actorId)}" placeholder="any" style="width:12rem" />
+      <button type="submit" class="save">Filter</button>
+      <a class="meta" href="${act("/admin/audit")}">clear</a>
+    </form>
+
+    ${
+      entries.length === 0
+        ? '<p class="meta">Nothing recorded matching this filter.</p>'
+        : `<table>
+            <thead><tr><th>When</th><th>Action</th><th>Table</th><th>Actor</th><th>Details</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`
+    }
+
+    <p class="meta">${
+      source === "database"
+        ? `Read from the database, so this survives restarts. Entries older than ${retentionDays} days are deleted permanently &mdash; the Privacy page tells players that window, so changing it under Gameplay timing means changing that page too.`
+        : hasDatabase
+          ? "The database could not be read, so this is only what THIS server process has seen since it started. Check the container logs."
+          : "This server has no database configured, so this is only what it has seen since it started and none of it survives a restart. Everything else here is in memory too, by the same choice."
+    }</p>
+    <p class="meta">Actor is a player id, or <code>admin</code> for something done from this panel and
+    <code>server</code> for something the server decided on its own, like sweeping an idle seat.</p>`,
+    refresh
+  );
+}
+
+export function renderAppearanceEditor({
   config,
   query,
   notice,
@@ -437,6 +543,7 @@ export function renderCardEffectsEditor({
 }): string {
   const record = config.toRecord();
   const fx = record.cardEffects;
+  const theme = record.theme;
   const act = (path: string) => `${path}${query}`;
   const edited = record.updatedAt
     ? new Date(record.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
@@ -478,8 +585,8 @@ export function renderCardEffectsEditor({
     </div>`;
 
   return shell(
-    "Card effects - Kvitlach admin",
-    `<h1>Card effects</h1>
+    "Appearance - Kvitlach admin",
+    `<h1>Appearance</h1>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
     <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a></p>
 
@@ -497,10 +604,35 @@ export function renderCardEffectsEditor({
     </fieldset>
 
     <fieldset>
+      <legend>House felt and chips</legend>
+      <p class="meta">What a player sees who has never picked their own. <b>A player's own choice always
+      wins</b> &mdash; somebody who chose burgundy in December opens their table in burgundy however this is
+      set, and changing it here never overwrites anybody. It reaches a browser that has never chosen: a
+      first visit, a new device, a cleared cache.</p>
+      <form method="post" action="${act("/admin/appearance")}">
+        <div class="row">
+          <label for="t-felt" style="min-width:9rem">Felt</label>
+          <select id="t-felt" name="felt">${FELT_NAMES.map(
+            (name) => `<option value="${name}"${theme.felt === name ? " selected" : ""}>${name}</option>`
+          ).join("")}</select>
+          <span class="meta">default ${THEME_DEFAULTS.felt}</span>
+        </div>
+        <div class="row">
+          <label for="t-chip" style="min-width:9rem">Chip chrome</label>
+          <select id="t-chip" name="chip">${CHIP_NAMES.map(
+            (name) => `<option value="${name}"${theme.chip === name ? " selected" : ""}>${name}</option>`
+          ).join("")}</select>
+          <span class="meta">default ${THEME_DEFAULTS.chip}</span>
+        </div>
+        <p><button type="submit" class="save">Save the house theme</button></p>
+      </form>
+    </fieldset>
+
+    <fieldset>
       <legend>Winning hand</legend>
       <p class="meta">The card grows, glows, and settles slightly larger than its neighbours for the
       rest of the round. Last changed: ${edited}.</p>
-      <form method="post" action="${act("/admin/card-effects")}">
+      <form method="post" action="${act("/admin/appearance")}">
         ${colour("winColor", "Glow colour")}
         ${num("winScalePeak", "Grows to", "the peak of the pop, halfway through")}
         ${num("winScaleRest", "Settles at", "1 sits flush with the other cards")}
@@ -577,22 +709,32 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
     </form>`;
   }).join("");
 
-  const limitRows = LIMIT_KEYS.map((key: LimitKey) => {
+  // One form per field, driven off LIMIT_META so a key cannot appear here
+  // without a label and bounds, or be renamed in one place and not the other.
+  // Per-field rather than one big Save because these are twenty-one numbers on
+  // an auto-refreshing page: a single form would let a refresh land mid-edit
+  // and post twenty stale values along with the one that was being changed.
+  const limitRow = (key: LimitKey) => {
     const [min, max] = limitBounds(key);
-    const labels: Record<LimitKey, string> = {
-      maxRooms: "Max rooms",
-      maxPracticeRooms: "Max practice rooms",
-      maxPlayersPerRoom: "Max players per room",
-      idleSeatHours: "Idle seat evicted after (h)",
-    };
+    const meta = LIMIT_META[key];
     return `<form method="post" action="${act("/admin/limits")}" class="row">
-      <label for="l-${key}">${escapeHtml(labels[key])}</label>
+      <label for="l-${key}" style="min-width:14rem">${escapeHtml(meta.label)}</label>
       <input id="l-${key}" type="number" name="value" value="${limits.get(key)}" min="${min}" max="${max}" step="1" style="width:6rem" />
       <input type="hidden" name="key" value="${key}" />
       <button type="submit" class="save">Set</button>
-      <span class="meta">${min}&ndash;${max}${limits.isDefault(key) ? " &middot; default" : ` &middot; default ${DEFAULT_LIMITS[key]}`}</span>
+      <span class="meta">${min}&ndash;${max}${limits.isDefault(key) ? " &middot; default" : ` &middot; default ${DEFAULT_LIMITS[key]}`}${
+        meta.note ? `<br />${escapeHtml(meta.note)}` : ""
+      }</span>
     </form>`;
-  }).join("");
+  };
+
+  const limitGroups = LIMIT_GROUPS.map(
+    (group) => `<fieldset>
+      <legend>${escapeHtml(group.title)}</legend>
+      <p class="meta">${escapeHtml(group.blurb)}</p>
+      ${limitsInGroup(group.id).map(limitRow).join("")}
+    </fieldset>`
+  ).join("");
 
   const activeFilter: RoomFilter = filter ?? { q: "", kind: "all", sort: "players" };
   const allRooms = store.listRoomsForAdmin();
@@ -683,7 +825,8 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
         <a href="${act(refresh ? "/admin?refresh=0" : "/admin")}">${refresh ? "stop auto-refresh" : "start auto-refresh"}</a>
         &middot; <a href="${act("/admin/protections")}">protections</a>
         &middot; <a href="${act("/admin/errors")}">client errors</a>
-        &middot; <a href="${act("/admin/card-effects")}">card effects</a>
+        &middot; <a href="${act("/admin/audit")}">audit</a>
+        &middot; <a href="${act("/admin/appearance")}">appearance</a>
         &middot; <a href="/health/detail">raw JSON</a>
         &middot; <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>
       </span>
@@ -720,16 +863,15 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
       </form>
     </fieldset>
 
-    <fieldset>
-      <legend>Capacity</legend>
-      <p class="meta">Throttle load without a rebuild. Lowering a cap never evicts anyone &mdash; it only refuses
-      the next one over the line.</p>
-      ${limitRows}
-      <form method="post" action="${act("/admin/limits")}" class="row">
-        <input type="hidden" name="reset" value="1" />
-        <button type="submit">Reset to defaults</button>
-      </form>
-    </fieldset>
+    ${limitGroups}
+    <p class="meta">Every value above is read at the moment it is used, not at startup, so what is in the box
+    is what is running. Lowering a capacity cap never evicts anyone &mdash; it only refuses the next one over
+    the line.</p>
+    <form method="post" action="${act("/admin/limits")}" class="row"
+      onsubmit="return confirm('Reset every capacity, protection and timing value to its default?');">
+      <input type="hidden" name="reset" value="1" />
+      <button type="submit">Reset all to defaults</button>
+    </form>
 
     <fieldset>
       <legend>Computer players</legend>
@@ -1104,8 +1246,9 @@ export function renderProtectionsPage({ login, ws, query, refresh }: Protections
       </span>
     </div>
     <p class="meta">Counts are cumulative since the server started, and reset with it. The limits shown are
-    the ones in force right now &mdash; read from the same constants the limiters check, not from a copy.
-    Changing one is still a code change.</p>
+    the ones in force right now &mdash; read from the same settings the limiters check, not from a copy of
+    them. Change any of them under Protections on the <a href="${act("/admin")}">panel</a>; it takes effect
+    on the next request, with no restart.</p>
 
     <h1>Rejections</h1>
     ${

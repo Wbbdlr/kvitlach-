@@ -10,7 +10,7 @@ import { ContactContent } from "./contact.js";
 import { DisclaimerContent, isDisclaimerSlug } from "./disclaimer.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderCardEffectsEditor, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderAppearanceEditor, renderAuditPage, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
 import type { ProtectionSnapshot } from "./ws-server.js";
 import { ClientErrorLog } from "./client-errors.js";
 import { ClientConfig } from "./client-config.js";
@@ -45,8 +45,12 @@ function isValidToken(provided: unknown): boolean {
 // guesses (a legitimate admin clicking Delete repeatedly never trips it).
 // Bounded to a small tracked-IP set since this is a single-tenant home
 // deploy, not internet-scale -- a cheap sweep on overflow is enough.
-const MAX_ADMIN_ATTEMPTS = 20;
-const ADMIN_ATTEMPT_WINDOW_MS = 5 * 60_000;
+// The count and window now live in limits.ts, editable from the panel, and are
+// passed in at the moment of each check rather than captured -- a brute-force
+// guard that reads its threshold once at boot would report a new limit from the
+// panel and enforce the old one. MAX_TRACKED_IPS stays here: it bounds this
+// process's memory rather than expressing a policy, and an operator has no way
+// to reason about a good value for it.
 const MAX_TRACKED_IPS = 500;
 const adminAttempts = new Map<string, { count: number; resetAt: number }>();
 // Cumulative since boot, for the panel's Protections page.
@@ -67,16 +71,17 @@ const adminAttemptTotals = { failures: 0, blocked: 0, lastAt: 0, lastIp: undefin
  */
 export type AdminLoginSnapshot = ReturnType<typeof adminLoginSnapshot>;
 
-export function adminLoginSnapshot(top = 25) {
+export function adminLoginSnapshot(limits: RuntimeLimits = new RuntimeLimits(), top = 25) {
   const now = Date.now();
+  const limit = limits.maxAdminAttempts;
   return {
-    limit: MAX_ADMIN_ATTEMPTS,
-    windowMs: ADMIN_ATTEMPT_WINDOW_MS,
+    limit,
+    windowMs: limits.adminAttemptWindowMs,
     ...adminAttemptTotals,
     tracked: adminAttempts.size,
     ips: Array.from(adminAttempts.entries())
       .filter(([, entry]) => entry.resetAt > now)
-      .map(([ip, entry]) => ({ ip, count: entry.count, resetAt: entry.resetAt, blocked: entry.count >= MAX_ADMIN_ATTEMPTS }))
+      .map(([ip, entry]) => ({ ip, count: entry.count, resetAt: entry.resetAt, blocked: entry.count >= limit }))
       .sort((a, b) => b.count - a.count || a.ip.localeCompare(b.ip))
       .slice(0, top),
   };
@@ -86,14 +91,14 @@ function getClientIp(request: FastifyRequest): string {
   return resolveClientIp(request.headers, request.ip);
 }
 
-function isRateLimited(ip: string): boolean {
+function isRateLimited(ip: string, limits: RuntimeLimits): boolean {
   const entry = adminAttempts.get(ip);
-  const limited = Boolean(entry && Date.now() < entry.resetAt && entry.count >= MAX_ADMIN_ATTEMPTS);
+  const limited = Boolean(entry && Date.now() < entry.resetAt && entry.count >= limits.maxAdminAttempts);
   if (limited) adminAttemptTotals.blocked += 1;
   return limited;
 }
 
-function recordFailedAttempt(ip: string): void {
+function recordFailedAttempt(ip: string, limits: RuntimeLimits): void {
   const now = Date.now();
   adminAttemptTotals.failures += 1;
   adminAttemptTotals.lastAt = now;
@@ -124,7 +129,7 @@ function recordFailedAttempt(ip: string): void {
   }
   const entry = adminAttempts.get(ip);
   if (!entry || now > entry.resetAt) {
-    adminAttempts.set(ip, { count: 1, resetAt: now + ADMIN_ATTEMPT_WINDOW_MS });
+    adminAttempts.set(ip, { count: 1, resetAt: now + limits.adminAttemptWindowMs });
   } else {
     entry.count += 1;
   }
@@ -380,13 +385,13 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
 
   const guard = (request: FastifyRequest, reply: FastifyReply): "session" | "token" | undefined => {
     const ip = getClientIp(request);
-    if (isRateLimited(ip)) {
+    if (isRateLimited(ip, limits)) {
       void reply.code(404).send("Not found");
       return undefined;
     }
     const how = authorized(request);
     if (!how) {
-      recordFailedAttempt(ip);
+      recordFailedAttempt(ip, limits);
       // A login form instead of a 404, but only when a username is actually
       // configured -- otherwise the 404 has to stay total, or its presence
       // would advertise the route to anyone who asks.
@@ -491,7 +496,7 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     const query = request.query as Record<string, unknown>;
     return reply.type("text/html").send(
       renderProtectionsPage({
-        login: adminLoginSnapshot(),
+        login: adminLoginSnapshot(limits),
         ws: opts.protections?.(),
         query: carry(request, how),
         refresh: query.refresh !== "0",
@@ -501,12 +506,12 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
 
   app.post("/admin/login", async (request, reply) => {
     const ip = getClientIp(request);
-    if (isRateLimited(ip)) return reply.code(404).send("Not found");
+    if (isRateLimited(ip, limits)) return reply.code(404).send("Not found");
     if (!auth.enabled) return reply.code(404).send("Not found");
     const body = (request.body ?? {}) as Record<string, unknown>;
     const session = auth.login(body.username, body.password);
     if (!session) {
-      recordFailedAttempt(ip);
+      recordFailedAttempt(ip, limits);
       return reply.code(401).type("text/html").send(renderLoginPage("Wrong username or password."));
     }
     return reply.header("set-cookie", auth.cookieHeader(session)).redirect("/admin");
@@ -657,12 +662,40 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   // Same own-page reasoning again. Everything a player sees of this arrives
   // through GET /api/config above; there is no other path by which this server
   // tells a browser anything about appearance.
-  app.get("/admin/card-effects", async (request, reply) => {
+  // Read-only, and the only admin page that awaits a database query. Its
+  // filters go to the store's own AuditLog, which parameterizes them -- an
+  // operator typing a Game ID into a form is exactly the path where a string
+  // must never become SQL.
+  app.get("/admin/audit", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    const str = (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 60) : "");
+    const filter = { roomId: str(query.roomId), action: str(query.action), actorId: str(query.actorId) };
+    const { entries, source } = await store.auditLog.list({
+      roomId: filter.roomId || undefined,
+      action: filter.action || undefined,
+      actorId: filter.actorId || undefined,
+    });
+    return reply.type("text/html").send(
+      renderAuditPage({
+        entries,
+        source,
+        hasDatabase: store.auditLog.hasDatabase,
+        retentionDays: store.auditLog.retentionDays,
+        filter,
+        query: carry(request, how),
+        refresh: query.refresh !== "0",
+      })
+    );
+  });
+
+  app.get("/admin/appearance", async (request, reply) => {
     const how = guard(request, reply);
     if (!how) return reply;
     const query = request.query as Record<string, unknown>;
     return reply.type("text/html").send(
-      renderCardEffectsEditor({
+      renderAppearanceEditor({
         config: clientConfig,
         query: carry(request, how),
         notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
@@ -670,21 +703,29 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     );
   });
 
-  app.post("/admin/card-effects", async (request, reply) => {
+  app.post("/admin/appearance", async (request, reply) => {
     const how = guard(request, reply);
     if (!how) return reply;
     const body = (request.body ?? {}) as Record<string, unknown>;
     // Every field is clamped in client-config.ts rather than here: a value out
     // of range falls back to that field's default instead of failing the whole
     // save, so one empty box cannot discard five good edits.
-    const changed = body.reset === "1" ? clientConfig.reset() : clientConfig.setCardEffects(body as never);
+    // One route, two independent forms on the page: the theme selects carry no
+    // colour fields and the effects form carries no felt, so each save touches
+    // only its own half rather than writing the other's current values back.
+    const changed =
+      body.reset === "1"
+        ? clientConfig.reset()
+        : body.felt !== undefined || body.chip !== undefined
+          ? clientConfig.setTheme(body as never)
+          : clientConfig.setCardEffects(body as never);
     const note = changed
-      ? "Card effects updated. Players see this on their next page load."
+      ? "Appearance updated. Players see this on their next page load."
       : "No change.";
     const sep = carry(request, how) ? "&" : "?";
     // Back to the editor, not the panel: the swatches there are the only place
     // an operator can see what they just saved.
-    return reply.redirect(`/admin/card-effects${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
+    return reply.redirect(`/admin/appearance${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   // One page for all six sections (unlike About/Contact's own single
