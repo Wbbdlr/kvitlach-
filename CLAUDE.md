@@ -35,9 +35,10 @@ a new setting belongs in the existing `settings` key/value row.
 
 ## Architecture
 
-Two processes: HTTP on 3000 (health, admin, `/metrics`, `/api/about`,
-`/api/contact`, `/api/disclaimer`) and
-**WebSocket on 3001, where all gameplay happens**. There is no gameplay REST API.
+Two processes: HTTP on 3000 (health, admin, `/metrics`, and the five public
+`/api/*` routes - `about`, `contact`, `disclaimer`, `config`, `client-error`)
+and **WebSocket on 3001, where all gameplay happens**. There is no gameplay
+REST API.
 
 Authoritative state is `GameStore` (`backend/src/store.ts`), an in-memory `Map`
 of rooms. **Postgres is a persistence mirror for restart recovery, not the

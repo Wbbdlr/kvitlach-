@@ -70,6 +70,30 @@
   unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F;
 }
 
+/* Newsreader, SIL OFL (tools/fonts/OFL-Newsreader.txt), subset here rather
+   than taken from Google's CDN, same as every other face in this app.
+
+   Built from the upstream variable font as:
+     python -m fontTools.varLib.instancer 'Newsreader[opsz,wght].ttf'        opsz=14 wght=400:700 -o nr.ttf
+     python -m fontTools.subset nr.ttf --flavor=woff2        --unicodes='U+0020-007E,U+00A0-00FF,...' --layout-features='kern,liga,...'
+
+   The optical-size axis is pinned at 14 and not exposed: nameplates only ever
+   render between 12 and 17px (see .k-plate-name's clamp), and shipping an
+   axis nothing varies is bytes for nothing. The weight axis IS kept -- the
+   name is 600 and the (you) tag rides on it, and a synthesised bold of a
+   serif at 12px smears.
+
+   Latin only, and the unicode-range says so, so a Hebrew name never consults
+   this file and falls to Frank Ruhl above exactly as it did before. */
+@font-face {
+  font-family: 'Newsreader';
+  src: url('/newsreader-plate.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020-007E, U+00A0-00FF, U+00B7, U+2013-2014, U+2018-2019, U+201C-201D, U+2026, U+20AA;
+}
+
 body {
   font-family: theme('fontFamily.body');
   min-height: 100vh;
@@ -271,6 +295,12 @@ body {
      everywhere and sits closest to Cinzel's proportions, so the wordmark does
      not visibly jump when the webfont arrives. */
   --k-brand-font: 'CinzelFelt', Georgia, 'Times New Roman', serif;
+  /* The nameplates. Deliberately NOT the brand face: Cinzel is engraved caps
+     cut for a mark, and the last pass proved it wrong for a name read at a
+     glance. Newsreader is an old-style text serif -- a different job from the
+     same era, so the plates read as considered rather than as the logo
+     repeated at 12px. Frank Ruhl second so Hebrew names are unaffected. */
+  --k-plate-font: 'Newsreader', 'FrankRuhlLibre', Georgia, serif;
   --k-plate: #f7f3ea;
   --k-plate-ink: #1f2937;
   /* The same parchment, translucent, for plates sitting ON the felt -- they
@@ -282,6 +312,25 @@ body {
   --k-plate-felt: rgba(247, 243, 234, 0.82);
   --k-plate-felt-edge: rgba(224, 216, 196, 0.7);
   --k-gold-soft: rgba(230, 164, 75, 0.16);
+
+  /* The win and futch card effects, which the OPERATOR can change from the
+     admin panel -- these six are the entire payload of GET /api/config, and
+     the only thing this server tells a browser about how the game should look.
+     clientConfig.ts overwrites them on <html> at boot; the values here are
+     what every client shows until it does, and what it keeps showing if the
+     fetch never lands. Keep them equal to CARD_EFFECT_DEFAULTS in
+     backend/src/client-config.ts.
+
+     The colours are RGB TRIPLETS rather than hex because the keyframes below
+     need three different alphas of the same colour. A custom property is not
+     parsed until it is substituted, so `rgba(var(--k-win-rgb), 0.75)` composes
+     exactly the way it looks like it does. */
+  --k-win-rgb: 230, 164, 75;
+  --k-win-scale-peak: 1.07;
+  --k-win-scale-rest: 1.03;
+  --k-futch-rgb: 190, 60, 60;
+  --k-futch-scale: 0.94;
+  --k-futch-saturate: 0.35;
 }
 
 /* Letterbox wrapper -- centers the stage and paints the surround.
@@ -879,6 +928,10 @@ body:has(.k-fit) {
   }
 }
 .k-plate-name {
+  font-family: var(--k-plate-font);
+  /* Newsreader's serifs close up the gaps a sans leaves, and these names sit
+     at 12px on parchment; a hair of tracking buys the difference back. */
+  letter-spacing: 0.2px;
   /* Counter-scaled like .k-resv-amt below -- a name that's shrunk along with
      everything else on a crowded or small-phone table is exactly the kind
      of detail an older player asked to have stay legible. Floor matches the
@@ -1022,15 +1075,15 @@ body:has(.k-fit) {
 @keyframes cardWin {
   0% {
     transform: scale(1);
-    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 0 rgba(230, 164, 75, 0));
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 0 rgba(var(--k-win-rgb), 0));
   }
   55% {
-    transform: scale(1.07);
-    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 10px rgba(230, 164, 75, 0.75));
+    transform: scale(var(--k-win-scale-peak));
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 10px rgba(var(--k-win-rgb), 0.75));
   }
   100% {
-    transform: scale(1.03);
-    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(230, 164, 75, 0.5));
+    transform: scale(var(--k-win-scale-rest));
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(var(--k-win-rgb), 0.5));
   }
 }
 /* The other half of the same idea: a hand that went over 21. Shrinks slightly,
@@ -1056,9 +1109,9 @@ body:has(.k-fit) {
     filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) saturate(1);
   }
   100% {
-    transform: scale(0.94);
-    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(190, 60, 60, 0.55))
-      saturate(0.35);
+    transform: scale(var(--k-futch-scale));
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(var(--k-futch-rgb), 0.55))
+      saturate(var(--k-futch-saturate));
   }
 }
 /* No keyframe overshoot to strip here, unlike the win -- this one only ever
@@ -1069,16 +1122,16 @@ body:has(.k-fit) {
    animation was carrying the whole signal. Same for .k-card-win below. */
 :root.motion-off .k-card-futch img {
   animation: none !important;
-  transform: scale(0.94);
-  filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(190, 60, 60, 0.55))
-    saturate(0.35);
+  transform: scale(var(--k-futch-scale));
+  filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(var(--k-futch-rgb), 0.55))
+    saturate(var(--k-futch-saturate));
 }
 @media (prefers-reduced-motion: reduce) {
   .k-card-futch img {
     animation: none;
-    transform: scale(0.94);
-    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(190, 60, 60, 0.55))
-      saturate(0.35);
+    transform: scale(var(--k-futch-scale));
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(var(--k-futch-rgb), 0.55))
+      saturate(var(--k-futch-saturate));
   }
 }
 /* Above its neighbours in the fan for as long as it is bigger than them: a
@@ -1102,12 +1155,14 @@ body:has(.k-fit) {
    top of this file for why that switch is blanket and this one is not.) */
 :root.motion-off .k-card-win img {
   animation: none !important;
-  filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(230, 164, 75, 0.5));
+  transform: scale(var(--k-win-scale-rest));
+  filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(var(--k-win-rgb), 0.5));
 }
 @media (prefers-reduced-motion: reduce) {
   .k-card-win img {
     animation: none;
-    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(230, 164, 75, 0.5));
+    transform: scale(var(--k-win-scale-rest));
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(var(--k-win-rgb), 0.5));
   }
 }
 

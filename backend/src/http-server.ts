@@ -10,9 +10,10 @@ import { ContactContent } from "./contact.js";
 import { DisclaimerContent, isDisclaimerSlug } from "./disclaimer.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderCardEffectsEditor, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
 import type { ProtectionSnapshot } from "./ws-server.js";
 import { ClientErrorLog } from "./client-errors.js";
+import { ClientConfig } from "./client-config.js";
 import { resolveClientIp } from "./client-ip.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
@@ -167,6 +168,9 @@ export interface HttpServerDeps {
   /** Injectable only so tests can assert against the same instance the route
    *  writes to. Left out, the server owns its own. */
   clientErrors?: ClientErrorLog;
+  /** Appearance settings the browser fetches at boot -- see GET /api/config,
+   *  the only route on this server that tells a client how to LOOK. */
+  clientConfig?: ClientConfig;
 }
 
 export function createHttpServer(store: GameStore, deps: HttpServerDeps | AccessControl = {}) {
@@ -177,6 +181,7 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   const about = opts.about ?? new AboutContent();
   const contact = opts.contact ?? new ContactContent();
   const disclaimer = opts.disclaimer ?? new DisclaimerContent();
+  const clientConfig = opts.clientConfig ?? new ClientConfig();
   // Deliberately the STORE's own instance rather than a dep of its own: the
   // panel has to edit the very object createPracticeRoom reads, or an operator
   // saves a list that nothing uses and nothing says why.
@@ -286,6 +291,19 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   app.get("/api/disclaimer", async (_request, reply) => {
     reply.header("cache-control", "public, max-age=60");
     return disclaimer.toRecord();
+  });
+
+  // How the game should LOOK, fetched once at boot by every client. The only
+  // route here that is neither page copy nor a report -- see client-config.ts
+  // for why it is one document rather than an endpoint per setting.
+  //
+  // Public, so nothing operator-private may ever be added to it. Cached for
+  // half of what the copy routes get: an operator changing a colour is
+  // watching for the change, and thirty seconds of staleness is the most this
+  // should ever cost them.
+  app.get("/api/config", async (_request, reply) => {
+    reply.header("cache-control", "public, max-age=30");
+    return clientConfig.toRecord();
   });
 
   app.get("/health", async () => ({ status: "ok" }));
@@ -634,6 +652,39 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     const note = changed ? "Contact page updated." : "No change.";
     const sep = carry(request, how) ? "&" : "?";
     return reply.redirect(`/admin/contact${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
+  });
+
+  // Same own-page reasoning again. Everything a player sees of this arrives
+  // through GET /api/config above; there is no other path by which this server
+  // tells a browser anything about appearance.
+  app.get("/admin/card-effects", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderCardEffectsEditor({
+        config: clientConfig,
+        query: carry(request, how),
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  app.post("/admin/card-effects", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    // Every field is clamped in client-config.ts rather than here: a value out
+    // of range falls back to that field's default instead of failing the whole
+    // save, so one empty box cannot discard five good edits.
+    const changed = body.reset === "1" ? clientConfig.reset() : clientConfig.setCardEffects(body as never);
+    const note = changed
+      ? "Card effects updated. Players see this on their next page load."
+      : "No change.";
+    const sep = carry(request, how) ? "&" : "?";
+    // Back to the editor, not the panel: the swatches there are the only place
+    // an operator can see what they just saved.
+    return reply.redirect(`/admin/card-effects${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   // One page for all six sections (unlike About/Contact's own single

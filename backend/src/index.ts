@@ -1,6 +1,7 @@
 import { AboutContent, AboutRecord } from "./about.js";
 import { BotNames, BotNamesRecord } from "./bot-names.js";
 import { ContactContent, ContactRecord } from "./contact.js";
+import { ClientConfig, ClientConfigRecord } from "./client-config.js";
 import { DisclaimerContent, DisclaimerRecord } from "./disclaimer.js";
 import { createHttpServer } from "./http-server.js";
 import { GameStore } from "./store.js";
@@ -44,6 +45,7 @@ const ABOUT_SETTING_KEY = "about";
 const BOT_NAMES_SETTING_KEY = "bot-names";
 const CONTACT_SETTING_KEY = "contact";
 const DISCLAIMER_SETTING_KEY = "disclaimer";
+const CLIENT_CONFIG_SETTING_KEY = "client-config";
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL;
@@ -144,6 +146,20 @@ async function main() {
     }
   }
 
+  // Appearance the browser is told about at boot. Seventh settings row, same
+  // shape as the six above; no env default, because an unconfigured server is
+  // supposed to look exactly like the shipped stylesheet.
+  const clientConfig = new ClientConfig((record) => {
+    void db?.putSetting(CLIENT_CONFIG_SETTING_KEY, record).catch((e) => console.error("db putSetting(client-config)", e));
+  });
+  if (db) {
+    try {
+      clientConfig.hydrate(await db.getSetting<ClientConfigRecord>(CLIENT_CONFIG_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(client-config); players will see the shipped card effects", e);
+    }
+  }
+
   const auth = adminAuthFromEnv();
   if (!auth.enabled && !process.env.ADMIN_TOKEN) {
     console.warn("admin panel disabled: set ADMIN_USERNAME + ADMIN_PASSWORD_HASH (or ADMIN_TOKEN)");
@@ -162,6 +178,7 @@ async function main() {
     about,
     contact,
     disclaimer,
+    clientConfig,
     access,
     limits,
     auth,

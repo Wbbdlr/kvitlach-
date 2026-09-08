@@ -10,6 +10,7 @@ import type { ConnectionSummary, LedgerEntry } from "./types.js";
 import type { ProtectionKind, ProtectionSnapshot } from "./ws-server.js";
 import type { AdminLoginSnapshot } from "./http-server.js";
 import type { ClientErrorLog } from "./client-errors.js";
+import { CARD_EFFECT_BOUNDS, CARD_EFFECT_DEFAULTS, ClientConfig, type CardEffectsRecord } from "./client-config.js";
 import { metrics } from "./metrics.js";
 
 // The admin page's HTML. Split out of http-server.ts once it stopped being a
@@ -220,8 +221,7 @@ export function renderAboutEditor({
     "About page - Kvitlach admin",
     `<h1>About page</h1>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
-    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
-    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a></p>
     <fieldset>
       <legend>Extra copy for the public About page</legend>
       <p class="meta">Shown at the foot of <b>/about</b> &mdash; beta-tester credits, thanks, a note
@@ -266,8 +266,7 @@ export function renderBotNamesEditor({
     "Computer players - Kvitlach admin",
     `<h1>Computer players</h1>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
-    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
-    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a></p>
     <fieldset>
       <legend>Names for &ldquo;Play Against the Computer&rdquo;</legend>
       <p class="meta">One name per line (commas work too). Duplicates and blank lines are dropped,
@@ -328,8 +327,7 @@ export function renderContactEditor({
     "Contact page - Kvitlach admin",
     `<h1>Contact page</h1>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
-    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
-    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a></p>
     <fieldset>
       <legend>Extra copy for the public Contact page</legend>
       <p class="meta">Shown at the foot of <b>/contact</b> &mdash; a holiday closure notice, a
@@ -395,13 +393,136 @@ export function renderDisclaimerEditor({
     "Disclaimer page - Kvitlach admin",
     `<h1>Disclaimer page</h1>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
-    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a>
-    &middot; this page does not auto-refresh, so nothing you type here is lost.</p>
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a></p>
     <p class="meta">Each section below replaces that section's built-in bullet points on the public
     <b>/disclaimer</b> page with the plain text you enter here (a blank line starts a new
     paragraph). The heading and which sections exist are fixed by the app, not by this form --
     only the wording of a section you choose to override changes.</p>
     ${sections}`,
+    false
+  );
+}
+
+/** `#rrggbb` to `r, g, b`, for the rgba() in the swatches below. The value is
+ *  already known-good -- normalizeHexColor is the only way one gets stored --
+ *  so this parses rather than validates. */
+function hexTriplet(hex: string): string {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ");
+}
+
+/**
+ * The win and futch card effects, which used to be literals inside @keyframes.
+ *
+ * Same own-page-no-refresh reasoning as the other editors. What is different
+ * here is the swatch pair: a colour control whose result you cannot see until
+ * somebody at a real table happens to hit 21 is exactly the "reports a colour
+ * the game does not use" trap this feature was written to avoid.
+ *
+ * The swatches show the SETTLED state of each effect, not the animation, and
+ * that is the honest thing to show for two reasons: it is the state a player
+ * actually looks at (the motion is over in half a second, the rim stays for
+ * the rest of the round), and it is the state a player with reduced motion or
+ * the in-game Motion toggle sees for the whole of it. They are drawn from the
+ * SAVED record, never from the form -- this page has no JavaScript, by the
+ * same rule as the rest of the panel, so what you see is what is live.
+ */
+export function renderCardEffectsEditor({
+  config,
+  query,
+  notice,
+}: {
+  config: ClientConfig;
+  query: string;
+  notice?: string;
+}): string {
+  const record = config.toRecord();
+  const fx = record.cardEffects;
+  const act = (path: string) => `${path}${query}`;
+  const edited = record.updatedAt
+    ? new Date(record.updatedAt).toISOString().slice(0, 16).replace("T", " ") + " UTC"
+    : "never";
+
+  const num = (name: keyof CardEffectsRecord, label: string, hint: string) => {
+    const [min, max] = CARD_EFFECT_BOUNDS[name];
+    return `<div class="row">
+      <label style="min-width:9rem">${escapeHtml(label)}</label>
+      <input type="number" name="${name}" value="${fx[name]}" min="${min}" max="${max}" step="0.01" style="width:6rem" />
+      <span class="meta">${min} to ${max} &middot; default ${CARD_EFFECT_DEFAULTS[name]} &middot; ${escapeHtml(hint)}</span>
+    </div>`;
+  };
+
+  const colour = (name: "winColor" | "futchColor", label: string) =>
+    `<div class="row">
+      <label style="min-width:9rem">${escapeHtml(label)}</label>
+      <input type="color" name="${name}" value="${escapeHtml(fx[name])}" style="width:3.5rem;height:2rem;padding:1px" />
+      <span class="meta"><code>${escapeHtml(fx[name])}</code> &middot; default <code>${CARD_EFFECT_DEFAULTS[name]}</code></span>
+    </div>`;
+
+  // A scrap of felt to judge a glow against. Judging it on the panel's own
+  // near-white would be judging it against a background no player ever sees.
+  //
+  // The mock card carries a colour on purpose. A plain black-on-white rectangle
+  // is achromatic, so saturate() does visibly nothing to it -- the first cut of
+  // this swatch showed "keeps colour 0.05" and "keeps colour 1" as identical
+  // images, which is exactly the kind of preview that lies. Real card faces are
+  // coloured art; the red here stands in for that.
+  const swatch = (label: string, scale: number, glow: string, saturate: number, blur: number, alpha: number) =>
+    `<div style="text-align:center">
+      <div style="background:linear-gradient(160deg,#1b4a6b,#123049);border-radius:8px;padding:1.6rem 1.9rem">
+        <div style="width:44px;height:62px;margin:0 auto;border-radius:5px;background:#fdfcf7;border:1px solid #d8d2c2;
+                    display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:600;color:#b8342f;
+                    transform:scale(${scale});
+                    filter:drop-shadow(0 4px 7px rgba(0,0,0,0.4)) drop-shadow(0 0 ${blur}px rgba(${hexTriplet(glow)}, ${alpha})) saturate(${saturate})">21</div>
+      </div>
+      <div class="meta" style="margin-top:0.35rem">${escapeHtml(label)}</div>
+    </div>`;
+
+  return shell(
+    "Card effects - Kvitlach admin",
+    `<h1>Card effects</h1>
+    ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a></p>
+
+    <fieldset>
+      <legend>Live right now</legend>
+      <div class="grid3" style="justify-content:center;margin:0.5rem 0 0.25rem">
+        ${swatch("Won a hand", fx.winScaleRest, fx.winColor, 1, 5, 0.5)}
+        ${swatch("Went over 21", fx.futchScale, fx.futchColor, fx.futchSaturate, 4, 0.55)}
+      </div>
+      <p class="meta">Both cards are drawn at the size and colour they settle at and stay for the rest
+      of the round &mdash; not the half-second of movement on the way there, which is also what a player
+      with reduced motion or the in-game Motion switch sees for the whole effect. Saved values only:
+      the panel runs no JavaScript, so this is what players are being shown, not a guess at what the
+      boxes below would do.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Winning hand</legend>
+      <p class="meta">The card grows, glows, and settles slightly larger than its neighbours for the
+      rest of the round. Last changed: ${edited}.</p>
+      <form method="post" action="${act("/admin/card-effects")}">
+        ${colour("winColor", "Glow colour")}
+        ${num("winScalePeak", "Grows to", "the peak of the pop, halfway through")}
+        ${num("winScaleRest", "Settles at", "1 sits flush with the other cards")}
+        <hr style="border:0;border-top:1px solid #e5e7eb;margin:1rem 0" />
+        <p style="font-size:0.7rem;text-transform:uppercase;color:#6b7280;font-weight:600;letter-spacing:0.04em;margin:0">Busted hand</p>
+        <p class="meta">Deliberately quieter than the win and in the opposite direction &mdash; losing is
+        the common outcome and this fires several times a round.</p>
+        ${colour("futchColor", "Rim colour")}
+        ${num("futchScale", "Shrinks to", "below 1, and it stays there")}
+        ${num("futchSaturate", "Keeps colour", "1 is untouched, 0 is grey")}
+        <p style="margin-top:1rem">
+          <button type="submit" class="save">Save</button>
+          <button type="submit" name="reset" value="1">Reset to the shipped look</button>
+        </p>
+      </form>
+      <p class="meta">Each range is fixed in code and cannot be widened from here. These animations are
+      the only signal that is not text telling a player their hand won or busted, so the ends stop short
+      of "no visible difference" &mdash; and a bust must not end up looking like an Eleveroon reject,
+      which is full grey with no rim at all.</p>
+      <p class="meta">Players pick this up on their next page load; a table already open keeps the old
+      look until it reloads. Nothing needs rebuilding or redeploying.</p>
+    </fieldset>`,
     false
   );
 }
@@ -562,6 +683,7 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
         <a href="${act(refresh ? "/admin?refresh=0" : "/admin")}">${refresh ? "stop auto-refresh" : "start auto-refresh"}</a>
         &middot; <a href="${act("/admin/protections")}">protections</a>
         &middot; <a href="${act("/admin/errors")}">client errors</a>
+        &middot; <a href="${act("/admin/card-effects")}">card effects</a>
         &middot; <a href="/health/detail">raw JSON</a>
         &middot; <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>
       </span>
