@@ -169,6 +169,43 @@ export function allTotals(cards: Card[]): number[] {
   return sums;
 }
 
+/**
+ * Did this hand actually go over 21?
+ *
+ * NOT the same question as `state === "lost"`, which is the trap this exists
+ * to close: a player who stood on 16 against a banker's 18 lost the showdown
+ * without futching anything, and the BANKER's "lost" also fires when they
+ * merely end the round down on money (which is why Turn carries its own
+ * `busted` field -- see round.ts's calculateEndState).
+ *
+ * `turn.busted` first because it is the authoritative answer where the server
+ * bothered to send one; the card reading is the fallback for every turn that
+ * carries no such field.
+ */
+export function isFutched(turn: Turn): boolean {
+  if (turn.busted !== undefined) return turn.busted;
+  const { total, bustedTotal } = bestTotal(turn.cards);
+  return total === undefined && bustedTotal !== undefined;
+}
+
+// The mirror of winningCardIndices: the cards of a hand that went over 21.
+//
+// A blatt that overshoots is deliberately NOT one of these. It settles as a
+// push (round.ts's handleHit resolves it at $0) and the status pill says
+// PUSH -- dressing the cards as a futch underneath that would have the felt
+// saying two different things about one hand, which is the whole reason this
+// and the pill now share isFutched above rather than each deciding for
+// themselves.
+export function futchedCardIndices(turn: Turn): Set<number> {
+  const futched = new Set<number>();
+  if (isPushTurn(turn) || !isFutched(turn)) return futched;
+  turn.cards.forEach((card, idx) => {
+    if (card.attributes?.eleveroonIgnored) return;
+    futched.add(idx);
+  });
+  return futched;
+}
+
 // Which cards in a hand ARE the win -- what the felt puts a glow on.
 //
 // Only an OUTRIGHT win qualifies: the hand's own cards read 21, or they are a
@@ -438,13 +475,7 @@ export function statusDisplay(turn: Turn): { label: string; className: string } 
   if (turn.state === "lost") {
     // `turn.busted` wins when present -- a server-backfilled history turn
     // carries no cards to derive this from (see the `busted` field on Turn).
-    const busted =
-      turn.busted ??
-      (() => {
-        const { total, bustedTotal } = bestTotal(turn.cards);
-        return total === undefined && bustedTotal !== undefined;
-      })();
-    if (busted) return { label: "FUTCHED!", className: "text-rose-700 font-bold" };
+    if (isFutched(turn)) return { label: "FUTCHED!", className: "text-rose-700 font-bold" };
     return { label: "LOST", className: "text-rose-600 font-semibold" };
   }
   if (turn.state === "skipped") return { label: "Skipped", className: "text-slate-500" };

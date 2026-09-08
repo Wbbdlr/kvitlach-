@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
-import { totalDisplay, statusDisplay, betDisplay, tagVariant, fullName, winningCardIndices } from "./selectors";
+import { totalDisplay, statusDisplay, betDisplay, tagVariant, fullName, winningCardIndices, futchedCardIndices } from "./selectors";
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
 import { Icon } from "./icons";
@@ -167,6 +167,7 @@ export function Seat({
   // pair only. Computed once per render rather than per card: the answer is a
   // property of the whole hand, not of any one card in it.
   const winners = winningCardIndices(turn);
+  const futched = futchedCardIndices(turn);
   const isOffline = (presence ?? turn.player.presence) !== "online";
 
   // The real-table "I'm calling Eleveroon!" moment -- announced the instant
@@ -451,6 +452,7 @@ export function Seat({
               // that glowed would announce the 21 to the whole table before
               // the reveal that is supposed to announce it.
               winning={!hide && winners.has(idx)}
+              futched={!hide && futched.has(idx)}
             />
           );
         })}

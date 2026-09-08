@@ -51,7 +51,10 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
                 <div className="font-semibold">Deck &amp; cards</div>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Each deck has the numbers 1 through 12, with two copies of every card (24 cards total).</li>
-                  <li>Tables can combine between one and six decks; larger games benefit from extra decks.</li>
+                  <li>
+                    Tables combine several decks into one shoe &mdash; up to sixteen. The Banker can leave it on Auto
+                    (sized for the number of seats) or set it themselves, and can reshuffle at any time.
+                  </li>
                   <li>Card 2 and card 11 are Rosiers (also called Framed cards) &mdash; pairing them deals an automatic 21.</li>
                 </ul>
               </div>
@@ -100,6 +103,61 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
                   </li>
                   <li>Because #12 counts as 12, 10, or 9, a hand like 12&nbsp;+&nbsp;2 still qualifies (read the 12 as a 9).</li>
                   <li>The Banker always plays with Eleveroon on.</li>
+                </ul>
+              </div>
+              <div>
+                <div className="font-semibold">BANK!</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    BANK! wagers everything the bank can still cover, in one bet. It asks you to confirm first &mdash; at a
+                    real table this is a moment, not a click.
+                  </li>
+                  <li>
+                    The table pauses on the two of you: you finish your hand, then the Banker plays theirs, and the wager
+                    settles before ordinary turns resume.
+                  </li>
+                  <li>
+                    If it empties the bank, the Banker chooses what happens next &mdash; add chips and play on, pass the
+                    bank to another player, or end the night there. Nothing moves until they pick.
+                  </li>
+                  <li>Taking MAX can land exactly on the bank&rsquo;s limit, which is the same thing as calling BANK!. The button says so when it will.</li>
+                </ul>
+              </div>
+              <div>
+                <div className="font-semibold">At the table</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    <strong>Turn clock.</strong> The Banker can put a countdown on each turn (anywhere from 10 seconds to
+                    5 minutes; a minute by default). If it runs out you are Stood automatically &mdash; your hand and any
+                    chips already wagered stay exactly as they are, you simply stop drawing. The Banker&rsquo;s own turn is
+                    never on a clock, and changing the setting never shortens a turn already running.
+                  </li>
+                  <li>
+                    <strong>Move the controls.</strong> The bar with your bet and buttons can go wherever suits your grip
+                    &mdash; drag any of the corner brackets, resize from the top-right corner, and use the small arrow to
+                    put it back. Where you leave it is remembered on your own device.
+                  </li>
+                  <li>
+                    <strong>Zoom the table.</strong> Pinch to zoom in on the felt and drag to move around it; a Reset
+                    control appears while you are zoomed.
+                  </li>
+                  <li>
+                    <strong>Ask the Banker.</strong> You can request more chips or a change to your name from the table
+                    itself; the Banker approves or declines. You do not need to leave and rejoin.
+                  </li>
+                  <li>
+                    <strong>If you drop off.</strong> Your seat and your chips stay put and the table shows you as away.
+                    Come back to the same link and you keep the seat &mdash; the Banker can confirm it is you if the table
+                    needs it.
+                  </li>
+                  <li>
+                    <strong>Reactions.</strong> The face button sends a reaction to the table. It is the only thing you can
+                    send to everyone, deliberately &mdash; there is no chat here.
+                  </li>
+                  <li>
+                    <strong>Playing alone.</strong> &ldquo;Play Against the Computer&rdquo; deals a full table of computer
+                    players against a computer Banker. Nothing there touches a real table or real chips.
+                  </li>
                 </ul>
               </div>
             </div>

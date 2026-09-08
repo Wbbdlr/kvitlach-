@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay, fullName, winningCardIndices, REACTION_EMOJIS, REACTION_EMOJI_LABELS } from "../selectors";
+import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay, fullName, winningCardIndices, futchedCardIndices, REACTION_EMOJIS, REACTION_EMOJI_LABELS } from "../selectors";
 import { Card, Player, Turn } from "../../types";
 
 const banker: Player = { id: "bank", firstName: "Bank", lastName: "", type: "admin", presence: "online" };
@@ -434,5 +434,53 @@ describe("winningCardIndices", () => {
   it("covers the banker's own 21, which is the loudest one at the table", () => {
     const turn = makeTurn(banker, { state: "won", cards: [TEN, SIX, FIVE] });
     expect([...winningCardIndices(turn)]).toEqual([0, 1, 2]);
+  });
+});
+
+// The futch treatment is the mirror of the win glow, and it has the same one
+// way to be wrong: firing on hands that merely LOST. `state === "lost"` is not
+// the question -- a player who stood on 16 against an 18 lost nothing to the
+// count, and the banker's "lost" also fires when they only end down on money.
+describe("futchedCardIndices", () => {
+  const FIVE: Card = { name: "5", attributes: { values: [5] } };
+
+  it("marks every card of a hand that went over 21", () => {
+    const turn = makeTurn(p1, { state: "lost", cards: [TEN, NINE, SIX] });
+    expect([...futchedCardIndices(turn)]).toEqual([0, 1, 2]);
+  });
+
+  it("stays clear of a showdown loss -- nothing about those cards busted", () => {
+    const turn = makeTurn(p1, { state: "lost", cards: [TEN, SIX] });
+    expect([...futchedCardIndices(turn)]).toEqual([]);
+  });
+
+  it("stays clear of a banker who only ended the round down on money", () => {
+    // calculateEndState sets state "lost" for a losing NIGHT and reports the
+    // count separately in `busted` -- which is exactly why that field exists.
+    const turn = makeTurn(banker, { state: "lost", busted: false, cards: [TEN, SIX], bet: -40 });
+    expect([...futchedCardIndices(turn)]).toEqual([]);
+  });
+
+  it("trusts the server's own busted flag over the cards when it has one", () => {
+    const turn = makeTurn(banker, { state: "lost", busted: true, cards: [TEN, NINE, SIX] });
+    expect([...futchedCardIndices(turn)]).toEqual([0, 1, 2]);
+  });
+
+  it("leaves a blatt that overshot alone -- that is a push, and says so", () => {
+    // No wager anywhere on it, so round.ts resolves it at $0 and the pill
+    // reads PUSH. Cards dressed as a futch under a PUSH pill would have the
+    // felt saying two things about one hand.
+    const turn = makeTurn(p1, { state: "won", bet: 0, settledBet: 0, cards: [TEN, NINE, SIX] });
+    expect([...futchedCardIndices(turn)]).toEqual([]);
+  });
+
+  it("skips an Eleveroon-ignored card, same as the win side", () => {
+    const turn = makeTurn(p1, { state: "lost", cards: [TEN, ELEV_IGNORED, NINE, FIVE] });
+    expect([...futchedCardIndices(turn)]).toEqual([0, 2, 3]);
+  });
+
+  it("never marks a hand that is still being played", () => {
+    const turn = makeTurn(p1, { state: "pending", cards: [TEN, SIX] });
+    expect([...futchedCardIndices(turn)]).toEqual([]);
   });
 });

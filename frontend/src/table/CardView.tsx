@@ -25,6 +25,7 @@ export function CardView({
   dealDelayMs,
   pastFirstPaint,
   winning,
+  futched,
 }: {
   card: Card;
   hidden?: boolean;
@@ -52,6 +53,10 @@ export function CardView({
   // gate it on the card actually being face-up, because a glow on a
   // face-down card announces the result before the reveal does).
   winning?: boolean;
+  // The mirror of `winning`: this hand went over 21. Gated on the card being
+  // face-up for the same reason, and never set for a blatt that overshot --
+  // that settles as a push and its pill says so (selectors.ts).
+  futched?: boolean;
 }) {
   const [animate] = useState(() => Boolean(pastFirstPaint));
   const key = hidden ? "blank" : card.name;
@@ -123,7 +128,10 @@ export function CardView({
         // is as true for somebody who reconnects mid-round as for the player
         // who was watching. They see a short pop on mount and then the same
         // marker everyone else is looking at.
-        winning && "k-card-win"
+        winning && "k-card-win",
+        // Not gated on `animate` either, and for the same reason: the settled
+        // state is a statement about the hand, not a replay of its arrival.
+        futched && "k-card-futch"
       )}
       style={animate && dealDelayMs ? { animationDelay: `${dealDelayMs}ms` } : undefined}
     >

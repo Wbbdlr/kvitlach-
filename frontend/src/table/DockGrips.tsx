@@ -26,10 +26,11 @@ export interface DockGripsProps {
 export function DockGrips({ dockPanel }: DockGripsProps) {
   return (
     <>
-      {/* The move handle is TWO corner marks down the bar's left edge, top
-          and bottom -- "the grab handle to move the main controls box should
+      {/* The move handle is THREE corner marks -- the bar's two left corners,
+          top and bottom ("the grab handle to move the main controls box should
           be bottom left top left, and should be in the corners, not
-          horizontal lines which look weird."
+          horizontal lines which look weird"), plus the bottom-right (see its
+          own note below).
           Two of them rather than one because a corner mark only reads as a
           corner when it is actually IN one, and a single bracket on a bar
           this wide reads as decoration; a matched pair down one edge reads
@@ -44,6 +45,20 @@ export function DockGrips({ dockPanel }: DockGripsProps) {
           also press one of them. */}
       <span className="k-dock-grip move tl" {...dockPanel.moveProps} title="Drag to move the controls" aria-hidden="true" />
       <span className="k-dock-grip move bl" {...dockPanel.moveProps} title="Drag to move the controls" aria-hidden="true" />
+      {/* And a third in the bottom-right, added because both of the others
+          are on the same edge: a player holding the phone in their right hand
+          had to reach the thumb all the way across the bar to move it, which
+          is the hand most people hold a phone in.
+          Bottom-right is the corner the RESIZE grip was moved OUT of, and
+          that reason still stands -- on a landscape phone it sits inside the
+          system gesture bar and under the heel of the holding thumb. It is a
+          worse corner for resize than for move, though, and that asymmetry is
+          the whole argument: a stray resize silently changes the bar's size
+          and the player has to find the reset to undo it, while a stray move
+          is visible the instant it happens and is undone by dragging back.
+          The top-right is not available for this either way; it is the resize
+          grip's now. */}
+      <span className="k-dock-grip move br" {...dockPanel.moveProps} title="Drag to move the controls" aria-hidden="true" />
       <span className="k-dock-grip size" {...dockPanel.gripProps} title="Drag to resize the controls" aria-hidden="true" />
       {/* Only once it has actually been moved or resized -- an always-visible
           "put it back" on a bar nobody has touched is clutter that explains a

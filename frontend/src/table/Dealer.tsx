@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
-import { totalDisplay, statusDisplay, fullName, tagVariant, winningCardIndices } from "./selectors";
+import { totalDisplay, statusDisplay, fullName, tagVariant, winningCardIndices, futchedCardIndices } from "./selectors";
 import { CardView } from "./CardView";
 import { BankPanel } from "./BankPanel";
 import { Icon } from "./icons";
@@ -127,6 +127,7 @@ export function Dealer({
   const bankerReveal = shouldForceReveal || turn.state !== "pending" || isOwnerView;
   // See Seat.tsx's identical line -- one answer for the whole hand.
   const bankWinners = winningCardIndices(turn);
+  const bankFutched = futchedCardIndices(turn);
   const name = bankerPlayer ? fullName(bankerPlayer) || bankerPlayer.firstName : "Bank";
   const isOffline = bankerPlayer ? bankerPlayer.presence !== "online" : false;
   const isActive = turn.state === "pending" && roundState === "final";
@@ -290,6 +291,7 @@ export function Dealer({
                 // (statusDisplay's own "BANK 21!"); this is the same event
                 // said on the cards. Never while the hole card is still down.
                 winning={!hidden && bankWinners.has(idx)}
+                futched={!hidden && bankFutched.has(idx)}
               />
             );
           })}

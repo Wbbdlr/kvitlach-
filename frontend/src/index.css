@@ -968,6 +968,44 @@ body:has(.k-fit) {
     filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(230, 164, 75, 0.5));
   }
 }
+/* The other half of the same idea: a hand that went over 21. Shrinks slightly,
+   cools toward grey, and takes a red rim -- the same rose the FUTCHED! pill
+   wears, so the cards and the pill agree (they now share selectors.ts's
+   isFutched, rather than each deciding for themselves).
+   Quieter than the win on purpose, and in the opposite direction. Losing is
+   the common outcome and this fires several times a round across a full
+   table; a bust that announced itself as loudly as a 21 would make the felt
+   feel like it was mostly punishing people. Down and back is also the natural
+   reading -- the hand is out, so it recedes.
+   Desaturation is partial (65%), not the full grayscale an Eleveroon reject
+   wears. Those two states must not look alike: one is a card that never
+   counted, the other is a hand that counted and lost.
+   Same img-not-wrapper placement as .k-card-win, for the same cascade reason
+   -- see its comment above. */
+.k-card-futch img {
+  animation: cardFutch 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes cardFutch {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) saturate(1);
+  }
+  100% {
+    transform: scale(0.94);
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(190, 60, 60, 0.55))
+      saturate(0.35);
+  }
+}
+/* No keyframe overshoot to strip here, unlike the win -- this one only ever
+   travels one way -- so reduced motion just lands on the same end state. */
+@media (prefers-reduced-motion: reduce) {
+  .k-card-futch img {
+    animation: none;
+    transform: scale(0.94);
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 4px rgba(190, 60, 60, 0.55))
+      saturate(0.35);
+  }
+}
 /* Above its neighbours in the fan for as long as it is bigger than them: a
    grown card sliding UNDER the next one reads as a rendering fault rather
    than a flourish. 9 clears the 2..8 the fan itself uses, and like those it
@@ -2433,6 +2471,19 @@ body:has(.k-fit) {
   border-top: 0;
   border-bottom-left-radius: 6px;
 }
+/* The third move corner. `left` has to be unset explicitly, not just
+   overridden: .k-dock-grip.move above sets `left: 2px`, and a box with both
+   left and right set wins on left, so the bracket would have sat in the
+   bottom-LEFT on top of .bl. */
+.k-dock-grip.move.br {
+  left: auto;
+  right: 2px;
+  top: auto;
+  bottom: 1px;
+  border-left: 0;
+  border-top: 0;
+  border-bottom-right-radius: 6px;
+}
 .k-dock-grip.size {
   right: 2px;
   cursor: nwse-resize;
@@ -2467,6 +2518,15 @@ body:has(.k-fit) {
 }
 .k-dock-grip.move.bl::before {
   top: -2px;
+}
+/* Mirrored on both axes from .bl: down and to the RIGHT, away from the bar's
+   contents. The shared .move::before rule slops leftward (toward the middle
+   of the bar), which on this corner would push the hit area over whatever
+   control sits at the bar's right end. */
+.k-dock-grip.move.br::before {
+  top: -2px;
+  left: -4px;
+  right: -6px;
 }
 .k-dock-grip.size::before {
   left: -4px;

@@ -15,6 +15,22 @@ const INACTIVITY_TIMEOUT_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 const PRACTICE_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes -- practice rooms are throwaway, single-human sessions
 const BOT_THINK_DELAY_MIN_MS = 500;
 const BOT_THINK_DELAY_MAX_MS = 1200;
+// The bank-decision pause is NOT the think delay above, and sharing it was a
+// real bug: 500-1200ms is the right length for "the dealer considers another
+// card", and the wrong length for a prompt the player is meant to READ.
+//
+// Measured on a practice table: a BANK! wager that emptied the bot bank put
+// "Bank depleted" on the felt and the bot swept it away in about a second by
+// ending the round -- so the notice was unreadable, and the "replenish the
+// computer bank" offer it leads into (TableRoot's practiceBankIsEmpty, gated
+// on the decision stage having cleared) only appeared once the round was
+// already over. The player saw a flash and then a dead table.
+//
+// Three seconds is long enough to read one headline and one line under it,
+// and short enough that a table nobody is reading does not feel stalled. It
+// is the whole fix: nothing else about the decision stage changes, and a
+// HUMAN banker is still never hurried -- their decision has no timer at all.
+const BOT_BANK_DECISION_DELAY_MS = 3000;
 // Both practice name pools moved to bot-names.ts, where an operator can edit
 // them from the admin panel without a rebuild. The defaults there are the same
 // lists that used to sit here, with one change asked for directly: the banker
@@ -491,7 +507,8 @@ export class GameStore {
       const banker = bankerId ? next.turns.find((t) => t.player.id === bankerId) : undefined;
       clearPrev();
       if (!banker?.player.isBot || !bankerId) return { ...next, botTimer: undefined };
-      const timer = setTimeout(() => this.playBotBankDecision(roundId, bankerId), this.botThinkDelay());
+      // See BOT_BANK_DECISION_DELAY_MS: deliberately not botThinkDelay().
+      const timer = setTimeout(() => this.playBotBankDecision(roundId, bankerId), BOT_BANK_DECISION_DELAY_MS);
       return { ...next, botTimer: timer };
     }
 

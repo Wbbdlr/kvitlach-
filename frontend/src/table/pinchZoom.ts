@@ -23,10 +23,33 @@ import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 // stutters. Only `zoomed` is state, and it changes at most twice per gesture.
 
 const MIN_ZOOM = 1;
-// Past ~3x the 1280-wide stage is being upscaled far enough that the card art
-// starts to soften, and the slice of felt visible at once is too small to
-// still be reading a table from.
-const MAX_ZOOM = 3;
+// The ceiling used to be a flat `MAX_ZOOM = 3` -- and a flat multiplier is the
+// wrong shape for it, because this zoom MULTIPLIES stageScale rather than
+// replacing it (see the header comment), and stageScale is not 1 on the device
+// this gesture exists for. A landscape phone is 640-854 CSS px against a
+// 1280-wide stage, so stageScale is around 0.5-0.67 and a flat 3 let that
+// phone reach about 1.5-2x the design size -- while a desktop, already at
+// stageScale 1, got the whole 3x. The smaller the screen, the less the zoom
+// gave you, which is exactly backwards. Reported as not being able to zoom in
+// as far as wanted, on mobile specifically.
+//
+// Stated as the EFFECTIVE magnification instead, and divided back out per
+// viewport, so every device reaches the same apparent card size and the number
+// below means what it says. Raised to 4 at the same time: the old 3 was
+// justified by the card art softening, but the art is far larger than the box
+// it renders into (blank.png alone ships at 946x1438 for a ~92px card), so
+// that was never the real limit at these sizes.
+const MAX_EFFECTIVE_SCALE = 4;
+// A backstop for the arithmetic above, not a design position. stageScale can
+// legitimately be small, and without a cap a narrow enough viewport would
+// divide out to a zoom that pans across a felt nobody can navigate.
+const ABSOLUTE_MAX_ZOOM = 10;
+
+/** The most this viewport may zoom, so a phone and a desktop end up the same size. */
+function maxZoomFor(stageScale: number): number {
+  if (!Number.isFinite(stageScale) || stageScale <= 0) return MAX_EFFECTIVE_SCALE;
+  return Math.min(ABSOLUTE_MAX_ZOOM, Math.max(MIN_ZOOM, MAX_EFFECTIVE_SCALE / stageScale));
+}
 // A one-finger drag pans only once the table is actually zoomed in, and only
 // past this many px -- below it, every tap on a card would start a pan and
 // fight the tap it was meant to be.
@@ -63,6 +86,7 @@ export function usePinchZoom(
   stageScale: number
 ): PinchZoom {
   const [zoomed, setZoomed] = useState(false);
+  const maxZoom = maxZoomFor(stageScale);
   const zoom = useRef(1);
   const pan = useRef({ x: 0, y: 0 });
   const gesture = useRef<Gesture | undefined>();
@@ -100,9 +124,17 @@ export function usePinchZoom(
   // recomputes stageScale, and a pan measured against the old one is stale.
   // Re-clamping is cheaper and far less surprising than dropping the zoom.
   useEffect(() => {
+    // The ceiling moves with stageScale (see maxZoomFor), so a rotation into a
+    // wider viewport can leave the CURRENT zoom above the new limit. Pulled
+    // back down here rather than only at gesture time, which would leave a
+    // table sitting past its own maximum until somebody next pinched it.
+    if (zoom.current > maxZoom) {
+      zoom.current = maxZoom;
+      setZoomed(maxZoom > 1.01);
+    }
     clampPan();
     paint();
-  }, [stageScale, clampPan, paint]);
+  }, [stageScale, maxZoom, clampPan, paint]);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -134,7 +166,7 @@ export function usePinchZoom(
       if (g && event.touches.length === 2) {
         const a = event.touches[0];
         const b = event.touches[1];
-        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (g.startZoom * spread(a, b)) / g.startDistance));
+        const next = Math.min(maxZoom, Math.max(MIN_ZOOM, (g.startZoom * spread(a, b)) / g.startDistance));
         // The midpoint is tracked as well as the spread: moving around a table
         // you have zoomed into is part of the same gesture, and making people
         // let go and drag separately is how a zoom becomes a thing you try
@@ -184,7 +216,7 @@ export function usePinchZoom(
       wrap.removeEventListener("touchend", onTouchEnd);
       wrap.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [wrapRef, clampPan, paint]);
+  }, [wrapRef, clampPan, paint, maxZoom]);
 
   return { zoomed, reset };
 }

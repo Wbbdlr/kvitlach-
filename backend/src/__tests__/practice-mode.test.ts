@@ -463,9 +463,11 @@ describe("bot banker deciding after the bank goes broke", () => {
     const listener = vi.fn();
     store.setRoundUpdateListener(listener);
 
-    // botThinkDelay is 500-1200ms (BOT_THINK_DELAY_MIN/MAX_MS) -- past the
-    // top of that range with room to spare.
-    vi.advanceTimersByTime(1500);
+    // The bank DECISION has its own pause (BOT_BANK_DECISION_DELAY_MS, 3s),
+    // deliberately longer than botThinkDelay's 500-1200ms: it is a prompt the
+    // player has to read, not a card the dealer is considering. Past it with
+    // room to spare.
+    vi.advanceTimersByTime(3500);
 
     const resolved = store.getRound(round.roundId)!;
     expect(resolved.state).toBe("terminate");
@@ -487,7 +489,7 @@ describe("bot banker deciding after the bank goes broke", () => {
 
     // The pending timer firing now must be a no-op, not a throw and not a
     // second (incorrect) resolution of an already-terminated round.
-    expect(() => vi.advanceTimersByTime(1500)).not.toThrow();
+    expect(() => vi.advanceTimersByTime(3500)).not.toThrow();
     expect(store.getRound(round.roundId)!.state).toBe("terminate");
   });
 });
