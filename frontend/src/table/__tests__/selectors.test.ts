@@ -484,3 +484,36 @@ describe("futchedCardIndices", () => {
     expect([...futchedCardIndices(turn)]).toEqual([]);
   });
 });
+
+// Both card treatments read turn.cards, and what a client HOLDS is whatever
+// the server chose to send it: ws-server's redactTurn replaces a card the
+// viewer may not see with { name: "0", values: [] }, which allTotals scores
+// as 0. They are safe today only because concealment and these two agree on
+// one thing -- isCardHidden opens a hand outright once its state is "won" or
+// "lost", which is exactly when these fire, so a marked hand is never a
+// partly-hidden one.
+//
+// That is an assumption across two files with nothing else asserting it. If
+// concealment ever kept a card back on a resolved hand, a redacted card
+// scoring 0 would quietly drag totals DOWN -- so a futched hand would stop
+// being marked (harmless) and, worse, a hand that never made 21 could be read
+// as one. This pins the direction.
+describe("the card treatments against a redacted hand", () => {
+  const REDACTED: Card = { name: "0", attributes: { values: [] } };
+
+  it("scores a redacted card as nothing rather than guessing at it", () => {
+    expect(bestTotal([TEN, REDACTED]).total).toBe(10);
+  });
+
+  it("never invents a 21 out of hidden cards", () => {
+    // 10 + something-hidden must not read as a win, whatever the hidden card
+    // would have been.
+    const turn = makeTurn(p1, { state: "won", cards: [TEN, REDACTED] });
+    expect([...winningCardIndices(turn)]).toEqual([]);
+  });
+
+  it("does not mark a futch it cannot actually see", () => {
+    const turn = makeTurn(p1, { state: "lost", cards: [TEN, REDACTED] });
+    expect([...futchedCardIndices(turn)]).toEqual([]);
+  });
+});

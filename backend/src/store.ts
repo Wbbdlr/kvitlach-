@@ -1920,8 +1920,16 @@ export class GameStore {
     if (!player) throw new Error("player_not_found");
     if (player.type === "admin") throw new Error("forbidden");
     if (roomRec.room.buyInBlockedIds.includes(playerId)) throw new Error("buyin_blocked");
-    const normalizedAmount = Math.round(Number(amount));
-    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) throw new Error("invalid_payload");
+    // normalizeMoney, not a bare finite check. This is the only money path in
+    // the class whose amount comes from an UNTRUSTED party -- every other one
+    // is the banker's own -- and it was the only one still skipping the gate:
+    // `Math.round(Number(amount))` passes 1e308, which approveBuyIn below then
+    // added straight into a wallet. The result is finite, so nothing downstream
+    // rejects it, and the next multiplication in any payout turns the room's
+    // money into Infinity. Exactly the failure MAX_MONEY exists to prevent
+    // (see normalizeMoney's own comment).
+    const normalizedAmount = normalizeMoney(amount);
+    if (normalizedAmount === undefined) throw new Error("invalid_payload");
     const request: BuyInRequest = {
       playerId,
       amount: normalizedAmount,
@@ -1941,13 +1949,20 @@ export class GameStore {
     const request = roomRec.room.buyInRequests.find((req) => req.playerId === targetPlayerId);
     if (!request) throw new Error("request_not_found");
 
+    // Re-normalized at payment rather than trusted from the stored request,
+    // for the same reason BotNames.hydrate re-normalizes what it reads back:
+    // buyInRequests round-trip through Postgres as JSON, so the amount landing
+    // here is not necessarily the one requestBuyIn validated -- a restored row
+    // (or a hand-edited one) reaches this line having passed no check at all.
+    const amount = normalizeMoney(request.amount);
+    if (amount === undefined) throw new Error("invalid_payload");
     const currentWallet = roomRec.room.wallets[targetPlayerId] ?? 0;
-    roomRec.room.wallets[targetPlayerId] = currentWallet + request.amount;
+    roomRec.room.wallets[targetPlayerId] = currentWallet + amount;
     roomRec.room.buyInRequests = roomRec.room.buyInRequests.filter((req) => req.playerId !== targetPlayerId);
-    this.ledgerEntry(roomId, "buy-in", adminId, targetPlayerId, request.amount, request.note);
-    this.audit("buyin-approve", roomId, adminId, { target: targetPlayerId, amount: request.amount });
+    this.ledgerEntry(roomId, "buy-in", adminId, targetPlayerId, amount, request.note);
+    this.audit("buyin-approve", roomId, adminId, { target: targetPlayerId, amount });
     this.bumpRoomTimer(roomId);
-    return { playerId: targetPlayerId, amount: request.amount };
+    return { playerId: targetPlayerId, amount };
   }
 
   rejectBuyIn(roomId: string, adminId: string, targetPlayerId: string): void {
@@ -1990,8 +2005,17 @@ export class GameStore {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");
     if (!this.isAdmin(roomId, adminId)) throw new Error("forbidden");
-    const normalized = Math.round(Number(amount));
-    if (!Number.isFinite(normalized) || normalized === 0) throw new Error("invalid_payload");
+    // The last money path in this file that only had a bare finite check, and
+    // the one MAX_MONEY could be walked around through: Math.round(1e308) is
+    // finite, so a banker could set their own bank past every bound the rest
+    // of the class maintains. Two-way like adjustPlayerWallet (a top-up can be
+    // negative, to take chips back OUT of the bank), so it normalizes the
+    // MAGNITUDE and reapplies the sign, exactly as that method does and for
+    // the same reason -- normalizeMoney alone rejects anything <= 0.
+    const sign = Number(amount) < 0 ? -1 : 1;
+    const magnitude = normalizeMoney(Math.abs(Number(amount)));
+    if (magnitude === undefined) throw new Error("invalid_payload");
+    const normalized = sign * magnitude;
     const wallet = roomRec.room.wallets[adminId] ?? 0;
     const nextWallet = wallet + normalized;
     if (nextWallet < 0) throw new Error("insufficient_bank");

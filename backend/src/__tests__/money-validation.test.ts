@@ -190,3 +190,85 @@ describe("a rejected BANK! bet", () => {
     }
   });
 });
+
+// The buy-in request is the only money path in GameStore whose amount comes
+// from an UNTRUSTED party -- every other one is the banker's own -- and it was
+// the last one still guarded by a bare Number.isFinite. It matters more here
+// than anywhere else for exactly that reason.
+describe("a player's own buy-in request", () => {
+  const seat = () => {
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
+    const { player } = store.joinRoom(room.roomId, { firstName: "P1" });
+    return { store, room, admin, player };
+  };
+
+  it("cannot ask for more chips than MAX_MONEY, however it is spelled", () => {
+    // 1e308 is finite, so the old check passed it and approveBuyIn added it
+    // straight into a wallet. The wallet stayed finite too -- which is what
+    // made it quiet -- and the next multiplication anywhere downstream turned
+    // the room's money into Infinity.
+    const { store, room, admin, player } = seat();
+    store.requestBuyIn(room.roomId, player.id, 1e308);
+    store.approveBuyIn(room.roomId, admin.id, player.id);
+    const wallet = store.getRoom(room.roomId)!.wallets[player.id];
+    // MAX_MONEY bounds one TRANSACTION, not a resulting balance -- the wallet
+    // is the capped buy-in plus whatever was already in it. That distinction
+    // is the guarantee: no single amount can be astronomical, so the total
+    // stays a number arithmetic still works on.
+    expect(wallet).toBeLessThanOrEqual(1_000_000_000 + 100);
+    expect(Number.isFinite(wallet * 1000)).toBe(true);
+  });
+
+  it("floors a fractional request rather than seeding a wallet with a float", () => {
+    const { store, room, admin, player } = seat();
+    const req = store.requestBuyIn(room.roomId, player.id, 10.7);
+    expect(req.amount).toBe(10);
+    store.approveBuyIn(room.roomId, admin.id, player.id);
+    expect(store.getRoom(room.roomId)!.wallets[player.id]).toBe(110);
+  });
+
+  it("still refuses zero, negatives and NaN the way it always did", () => {
+    const { store, room, player } = seat();
+    for (const bad of [0, -25, NaN]) {
+      expect(() => store.requestBuyIn(room.roomId, player.id, bad)).toThrow("invalid_payload");
+    }
+  });
+
+  it("re-checks at approval, so a restored request cannot pay out unbounded", () => {
+    // buyInRequests round-trip through Postgres as JSON: the amount reaching
+    // approveBuyIn is not necessarily the one requestBuyIn validated.
+    const { store, room, admin, player } = seat();
+    store.requestBuyIn(room.roomId, player.id, 50);
+    const live = store.getRoom(room.roomId)!;
+    live.buyInRequests = live.buyInRequests.map((r) => ({ ...r, amount: 1e308 }));
+    store.approveBuyIn(room.roomId, admin.id, player.id);
+    expect(store.getRoom(room.roomId)!.wallets[player.id]).toBeLessThanOrEqual(1_000_000_000 + 100);
+  });
+});
+
+// The banker's own top-up was the last path that could walk around MAX_MONEY.
+describe("topUpBanker", () => {
+  it("caps the bank rather than letting it reach a value nothing can divide", () => {
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
+    store.topUpBanker(room.roomId, admin.id, 1e308);
+    const bank = store.getRoom(room.roomId)!.wallets[admin.id];
+    expect(bank).toBeLessThanOrEqual(1_000_000_000 + 500);
+    expect(Number.isFinite(bank * 1000)).toBe(true);
+  });
+
+  it("still takes chips back out, which is why it normalizes the magnitude", () => {
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
+    store.topUpBanker(room.roomId, admin.id, -200);
+    expect(store.getRoom(room.roomId)!.wallets[admin.id]).toBe(300);
+  });
+
+  it("floors a fractional top-up", () => {
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
+    store.topUpBanker(room.roomId, admin.id, 40.9);
+    expect(store.getRoom(room.roomId)!.wallets[admin.id]).toBe(540);
+  });
+});
