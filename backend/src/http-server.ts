@@ -10,7 +10,8 @@ import { ContactContent } from "./contact.js";
 import { DisclaimerContent, isDisclaimerSlug } from "./disclaimer.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
+import type { ProtectionSnapshot } from "./ws-server.js";
 import { resolveClientIp } from "./client-ip.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
@@ -46,6 +47,38 @@ const MAX_ADMIN_ATTEMPTS = 20;
 const ADMIN_ATTEMPT_WINDOW_MS = 5 * 60_000;
 const MAX_TRACKED_IPS = 500;
 const adminAttempts = new Map<string, { count: number; resetAt: number }>();
+// Cumulative since boot, for the panel's Protections page.
+//
+// adminAttempts above is per-window and forgets on purpose: an IP that burned
+// through twenty guesses an hour ago leaves no entry behind. That is right for
+// the throttle and wrong for the operator, whose question is about the hour
+// that already happened.
+const adminAttemptTotals = { failures: 0, blocked: 0, lastAt: 0, lastIp: undefined as string | undefined };
+
+/**
+ * The admin-login throttle's own live state, for the Protections page.
+ *
+ * Exported from this module rather than passed in as a dep because the map it
+ * reads is this module's, and the route rendering it is this module's too --
+ * a getter injected from index.ts would be a longer way round to the same
+ * object with one more place for the two to drift apart.
+ */
+export type AdminLoginSnapshot = ReturnType<typeof adminLoginSnapshot>;
+
+export function adminLoginSnapshot(top = 25) {
+  const now = Date.now();
+  return {
+    limit: MAX_ADMIN_ATTEMPTS,
+    windowMs: ADMIN_ATTEMPT_WINDOW_MS,
+    ...adminAttemptTotals,
+    tracked: adminAttempts.size,
+    ips: Array.from(adminAttempts.entries())
+      .filter(([, entry]) => entry.resetAt > now)
+      .map(([ip, entry]) => ({ ip, count: entry.count, resetAt: entry.resetAt, blocked: entry.count >= MAX_ADMIN_ATTEMPTS }))
+      .sort((a, b) => b.count - a.count || a.ip.localeCompare(b.ip))
+      .slice(0, top),
+  };
+}
 
 function getClientIp(request: FastifyRequest): string {
   return resolveClientIp(request.headers, request.ip);
@@ -53,11 +86,16 @@ function getClientIp(request: FastifyRequest): string {
 
 function isRateLimited(ip: string): boolean {
   const entry = adminAttempts.get(ip);
-  return Boolean(entry && Date.now() < entry.resetAt && entry.count >= MAX_ADMIN_ATTEMPTS);
+  const limited = Boolean(entry && Date.now() < entry.resetAt && entry.count >= MAX_ADMIN_ATTEMPTS);
+  if (limited) adminAttemptTotals.blocked += 1;
+  return limited;
 }
 
 function recordFailedAttempt(ip: string): void {
   const now = Date.now();
+  adminAttemptTotals.failures += 1;
+  adminAttemptTotals.lastAt = now;
+  adminAttemptTotals.lastIp = ip;
   if (adminAttempts.size >= MAX_TRACKED_IPS) {
     for (const [key, entry] of adminAttempts) {
       if (now > entry.resetAt) adminAttempts.delete(key);
@@ -120,6 +158,11 @@ export interface HttpServerDeps {
   /** Mints the per-room grant the panel's Watch links carry. Wired to the WS
    *  server, which is the only thing that can redeem one. */
   watchToken?: (roomId: string) => string;
+  /** Live throttle state for the Protections page. Wired to the WS server,
+   *  which owns three of the four limiters; the fourth (admin login) lives in
+   *  this module. Omitted, the page renders the login throttle alone and says
+   *  so rather than showing four empty tables. */
+  protections?: (top?: number) => ProtectionSnapshot;
 }
 
 export function createHttpServer(store: GameStore, deps: HttpServerDeps | AccessControl = {}) {
@@ -165,15 +208,29 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   // URLSearchParams rather than pulling in @fastify/formbody -- same call
   // this project already made in metrics.ts about prom-client.
   //
-  // The 1 KiB cap is well clear of the largest real body (a code list) and
-  // keeps an unauthenticated POST from being a place to push bulk at us; the
-  // token check still runs afterwards either way.
+  // The 4 KiB cap is well clear of the largest real body -- a code list, or
+  // the rooms table's multi-select delete, which sends one roomId per ticked
+  // box -- and keeps an unauthenticated POST from being a place to push bulk
+  // at us; the token check still runs afterwards either way.
+  //
+  // A repeated key becomes an ARRAY. Object.fromEntries alone keeps only the
+  // last value for a repeated name, which is exactly what a set of same-named
+  // checkboxes sends: ticking five rooms and deleting one of them is the kind
+  // of quiet wrong answer a destructive form must not give. Single-valued
+  // fields are untouched -- every other form here sends each key once and
+  // still reads a plain string.
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",
-    { parseAs: "string", bodyLimit: 1024 },
+    { parseAs: "string", bodyLimit: 4096 },
     (_req, body, done) => {
       try {
-        done(null, Object.fromEntries(new URLSearchParams(body as string)));
+        const params = new URLSearchParams(body as string);
+        const out: Record<string, string | string[]> = {};
+        for (const key of new Set(params.keys())) {
+          const all = params.getAll(key);
+          out[key] = all.length > 1 ? all : all[0];
+        }
+        done(null, out);
       } catch (err) {
         done(err as Error, undefined);
       }
@@ -315,6 +372,59 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
         appUrl: opts.appUrl,
         watchToken: opts.watchToken,
         notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+        // Filtering happens in the renderer, over listRoomsForAdmin's output.
+        // Deliberately not pushed into the store: at these room counts the
+        // walk is nothing, and a store method taking a search string is a
+        // second place for "what counts as a match" to live.
+        filter: {
+          q: typeof query.q === "string" ? query.q.slice(0, 60) : "",
+          kind: query.kind === "real" || query.kind === "practice" ? query.kind : "all",
+          sort: query.sort === "idle" || query.sort === "rounds" || query.sort === "id" ? query.sort : "players",
+        },
+      })
+    );
+  });
+
+  // One room, in full. Its own page rather than an expanding row: the panel is
+  // scriptless (see admin-page.ts), so "expand" means re-rendering the whole
+  // table anyway, and this page carries IP addresses that have no business
+  // being on a screen an operator leaves open on a shared desk.
+  app.get<{ Params: { roomId: string } }>("/admin/rooms/:roomId", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    const room = store.getRoomForAdmin(request.params.roomId);
+    if (!room) return reply.code(404).type("text/html").send(renderRoomDetail({ roomId: request.params.roomId, room: undefined, connections: [], hasDb: store.hasDatabase, query: carry(request, how), appUrl: opts.appUrl, watchToken: opts.watchToken }));
+    // Awaited, not fired off: this is the one admin page that reads Postgres,
+    // and an empty list because the query had not come back yet would read as
+    // "nobody has ever connected" rather than "still loading".
+    const connections = await store.getConnectionSummaries(room.roomId);
+    return reply.type("text/html").send(
+      renderRoomDetail({
+        roomId: room.roomId,
+        room,
+        connections,
+        hasDb: store.hasDatabase,
+        query: carry(request, how),
+        appUrl: opts.appUrl,
+        watchToken: opts.watchToken,
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  // The four throttles, live. Its own page for the same reason the room detail
+  // is: IP addresses, and a main panel that is already long enough.
+  app.get("/admin/protections", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderProtectionsPage({
+        login: adminLoginSnapshot(),
+        ws: opts.protections?.(),
+        query: carry(request, how),
+        refresh: query.refresh !== "0",
       })
     );
   });
@@ -336,11 +446,35 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     reply.header("set-cookie", auth.clearedCookieHeader()).code(200).type("text/html").send(renderLoginPage("Signed out."))
   );
 
+  // Kept alongside the bulk route below: it is a stable URL an operator may
+  // have bookmarked or scripted, and it costs one line.
   app.post<{ Params: { roomId: string } }>("/admin/rooms/:roomId/delete", async (request, reply) => {
     const how = guard(request, reply);
     if (!how) return reply;
     store.forceDeleteRoom(request.params.roomId);
-    return reply.redirect(`/admin${carry(request, how)}`);
+    return reply.redirect(`/admin${carry(request, how)}#rooms`);
+  });
+
+  // Delete however many rooms were ticked. One round of confirmation for the
+  // whole set rather than one per room, which is the point -- clearing a
+  // night's abandoned tables was eight separate confirm dialogs.
+  //
+  // The redirect carries #rooms so the page comes back where it was left. A
+  // plain /admin sent the browser to the top of a long page after every
+  // delete, which on a board with several rooms means scrolling back down to
+  // reach the next one.
+  app.post("/admin/rooms/delete", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const raw = (request.body as Record<string, unknown> | undefined)?.roomId;
+    // One box ticked arrives as a string, several as an array (see the body
+    // parser above). Normalized here rather than at each use.
+    const roomIds = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    for (const roomId of roomIds) store.forceDeleteRoom(roomId);
+    const sep = carry(request, how) ? "&" : "?";
+    const note = roomIds.length === 1 ? "Deleted 1 room." : `Deleted ${roomIds.length} rooms.`;
+    return reply.redirect(`/admin${carry(request, how)}${sep}ok=${encodeURIComponent(note)}#rooms`);
   });
 
   // One route for every access control on the page. Each form posts only its

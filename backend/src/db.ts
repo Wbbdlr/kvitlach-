@@ -13,6 +13,14 @@ export interface ConnectionSummary {
 export interface RoomRow {
   roomId: string;
   roomState: RoomState;
+  /**
+   * When this room was last written, epoch ms.
+   *
+   * The column was maintained from the day it was created and read by nobody:
+   * loadActiveRooms selected only room_id and state, so every restart lost the
+   * real last-activity time and stamped a fresh one. See GameStore.loadFromDB.
+   */
+  lastActiveAt: number;
   rounds: Array<{ roundId: string; roundState: Record<string, unknown> }>;
 }
 
@@ -170,12 +178,18 @@ export class Database {
 
   async loadActiveRooms(): Promise<RoomRow[]> {
     const roomsResult = await this.pool.query(
-      `SELECT room_id, state FROM rooms ORDER BY last_active_at DESC`
+      `SELECT room_id, state, last_active_at FROM rooms ORDER BY last_active_at DESC`
     );
     const rows: RoomRow[] = [];
     for (const roomRow of roomsResult.rows) {
       const roomId: string = roomRow.room_id;
       const roomState: RoomState = roomRow.state as RoomState;
+      // Defaulted to now only when the column is somehow unreadable -- an old
+      // row predating it, or a hand-edited one. That is the OLD behaviour, and
+      // it is wrong; it just must not be a crash.
+      const lastActiveAt = roomRow.last_active_at
+        ? new Date(roomRow.last_active_at).getTime()
+        : Date.now();
       const roundsResult = await this.pool.query(
         `SELECT round_id, state FROM rounds WHERE room_id = $1`,
         [roomId]
@@ -184,7 +198,7 @@ export class Database {
         roundId: r.round_id as string,
         roundState: r.state as Record<string, unknown>,
       }));
-      rows.push({ roomId, roomState, rounds });
+      rows.push({ roomId, roomState, lastActiveAt, rounds });
     }
     return rows;
   }

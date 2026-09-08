@@ -175,6 +175,10 @@ async function main() {
     // must stay that way: splitting HTTP and WS into separate processes would
     // silently break every Watch link.
     watchToken: (roomId) => ws.mintWatchToken(roomId),
+    // Same instance gameplay is throttled by, for the same reason the panel
+    // shares AccessControl and RuntimeLimits: a second WSServer would report
+    // counters nothing enforces.
+    protections: (top) => ws.protectionSnapshot(top),
   });
   await app.listen({ port: PORT_HTTP, host: "0.0.0.0" });
   console.log(`HTTP listening on http://0.0.0.0:${PORT_HTTP}`);

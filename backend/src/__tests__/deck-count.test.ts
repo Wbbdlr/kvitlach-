@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GameStore, MIN_DECK_COUNT, MAX_DECK_COUNT } from "../store.js";
+import { recommendedDeckCount } from "../round.js";
 
 // "Decks to use" existed only on the lobby's create form -- set once, before
 // the table was made, unchangeable afterwards. A banker who sized a shoe for
@@ -75,5 +76,47 @@ describe("the banker's shoe size", () => {
     store.setDeckCount(roomId, adminId, 8);
     const round = store.startRound(roomId, adminId, 2);
     expect(shoeCards(store, round.roundId)).toBe(2 * 24);
+  });
+});
+
+// The auto-size rule, pinned rather than left implied by whatever the shoe
+// happened to come out as.
+//
+// The published guidance for the physical game is two decks (one pack) for
+// four to six players. That is the ratio this follows: one deck per three
+// people at the table, never fewer than two. It replaced a shoe-longevity
+// model that worked out at about 1.33 decks per seat, which sized for eight
+// rounds without a reshuffle rather than for what the game says to deal.
+describe("auto-sizing the shoe when the banker has not chosen", () => {
+  const decksFor = (playerCount: number) => recommendedDeckCount(playerCount);
+
+  it("gives four to six people the two decks in a pack", () => {
+    expect(decksFor(4)).toBe(2);
+    expect(decksFor(5)).toBe(2);
+    expect(decksFor(6)).toBe(2);
+  });
+
+  it("never goes below a pack, however small the table", () => {
+    // A single deck is not something anyone buys or plays with, and one
+    // 24-card deck is what a four-seat table used to exhaust in three rounds.
+    expect(decksFor(1)).toBe(2);
+    expect(decksFor(2)).toBe(2);
+    expect(decksFor(3)).toBe(2);
+  });
+
+  it("scales at one deck per three people past that", () => {
+    expect(decksFor(7)).toBe(3);
+    expect(decksFor(9)).toBe(3);
+    expect(decksFor(10)).toBe(4);
+    expect(decksFor(12)).toBe(4);
+  });
+
+  it("stays inside the engine's own bounds", () => {
+    // A round never deals more than MAX_SEATED_PLAYERS_PER_ROUND + 1 seats
+    // (store.ts), so the ratio cannot reach MAX_DECK_COUNT from the seat count
+    // alone -- but a caller passing a whole 500-person roster must still get a
+    // number the engine accepts rather than one it silently clamps later.
+    expect(decksFor(500)).toBeLessThanOrEqual(MAX_DECK_COUNT);
+    expect(decksFor(0)).toBeGreaterThanOrEqual(MIN_DECK_COUNT);
   });
 });

@@ -5,7 +5,7 @@ import { handleHit } from "./round.js";
 import { decideBotAction, decideBotBet, decideBotEleveroon } from "./bot.js";
 import { RuntimeLimits } from "./limits.js";
 import { BotNames } from "./bot-names.js";
-import { Balance, Card, Player, RenameRequest, RoomState, RoundState, BuyInRequest, BankLockState, Turn, ConnectionSummary, LedgerEntry, SeatClaim } from "./types.js";
+import { Balance, Card, Player, PlayerType, Presence, RenameRequest, RoomState, RoundState, RoundHistoryEntry, BuyInRequest, BankLockState, Turn, ConnectionSummary, LedgerEntry, SeatClaim } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 import { metrics } from "./metrics.js";
@@ -124,6 +124,21 @@ function normalizeMoney(raw: unknown): number | undefined {
 // is guaranteed a seat within the next `others.length` rounds, since
 // startRound()'s rotation advances by exactly one player per round.
 const MAX_SEATED_PLAYERS_PER_ROUND = 11;
+
+// How many people a round actually deals to, which is what a shoe has to
+// cover -- not how many are in the room.
+//
+// The two reshuffle paths below used to size their shoe off
+// room.players.length, and on a big table that is simply the wrong number: a
+// 50-person room still deals 11 seats plus the banker, and everyone else is
+// in waitingPlayerIds waiting their turn in the rotation. The old formula hid
+// this by capping out at MAX_DECKS for any table past 12 people, so both
+// numbers landed on 16 and agreed by accident. The traditional ratio does not
+// cap out, so the disagreement would have become a 50-person room asking for
+// a 17-deck shoe to deal 12 hands.
+function seatsDealtPerRound(playerCount: number): number {
+  return Math.min(playerCount, MAX_SEATED_PLAYERS_PER_ROUND + 1);
+}
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 // A seat's thinking time, in seconds. 90 was the original and was cut to 60
 // on the banker's own report that it felt slack at a real table -- the clock
@@ -218,6 +233,45 @@ export interface AdminRoomSummary {
   hasActiveRound: boolean;
   hasPassword: boolean;
   lastActivityAt: number;
+}
+
+/**
+ * One room, in the depth the admin panel's detail page needs.
+ *
+ * A DTO rather than the live RoomState for one reason that matters:
+ * RoomState carries `passwordHash`, and handing the renderer the real object
+ * makes leaking it a one-line mistake in a template rather than a deliberate
+ * act. Everything here is something the panel is meant to show; anything the
+ * panel is not meant to show is not in the type at all.
+ *
+ * Deliberately NOT an extension of AdminRoomSummary: that one is built for
+ * every room on every 15-second refresh and is kept cheap on purpose (see
+ * loadSnapshot's comment on the same split). This one walks a single room and
+ * copies its ledger and history, which is fine once and wasteful 40 times.
+ */
+export interface AdminRoomDetail extends AdminRoomSummary {
+  buyIn: number;
+  bankerBuyIn: number;
+  turnSeconds?: number;
+  deckCount?: number;
+  feltWatermark?: string;
+  seats: Array<{
+    id: string;
+    name: string;
+    role: PlayerType;
+    isBot: boolean;
+    presence: Presence;
+    offlineSince?: number;
+    wallet: number;
+    waiting: boolean;
+  }>;
+  /** Wallets with no seat behind them -- see getRoomForAdmin. */
+  orphanWallets: Array<{ playerId: string; amount: number }>;
+  pendingRenames: number;
+  pendingBuyIns: number;
+  pendingSeatClaims: number;
+  ledger: LedgerEntry[];
+  roundHistory: RoundHistoryEntry[];
 }
 
 interface SessionRecord {
@@ -399,6 +453,14 @@ export class GameStore {
   async getConnectionSummaries(roomId: string): Promise<ConnectionSummary[]> {
     if (!this.db) return [];
     return this.db.getRoomConnectionSummaries(roomId);
+  }
+
+  // Connection history is the one thing the panel shows that only exists with
+  // Postgres behind it. Without this the detail page cannot tell "nobody has
+  // connected to this room" from "this deploy never records connections", and
+  // those call for very different reactions.
+  get hasDatabase(): boolean {
+    return Boolean(this.db);
   }
 
   private getActiveTurnId(round: RoundContext): string | undefined {
@@ -1406,7 +1468,8 @@ export class GameStore {
       // Same precedence as startRound. A banker who changes the shoe size and
       // then reshuffles expects the new size, not the size this round was
       // dealt with -- that is the whole reason they reached for reshuffle.
-      const shoeDecks = roomRec.room.deckCount ?? round.deckCount ?? recommendedDeckCount(roomRec.room.players.length);
+      const shoeDecks =
+        roomRec.room.deckCount ?? round.deckCount ?? recommendedDeckCount(seatsDealtPerRound(roomRec.room.players.length));
       round.deckCount = shoeDecks;
       round.deck = buildShoe(shoeDecks);
       round.deckReshuffledAt = Date.now();
@@ -1425,7 +1488,9 @@ export class GameStore {
       return persisted;
     }
 
-    roomRec.deck = buildShoe(roomRec.lastDeckCount ?? recommendedDeckCount(roomRec.room.players.length));
+    roomRec.deck = buildShoe(
+      roomRec.lastDeckCount ?? recommendedDeckCount(seatsDealtPerRound(roomRec.room.players.length))
+    );
     roomRec.deckJustReshuffledAt = Date.now();
     this.audit("reshuffle-deck", roomId, adminId, {});
     this.bumpRoomTimer(roomId);
@@ -2353,25 +2418,46 @@ export class GameStore {
     return token;
   }
 
-  private bumpRoomTimer(roomId: string) {
+  // Arms (or re-arms) the inactivity reaper WITHOUT claiming the room was just
+  // active. Split out of bumpRoomTimer for the restore path: a restart has to
+  // re-arm every room's timer, and doing that through bumpRoomTimer stamped
+  // lastActivityAt = now on all of them -- so the admin table read "just now"
+  // for every room on the board however long ago anyone had really played, and
+  // a room abandoned days ago got a fresh 3-day lease on every deploy instead
+  // of being reaped. Worse, bumpRoomTimer also SAVES, so the boot re-stamp
+  // overwrote rooms.last_active_at in Postgres and destroyed the real value.
+  //
+  // The window is measured from the room's own last activity, not from now, so
+  // a restart neither extends nor resets it. A room already past its window
+  // reaps on the next tick, which is exactly what would have happened had the
+  // process never restarted.
+  private armRoomReaper(roomId: string) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return;
     if (roomRec.timer) clearTimeout(roomRec.timer);
+    const isPractice = roomRec.room.practice === true;
+    const window = isPractice ? PRACTICE_INACTIVITY_TIMEOUT_MS : INACTIVITY_TIMEOUT_MS;
+    const elapsed = Date.now() - (roomRec.lastActivityAt ?? Date.now());
+    roomRec.timer = setTimeout(() => {
+      this.rooms.delete(roomId);
+      void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room", roomId, e));
+    }, Math.max(0, window - elapsed));
+  }
+
+  private bumpRoomTimer(roomId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) return;
     roomRec.lastActivityAt = Date.now();
     // Practice rooms are throwaway, single-human sandboxes -- never worth a
     // Postgres write, and expire far sooner than a real game's 3 days.
-    const isPractice = roomRec.room.practice === true;
-    if (this.db && !isPractice) {
+    if (this.db && roomRec.room.practice !== true) {
       const db = this.db;
       // Reads roomRec.room when its turn in the chain comes up, not now, so a
       // burst of writes collapses onto the newest state instead of replaying
       // stale snapshots over it.
       this.serializeWrite(`room:${roomId}`, () => db.saveRoom(roomId, roomRec.room));
     }
-    roomRec.timer = setTimeout(() => {
-      this.rooms.delete(roomId);
-      void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room", roomId, e));
-    }, isPractice ? PRACTICE_INACTIVITY_TIMEOUT_MS : INACTIVITY_TIMEOUT_MS);
+    this.armRoomReaper(roomId);
   }
 
   // Admin tooling (backend/src/http-server.ts's token-gated /admin routes) --
@@ -2400,6 +2486,70 @@ export class GameStore {
       // Busiest first: on a struggling box the room worth looking at is the
       // one with the most people in it, not whichever hashed first.
       .sort((a, b) => b.playerCount - a.playerCount || b.lastActivityAt - a.lastActivityAt);
+  }
+
+  /**
+   * The same room, in full, for the panel's detail page.
+   *
+   * Every field here is already maintained by gameplay -- nothing new is
+   * recorded to make this page possible, and nothing here is written. The one
+   * piece of real work is orphanWallets: `wallets` is keyed by player id and
+   * removePlayerCompletely deletes the entry with the seat, so a leftover key
+   * means a stack that belongs to nobody at the table. That is exactly the
+   * shape of an accounting bug, and until now there was no way to see one
+   * short of reading the room out of Postgres by hand.
+   */
+  getRoomForAdmin(roomId: string): AdminRoomDetail | undefined {
+    const rec = this.rooms.get(roomId);
+    if (!rec) return undefined;
+    const room = rec.room;
+    const banker = room.players.find((p) => p.type === "admin");
+    const waiting = new Set(room.waitingPlayerIds ?? []);
+    const seats = room.players.map((p) => ({
+      id: p.id,
+      name: `${p.firstName} ${p.lastName ?? ""}`.trim() + (p.nameTag ? ` (${p.nameTag})` : ""),
+      role: p.type,
+      isBot: p.isBot === true,
+      presence: p.presence,
+      offlineSince: p.offlineSince,
+      wallet: room.wallets[p.id] ?? 0,
+      waiting: waiting.has(p.id),
+    }));
+    const seated = new Set(room.players.map((p) => p.id));
+    const orphanWallets = Object.entries(room.wallets ?? {})
+      .filter(([playerId]) => !seated.has(playerId))
+      .map(([playerId, amount]) => ({ playerId, amount }));
+
+    return {
+      roomId,
+      name: room.name,
+      practice: room.practice === true,
+      bankerName: banker ? `${banker.firstName} ${banker.lastName ?? ""}`.trim() : undefined,
+      playerCount: room.players.length,
+      botCount: room.players.filter((p) => p.isBot === true).length,
+      waitingCount: room.waitingPlayerIds?.length ?? 0,
+      completedRounds: room.completedRounds ?? 0,
+      hasActiveRound: Boolean(room.roundId),
+      hasPassword: Boolean(room.passwordHash),
+      lastActivityAt: rec.lastActivityAt ?? Date.now(),
+      buyIn: room.buyIn,
+      bankerBuyIn: room.bankerBuyIn,
+      turnSeconds: room.turnSeconds,
+      deckCount: room.deckCount,
+      feltWatermark: room.feltWatermark,
+      seats,
+      orphanWallets,
+      pendingRenames: room.renameRequests?.length ?? 0,
+      pendingBuyIns: room.buyInRequests?.length ?? 0,
+      pendingSeatClaims: room.seatClaims?.length ?? 0,
+      // Newest first, both of them: an operator opening this page is asking
+      // "what just happened", not "how did the night start". roundHistory is
+      // already stored newest-first (see finalizeRound); the ledger is
+      // appended, so it is reversed here rather than at the append, which
+      // would change what every player's drawer shows.
+      ledger: [...(room.ledger ?? [])].reverse(),
+      roundHistory: [...(room.roundHistory ?? [])],
+    };
   }
 
   // The load picture, for /health/detail and /metrics. Separate from
@@ -2433,9 +2583,12 @@ export class GameStore {
     if (!this.db) return;
     try {
       const rows = await this.db.loadActiveRooms();
-      for (const { roomId, roomState, rounds } of rows) {
-        this.rooms.set(roomId, { room: roomState, nextStart: 0 });
-        this.bumpRoomTimer(roomId);
+      for (const { roomId, roomState, lastActiveAt, rounds } of rows) {
+        // lastActivityAt comes from the row, and the reaper is armed WITHOUT
+        // bumpRoomTimer -- that would restamp the room as active now and write
+        // that back over the real value. See armRoomReaper.
+        this.rooms.set(roomId, { room: roomState, nextStart: 0, lastActivityAt: lastActiveAt });
+        this.armRoomReaper(roomId);
         for (const { roundId, roundState } of rounds) {
           const ctx: RoundContext = {
             ...(roundState as any),

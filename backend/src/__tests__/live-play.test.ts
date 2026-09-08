@@ -191,12 +191,19 @@ describe("a real multiplayer game (human banker, three human players, no bots)",
     }
   });
 
-  it("gives a four-seat table a shoe that lasts, instead of reshuffling every other round", () => {
-    // 4 seats -> 6 decks under the session-based sizing (was 1 deck / 24
-    // cards -- a real Kvitlach deck is 2 copies of each of 1-12, not a
-    // standard playing-card deck -- which a table this size exhausted in
-    // about three rounds).
-    expect(finalRound.deckCount).toBe(6);
+  it("gives a four-seat table the two decks the game recommends, and they carry across rounds", () => {
+    // 4 seats -> 2 decks: the published guidance for the physical game is two
+    // decks (one pack) for four to six players, and recommendedDeckCount now
+    // follows it -- see round.ts.
+    //
+    // This assertion used to read 6, from a shoe-longevity model that sized
+    // for eight rounds without a reshuffle. That model existed for a real
+    // reported symptom (the shoe "starting over" constantly, back when a
+    // 4-seat table got a single 24-card deck), and the part of the fix that
+    // actually mattered is the part still asserted below: the shoe CARRIES
+    // BETWEEN ROUNDS instead of being rebuilt every deal. Two decks still
+    // covers this table's whole four-round session without one reshuffle.
+    expect(finalRound.deckCount).toBe(2);
 
     // The real symptom was the shoe "starting over" constantly, and the server
     // stamps deckReshuffledAt every time it does. Four rounds in, it never has.

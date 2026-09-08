@@ -252,24 +252,29 @@ function sanitizeDeckCount(count: number): number {
   return Math.min(Math.max(1, Math.floor(count)), MAX_DECKS);
 }
 
-// How many rounds one shoe should comfortably cover before it needs a fresh
-// shuffle. The shoe used to be sized for a SINGLE round, which was right when
-// every round dealt itself a brand new deck -- but the deck now carries over
-// between rounds, so that sizing meant a 7-player table burned through its
-// one 24-card deck in well under a round and reshuffled constantly.
-const TARGET_ROUNDS_PER_SHOE = 8;
-// Measured, not guessed: simulating hands against the real deck puts the
-// average at ~3.3 cards each, so 4 leaves headroom for a table full of long
-// hands without making the shoe absurd.
-const ASSUMED_CARDS_PER_HAND = 4;
-// A real Kvitlach deck: identical pairs numbered 1-12, 2 copies of each (see
-// deck.ts's newDeck) -- not a standard playing-card deck.
-const CARDS_PER_DECK = 24;
+// The published guidance for the physical game, which is what this now
+// follows: a Kvitlach pack is two 24-card decks, and two decks are what the
+// game recommends for four to six players. That is one deck per three people
+// at the table, with two as the floor -- a pack is the smallest thing anyone
+// actually buys, and a single deck is not a game anyone plays.
+//
+// This replaced a shoe-longevity model (8 rounds per shoe at ~4 cards a hand,
+// about 1.33 decks per SEAT) which sized for never interrupting play rather
+// than for what the game says to put on the table. It was not wrong so much
+// as answering a different question, and it answered it four times louder:
+// six players got 8 decks where the game asks for 2.
+//
+// The trade is real and worth stating: at the traditional ratio a shoe covers
+// roughly two rounds before the banker is asked to shuffle a fresh one, where
+// the old sizing lasted about eight. That IS the physical game -- gathering
+// and reshuffling every round or two is what happens at a real table -- but
+// it is a visible change in how often the reshuffle prompt appears.
+const PLAYERS_PER_DECK = 3;
+const MIN_RECOMMENDED_DECKS = 2;
 
 export function recommendedDeckCount(playerCount: number): number {
   const seats = Math.max(1, playerCount); // includes the banker
-  const assumedCards = seats * ASSUMED_CARDS_PER_HAND * TARGET_ROUNDS_PER_SHOE;
-  return sanitizeDeckCount(Math.ceil(assumedCards / CARDS_PER_DECK));
+  return sanitizeDeckCount(Math.max(MIN_RECOMMENDED_DECKS, Math.ceil(seats / PLAYERS_PER_DECK)));
 }
 
 export function getGameState(turns: Turn[]): RoundPhase {

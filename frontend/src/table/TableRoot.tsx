@@ -610,6 +610,32 @@ export function TableRoot({
       !bankerDecisionRequired
   );
 
+  // Open the refill dialog the moment the bot bank empties, rather than
+  // leaving a toast to say so.
+  //
+  // Reported as "the pop up did not stay up on the screen nearly long enough,
+  // and it should be dismissed by the player". It is the right complaint: the
+  // notification that announced this auto-dismissed after 6 seconds (see
+  // NOTIFICATION_AUTO_DISMISS_MS in state.ts), and what it was announcing is
+  // not news -- it is a table that cannot take another wager until the player
+  // does something about it. A message with a deadline was standing in for a
+  // decision with none.
+  //
+  // Once per emptying, not once per render: the ref latches while the bank is
+  // empty so closing the dialog and playing on with a bank still at zero does
+  // not reopen it on the next broadcast. It re-arms when the bank has chips
+  // again, so the next time this happens the dialog comes back.
+  const practiceBankPromptedRef = useRef(false);
+  useEffect(() => {
+    if (!practiceBankIsEmpty) {
+      practiceBankPromptedRef.current = false;
+      return;
+    }
+    if (practiceBankPromptedRef.current) return;
+    practiceBankPromptedRef.current = true;
+    setPracticeBankOpen(true);
+  }, [practiceBankIsEmpty]);
+
   // A seated (non-banker, non-spectator) player at exactly $0 can't cover
   // even a $1 bet -- surface a clear, actionable prompt rather than leaving
   // them to discover Table Info's request-chips form on their own. Practice

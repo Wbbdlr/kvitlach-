@@ -430,3 +430,49 @@ describe("the sheet's own masthead", () => {
     expect(html).toContain("<title>Kvitlach.us - The Kugel Corner</title>");
   });
 });
+
+// The framed pair on the printed sheet.
+//
+// Every 2 and every 11 in the deck carries attributes.type "rosier" -- those
+// are the cards that CAN form a frame, not cards that did. The sheet styled
+// that attribute directly, so a lone 2 came out framed and an actual frame
+// came out looking no different from one. Reported as "frame cards are not
+// framed", which is exactly right: the mark was there but meant nothing.
+describe("framed pairs on the sheet", () => {
+  const ROSIER_2 = { name: "2", attributes: { values: [2], type: "rosier" as const } };
+  const ROSIER_11 = { name: "11", attributes: { values: [11], type: "rosier" as const } };
+
+  const roundWith = (cards: unknown[]): CompletedRoundSummary[] => [
+    {
+      roundId: "f1",
+      roundNumber: 1,
+      completedAt: Date.now(),
+      turns: [seat("p1", "Yossi", 100, "won", { cards }), banker(-100)],
+    } as unknown as CompletedRoundSummary,
+  ];
+
+  const framedCount = (html: string) => (html.match(/class="pip rosier"/g) ?? []).length;
+
+  it("frames both cards of a real rosier pair", () => {
+    expect(framedCount(buildHistoryHtml({ rounds: roundWith([ROSIER_2, ROSIER_11]) }))).toBe(2);
+  });
+
+  it("does not frame a lone 2, which is not a pair", () => {
+    expect(framedCount(buildHistoryHtml({ rounds: roundWith([ROSIER_2]) }))).toBe(0);
+  });
+
+  it("does not frame a 2 that happens to sit in a longer hand", () => {
+    const html = buildHistoryHtml({
+      rounds: roundWith([ROSIER_2, { name: "9", attributes: { values: [9] } }, { name: "10", attributes: { values: [10] } }]),
+    });
+    expect(framedCount(html)).toBe(0);
+  });
+
+  it("cancels the inherited letter-spacing that split a 12 into two digits", () => {
+    // .who sets .28em tracking for the uppercase names and the cards sit
+    // inside it. Inherited, it put a trailing space after the last digit --
+    // so numerals sat left of centre and "12" read as "1 2".
+    const html = buildHistoryHtml({ rounds: [] });
+    expect(html).toMatch(/\.pip\{[^}]*letter-spacing:normal/s);
+  });
+});

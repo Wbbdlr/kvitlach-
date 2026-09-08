@@ -1,6 +1,6 @@
 import { LedgerEntry, Turn } from "./types";
 import type { CompletedRoundSummary } from "./state";
-import { statusDisplay } from "./table/selectors";
+import { isRosierPair, statusDisplay } from "./table/selectors";
 import { SETTLES } from "./playerRecord";
 import { CHIPS, ChipName, DEFAULT_CHIP, DEFAULT_FELT, FELTS, FeltName } from "./theme";
 
@@ -237,9 +237,18 @@ const style = (feltName: FeltName, chipName: ChipName): string => {
     font-family:Georgia,'Times New Roman',serif;font-style:normal;
     font-size:12px;font-weight:700;line-height:1;
     box-shadow:0 1px 0 rgba(0,0,0,.06);
+    /* .who sets .28em tracking for the uppercase player names, and these sit
+       inside it. Inherited, that tracking put a trailing space after the last
+       digit -- so every numeral sat left of centre in its box, and a 12 read
+       as "1 2". Reported as the cards looking funny; it was the names' letter
+       -spacing leaking two levels down. */
+    letter-spacing:normal;
   }
-  /* A rosier (the framed 2 and 11) is an automatic win as a pair, so it is
-     worth being able to spot in a row of otherwise identical shapes. */
+  /* A rosier is the framed PAIR -- two cards, both a 2 or an 11 -- and it wins
+     by rule rather than by arithmetic. The frame is drawn per hand, not per
+     card: every 2 and every 11 in the deck carries type:"rosier" because those
+     are the cards that CAN form one, so styling the attribute directly framed
+     any lone 2 and framed an actual pair no differently. */
   .pip.rosier{border-color:${chip.swatch};box-shadow:0 0 0 1px ${chip.swatch} inset}
   /* The eleveroon's ignored 11: still dealt, still shown, excluded from the
      total. Struck through so the sheet's arithmetic reads correctly. */
@@ -390,6 +399,10 @@ export function buildHistoryHtml({
           // rect with the card's own numeral costs bytes rather than
           // megabytes, prints cleanly in black and white, and is legible at
           // 18px, which the real art is not.
+          // isRosierPair, not the per-card attribute: see .pip.rosier's own
+          // comment. The same helper the felt's glow uses, so the sheet and
+          // the table agree about what a frame is.
+          const framed = isRosierPair(turn.cards ?? []);
           const cards = (turn.cards ?? [])
             .map((c) => {
               // The eleveroon rule leaves the ignored 11 IN the hand and
@@ -397,7 +410,10 @@ export function buildHistoryHtml({
               // felt renders it with its own treatment. A sheet that drew it
               // as an ordinary card would make the arithmetic look wrong.
               const ignored = c.attributes?.eleveroonIgnored ? " spent" : "";
-              const rosier = c.attributes?.type === "rosier" ? " rosier" : "";
+              // The ignored 11 is never part of the frame, exactly as on the
+              // felt -- isRosierPair reads past it, and framing it here would
+              // mark a card the rule excludes.
+              const rosier = framed && !ignored && c.attributes?.type === "rosier" ? " rosier" : "";
               return `<i class="pip${ignored}${rosier}">${esc(c.name)}</i>`;
             })
             .join("");

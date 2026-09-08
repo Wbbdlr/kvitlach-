@@ -134,6 +134,34 @@ const ROOM_CREATE_WINDOW_MS = 60_000;
 const MAX_ROOM_CREATES_PER_WINDOW = 5;
 const MAX_TRACKED_ROOM_CREATE_IPS = 500;
 
+/** The four throttles this server enforces, in the order the panel lists them. */
+export type ProtectionKind = "connections" | "messages" | "roomCreates" | "practiceCreates";
+
+/**
+ * What the admin panel's Protections page renders.
+ *
+ * Read straight off the same maps and counters the limiters consult, so the
+ * number on screen is the number being enforced -- there is no second copy to
+ * drift. `limit` and `windowMs` come from the module constants above for the
+ * same reason: a page that showed a remembered limit next to a live count
+ * would be exactly the disconnected control this panel is meant not to have.
+ */
+export interface ProtectionSnapshot {
+  kinds: Array<{
+    kind: ProtectionKind;
+    limit: number;
+    windowMs?: number;
+    rejected: number;
+    lastAt: number;
+    lastIp?: string;
+  }>;
+  /** Current open sockets per IP, busiest first. Bounded by the caller's `top`. */
+  connectionsByIp: Array<{ ip: string; count: number }>;
+  /** IPs inside an open room-creation window, with when that window rolls over. */
+  createWindows: Array<{ ip: string; kind: "roomCreates" | "practiceCreates"; count: number; resetAt: number }>;
+  trackedIps: { connections: number; roomCreates: number; practiceCreates: number };
+}
+
 export class WSServer {
   private wss: WebSocketServer;
   private store: GameStore;
@@ -163,6 +191,29 @@ export class WSServer {
   // maxPracticeRooms) and deserve independent throttles.
   private roomCreatesByIp = new Map<string, { count: number; resetAt: number }>();
   private practiceCreatesByIp = new Map<string, { count: number; resetAt: number }>();
+  // Cumulative rejections since boot, one entry per protection.
+  //
+  // The maps above hold CURRENT state -- who is connected right now, whose
+  // creation window is still open -- which answers "what is happening" and
+  // cannot answer "did anything get stopped while nobody was watching". A
+  // refused connection leaves nothing behind once its window rolls over, and
+  // the console.warn it writes is not somewhere an operator looks during a
+  // game. Four counters and a timestamp is the whole cost of being able to
+  // tell a quiet night from an attack the limiter absorbed.
+  private rejections: Record<ProtectionKind, { count: number; lastAt: number; lastIp?: string }> = {
+    connections: { count: 0, lastAt: 0 },
+    messages: { count: 0, lastAt: 0 },
+    roomCreates: { count: 0, lastAt: 0 },
+    practiceCreates: { count: 0, lastAt: 0 },
+  };
+
+  private recordRejection(kind: ProtectionKind, ip: string) {
+    const entry = this.rejections[kind];
+    entry.count += 1;
+    entry.lastAt = Date.now();
+    entry.lastIp = ip;
+  }
+
 
   // How many rooms this server currently holds socket sets for. Must track
   // rooms with someone CONNECTED, not rooms ever created -- see onClose. Read
@@ -170,6 +221,55 @@ export class WSServer {
   // into the private map.
   get trackedRoomCount(): number {
     return this.rooms.size;
+  }
+
+  /**
+   * Live protection state for the admin panel.
+   *
+   * Read-only and cheap enough to serve on a refreshing page: the two create
+   * maps are capped at MAX_TRACKED_ROOM_CREATE_IPS entries and connsByIp at
+   * whatever is actually connected. `top` bounds the rendered rows, not the
+   * counting -- trackedIps still reports the real map sizes, because "40
+   * shown of 500 tracked" is the interesting sentence.
+   *
+   * Expired create windows are filtered out rather than swept: recordCreate
+   * owns that map's lifecycle and a getter that deletes entries would be a
+   * surprising thing for a page render to do.
+   */
+  protectionSnapshot(top = 25): ProtectionSnapshot {
+    const now = Date.now();
+    const connectionsByIp = Array.from(this.connsByIp.entries())
+      .map(([ip, sockets]) => ({ ip, count: sockets.size }))
+      .sort((a, b) => b.count - a.count || a.ip.localeCompare(b.ip))
+      .slice(0, top);
+
+    const windows = (map: Map<string, { count: number; resetAt: number }>, kind: "roomCreates" | "practiceCreates") =>
+      Array.from(map.entries())
+        .filter(([, entry]) => entry.resetAt > now)
+        .map(([ip, entry]) => ({ ip, kind, count: entry.count, resetAt: entry.resetAt }));
+
+    return {
+      kinds: ([
+        { kind: "connections", limit: MAX_CONNS_PER_IP, windowMs: undefined },
+        { kind: "messages", limit: MAX_MSGS_PER_WINDOW, windowMs: MSG_WINDOW_MS },
+        { kind: "roomCreates", limit: MAX_ROOM_CREATES_PER_WINDOW, windowMs: ROOM_CREATE_WINDOW_MS },
+        { kind: "practiceCreates", limit: MAX_ROOM_CREATES_PER_WINDOW, windowMs: ROOM_CREATE_WINDOW_MS },
+      ] as Array<{ kind: ProtectionKind; limit: number; windowMs?: number }>).map((row) => ({
+        ...row,
+        rejected: this.rejections[row.kind].count,
+        lastAt: this.rejections[row.kind].lastAt,
+        lastIp: this.rejections[row.kind].lastIp,
+      })),
+      connectionsByIp,
+      createWindows: [...windows(this.roomCreatesByIp, "roomCreates"), ...windows(this.practiceCreatesByIp, "practiceCreates")]
+        .sort((a, b) => b.count - a.count || a.ip.localeCompare(b.ip))
+        .slice(0, top),
+      trackedIps: {
+        connections: this.connsByIp.size,
+        roomCreates: this.roomCreatesByIp.size,
+        practiceCreates: this.practiceCreatesByIp.size,
+      },
+    };
   }
 
   // Injected rather than constructed here so index.ts owns the one instance
@@ -193,6 +293,7 @@ export class WSServer {
     const existing = this.connsByIp.get(ipKey) ?? new Set();
     if (existing.size >= MAX_CONNS_PER_IP) {
       console.warn(`Rate limit: too many connections from ${ipKey} (${existing.size}), dropping`);
+      this.recordRejection("connections", ipKey);
       socket.close(1008, "too_many_connections");
       return;
     }
@@ -272,6 +373,7 @@ export class WSServer {
       if (now > rate.resetAt) { rate.count = 0; rate.resetAt = now + MSG_WINDOW_MS; }
       rate.count++;
       if (rate.count > MAX_MSGS_PER_WINDOW) {
+        this.recordRejection("messages", this.meta.get(socket)?.ip ?? "unknown");
         this.send(socket, { type: "error", error: { message: "rate_limited" } });
         socket.close(1008, "rate_limited");
         return;
@@ -301,7 +403,10 @@ export class WSServer {
           this.access.assertAllowed("create", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const createIp = this.meta.get(socket)?.ip ?? "unknown";
-          if (WSServer.createThrottled(this.roomCreatesByIp, createIp)) throw new Error("room_create_throttled");
+          if (WSServer.createThrottled(this.roomCreatesByIp, createIp)) {
+            this.recordRejection("roomCreates", createIp);
+            throw new Error("room_create_throttled");
+          }
           const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll });
           WSServer.recordCreate(this.roomCreatesByIp, createIp);
           await this.attach(socket, room.roomId, player.id);
@@ -319,7 +424,10 @@ export class WSServer {
           this.access.assertAllowed("practice", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const practiceIp = this.meta.get(socket)?.ip ?? "unknown";
-          if (WSServer.createThrottled(this.practiceCreatesByIp, practiceIp)) throw new Error("room_create_throttled");
+          if (WSServer.createThrottled(this.practiceCreatesByIp, practiceIp)) {
+            this.recordRejection("practiceCreates", practiceIp);
+            throw new Error("room_create_throttled");
+          }
           const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount, buyIn, bankBuyIn, deckCount });
           WSServer.recordCreate(this.practiceCreatesByIp, practiceIp);
           await this.attach(socket, room.roomId, player.id);

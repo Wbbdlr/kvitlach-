@@ -415,8 +415,9 @@ export function ManageDrawer({
             })}
           </div>
           <div className="text-[11px] k-dialog-sub">
-            Decks in the shoe. Auto (*) sizes it to the number of players. Takes effect on the next shuffle or the
-            next round - the hand on the table now is untouched.
+            Decks in the shoe. Auto (*) follows the game&apos;s own guidance - two decks (one pack) for up to six
+            at the table, then one more per three people. Takes effect on the next shuffle or the next round - the
+            hand on the table now is untouched.
           </div>
           {!confirmReshuffle ? (
             <button

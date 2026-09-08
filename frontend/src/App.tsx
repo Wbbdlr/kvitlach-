@@ -67,7 +67,17 @@ export default function App() {
   const [joinLastName, setJoinLast] = useState("");
   const [practiceBotCount, setPracticeBotCount] = useState(2);
   const [practiceFirstName, setPracticeFirst] = useState("");
-  const [practiceDecks, setPracticeDecks] = useState(4);
+  // Two decks for up to six at the table, then one more per three people --
+  // the same rule the server's recommendedDeckCount follows (backend's
+  // round.ts), restated here rather than fetched because the lobby has no
+  // room yet to ask about. A practice table seats the bots plus the one
+  // human, and one of those bots is the banker.
+  const recommendedDecks = (seats: number) => Math.max(2, Math.ceil(seats / 3));
+  const [practiceDecks, setPracticeDecks] = useState(() => recommendedDecks(3));
+  // Same shape as practiceBankBuyInManuallySet below: the slider follows the
+  // recommendation as the bot count moves, until the player drags it
+  // themselves, and then it is theirs.
+  const [practiceDecksManuallySet, setPracticeDecksManuallySet] = useState(false);
   const [practiceBuyIn, setPracticeBuyIn] = useState(100);
   const [practiceBankBuyIn, setPracticeBankBuyIn] = useState(400);
   const [practiceBankBuyInManuallySet, setPracticeBankBuyInManuallySet] = useState(false);
@@ -1068,7 +1078,12 @@ export default function App() {
                     max={10}
                     step={1}
                     value={practiceBotCount}
-                    onChange={(e) => setPracticeBotCount(Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setPracticeBotCount(next);
+                      // Seats are the bots plus the one human.
+                      if (!practiceDecksManuallySet) setPracticeDecks(recommendedDecks(next + 1));
+                    }}
                     className="w-full accent-blue-600"
                     aria-label="Number of computer players"
                   />
@@ -1079,16 +1094,30 @@ export default function App() {
                     <span>Decks</span>
                     <span className="font-semibold text-ink">{practiceDecks}</span>
                   </span>
+                  {/* 16, not 8. The engine's own ceiling is MAX_DECKS = 16
+                      (backend/src/round.ts) and this slider stopped at half
+                      of it for no reason anyone recorded -- a solo table
+                      could not be given a shoe the server would happily
+                      deal. Reported while asking how decks should scale with
+                      players. */}
                   <input
                     type="range"
                     min={1}
-                    max={8}
+                    max={16}
                     step={1}
                     value={practiceDecks}
-                    onChange={(e) => setPracticeDecks(Number(e.target.value))}
+                    onChange={(e) => {
+                      setPracticeDecks(Number(e.target.value));
+                      setPracticeDecksManuallySet(true);
+                    }}
                     className="w-full accent-blue-600"
                     aria-label="Number of decks"
                   />
+                  <span className="text-xs text-slate-500">
+                    {practiceDecksManuallySet && practiceDecks !== recommendedDecks(practiceBotCount + 1)
+                      ? `The game recommends ${recommendedDecks(practiceBotCount + 1)} for ${practiceBotCount + 1} at the table.`
+                      : "Two decks (one pack) for up to six at the table, then one more per three people."}
+                  </span>
                 </label>
 
                 <label className="text-sm flex flex-col gap-1">
@@ -1350,7 +1379,7 @@ export default function App() {
                   onChange={setPreferredDecks}
                   label="Decks to use"
                 />
-                <span className="text-xs text-slate-500">Set this before starting the first round; leave blank to auto-size by players (supports large tables).</span>
+                <span className="text-xs text-slate-500">Leave blank to auto-size: two decks (one pack) for up to six at the table, then one more per three people, the same as the printed game. The banker can change it later from Manage.</span>
               </label>
               <AgeAckCheckbox id="age-ack-create" checked={createAgeAcknowledged} onChange={setCreateAgeAcknowledged} />
                 <button

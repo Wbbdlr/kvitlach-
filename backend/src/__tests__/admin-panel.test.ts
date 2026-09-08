@@ -26,6 +26,20 @@ const app = createHttpServer(store, {
     broadcasts.push({ text, level, roomId });
     return 3;
   },
+  // A stub rather than a live WSServer: protections.test.ts already proves
+  // the real snapshot counts real rejections, and what these tests are for is
+  // the route rendering whatever it is handed.
+  protections: () => ({
+    kinds: [
+      { kind: "connections", limit: 80, rejected: 2, lastAt: Date.now(), lastIp: "203.0.113.9" },
+      { kind: "messages", limit: 30, windowMs: 10_000, rejected: 0, lastAt: 0 },
+      { kind: "roomCreates", limit: 5, windowMs: 60_000, rejected: 0, lastAt: 0 },
+      { kind: "practiceCreates", limit: 5, windowMs: 60_000, rejected: 0, lastAt: 0 },
+    ],
+    connectionsByIp: [{ ip: "198.51.100.4", count: 3 }],
+    createWindows: [{ ip: "198.51.100.4", kind: "roomCreates" as const, count: 2, resetAt: Date.now() + 30_000 }],
+    trackedIps: { connections: 1, roomCreates: 1, practiceCreates: 0 },
+  }),
 });
 
 const base = `http://127.0.0.1:${PORT}`;
@@ -39,6 +53,10 @@ async function login(): Promise<string> {
     redirect: "manual",
   });
   return res.headers.get("set-cookie")?.split(";")[0] ?? "";
+}
+
+function get(path: string) {
+  return fetch(`${base}${path}`, { headers: { cookie }, redirect: "manual" });
 }
 
 function post(path: string, body: Record<string, string>) {
@@ -223,5 +241,177 @@ describe("admin panel controls", () => {
     });
     expect(res.status).toBe(401);
     expect(access.getModes()).toEqual(before);
+  });
+});
+
+// Clearing a night's abandoned tables was one confirm dialog per room, and the
+// page jumped back to the top after each one -- so the next room needed a
+// scroll before it could be reached. Both are the same form now.
+describe("deleting rooms from the panel", () => {
+  it("deletes every ticked room in one post", async () => {
+    store.createRoom({ firstName: "B1", roomId: "BULK-A" });
+    store.createRoom({ firstName: "B2", roomId: "BULK-B" });
+    store.createRoom({ firstName: "B3", roomId: "BULK-C" });
+
+    // Same shape a set of same-named checkboxes actually sends. URLSearchParams
+    // with repeated keys is exactly what the browser puts on the wire.
+    const body = new URLSearchParams();
+    body.append("roomId", "BULK-A");
+    body.append("roomId", "BULK-C");
+    const res = await fetch(`${base}/admin/rooms/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body,
+      redirect: "manual",
+    });
+
+    expect(res.status).toBe(302);
+    const ids = store.listRoomsForAdmin().map((r) => r.roomId);
+    // The regression this pins: Object.fromEntries keeps only the LAST value
+    // for a repeated key, so a five-room delete used to remove exactly one.
+    expect(ids).not.toContain("BULK-A");
+    expect(ids).not.toContain("BULK-C");
+    expect(ids).toContain("BULK-B");
+
+    store.forceDeleteRoom("BULK-B");
+  });
+
+  it("comes back to the rooms table rather than the top of the page", async () => {
+    store.createRoom({ firstName: "B4", roomId: "ANCHOR-1" });
+    const res = await post("/admin/rooms/delete", { roomId: "ANCHOR-1" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toContain("#rooms");
+  });
+
+  it("handles a single ticked box, which arrives as a string not an array", async () => {
+    store.createRoom({ firstName: "B5", roomId: "SOLO-1" });
+    await post("/admin/rooms/delete", { roomId: "SOLO-1" });
+    expect(store.listRoomsForAdmin().map((r) => r.roomId)).not.toContain("SOLO-1");
+  });
+
+  it("does nothing at all when nothing was ticked", async () => {
+    store.createRoom({ firstName: "B6", roomId: "KEEP-1" });
+    const before = store.listRoomsForAdmin().length;
+    const res = await post("/admin/rooms/delete", {});
+    expect(res.status).toBe(302);
+    expect(store.listRoomsForAdmin()).toHaveLength(before);
+    store.forceDeleteRoom("KEEP-1");
+  });
+
+  it("still honours the old per-room URL, and anchors it too", async () => {
+    store.createRoom({ firstName: "B7", roomId: "LEGACY-1" });
+    const res = await post("/admin/rooms/LEGACY-1/delete", {});
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toContain("#rooms");
+    expect(store.listRoomsForAdmin().map((r) => r.roomId)).not.toContain("LEGACY-1");
+  });
+});
+
+describe("room detail page", () => {
+  it("shows the seats, chips and history of one table", async () => {
+    const { room, player: banker } = store.createRoom({ firstName: "Reb", lastName: "Boruch", roomId: "PANEL-D1", buyIn: 250 });
+    const { player: alice } = store.joinRoom(room.roomId, { firstName: "Alice", lastName: "K" });
+    store.adjustPlayerWallet(room.roomId, banker.id, alice.id, -40, "paid the pizza");
+
+    const html = await (await get("/admin/rooms/PANEL-D1")).text();
+    expect(html).toContain("Alice K");
+    expect(html).toContain("Reb Boruch");
+    // The correction, with its note and its sign, off the same ledger the
+    // banker's own drawer reads.
+    expect(html).toContain("paid the pizza");
+    expect(html).toContain("-40");
+    store.forceDeleteRoom("PANEL-D1");
+  });
+
+  it("says the room is gone rather than 500ing on a stale link", async () => {
+    const res = await get("/admin/rooms/NOT-A-ROOM");
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain("no longer on the server");
+  });
+
+  it("never renders a room's password hash", async () => {
+    store.createRoom({ firstName: "B", roomId: "PANEL-D2", password: "hunter2" });
+    const html = await (await get("/admin/rooms/PANEL-D2")).text();
+    expect(html).toContain("password protected");
+    expect(html).not.toContain("hunter2");
+    store.forceDeleteRoom("PANEL-D2");
+  });
+
+  it("is behind the same session check as everything else", async () => {
+    const res = await fetch(`${base}/admin/rooms/PANEL-D1`, { redirect: "manual" });
+    expect([401, 404]).toContain(res.status);
+  });
+});
+
+describe("protections page", () => {
+  it("renders the live limits and rejection counts it is handed", async () => {
+    const html = await (await get("/admin/protections")).text();
+    expect(html).toContain("Sockets per IP");
+    expect(html).toContain("203.0.113.9");
+    expect(html).toContain("198.51.100.4");
+  });
+
+  it("counts a failed sign-in from the same tracker the throttle enforces", async () => {
+    const before = await (await get("/admin/protections")).text();
+    await fetch(`${base}/admin/login`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ username: "admin", password: "wrong" }),
+      redirect: "manual",
+    });
+    const after = await (await get("/admin/protections")).text();
+    // Nothing recorded this before: a wrong password reached the throttle's
+    // map and nowhere an operator could ever look.
+    expect(after).not.toEqual(before);
+    expect(after).toContain("wrong credentials");
+  });
+
+  it("is behind the same session check as everything else", async () => {
+    const res = await fetch(`${base}/admin/protections`, { redirect: "manual" });
+    expect([401, 404]).toContain(res.status);
+  });
+});
+
+describe("room table search and sorting", () => {
+  it("filters to the rooms whose id, name or banker match", async () => {
+    store.createRoom({ firstName: "Chaim", roomId: "FIND-ME", roomName: "Cholent Corner" });
+    store.createRoom({ firstName: "Yossi", roomId: "OTHER-1", roomName: "Kugel Table" });
+
+    const matched = await (await get("/admin?q=cholent")).text();
+    expect(matched).toContain("FIND-ME");
+    expect(matched).not.toContain("OTHER-1");
+
+    // By banker, not just by name -- "whose table is this" is the question an
+    // operator actually arrives with.
+    const byBanker = await (await get("/admin?q=yossi")).text();
+    expect(byBanker).toContain("OTHER-1");
+    expect(byBanker).not.toContain("FIND-ME");
+
+    store.forceDeleteRoom("FIND-ME");
+    store.forceDeleteRoom("OTHER-1");
+  });
+
+  it("says a filter matched nothing rather than looking like an empty server", async () => {
+    store.createRoom({ firstName: "Chaim", roomId: "EXISTS-1" });
+    const html = await (await get("/admin?q=zzzznothing")).text();
+    expect(html).toContain("No rooms match that filter");
+    expect(html).not.toContain("No active rooms");
+    store.forceDeleteRoom("EXISTS-1");
+  });
+
+  it("separates practice tables from real ones", async () => {
+    store.createRoom({ firstName: "Chaim", roomId: "REAL-1" });
+    const practice = store.createPracticeRoom({ firstName: "Solo" });
+
+    const realOnly = await (await get("/admin?kind=real")).text();
+    expect(realOnly).toContain("REAL-1");
+    expect(realOnly).not.toContain(practice.room.roomId);
+
+    const practiceOnly = await (await get("/admin?kind=practice")).text();
+    expect(practiceOnly).toContain(practice.room.roomId);
+    expect(practiceOnly).not.toContain("REAL-1");
+
+    store.forceDeleteRoom("REAL-1");
+    store.forceDeleteRoom(practice.room.roomId);
   });
 });

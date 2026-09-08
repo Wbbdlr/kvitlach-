@@ -1,16 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { clsx } from "clsx";
 import { Card } from "../types";
 import { cardImages } from "./selectors";
 import { Icon } from "./icons";
 import { ART_H, ART_W, DEFAULT_MARK, markSvgBody } from "./cardMark";
-
-// Total ms from mount to a freshly-rejected card vanishing into the discard
-// pile: cardDealIn (340) + eleveroonReject's own delay (340) + its duration
-// (620) + cardDiscardFly's duration (480) -- see index.css's comment above
-// .k-card-discard-out for the full sequenced timeline this mirrors. Kept as
-// one constant so the JS unmount timer and the CSS delays can't drift apart.
-const DISCARD_FLIGHT_MS = 340 + 340 + 620 + 480;
 
 // A single card, shared by both UIs.
 //
@@ -80,26 +73,23 @@ export function CardView({
   // empty <svg> over every card on a felt that re-renders each round.
   const markBody = hidden || showFallback ? "" : markSvgBody(Number(card.name), DEFAULT_MARK);
 
-  // The discard pile (DiscardPile.tsx), not a ring left sitting in the hand,
-  // is the record of an Eleveroon reject -- see index.css's cardDiscardFly
-  // comment and TASKS.md's "real discard pile" entry. A card that's already
-  // resolved before this client connected (elevActive but not `animate`) has
-  // nothing left to show here at all; one that just got rejected plays its
-  // usual puff/crumble/rebound, THEN flies out and unmounts itself the same
-  // way. Frozen the same way `animate` is: only the mount-time snapshot of
-  // `elevActive`/`animate` should ever decide this, never a later re-render.
-  const [flown, setFlown] = useState(() => elevActive && !animate);
-  useEffect(() => {
-    if (!elevActive || !animate || flown) return undefined;
-    const timer = setTimeout(() => setFlown(true), DISCARD_FLIGHT_MS);
-    return () => clearTimeout(timer);
-    // Deliberately empty deps -- this fires once per card, off the frozen
-    // elevActive/animate captured at mount, exactly like the `animate` state
-    // itself; re-running it on some unrelated re-render would just re-arm a
-    // timer for a card that's already mid-flight or already gone.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  if (elevActive && flown) return null;
+  // The ring stays in the hand for the rest of the round.
+  //
+  // This card used to puff, crumble and then fly out to the discard pile,
+  // unmounting itself a couple of seconds after it was rejected -- the pile
+  // was meant to be the record, not "a ring left sitting in the hand". That
+  // was the wrong call, and it was reported as a bug: "that card should
+  // appear as part of the hand until the next round, so people can still see
+  // that it happened. That's the point of having the overlay, so people can
+  // see why the hand didn't bust."
+  //
+  // It is the right correction. An Eleveroon reject is the explanation for an
+  // arithmetic that otherwise looks wrong -- a hand holding an 11 that plainly
+  // should have busted it -- and an explanation that removes itself after two
+  // seconds is not available to the person who looks up a moment later, or to
+  // anyone who reconnects. The card still joins the discard pile (that list is
+  // cards no longer countable, which this is); it just also stays where it was
+  // dealt, greyed and ringed, until the round ends and the hand clears.
 
   return (
     <span
@@ -107,19 +97,13 @@ export function CardView({
         "relative inline-flex",
         animate && "k-card-in",
         sizeClass,
-        // k-card-elev is the ring, shown for however long this render still
-        // happens at all -- brief for a live reject (it's mid-flight, see
-        // `flown` above), the whole rest of the round for the pile's own
-        // static review copy (DiscardPileModal.tsx doesn't set `elevActive`
-        // through this path at all, see that file's comment).
-        // k-card-elev-in/k-card-discard-out are the one-shot "just got
-        // rejected, now watch it leave" motion, gated on `animate` the same
-        // way k-card-in is: a reconnect/reload that would otherwise mount an
-        // already-resolved ignored card for the first time on THIS client
-        // instead returns null above, before ever reaching this markup.
+        // k-card-elev is the ring, and it now stays for the rest of the round
+        // (see the comment above elevActive). k-card-elev-in is the one-shot
+        // "just got rejected" pop, gated on `animate` the same way k-card-in
+        // is: a client that reconnects mid-round mounts the card already
+        // ringed rather than replaying a rejection it did not witness.
         elevActive && "k-card-elev",
         elevActive && animate && "k-card-elev-in",
-        elevActive && animate && "k-card-discard-out",
         // Deliberately NOT gated on `animate`, unlike everything above it.
         // Those are one-shot arrival motions, and replaying an arrival for a
         // card that in truth arrived before this client connected is a lie
