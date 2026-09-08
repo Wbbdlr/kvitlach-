@@ -10,8 +10,9 @@ import { ContactContent } from "./contact.js";
 import { DisclaimerContent, isDisclaimerSlug } from "./disclaimer.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
 import type { ProtectionSnapshot } from "./ws-server.js";
+import { ClientErrorLog } from "./client-errors.js";
 import { resolveClientIp } from "./client-ip.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
@@ -163,6 +164,9 @@ export interface HttpServerDeps {
    *  this module. Omitted, the page renders the login throttle alone and says
    *  so rather than showing four empty tables. */
   protections?: (top?: number) => ProtectionSnapshot;
+  /** Injectable only so tests can assert against the same instance the route
+   *  writes to. Left out, the server owns its own. */
+  clientErrors?: ClientErrorLog;
 }
 
 export function createHttpServer(store: GameStore, deps: HttpServerDeps | AccessControl = {}) {
@@ -178,6 +182,9 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   // saves a list that nothing uses and nothing says why.
   const botNames = store.botNames;
   const auth = opts.auth ?? new AdminAuth();
+  // Owned here rather than injected: nothing outside this file writes to it,
+  // and the route that fills it and the route that reads it are both here.
+  const clientErrors = opts.clientErrors ?? new ClientErrorLog();
   const app = Fastify({
     logger: {
       // The admin routes carry ADMIN_TOKEN as a query param (the plain-HTML
@@ -254,6 +261,26 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   app.get("/api/contact", async (_request, reply) => {
     reply.header("cache-control", "public, max-age=60");
     return contact.toRecord();
+  });
+
+  // The one PUBLIC WRITE this server accepts, and the only reason it is worth
+  // the risk: a render error currently reaches console.error on a player's
+  // phone and nowhere else, which is why a reported white-page crash survived
+  // roughly 150 attempts to reproduce it.
+  //
+  // Everything that makes it safe is somewhere else on purpose. ClientErrorLog
+  // clamps every field on arrival, holds a fixed 50-entry ring in memory (no
+  // database -- an unauthenticated write must not be able to grow storage),
+  // and throttles hard per IP because a component that throws on every render
+  // posts as fast as React can re-render it. The admin page renders the text
+  // through escapeHtml like everything else there.
+  //
+  // Always 204, never a body: an attacker learns nothing about whether a
+  // report was kept, throttled or discarded, and the client has nothing useful
+  // to do with the answer either -- it is already showing the player a crash.
+  app.post("/api/client-error", async (request, reply) => {
+    clientErrors.record(request.body, getClientIp(request));
+    return reply.code(204).send();
   });
 
   app.get("/api/disclaimer", async (_request, reply) => {
@@ -411,6 +438,31 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
         notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
       })
     );
+  });
+
+  // What crashed in players' browsers. Its own page, and a POST to clear it
+  // once a bug is fixed so the list means "still happening".
+  app.get("/admin/errors", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderClientErrorsPage({
+        snapshot: clientErrors.snapshot(),
+        query: carry(request, how),
+        refresh: query.refresh !== "0",
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  app.post("/admin/errors/clear", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const cleared = clientErrors.clear();
+    const sep = carry(request, how) ? "&" : "?";
+    const note = cleared === 1 ? "1 report cleared." : `${cleared} reports cleared.`;
+    return reply.redirect(`/admin/errors${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   // The four throttles, live. Its own page for the same reason the room detail

@@ -46,7 +46,7 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
             enough" gold, but side by side the two don't actually match
             (amber-600 reads noticeably more orange/yellow); this is the
             real one, not an approximation. */}
-        <span style={{ color: "var(--gold)" }}>
+        <span className="k-brand-face" style={{ color: "var(--gold)" }}>
           Kvitlach
           {/* Unregistered-use claim, not a registration mark -- no filing
               behind this, so it stays TM rather than (r). Small and
@@ -56,7 +56,7 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
           <sup className="text-[0.5em] font-normal align-super ml-0.5">&trade;</sup>
         </span>
       </a>
-      <span className="self-end -translate-y-[4px] text-[10px] font-serif uppercase tracking-[0.2em] text-blue-700/80 leading-tight">
+      <span className="k-brand-face self-end -translate-y-[4px] text-[10px] uppercase tracking-[0.2em] text-blue-700/80 leading-tight">
         Ah Heimishe Chanukah Shpil
       </span>
       {showNav && (

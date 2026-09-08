@@ -59,10 +59,21 @@ function locations(): { modifier: string; path: string; body: string }[] {
   return out;
 }
 
-// The complete, deliberate list of public backend routes. Adding a fourth
-// means adding it here too, in the same review -- that duplication is the
-// point, not an accident to DRY away.
-const PUBLIC_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer"];
+// The complete, deliberate list of public backend routes. Adding one means
+// adding it here too, in the same review -- that duplication is the point, not
+// an accident to DRY away. It has already earned its keep once: the
+// client-error route below was added to nginx.conf and this test failed, which
+// is exactly the review step it exists to force.
+const PUBLIC_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer", "/api/client-error"];
+
+// The three content routes are GET-only because each is operator-authored copy
+// written from /admin and never from the app. /api/client-error is the mirror
+// image and the only public WRITE this origin carries: the app posts a render
+// error to it so somebody other than the player can read it, and nothing reads
+// it back from here. So the method rule is per-route rather than blanket, and
+// a route appearing in NEITHER list is a route nobody decided the methods for.
+const GET_ONLY_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer"];
+const POST_ONLY_ROUTES = ["/api/client-error"];
 
 describe("the frontend origin's backend proxy", () => {
   it("proxies exactly the known paths and no more", () => {
@@ -104,11 +115,26 @@ describe("the frontend origin's backend proxy", () => {
     }
   });
 
-  it("every known route is GET-only, because each copy is written from /admin and never from the app", () => {
-    for (const route of PUBLIC_ROUTES) {
+  it("keeps the operator-authored copy read-only, since it is written from /admin and never from the app", () => {
+    for (const route of GET_ONLY_ROUTES) {
       const loc = locations().find((l) => l.path === route);
       expect(loc?.body, `no location block found for ${route}`).toContain("limit_except GET");
     }
+  });
+
+  it("keeps the one public write to POST, and caps what it will accept", () => {
+    for (const route of POST_ONLY_ROUTES) {
+      const loc = locations().find((l) => l.path === route);
+      expect(loc?.body, `no location block found for ${route}`).toContain("limit_except POST");
+      // The backend clamps every field anyway; this stops a large body from
+      // reaching the event loop at all.
+      expect(loc?.body, `${route} accepts an unbounded body`).toContain("client_max_body_size");
+    }
+  });
+
+  it("decides the methods for every public route, one way or the other", () => {
+    // A route in neither list is one whose methods nobody chose.
+    expect([...GET_ONLY_ROUTES, ...POST_ONLY_ROUTES].sort()).toEqual([...PUBLIC_ROUTES].sort());
   });
 
   // Not a proxy property, but the same blast radius: the SPA fallback is what

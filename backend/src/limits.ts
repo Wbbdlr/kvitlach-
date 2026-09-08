@@ -16,6 +16,8 @@ export interface LimitsRecord {
   maxRooms: number;
   maxPracticeRooms: number;
   maxPlayersPerRoom: number;
+  /** Hours a seat may sit without its player doing anything. See idleSeatHours. */
+  idleSeatHours: number;
   updatedAt: number;
 }
 
@@ -25,6 +27,11 @@ export const DEFAULT_LIMITS = {
   maxRooms: 150,
   maxPracticeRooms: 25,
   maxPlayersPerRoom: 100,
+  // A day, asked for as "some people still have the app or page running for a
+  // while so it thinks the game is still active, we should prob kick them
+  // after a day or whatever". Long enough that nothing takes a seat away from
+  // somebody who stepped out for the evening and came back.
+  idleSeatHours: 24,
 } as const;
 
 // Upper bounds on what the admin page will accept. A typo of 1500 rooms
@@ -36,11 +43,22 @@ const BOUNDS = {
   maxRooms: [1, 1000],
   maxPracticeRooms: [1, 500],
   maxPlayersPerRoom: [2, 500],
+  // One hour is the floor rather than zero: this control removes people from
+  // a table, and a value that evicts anyone who thought for a few minutes is
+  // not a setting worth being able to type. The ceiling is 30 days, which is
+  // longer than any room survives its own idle window, so setting it there is
+  // how you turn the sweep off without a second switch to get wrong.
+  idleSeatHours: [1, 720],
 } as const;
 
 export type LimitKey = keyof typeof DEFAULT_LIMITS;
 
-export const LIMIT_KEYS: readonly LimitKey[] = ["maxRooms", "maxPracticeRooms", "maxPlayersPerRoom"];
+export const LIMIT_KEYS: readonly LimitKey[] = [
+  "maxRooms",
+  "maxPracticeRooms",
+  "maxPlayersPerRoom",
+  "idleSeatHours",
+];
 
 export function isLimitKey(value: unknown): value is LimitKey {
   return typeof value === "string" && (LIMIT_KEYS as readonly string[]).includes(value);
@@ -78,6 +96,18 @@ export class RuntimeLimits {
 
   get maxPlayersPerRoom(): number {
     return this.values.maxPlayersPerRoom;
+  }
+
+  /**
+   * How long a seat may sit without its player doing anything, in ms.
+   *
+   * A getter in ms rather than the raw hours, because every caller wants a
+   * duration to compare a timestamp against and none of them wants to
+   * remember the conversion. The setting is in hours because that is the unit
+   * an operator thinks in.
+   */
+  get idleSeatMs(): number {
+    return this.values.idleSeatHours * 60 * 60_000;
   }
 
   get(key: LimitKey): number {
@@ -128,6 +158,7 @@ export function limitsFromEnv(env: NodeJS.ProcessEnv = process.env): Partial<Lim
     maxRooms: env.MAX_ROOMS,
     maxPracticeRooms: env.MAX_PRACTICE_ROOMS,
     maxPlayersPerRoom: env.MAX_PLAYERS_PER_ROOM,
+    idleSeatHours: env.IDLE_SEAT_HOURS,
   };
   for (const key of LIMIT_KEYS) {
     const value = normalizeLimit(key, fromEnv[key]);

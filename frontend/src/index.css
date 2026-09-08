@@ -258,22 +258,19 @@ body {
    percentage positioning instead and could never match it.
    Design tokens below are the mockup's values verbatim. */
 :root {
-  /* The lettering ON the table: name plates, the felt's own print, and the
-     reaction bubbles. Cinzel first, which is the face the card art's
-     Schlesinger mark is set in, so the words on the felt and the words on the
-     cards are the same hand.
+  /* The Kvitlach wordmark and its tagline, and nothing else.
      
-     Cinzel has no Hebrew, and that is the mechanism rather than a gap: the
-     browser walks the stack per character, so Latin resolves to Cinzel and
-     Hebrew falls through to Frank Ruhl on its own. No language attribute to
-     maintain, no per-string switching, and a reaction mixing both scripts
-     gets each in the right face inside one bubble.
+     Cinzel is the face the card art's Schlesinger mark is set in, so the brand
+     is lettered in the same hand as the cards. It was briefly applied to the
+     felt at large -- name plates, the felt's own print, the reaction bubbles --
+     which was a misreading: a display face cut for engraved capitals is not
+     what a name you glance at ten times a round wants to be set in, and the
+     felt is better off in the UI face it already used. Branding only.
      
      Georgia last as a real fallback rather than bare `serif`: it ships
-     everywhere, and it is the closest widely-installed face to Cinzel's
-     proportions, so a table that loads before the webfont does not visibly
-     reflow. */
-  --k-felt-font: 'CinzelFelt', 'FrankRuhlLibre', Georgia, 'Times New Roman', serif;
+     everywhere and sits closest to Cinzel's proportions, so the wordmark does
+     not visibly jump when the webfont arrives. */
+  --k-brand-font: 'CinzelFelt', Georgia, 'Times New Roman', serif;
   --k-plate: #f7f3ea;
   --k-plate-ink: #1f2937;
   /* The same parchment, translucent, for plates sitting ON the felt -- they
@@ -498,7 +495,13 @@ body:has(.k-fit) {
   transform-origin: center center;
   border-radius: 14px;
   color: #eef2ea;
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* 'FrankRuhlLibre' ahead of Inter, exactly as tailwind.config.cjs does for
+     the rest of the app. The felt sets its own family rather than inheriting,
+     so the app-wide Hebrew default did not reach it -- and the felt is where
+     the Hebrew actually is: the watermark below (.k-oval::after) is a phrase a
+     banker writes, and it defaults to one. Hebrew-only unicode-range, so Latin
+     on the felt is Inter exactly as before. */
+  font-family: "FrankRuhlLibre", "Inter", ui-sans-serif, system-ui, sans-serif;
   background: radial-gradient(ellipse 90% 70% at 50% 44%, var(--felt-hi), var(--felt-lo) 82%);
 }
 
@@ -541,7 +544,6 @@ body:has(.k-fit) {
    fits inside the oval without a repeat of the last three bugs. */
 .k-oval::after {
   content: var(--wm, "");
-  font-family: var(--k-felt-font);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -673,8 +675,14 @@ body:has(.k-fit) {
      Top-anchored, the scale-up only ever grows downward. */
   transform-origin: left top;
 }
+/* The lobby/site header's wordmark, which is the same brand lockup as
+   .k-logo-word below but lives outside the table's stylesheet conventions
+   (SiteHeader.tsx sizes it with Tailwind). Only the face is shared. */
+.k-brand-face {
+  font-family: var(--k-brand-font);
+}
 .k-logo-word {
-  font-family: "Playfair Display", "Didot", "Bodoni MT", "Hoefler Text", Georgia, serif;
+  font-family: var(--k-brand-font);
   font-size: 32px;
   font-weight: 700;
   color: #e6a44b;
@@ -682,7 +690,7 @@ body:has(.k-fit) {
   line-height: 1;
 }
 .k-logo-tag {
-  font-family: Georgia, serif;
+  font-family: var(--k-brand-font);
   font-size: 11px;
   letter-spacing: 3px;
   text-transform: uppercase;
@@ -871,7 +879,6 @@ body:has(.k-fit) {
   }
 }
 .k-plate-name {
-  font-family: var(--k-felt-font);
   /* Counter-scaled like .k-resv-amt below -- a name that's shrunk along with
      everything else on a crowded or small-phone table is exactly the kind
      of detail an older player asked to have stay legible. Floor matches the
@@ -4155,9 +4162,6 @@ body:has(.k-fit) {
    on this element for its whole 10s life, so a value set here would last one
    frame. This declaration is the pre-animation resting state only. */
 .k-reaction {
-  /* The one place Hebrew reliably shows up in play (REACTION_PHRASES), and
-     the reason the stack carries a Hebrew face at all. */
-  font-family: var(--k-felt-font);
   position: absolute;
   bottom: calc(100% + 8px);
   left: 50%;

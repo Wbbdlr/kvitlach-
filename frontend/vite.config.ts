@@ -28,6 +28,14 @@ export default defineConfig({
         target: `http://localhost:${process.env.BACKEND_PORT || 3000}`,
         changeOrigin: true,
       },
+      // Mirrors frontend/nginx.conf, which is what carries this in
+      // production. Without it a crash in `npm run dev` posts into Vite's
+      // own 404 and the whole point of the feature -- being able to read
+      // what crashed -- is missing exactly where it is being developed.
+      "^/api/client-error$": {
+        target: `http://localhost:${process.env.BACKEND_PORT || 3000}`,
+        changeOrigin: true,
+      },
     },
   },
 });

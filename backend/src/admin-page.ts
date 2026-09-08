@@ -9,6 +9,7 @@ import type { AdminRoomDetail } from "./store.js";
 import type { ConnectionSummary, LedgerEntry } from "./types.js";
 import type { ProtectionKind, ProtectionSnapshot } from "./ws-server.js";
 import type { AdminLoginSnapshot } from "./http-server.js";
+import type { ClientErrorLog } from "./client-errors.js";
 import { metrics } from "./metrics.js";
 
 // The admin page's HTML. Split out of http-server.ts once it stopped being a
@@ -461,6 +462,7 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
       maxRooms: "Max rooms",
       maxPracticeRooms: "Max practice rooms",
       maxPlayersPerRoom: "Max players per room",
+      idleSeatHours: "Idle seat evicted after (h)",
     };
     return `<form method="post" action="${act("/admin/limits")}" class="row">
       <label for="l-${key}">${escapeHtml(labels[key])}</label>
@@ -559,6 +561,7 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
       <span class="meta">
         <a href="${act(refresh ? "/admin?refresh=0" : "/admin")}">${refresh ? "stop auto-refresh" : "start auto-refresh"}</a>
         &middot; <a href="${act("/admin/protections")}">protections</a>
+        &middot; <a href="${act("/admin/errors")}">client errors</a>
         &middot; <a href="/health/detail">raw JSON</a>
         &middot; <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>
       </span>
@@ -1033,6 +1036,89 @@ export function renderProtectionsPage({ login, ws, query, refresh }: Protections
           }`
         : ""
     }`,
+    refresh
+  );
+}
+
+export interface ClientErrorsDeps {
+  snapshot: ReturnType<ClientErrorLog["snapshot"]>;
+  query: string;
+  refresh: boolean;
+  notice?: string;
+}
+
+/**
+ * Render errors reported by players' browsers.
+ *
+ * The whole value here is that it exists at all: before this, a crash reached
+ * console.error on somebody's phone and stopped there, which is why a reported
+ * white-page crash survived roughly 150 attempts to reproduce it.
+ *
+ * Every field on this page is text a stranger POSTed to an unauthenticated
+ * endpoint. It goes through escapeHtml like everything else in this file, and
+ * the stack is rendered inside <pre> rather than being parsed or linkified --
+ * there is nothing here that treats the content as anything but a string.
+ *
+ * Repeats are counted rather than listed, so the page reads as a list of
+ * distinct failures. Clearing is a deliberate button rather than an expiry:
+ * after a fix ships, an operator wants "is it still happening", and that
+ * question is only answerable against a list they zeroed themselves.
+ */
+export function renderClientErrorsPage({ snapshot, query, refresh, notice }: ClientErrorsDeps): string {
+  const act = (path: string) => `${path}${query}`;
+  const { reports, dropped, limit, windowMs, capacity } = snapshot;
+
+  const rows = reports
+    .map(
+      (r) => `<tr>
+        <td>${escapeHtml(formatStamp(r.at))}<div class="meta">${escapeHtml(formatIdle(Date.now() - r.at))} ago</div></td>
+        <td>${escapeHtml(r.message)}${
+          r.stack
+            ? `<details><summary class="meta">stack</summary><pre style="white-space:pre-wrap;font-size:0.75rem;margin:0.4rem 0 0">${escapeHtml(
+                r.stack
+              )}</pre></details>`
+            : ""
+        }</td>
+        <td>${escapeHtml(r.route ?? "-")}</td>
+        <td>${escapeHtml(r.version ?? "-")}</td>
+        <td class="${r.count > 1 ? "warn" : ""}">${r.count}</td>
+        <td class="meta"><code>${escapeHtml(r.ip)}</code><div>${escapeHtml((r.userAgent ?? "").slice(0, 60))}</div></td>
+      </tr>`
+    )
+    .join("\n");
+
+  return shell(
+    "Client errors",
+    `<div class="topbar">
+      <h1 style="margin:0">Client errors</h1>
+      <span class="meta">
+        <a href="${act("/admin")}">&larr; panel</a>
+        &middot; <a href="${act(refresh ? "/admin/errors?refresh=0" : "/admin/errors")}">${
+          refresh ? "stop auto-refresh" : "start auto-refresh"
+        }</a>
+      </span>
+    </div>
+    ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
+    <p class="meta">What actually crashed in a player's browser, reported by the app itself. Held in memory
+    only &mdash; the last ${capacity} distinct messages, cleared by a restart. Identical messages are counted
+    rather than repeated, so a crash loop is one row.</p>
+
+    ${
+      reports.length === 0
+        ? '<p class="meta">Nothing reported since the last restart.</p>'
+        : `<table>
+            <thead><tr><th>When</th><th>Error</th><th>Route</th><th>Version</th><th>Seen</th><th>From</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <form method="post" action="${act("/admin/errors/clear")}"
+                onsubmit="return confirm('Clear all ${reports.length} report(s)? This is how you check whether a fix worked.');">
+            <p><button type="submit" class="danger">Clear the list</button></p>
+          </form>`
+    }
+    <p class="meta">A browser may report at most ${limit} distinct errors per ${Math.round(
+      windowMs / 1000
+    )}s; ${dropped} report(s) have been refused by that throttle since the last restart. A number climbing
+    here usually means one device in a crash loop rather than an attack.</p>`,
     refresh
   );
 }

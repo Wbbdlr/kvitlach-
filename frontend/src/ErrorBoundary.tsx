@@ -10,6 +10,47 @@ interface State {
   error?: Error;
 }
 
+/**
+ * Ships a crash to the server so somebody other than the player can read it.
+ *
+ * Until this existed, a render error reached console.error on the player's own
+ * phone and stopped there -- which is exactly why a reported white-page crash
+ * survived roughly 150 attempts to reproduce it. A player can say "it went
+ * white again"; they cannot be talked through opening a JavaScript console
+ * mid-game.
+ *
+ * Deliberately silent and deliberately fire-and-forget. The page is already
+ * showing somebody a crash, and a failed report is not a second thing to tell
+ * them about; the catch swallows a blocked request, an offline phone and a
+ * backend that is itself down, all of which are likely in exactly this moment.
+ *
+ * keepalive so the report still goes out if the player reloads immediately,
+ * which is what the card in front of them is telling them to do.
+ */
+function reportToServer(error: unknown, stack?: string) {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown render error";
+  try {
+    void fetch("/api/client-error", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        message,
+        // The path only. A room code is not a secret but it is not needed to
+        // identify a broken screen either, and query strings here carry watch
+        // grants and session hints.
+        route: typeof window !== "undefined" ? window.location.pathname : undefined,
+        version: APP_VERSION,
+        stack: stack ?? (error instanceof Error ? error.stack : undefined),
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+      }),
+    }).catch(() => {});
+  } catch {
+    /* nothing to do and nobody to tell -- see above */
+  }
+}
+
 // Without this, one throw anywhere in render unmounts the entire tree and
 // leaves a blank white page -- no message, no way back except knowing to
 // refresh. That is a poor failure for a game people are sitting at mid-hand,
@@ -24,10 +65,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    // The browser console is the only place this can go -- there is no
-    // client-side error reporting wired up. Logged in full so a player who
-    // can be talked through opening the console gives something actionable.
+    // Still logged in full: the console is the better artifact when somebody
+    // IS in front of the machine, and the server copy is clamped.
     console.error("Render error caught by ErrorBoundary", error, info.componentStack);
+    // React's component stack, not the error's own -- for a render error it is
+    // the one that says which component threw.
+    reportToServer(error, info.componentStack ?? undefined);
   }
 
   render() {
@@ -84,5 +127,12 @@ export function RouteErrorElement() {
   // Router errors never reach componentDidCatch, so this is the only place
   // the details get logged. Same reasoning as the boundary's own log.
   console.error("Render error caught by the route error element", error);
+  // In an effect, not in render: this component re-renders like any other, and
+  // posting from the body would send a fresh report every time it did. The
+  // empty deps make it exactly once per mount, which is once per crash.
+  React.useEffect(() => {
+    reportToServer(error);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return <ErrorCard error={error} />;
 }

@@ -38,7 +38,32 @@ module.exports = {
       },
       fontFamily: {
         display: ["'DidoneRoomNumbers'", "serif"],
-        body: ["'Inter'", "ui-sans-serif", "system-ui"],
+        // 'FrankRuhlLibre' first, and the reason is unicode-range rather than
+        // order. Its @font-face (index.css) carries a Hebrew-only range, so it
+        // can only ever be used for Hebrew characters: Latin skips past it and
+        // lands on Inter exactly as before, measured unchanged at 151px for
+        // the same word with and without it in the stack.
+        //
+        // Second would also work today, because Inter is not bundled and the
+        // system copy this resolves to has no Hebrew either. First does not
+        // depend on that staying true on every machine, which is the only
+        // reason to prefer it. It costs nothing: a font that cannot match a
+        // Latin character is not consulted for one.
+        //
+        // Asked for as "for Hebrew words, as the default, something nicer" --
+        // so it applies app-wide, with no language attribute to maintain and
+        // no per-string switching. A sentence mixing both scripts gets each in
+        // the right face.
+        body: ["'FrankRuhlLibre'", "'Inter'", "ui-sans-serif", "system-ui"],
+        // And again on `sans`, which is what Preflight puts on <html> and what
+        // every `font-sans` utility resolves to. Setting it on `body` alone
+        // covered less than it looked: measured in the running app, the felt's
+        // name plates and its watermark both computed to Tailwind's sans stack
+        // rather than ours, so Hebrew on the felt -- the watermark being the
+        // main place a banker writes any -- would have gone on rendering in
+        // whatever the system offered. Same unicode-range gate, so Latin is
+        // untouched here too.
+        sans: ["'FrankRuhlLibre'", "'Inter'", "ui-sans-serif", "system-ui", "sans-serif"],
       },
     },
   },

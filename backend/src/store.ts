@@ -219,6 +219,16 @@ interface RoomRecord {
   // admin room list show how long a room has actually been idle, since the
   // pending setTimeout itself isn't inspectable.
   lastActivityAt?: number;
+  // When each seated player last did something deliberate, by player id. See
+  // noteSeatAction. Deliberately NOT persisted: it is a liveness signal about
+  // this process's connections, and a restart should not evict somebody for
+  // an idleness the server was not around to observe. Missing entries are
+  // treated as "since the room was restored", which is the safe direction.
+  lastSeatActionAt?: Record<string, number>;
+  // When this process first saw the room -- created, or restored from
+  // Postgres. The floor sweepIdleSeats measures a seat with no action of its
+  // own against; see that method for why it is not lastActivityAt.
+  seatFloorAt?: number;
 }
 
 export interface AdminRoomSummary {
@@ -787,7 +797,7 @@ export class GameStore {
       renameBlockedIds: [],
       buyInBlockedIds: [],
     };
-    this.rooms.set(roomId, { room, nextStart: 0 });
+    this.rooms.set(roomId, { room, nextStart: 0, seatFloorAt: Date.now() });
     this.bumpRoomTimer(roomId);
     const sessionToken = this.issueSession(roomId, player.id);
     return { room, player, sessionToken };
@@ -870,7 +880,7 @@ export class GameStore {
       buyInBlockedIds: [],
       practice: true,
     };
-    this.rooms.set(roomId, { room, nextStart: 0 });
+    this.rooms.set(roomId, { room, nextStart: 0, seatFloorAt: Date.now() });
     this.bumpRoomTimer(roomId);
     const sessionToken = this.issueSession(roomId, human.id);
     // No human banker exists to click Start -- begin immediately, as the
@@ -948,6 +958,9 @@ export class GameStore {
       roomRec.room.waitingPlayerIds = [...new Set([...roomRec.room.waitingPlayerIds, player.id])];
     }
       this.bumpRoomTimer(roomRec.room.roomId);
+    // Sitting down starts this seat's own clock. Without it a fresh joiner is
+    // measured from the room-level floor, which is older than they are.
+    this.noteSeatAction(roomRec.room.roomId, player.id);
     const sessionToken = this.issueSession(roomRec.room.roomId, player.id);
     return { room: roomRec.room, player, sessionToken };
   }
@@ -1141,6 +1154,11 @@ export class GameStore {
     // `type === "admin"` and could deal its own room's rounds.
     const allowed = !actor.isBot && (actor.type === "admin" || (roomRec.room.practice === true && actor.type === "player"));
     if (!allowed) throw new Error("forbidden");
+    // Clear out seats nobody has been sitting in for a day, BEFORE the
+    // rotation below picks who gets dealt in -- otherwise an abandoned tab
+    // takes a seat this round and is evicted the next, which is the worst of
+    // both. See sweepIdleSeats.
+    this.sweepIdleSeats(roomId);
     // A dropped connection is not the same thing as an empty chair. A screen
     // that locked, a cell handover, a walk to the kitchen -- all of these land
     // between rounds at a family game, and a bare presence check dealt the
@@ -1264,6 +1282,87 @@ export class GameStore {
    * `waitingPlayerIds` and stop -- which nobody noticed, because until
    * 2026-09-06 leaveRoom had no callers at all (see leave-and-return.test.ts).
    */
+  /**
+   * Removes seats whose player has not done anything in limits.idleSeatHours.
+   *
+   * The problem this solves was reported as "some people still have the app or
+   * page running for a while so it thinks the game is still active". The room
+   * half of that is fixed elsewhere (persistRoom: a reconnect no longer counts
+   * as play). This is the seat half: a roster that fills up with tabs left
+   * open on phones in pockets, holding seats in the rotation against
+   * MAX_SEATED_PLAYERS_PER_ROUND and against the room's own player cap, with
+   * no way for a banker to tell them apart from someone in the next room.
+   *
+   * Run from startRound rather than on an interval, deliberately. It needs to
+   * happen exactly when seats are about to be handed out and never otherwise;
+   * a table nobody is dealing at is the ROOM reaper's business, not this. That
+   * also means no timer to leak, nothing to tear down in tests, and a sweep
+   * that is a pure function of when the banker deals.
+   *
+   * Never removes: the banker (the table cannot proceed without them, and
+   * BANKER_ABANDON_MS is the mechanism for a banker who has gone), bots (they
+   * do not act on their own schedule and have no session to lose), or anyone
+   * in a practice room (single-human sandboxes that expire in 30 minutes
+   * anyway). A seat with no recorded action yet is measured from when the room
+   * last saw activity, not from zero -- a restart must not evict people for an
+   * idleness this process was never around to observe.
+   *
+   * Removal goes through removePlayerCompletely, the same path a kick uses, so
+   * the wallet is squared and the ledger records where the chips went. The
+   * entry is a "leave" rather than a "kick": nobody decided this, and "leave"
+   * is the one kind undo deliberately does not reverse, because the way back
+   * is the seat-claim flow the player has for themselves.
+   */
+  private sweepIdleSeats(roomId: string): string[] {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec || roomRec.room.practice === true) return [];
+    const idleMs = this.limits.idleSeatMs;
+    const now = Date.now();
+    const stamps = roomRec.lastSeatActionAt ?? {};
+    // The floor for a seat with no stamp of its own: when this process first
+    // saw the room, which is its creation or its restore from Postgres.
+    //
+    // Deliberately NOT lastActivityAt, which was the first cut and was wrong
+    // in a way only a test caught: the banker refreshes room activity every
+    // time they deal, so a seat that never acted was measured from the last
+    // round anybody played and could never go stale while the table was in
+    // use. That is exactly the case this exists for -- a tab left open at a
+    // table other people are still playing at.
+    //
+    // Anchoring on the restore keeps the restart guarantee that motivated a
+    // floor in the first place: nobody is evicted for an idleness this
+    // process was not around to observe.
+    const floor = roomRec.seatFloorAt ?? now;
+
+    const stale = roomRec.room.players.filter((p) => {
+      if (p.type === "admin" || p.isBot) return false;
+      return now - (stamps[p.id] ?? floor) >= idleMs;
+    });
+    if (stale.length === 0) return [];
+
+    const bankerId = roomRec.room.players.find((p) => p.type === "admin")?.id;
+    for (const player of stale) {
+      const stack = roomRec.room.wallets[player.id] ?? 0;
+      // Before the removal, for the same reason kickPlayer records first:
+      // removePlayerCompletely deletes the wallet, so the amount has to be
+      // read while it still exists.
+      this.ledgerEntry(
+        roomId,
+        "leave",
+        bankerId ?? player.id,
+        player.id,
+        -stack,
+        `Idle for over ${this.limits.get("idleSeatHours")}h`
+      );
+      this.removePlayerCompletely(roomId, player.id);
+      this.audit("idle-seat-swept", roomId, bankerId ?? "server", { target: player.id, stack });
+    }
+    if (roomRec.lastSeatActionAt) {
+      for (const player of stale) delete roomRec.lastSeatActionAt[player.id];
+    }
+    return stale.map((p) => p.id);
+  }
+
   private removePlayerCompletely(roomId: string, playerId: string) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return;
@@ -1559,6 +1658,11 @@ export class GameStore {
     if (available <= 0) throw new Error("bank_empty");
     if (newBet > available) throw new Error(`bank_limit:${available}`);
 
+    // Before the draw and before the bank validation below: a wager is the
+    // most deliberate thing a player does, and it counts as presence whether
+    // or not the rest of this call goes on to succeed.
+    this.noteSeatAction(round.roomId, playerId);
+
     const shouldBank = Boolean(options?.bank || newBet === available);
     // Validated BEFORE the draw, not after it. settleImmediateTurn below
     // mutates roomRec.room.wallets IN PLACE, while the round it belongs to
@@ -1603,6 +1707,7 @@ export class GameStore {
     if (!round) throw new Error("round_not_found");
     const roomRec = this.rooms.get(round.roomId);
     if (!roomRec) throw new Error("room_not_found");
+    this.noteSeatAction(round.roomId, playerId);
     const lock = round.bankLock;
     if (lock) {
       if (lock.stage === "player" && lock.playerId !== playerId) throw new Error("bank_locked");
@@ -1624,6 +1729,7 @@ export class GameStore {
     const round = this.rounds.get(roundId);
     if (!round) throw new Error("round_not_found");
     const roomRec = this.rooms.get(round.roomId);
+    this.noteSeatAction(round.roomId, playerId);
     if (!roomRec) throw new Error("room_not_found");
     const lock = round.bankLock;
     if (lock) {
@@ -2407,7 +2513,9 @@ export class GameStore {
     );
     const updatedPlayer = roomRec.room.players.find((p) => p.id === playerId)!;
     const newToken = this.issueSession(roomId, playerId);
-    this.bumpRoomTimer(roomId);
+    // persistRoom, not bumpRoomTimer: coming back is not playing. See
+    // persistRoom's own comment for what that used to cost.
+    this.persistRoom(roomId);
     return { player: updatedPlayer, sessionToken: newToken };
   }
 
@@ -2444,10 +2552,22 @@ export class GameStore {
     }, Math.max(0, window - elapsed));
   }
 
-  private bumpRoomTimer(roomId: string) {
+  // Persists the room without claiming anybody played.
+  //
+  // Split out of bumpRoomTimer for the reconnect path. resumePlayer went
+  // through bumpRoomTimer, which stamps lastActivityAt = now -- so a tab left
+  // open on a table nobody was playing refreshed the room's whole idle window
+  // every time the socket came back. The client reconnects on its own
+  // indefinitely (1.5s backoff capped at 15s, plus an immediate wake() when a
+  // hidden tab returns after 45s, see frontend ws.ts), so a phone in a pocket
+  // kept a dead table alive and the admin table's Idle column measured
+  // "anything touched this room" rather than "anyone played".
+  //
+  // Presence really did change, so the row is still written. What it must not
+  // do is restamp activity or re-arm the reaper.
+  private persistRoom(roomId: string) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return;
-    roomRec.lastActivityAt = Date.now();
     // Practice rooms are throwaway, single-human sandboxes -- never worth a
     // Postgres write, and expire far sooner than a real game's 3 days.
     if (this.db && roomRec.room.practice !== true) {
@@ -2457,7 +2577,34 @@ export class GameStore {
       // stale snapshots over it.
       this.serializeWrite(`room:${roomId}`, () => db.saveRoom(roomId, roomRec.room));
     }
+  }
+
+  private bumpRoomTimer(roomId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) return;
+    roomRec.lastActivityAt = Date.now();
+    this.persistRoom(roomId);
     this.armRoomReaper(roomId);
+  }
+
+  /**
+   * Records that a specific player did something deliberate.
+   *
+   * Separate from bumpRoomTimer, which is about the ROOM: the room is alive
+   * while anyone is playing, but a seat is only alive while its own player
+   * acts. Without this, a table of twelve where eleven people wandered off
+   * looked exactly like a table of twelve, because the one person still
+   * dealing kept the room's clock fresh for all of them.
+   *
+   * Stamped on the actions a person takes on purpose -- wagering, drawing,
+   * standing, banking -- and deliberately NOT on a reconnect, a presence
+   * change, or a turn the server auto-skipped on their behalf. An auto-skip is
+   * precisely the evidence that nobody is there.
+   */
+  private noteSeatAction(roomId: string, playerId: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) return;
+    roomRec.lastSeatActionAt = { ...(roomRec.lastSeatActionAt ?? {}), [playerId]: Date.now() };
   }
 
   // Admin tooling (backend/src/http-server.ts's token-gated /admin routes) --
@@ -2587,7 +2734,14 @@ export class GameStore {
         // lastActivityAt comes from the row, and the reaper is armed WITHOUT
         // bumpRoomTimer -- that would restamp the room as active now and write
         // that back over the real value. See armRoomReaper.
-        this.rooms.set(roomId, { room: roomState, nextStart: 0, lastActivityAt: lastActiveAt });
+        this.rooms.set(roomId, {
+          room: roomState,
+          nextStart: 0,
+          lastActivityAt: lastActiveAt,
+          // Now, not lastActiveAt: nobody is evicted for an idleness this
+          // process was not around to observe. See sweepIdleSeats.
+          seatFloorAt: Date.now(),
+        });
         this.armRoomReaper(roomId);
         for (const { roundId, roundState } of rounds) {
           const ctx: RoundContext = {
