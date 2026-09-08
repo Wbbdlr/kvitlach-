@@ -6,7 +6,9 @@ function Boom(): JSX.Element {
   throw new Error("kaboom");
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("ErrorBoundary", () => {
   it("renders children when nothing throws", () => {

@@ -9,6 +9,7 @@ const baseData: StatsData = {
   losses: 1,
   pushes: 0,
   isBanker: false,
+  isSelf: false,
   netTotal: 10,
   entries: [
     { roundNumber: 2, status: "WON", statusClass: "text-emerald-700 font-bold", bet: "+$20", betClass: "text-emerald-600" },

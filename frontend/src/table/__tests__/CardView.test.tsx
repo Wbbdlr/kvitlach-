@@ -39,8 +39,12 @@ describe("CardView -- Eleveroon-rejected card", () => {
   });
 
   describe("once the fly-out finishes", () => {
-    beforeEach(() => vi.useFakeTimers());
-    afterEach(() => vi.useRealTimers());
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
 
     it("vanishes from the hand -- the pile, not a ring left in the hand, is the record from then on", () => {
       const { container } = render(<CardView card={rejectedCard} pastFirstPaint />);
@@ -145,5 +149,27 @@ describe("maker's mark overlay", () => {
       <CardView card={{ name: "12", attributes: { values: [12], eleveroonIgnored: true } }} pastFirstPaint />
     );
     expect(mark(container)?.getAttribute("class")).toContain("grayscale");
+  });
+});
+
+describe("the winning-hand glow", () => {
+  it("marks a card that is part of the win", () => {
+    const { container } = render(<CardView card={normalCard} winning />);
+    expect(container.querySelector(".k-card-win")).toBeTruthy();
+  });
+
+  it("leaves an ordinary card alone", () => {
+    const { container } = render(<CardView card={normalCard} />);
+    expect(container.querySelector(".k-card-win")).toBeFalsy();
+  });
+
+  it("still marks a card that mounted after the win -- unlike the arrival animations", () => {
+    // k-card-in and the Eleveroon reject are one-shot ARRIVALS, suppressed for
+    // a card this client is only now mounting (a reconnect mid-round), because
+    // replaying an arrival that already happened is a lie. The glow is not an
+    // arrival: it ends in a settled marker for the hand that won, which is
+    // just as true for somebody who reconnects as for somebody who watched.
+    const { container } = render(<CardView card={normalCard} winning pastFirstPaint={false} />);
+    expect(container.querySelector(".k-card-win")).toBeTruthy();
   });
 });

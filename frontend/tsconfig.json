@@ -6,7 +6,28 @@
     "moduleResolution": "Node",
     "strict": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    // `npm run typecheck` is the frontend typecheck, and `vite build` is NOT:
+    // Vite transpiles with esbuild, which strips types without checking them,
+    // so the build stayed green through a two-error `IconName` mismatch that
+    // sat in main for fifteen commits. These four options are what it took to
+    // make tsc usable here at all -- without them it reported ~180 errors,
+    // almost none of them real, which is how it came to be written off as
+    // "pre-existing ambient noise" and left out of CI.
+    //
+    // skipLibCheck: node_modules ships .d.ts files that do not typecheck
+    // against this project's lib/target (rollup's Symbol.asyncDispose, vite's
+    // own node imports). Their errors are not ours to fix and drowned out the
+    // ones that were.
+    "skipLibCheck": true,
+    // React and ReactDOM are CommonJS with no default export; every `import
+    // React from "react"` in this codebase needs interop to be legal. Vite
+    // does this for us at build time, so the code was always correct -- only
+    // tsc disagreed.
+    "esModuleInterop": true,
+    // Several tests read source files off disk to assert on them (the CSS
+    // z-index scale, the nginx config, the portrait gate), which needs
+    // node:fs, node:path and __dirname. They run under vitest, in node.
+    "types": ["vite/client", "node"],
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "baseUrl": "./src",
     "paths": {

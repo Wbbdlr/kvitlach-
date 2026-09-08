@@ -126,10 +126,18 @@ jobs:
         run: npm audit --omit=dev
         continue-on-error: true
 
-      # `vite build` is the real frontend typecheck -- `tsc --noEmit` reports
-      # a pile of pre-existing unrelated ambient-type errors here (CLAUDE.md),
-      # so it is deliberately not used.
-      - name: Build (also the typecheck)
+      # `vite build` is NOT a typecheck, which is what this job used to say it
+      # was: Vite transpiles with esbuild, which strips types without checking
+      # them. Nothing here checked frontend types at all, and an IconName
+      # mismatch rode fifteen green runs into main because of it. `tsc
+      # --noEmit` was written off as unusable (it reported ~180 errors, nearly
+      # all ambient noise) -- four tsconfig options later it is clean, so it
+      # gates now. Both steps stay: one catches type errors, the other catches
+      # a build that cannot actually be produced.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
         run: npx vite build
 
   e2e:

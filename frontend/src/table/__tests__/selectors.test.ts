@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay, fullName, REACTION_EMOJIS, REACTION_EMOJI_LABELS } from "../selectors";
+import { totalDisplay, tagVariant, allTotals, bestTotal, statusDisplay, fullName, winningCardIndices, REACTION_EMOJIS, REACTION_EMOJI_LABELS } from "../selectors";
 import { Card, Player, Turn } from "../../types";
 
 const banker: Player = { id: "bank", firstName: "Bank", lastName: "", type: "admin", presence: "online" };
@@ -381,5 +381,58 @@ describe("REACTION_EMOJI_LABELS", () => {
       expect(REACTION_EMOJI_LABELS[emoji], `missing a label for ${emoji}`).toBeTruthy();
     }
     expect(Object.keys(REACTION_EMOJI_LABELS).length).toBe(REACTION_EMOJIS.length);
+  });
+});
+
+// The glow says "these cards are the win". It is only honest if it fires on
+// the hands that actually won on their own cards, and stays off the ones that
+// merely came out ahead of the banker.
+describe("winningCardIndices", () => {
+  const TWO: Card = { name: "2", attributes: { values: [2], type: "rosier" } };
+  const ELEVEN: Card = { name: "11", attributes: { values: [11], type: "rosier" } };
+  const FIVE: Card = { name: "5", attributes: { values: [5] } };
+  const TWELVE: Card = { name: "12", attributes: { values: [12, 9, 10] } };
+
+  it("lights the whole hand on an outright 21", () => {
+    const turn = makeTurn(p1, { state: "won", cards: [TEN, SIX, FIVE] });
+    expect([...winningCardIndices(turn)]).toEqual([0, 1, 2]);
+  });
+
+  it("reads 21 through the 12's flexible value, like everything else does", () => {
+    // 12 counted as 9, plus 6, plus 6 -- the 12 is 12/9/10 and re-reads at
+    // every evaluation (docs/GAME_RULES.md). A hand that only reaches 21 on
+    // its lower reading is still a 21.
+    const turn = makeTurn(p1, { state: "won", cards: [TWELVE, SIX, SIX] });
+    expect([...winningCardIndices(turn)]).toEqual([0, 1, 2]);
+  });
+
+  it("lights only the two framed cards on a rosier pair", () => {
+    const turn = makeTurn(p1, { state: "won", cards: [TWO, ELEVEN] });
+    expect([...winningCardIndices(turn)]).toEqual([0, 1]);
+  });
+
+  it("stays dark on a showdown win -- those cards did nothing special", () => {
+    // 16 against a banker who came in lower. calculateEndState resolves this
+    // to "won" exactly like a 21, which is the whole reason this needs its
+    // own answer rather than reading turn.state.
+    const turn = makeTurn(p1, { state: "won", cards: [TEN, SIX] });
+    expect([...winningCardIndices(turn)]).toEqual([]);
+  });
+
+  it("stays dark on a hand still being played", () => {
+    const turn = makeTurn(p1, { state: "pending", cards: [TEN, SIX, FIVE] });
+    expect([...winningCardIndices(turn)]).toEqual([]);
+  });
+
+  it("skips an Eleveroon-ignored card sitting in a winning hand", () => {
+    // The card is on the felt and contributes nothing -- 10 + 6 + 5 is the
+    // 21, and the rejected 11 is not part of it.
+    const turn = makeTurn(p1, { state: "won", cards: [TEN, SIX, ELEV_IGNORED, FIVE] });
+    expect([...winningCardIndices(turn)]).toEqual([0, 1, 3]);
+  });
+
+  it("covers the banker's own 21, which is the loudest one at the table", () => {
+    const turn = makeTurn(banker, { state: "won", cards: [TEN, SIX, FIVE] });
+    expect([...winningCardIndices(turn)]).toEqual([0, 1, 2]);
   });
 });

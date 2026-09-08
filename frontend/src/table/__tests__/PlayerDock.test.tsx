@@ -26,6 +26,7 @@ function renderDock(overrides: { wallet?: number; bankIncrement?: number; canBan
     <PlayerDock
       turn={baseTurn}
       wallet={overrides.wallet ?? 100}
+      buyIn={100}
       bankIncrement={overrides.bankIncrement ?? 50}
       canBank={overrides.canBank ?? true}
       onBet={onBet}
@@ -340,6 +341,7 @@ describe("PlayerDock BANK! confirmation", () => {
       <PlayerDock
         turn={baseTurn}
         wallet={50}
+        buyIn={100}
         bankIncrement={0}
         canBank={false}
         bankDisabledReason="Bank is empty."
@@ -367,6 +369,7 @@ describe("PlayerDock BANK! confirmation", () => {
       <PlayerDock
         turn={baseTurn}
         wallet={200}
+        buyIn={100}
         bankIncrement={80}
         canBank
         onBet={onBet}
@@ -383,6 +386,7 @@ describe("PlayerDock BANK! confirmation", () => {
       <PlayerDock
         turn={{ ...baseTurn, bet: 80 }}
         wallet={200}
+        buyIn={100}
         bankIncrement={0}
         canBank={false}
         onBet={onBet}
@@ -401,6 +405,7 @@ describe("PlayerDock BANK! confirmation", () => {
       <PlayerDock
         turn={baseTurn}
         wallet={200}
+        buyIn={100}
         bankIncrement={80}
         canBank
         onBet={onBet}
@@ -414,6 +419,7 @@ describe("PlayerDock BANK! confirmation", () => {
       <PlayerDock
         turn={{ ...baseTurn, bet: 5 }}
         wallet={200}
+        buyIn={100}
         bankIncrement={75}
         canBank
         onBet={onBet}

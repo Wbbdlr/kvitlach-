@@ -1,4 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
+import { RouteErrorElement } from "./ErrorBoundary";
 import App from "./App";
 import About from "./About";
 import Disclaimer from "./Disclaimer";
@@ -25,11 +26,19 @@ import Terms from "./Terms";
 // fire again. App parses the room id out of the path itself (see
 // state.ts's getUrlRoomId) rather than via useParams(), so one route can
 // serve every path shape and never remounts on a room transition.
+//
+// Every route carries an `errorElement`, and it is not optional decoration:
+// RouterProvider wraps each route in its own error boundary, INSIDE main.tsx's
+// <ErrorBoundary>, so without one a render error never reaches ours -- the
+// player gets React Router's built-in white page with a raw stack trace on it
+// instead of the reload card. See ErrorBoundary.tsx's RouteErrorElement.
+const errorElement = <RouteErrorElement />;
+
 export const router = createBrowserRouter([
-  { path: "/about", element: <About /> },
-  { path: "/disclaimer", element: <Disclaimer /> },
-  { path: "/contact", element: <Contact /> },
-  { path: "/privacy", element: <Privacy /> },
-  { path: "/terms", element: <Terms /> },
-  { path: "*", element: <App /> },
+  { path: "/about", element: <About />, errorElement },
+  { path: "/disclaimer", element: <Disclaimer />, errorElement },
+  { path: "/contact", element: <Contact />, errorElement },
+  { path: "/privacy", element: <Privacy />, errorElement },
+  { path: "/terms", element: <Terms />, errorElement },
+  { path: "*", element: <App />, errorElement },
 ]);

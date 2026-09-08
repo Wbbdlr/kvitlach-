@@ -922,6 +922,79 @@ body:has(.k-fit) {
 .k-hand > :nth-child(7) { z-index: 7; }
 .k-hand > :nth-child(n + 8) { z-index: 8; }
 
+/* An outright win, said on the cards themselves -- a 21, or the two cards of
+   a rosier pair (selectors.ts's winningCardIndices decides which, and Seat/
+   Dealer never pass it for a card still face-down).
+   Gold, not the plain green a won hand wears: the same gold .k-tag.natural
+   and the active-turn pulse already use for "this beat the table", so the
+   felt says the same thing in two places rather than two different things.
+   Small on purpose. The result is already being announced by the status pill
+   and the sound, and this fires in a fan where the cards overlap -- a card
+   that leaps out of the hand is one the eye then has to put back. It grows,
+   settles a little above where it started, and keeps a soft rim for the rest
+   of the round so the hand that did it stays readable at a glance.
+
+   The glow rides the IMG, not the wrapper, and that is not cosmetic: the
+   wrapper already carries .k-card-in's deal animation, and the card that
+   completes a 21 is by definition one that just arrived -- so both classes
+   land on the same node in the common case. Two `animation` shorthands on one
+   element is not a compromise, it is a cascade fight the later rule simply
+   wins; .k-card-in is defined further down this file, so the glow lost it and
+   never ran. Split across the two nodes, the deal and the win each own an
+   element and both play. Measured, not assumed: the first cut had them on one
+   node and computed animation-name came back `cardDealIn` on a hand that had
+   just hit 21.
+
+   `both` fill is what makes the settled rim true: it IS the animation's final
+   frame, so nothing has to be restated as a static rule and the two cannot
+   drift. The base drop-shadow every card wears (see .k-hand img above) is
+   carried through every keyframe -- a filter replaces the property outright,
+   so leaving it out would drop the card's own shadow for the length of the
+   animation and then permanently. */
+.k-card-win img {
+  animation: cardWin 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes cardWin {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 0 rgba(230, 164, 75, 0));
+  }
+  55% {
+    transform: scale(1.07);
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 10px rgba(230, 164, 75, 0.75));
+  }
+  100% {
+    transform: scale(1.03);
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(230, 164, 75, 0.5));
+  }
+}
+/* Above its neighbours in the fan for as long as it is bigger than them: a
+   grown card sliding UNDER the next one reads as a rendering fault rather
+   than a flourish. 9 clears the 2..8 the fan itself uses, and like those it
+   is local to .k-hand's own sibling ordering -- it means nothing outside this
+   one element and must not go on the global scale (see the --z- block's own
+   comment, and zIndexScale.test.ts, which knows about this exception).
+   Placed AFTER the nth-child rules above for the same reason the glow moved
+   off the wrapper: `.k-hand > .k-card-win` and `.k-hand > :nth-child(3)` have
+   identical specificity, so source order decides, and above them this lost on
+   every card but the first. Caught the same way -- computed z-index read 2 and
+   3 on a three-card 21. */
+.k-hand > .k-card-win {
+  z-index: 9;
+}
+/* Reduced motion takes the MOVEMENT, not the meaning: no grow, no ramp, but
+   the rim stays, so the hand that won is still the one wearing gold. (The
+   in-game Motion toggle is separate and stricter by design -- :root.motion-off
+   kills every animation outright, including this one. See its comment at the
+   top of this file for why that switch is blanket and this one is not.) */
+@media (prefers-reduced-motion: reduce) {
+  .k-card-win img {
+    animation: none;
+    filter: drop-shadow(0 4px 7px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 5px rgba(230, 164, 75, 0.5));
+  }
+}
+
+
 /* Tap-to-fan-out: a hand of 4+ cards is otherwise only ever readable ~60%
    card at a time (see the comment atop this block). Seat.tsx/Dealer.tsx only
    wire the click/keyboard handlers and role="button" once the hand actually

@@ -155,3 +155,38 @@ describe("adjustPlayerWallet -- the one money path that used to skip normalizeMo
     );
   });
 });
+
+// A rejected action must leave the table exactly as it found it. The one that
+// did not was applyBet's BANK! branch: it drew the card and ran
+// settleImmediateTurn -- which moves roomRec.room.wallets IN PLACE -- before
+// asking whether the bank amount was even legal. persistRound never ran on the
+// throw, so the card and the wager rolled back while the payout stayed.
+describe("a rejected BANK! bet", () => {
+  it("moves no money, however the drawn card lands", () => {
+    const store = new GameStore();
+    const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
+    const { player } = store.joinRoom(room.roomId, { firstName: "P1" });
+
+    // Looped rather than run once: the bug only paid out when the drawn card
+    // RESOLVED the hand (a 21 or a rosier pair paid the player, a bust paid
+    // the banker), which is a minority of draws. One deal proves nothing.
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      const round = store.startRound(room.roomId, admin.id);
+      const before = { ...store.getRoom(room.roomId)!.wallets };
+
+      // `bank: true` with anything other than the full bank window is exactly
+      // what invalid_bank_amount is for -- and what a client can send.
+      expect(() => store.applyBet(round.roundId, player.id, 3, { bank: true })).toThrow(
+        "invalid_bank_amount",
+      );
+
+      const after = store.getRoom(room.roomId)!.wallets;
+      expect(after[player.id]).toBe(before[player.id]);
+      expect(after[admin.id]).toBe(before[admin.id]);
+
+      // Fresh deal for the next attempt; the wallets are already asserted
+      // unchanged, so nothing needs resetting but the round itself.
+      store.getRoom(room.roomId)!.roundId = undefined;
+    }
+  });
+});

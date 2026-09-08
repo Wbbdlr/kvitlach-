@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildHistoryHtml, historyFilename, summarize, verdict } from "./exportHistory";
 import type { CompletedRoundSummary } from "./state";
+import type { TurnState } from "./types";
 
 // The file this produces is the only thing a player takes home, and it is
 // generated once at the end of a night that cannot be replayed. A wrong total
@@ -20,8 +21,8 @@ import type { CompletedRoundSummary } from "./state";
 // The BANK!-lock path (store.ts) is the one exception and is covered on its
 // own further down: there the seat's `bet` is zeroed with settledBet keeping
 // the stake, and the banker's net moves to settledNet.
-const seat = (id: string, name: string, bet: number, state: string, extra: Record<string, unknown> = {}) => ({
-  player: { id, firstName: name, type: "player" },
+const seat = (id: string, name: string, bet: number, state: TurnState, extra: Record<string, unknown> = {}) => ({
+  player: { id, firstName: name, lastName: "", type: "player" as const, presence: "online" as const },
   state,
   cards: [{ name: "9", attributes: { values: [9] } }],
   bet,
@@ -31,8 +32,8 @@ const seat = (id: string, name: string, bet: number, state: string, extra: Recor
 // `bet` IS the net here -- that is not a shorthand for the test, it is what
 // the field holds on an admin turn once the round is resolved.
 const banker = (net: number, extra: Record<string, unknown> = {}) => ({
-  player: { id: "b", firstName: "Shloime", type: "admin" },
-  state: net < 0 ? "lost" : "standby",
+  player: { id: "b", firstName: "Shloime", lastName: "", type: "admin" as const, presence: "online" as const },
+  state: (net < 0 ? "lost" : "standby") as TurnState,
   cards: [{ name: "9", attributes: { values: [9] } }],
   bet: net,
   ...extra,
@@ -329,7 +330,7 @@ describe("what the sheet calls each hand", () => {
 // moment anyone left a table.
 describe("chips that moved without a hand", () => {
   const rounds: CompletedRoundSummary[] = [
-    { roundId: "r1", roundNumber: 1, completedAt: 1, turns: [seat("p1", "Sara", 10, "lost"), banker(10)] },
+    { roundId: "r1", roundNumber: 1, completedAt: 1, balances: [], turns: [seat("p1", "Sara", 10, "lost"), banker(10)] },
   ];
   const entry = (kind: string, amount: number) => ({
     id: `${kind}-${amount}`,

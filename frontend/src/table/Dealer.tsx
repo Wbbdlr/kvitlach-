@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
-import { totalDisplay, statusDisplay, fullName, tagVariant } from "./selectors";
+import { totalDisplay, statusDisplay, fullName, tagVariant, winningCardIndices } from "./selectors";
 import { CardView } from "./CardView";
 import { BankPanel } from "./BankPanel";
 import { Icon } from "./icons";
@@ -125,6 +125,8 @@ export function Dealer({
   // of the banker should stay concealed until bankerReveal.
   const isOwnerView = viewerId === turn.player.id;
   const bankerReveal = shouldForceReveal || turn.state !== "pending" || isOwnerView;
+  // See Seat.tsx's identical line -- one answer for the whole hand.
+  const bankWinners = winningCardIndices(turn);
   const name = bankerPlayer ? fullName(bankerPlayer) || bankerPlayer.firstName : "Bank";
   const isOffline = bankerPlayer ? bankerPlayer.presence !== "online" : false;
   const isActive = turn.state === "pending" && roundState === "final";
@@ -272,18 +274,25 @@ export function Dealer({
           aria-expanded={canFan ? fanned : undefined}
           aria-label={canFan ? `${fanned ? "Collapse" : "Show"} all ${turn.cards.length} cards in the bank's hand` : undefined}
         >
-          {turn.cards.map((c, idx) => (
-            <CardView
-              // Round-scoped for the same reason as Seat.tsx -- otherwise
-              // the bank's own opening card never re-animates past round 1.
-              key={`${roundId ?? "r"}-${idx}`}
-              card={c}
-              hidden={idx === 0 && !bankerReveal}
-              // The bank deals to itself first, so no extra stagger delay.
-              dealDelayMs={0}
-              pastFirstPaint={pastFirstPaint}
-            />
-          ))}
+          {turn.cards.map((c, idx) => {
+            const hidden = idx === 0 && !bankerReveal;
+            return (
+              <CardView
+                // Round-scoped for the same reason as Seat.tsx -- otherwise
+                // the bank's own opening card never re-animates past round 1.
+                key={`${roundId ?? "r"}-${idx}`}
+                card={c}
+                hidden={hidden}
+                // The bank deals to itself first, so no extra stagger delay.
+                dealDelayMs={0}
+                pastFirstPaint={pastFirstPaint}
+                // The bank's 21 is already the loudest moment on the felt
+                // (statusDisplay's own "BANK 21!"); this is the same event
+                // said on the cards. Never while the hole card is still down.
+                winning={!hidden && bankWinners.has(idx)}
+              />
+            );
+          })}
         </div>
 
         {/* The dealer's total and status USED to be a row of their own, right

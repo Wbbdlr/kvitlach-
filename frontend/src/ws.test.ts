@@ -27,7 +27,9 @@ class MockWebSocket {
     this.onclose?.();
   }
 
-  send() {}
+  // Typed, not bare: a bare `send()` gives the spy a zero-length call tuple,
+  // so reading calls[0][0] to assert on what was sent is a type error.
+  send(_data?: string) {}
 
   // Real browsers fire "close" asynchronously and only look up the current
   // onclose handler at dispatch time -- mimic that here (rather than no-op)

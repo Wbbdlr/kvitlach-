@@ -24,6 +24,7 @@ export function CardView({
   size,
   dealDelayMs,
   pastFirstPaint,
+  winning,
 }: {
   card: Card;
   hidden?: boolean;
@@ -46,6 +47,11 @@ export function CardView({
   // animation whenever animation-name goes from none to set), replaying it
   // for a card that in reality arrived silently.
   pastFirstPaint?: boolean;
+  // This card is part of an outright win -- a 21, or one of the two cards in
+  // a rosier pair (selectors.ts's winningCardIndices decides; Seat/Dealer
+  // gate it on the card actually being face-up, because a glow on a
+  // face-down card announces the result before the reveal does).
+  winning?: boolean;
 }) {
   const [animate] = useState(() => Boolean(pastFirstPaint));
   const key = hidden ? "blank" : card.name;
@@ -108,7 +114,16 @@ export function CardView({
         // instead returns null above, before ever reaching this markup.
         elevActive && "k-card-elev",
         elevActive && animate && "k-card-elev-in",
-        elevActive && animate && "k-card-discard-out"
+        elevActive && animate && "k-card-discard-out",
+        // Deliberately NOT gated on `animate`, unlike everything above it.
+        // Those are one-shot arrival motions, and replaying an arrival for a
+        // card that in truth arrived before this client connected is a lie
+        // about what just happened. This one is different in kind: it ends in
+        // a settled gold rim that says "these are the cards that won", which
+        // is as true for somebody who reconnects mid-round as for the player
+        // who was watching. They see a short pop on mount and then the same
+        // marker everyone else is looking at.
+        winning && "k-card-win"
       )}
       style={animate && dealDelayMs ? { animationDelay: `${dealDelayMs}ms` } : undefined}
     >

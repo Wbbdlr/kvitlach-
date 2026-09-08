@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { Player, RoundPhase, Turn } from "../types";
-import { totalDisplay, statusDisplay, betDisplay, tagVariant, fullName } from "./selectors";
+import { totalDisplay, statusDisplay, betDisplay, tagVariant, fullName, winningCardIndices } from "./selectors";
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
 import { Icon } from "./icons";
@@ -163,6 +163,10 @@ export function Seat({
   const resolved = turn.state === "lost" || turn.state === "won";
   const isPublicStandby = turn.state === "standby";
   const hasBet = typeof betStart === "number";
+  // The cards that ARE the win, for the glow -- an outright 21 or a rosier
+  // pair only. Computed once per render rather than per card: the answer is a
+  // property of the whole hand, not of any one card in it.
+  const winners = winningCardIndices(turn);
   const isOffline = (presence ?? turn.player.presence) !== "online";
 
   // The real-table "I'm calling Eleveroon!" moment -- announced the instant
@@ -443,6 +447,10 @@ export function Seat({
               // seat's place in deal order; +1 leaves room 0 for the dealer.
               dealDelayMs={isInitialCard ? (dealOrder + 1) * 90 : 0}
               pastFirstPaint={pastFirstPaint}
+              // `!hide` matters as much as the index does: a face-down card
+              // that glowed would announce the 21 to the whole table before
+              // the reveal that is supposed to announce it.
+              winning={!hide && winners.has(idx)}
             />
           );
         })}

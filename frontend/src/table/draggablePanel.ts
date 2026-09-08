@@ -277,7 +277,22 @@ export function useDraggablePanel(
       // then silently vanished. Nothing in jsdom reproduces it, because
       // fireEvent flushes between events.
       let latest = { ...from };
-      target.setPointerCapture?.(event.pointerId);
+      // `?.` guards the method EXISTING, not the call succeeding, and this one
+      // throws: setPointerCapture raises NotFoundError when the pointer id is
+      // no longer active. On a phone that is a real state, not a hypothetical
+      // -- a second finger landing (a pinch on the felt, or the other grip)
+      // makes the browser cancel the first pointer, and the pointerdown
+      // handler still runs afterwards with a dead id. Unguarded, the throw
+      // escaped before ANY of the three listeners below were attached, so the
+      // gesture was never wired up at all: the panel stopped following the
+      // finger and the error went to window.onerror.
+      // Capture is an enhancement here (it keeps a drag alive once the pointer
+      // leaves the grip); losing it is worth far less than losing the drag.
+      try {
+        target.setPointerCapture?.(event.pointerId);
+      } catch {
+        /* pointer already gone -- the listeners below still make a drag work */
+      }
 
       const onMove = (moveEvent: PointerEvent) => {
         const dx = moveEvent.clientX - startX;
@@ -297,7 +312,15 @@ export function useDraggablePanel(
         moveEvent.preventDefault();
       };
       const onUp = () => {
-        target.releasePointerCapture?.(event.pointerId);
+        // Throws the same way setPointerCapture does, and for the same reason
+        // -- and here it would skip the removeEventListener calls below,
+        // leaving a finished gesture's listeners on the element for the life
+        // of the page.
+        try {
+          target.releasePointerCapture?.(event.pointerId);
+        } catch {
+          /* nothing to release */
+        }
         target.removeEventListener("pointermove", onMove);
         target.removeEventListener("pointerup", onUp);
         target.removeEventListener("pointercancel", onUp);

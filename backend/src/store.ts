@@ -1477,14 +1477,26 @@ export class GameStore {
     if (available <= 0) throw new Error("bank_empty");
     if (newBet > available) throw new Error(`bank_limit:${available}`);
 
+    const shouldBank = Boolean(options?.bank || newBet === available);
+    // Validated BEFORE the draw, not after it. settleImmediateTurn below
+    // mutates roomRec.room.wallets IN PLACE, while the round it belongs to
+    // is still the local `updated` copy that only persistRound commits -- so
+    // a throw between the two rolls back the card and the wager and keeps
+    // the money. This check used to sit under `if (shouldBank)` after both
+    // had run: a client sending `bank: true` with any amount other than the
+    // full window got its bet rejected, its card discarded, and its wallet
+    // paid out anyway whenever the drawn card happened to resolve the hand
+    // (a 21 or rosier pair paid the player, a bust paid the banker).
+    // Repeatable from the wire, and a player who stops while ahead keeps the
+    // difference. `available` and `newBet` are both already known here, so
+    // nothing was gained by asking later.
+    if (shouldBank && newBet !== available) throw new Error("invalid_bank_amount");
+
     const updated = handleBet(round, playerId, amount, { eleveroon: options?.eleveroon });
     const settledIndex = updated.turns.findIndex((t) => t.player.id === playerId);
     if (settledIndex >= 0) this.settleImmediateTurn(updated, roomRec, settledIndex);
 
-    const shouldBank = Boolean(options?.bank || newBet === available);
-
     if (shouldBank) {
-      if (newBet !== available) throw new Error("invalid_bank_amount");
       const lockState: BankLockState = {
         playerId,
         stage: "player",

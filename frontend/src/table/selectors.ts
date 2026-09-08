@@ -169,6 +169,40 @@ export function allTotals(cards: Card[]): number[] {
   return sums;
 }
 
+// Which cards in a hand ARE the win -- what the felt puts a glow on.
+//
+// Only an OUTRIGHT win qualifies: the hand's own cards read 21, or they are a
+// rosier pair (21 by rule rather than by arithmetic -- docs/GAME_RULES.md).
+// A SHOWDOWN win does not, even though calculateEndState resolves it to the
+// same "won": those cards did nothing special, the banker's simply came in
+// lower, and lighting them up would tell a player they hit something they did
+// not. Same distinction statusDisplay already draws between "BANK 21!" and a
+// plain won hand.
+//
+// Returns indices rather than cards: the callers render by index, and a
+// 24-card deck holds two of every rank, so a hand really can contain two
+// cards that compare equal.
+//
+// Eleveroon-ignored cards are excluded for the reason they are excluded
+// everywhere else -- the card is on the felt but contributes nothing, so it
+// is not part of what won. A hand that reached 21 with no wager on it (a
+// blatt that landed exactly right) still counts: it settles as a push, but
+// the cards did hit 21, and that is what this is about.
+export function winningCardIndices(turn: Turn): Set<number> {
+  const winners = new Set<number>();
+  if (turn.state !== "won") return winners;
+  const rosier = isRosierPair(turn.cards);
+  if (!rosier && bestTotal(turn.cards).total !== 21) return winners;
+  turn.cards.forEach((card, idx) => {
+    if (card.attributes?.eleveroonIgnored) return;
+    // A rosier pair is only ever the two framed cards, never a third the hand
+    // never got to draw.
+    if (rosier && card.attributes.type !== "rosier") return;
+    winners.add(idx);
+  });
+  return winners;
+}
+
 export function bestTotal(cards: Card[]): { total?: number; bustedTotal?: number } {
   const visible = usableCards(cards);
   if (visible.length === 0) return { total: 0 };

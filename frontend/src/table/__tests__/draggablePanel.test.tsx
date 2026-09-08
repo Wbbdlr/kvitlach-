@@ -265,3 +265,37 @@ describe("the control bar's own grip", () => {
     expect(JSON.parse(window.localStorage.getItem(DOCK_KEY) as string).scale).toBe(1);
   });
 });
+
+// A pointer that is already gone by the time pointerdown is handled -- a
+// second finger landing on a phone makes the browser cancel the first, and
+// the queued handler still runs. setPointerCapture throws NotFoundError on
+// that id, and it used to throw straight out of begin(), BEFORE the move/up
+// listeners were attached: the gesture was never wired up, so the panel
+// simply stopped following the finger.
+describe("a pointer that died before the handler ran", () => {
+  it("still drags when setPointerCapture throws", () => {
+    function Panel() {
+      const ref = useRef<HTMLDivElement>(null);
+      const { panelProps } = useDraggablePanel(ref, "capture-throws");
+      return <div ref={ref} data-testid="panel" {...panelProps} />;
+    }
+    const { getByTestId } = render(<Panel />);
+    const panel = getByTestId("panel");
+    panel.getBoundingClientRect = () =>
+      ({ left: 40, top: 60, width: 120, height: 40, right: 160, bottom: 100, x: 40, y: 60 }) as DOMRect;
+    panel.setPointerCapture = () => {
+      throw new DOMException("No active pointer with the given id is found.", "NotFoundError");
+    };
+
+    expect(() =>
+      fireEvent.pointerDown(panel, { pointerId: 1, clientX: 100, clientY: 100, button: 0 }),
+    ).not.toThrow();
+
+    // The listeners are attached on the element itself, so a move past the
+    // slop has to actually move the panel for the gesture to have survived.
+    fireEvent(panel, new PointerEvent("pointermove", { pointerId: 1, clientX: 160, clientY: 140, bubbles: true }));
+    fireEvent(panel, new PointerEvent("pointerup", { pointerId: 1, clientX: 160, clientY: 140, bubbles: true }));
+
+    expect(panel.style.position).toBe("fixed");
+  });
+});

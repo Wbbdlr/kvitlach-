@@ -23,9 +23,10 @@ function Harness(props: Partial<React.ComponentProps<typeof NumberField>> = {}) 
       value={value}
       onChange={setValue}
       label="Bet amount"
+      // Spread last so a passed onChange wins over the harness's own setValue
+      // and typing stays observable. It used to be re-spread again below,
+      // conditionally, which did exactly the same thing a second time.
       {...props}
-      // Harness state wins over any passed value so typing is observable.
-      {...(props.onChange ? { onChange: props.onChange } : {})}
     />
   );
 }
@@ -53,7 +54,9 @@ describe("the field itself never summons the phone keyboard", () => {
 });
 
 describe("opening and closing the pad", () => {
-  beforeEach(() => render(<Harness />));
+  beforeEach(() => {
+    render(<Harness />);
+  });
 
   it("opens on a tap, not before", () => {
     expect(screen.queryByRole("dialog", { name: /bet amount/i })).toBeNull();
@@ -81,7 +84,9 @@ describe("opening and closing the pad", () => {
 });
 
 describe("entering a number", () => {
-  beforeEach(() => render(<Harness />));
+  beforeEach(() => {
+    render(<Harness />);
+  });
 
   it("replaces the starting value on the first digit, then appends", () => {
     // Same reasoning as the quick-bet tray's first-tap rule: the field
@@ -215,7 +220,9 @@ describe("negative amounts, where they are meant", () => {
 });
 
 describe("a real keyboard still works when one is present", () => {
-  beforeEach(() => render(<Harness />));
+  beforeEach(() => {
+    render(<Harness />);
+  });
 
   it("takes typed digits", () => {
     open();

@@ -37,6 +37,7 @@ function renderDrawer(overrides: { roundActive?: boolean; onReshuffleDeck?: () =
       onCloseRoom={vi.fn()}
       roundActive={overrides.roundActive ?? false}
       onReshuffleDeck={onReshuffleDeck}
+      onSetTurnSeconds={vi.fn()}
       standings={overrides.standings}
       ledger={overrides.ledger}
     />
@@ -178,6 +179,7 @@ function renderWithRequests(over: Partial<React.ComponentProps<typeof ManageDraw
       onCloseRoom={vi.fn()}
       roundActive={false}
       onReshuffleDeck={vi.fn()}
+      onSetTurnSeconds={vi.fn()}
       {...handlers}
       {...over}
     />
@@ -214,7 +216,7 @@ describe("the banker's approvals queue", () => {
 
   it("routes a rename's buttons to the rename handlers, not the chip ones", () => {
     const h = renderWithRequests({
-      renameRequests: [{ playerId: "p2", firstName: "Sarah", requestedAt: 1 }],
+      renameRequests: [{ playerId: "p2", firstName: "Sarah", lastName: "", requestedAt: 1 }],
     });
     const [approve, reject] = screen.getAllByRole("button", { name: /approve|reject/i });
     fireEvent.click(approve);

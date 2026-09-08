@@ -16,6 +16,7 @@ export type IconName =
   | "check"
   | "pencil"
   | "coins-plus"
+  | "camera"
   | "user-pencil"
   | "download"
   | "door"
