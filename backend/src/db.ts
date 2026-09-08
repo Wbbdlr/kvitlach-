@@ -90,6 +90,16 @@ export class Database {
       );
       CREATE INDEX IF NOT EXISTS idx_audit_at ON audit (at DESC);
       CREATE INDEX IF NOT EXISTS idx_audit_room ON audit (room_id, at DESC);
+
+      CREATE TABLE IF NOT EXISTS archived_rooms (
+        room_id TEXT PRIMARY KEY,
+        name TEXT,
+        banker_name TEXT,
+        archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        reason TEXT NOT NULL,
+        state JSONB NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_archived_at ON archived_rooms (archived_at DESC);
     `);
   }
 
@@ -162,6 +172,62 @@ export class Database {
   async auditActions(): Promise<string[]> {
     const result = await this.pool.query(`SELECT DISTINCT action FROM audit ORDER BY action`);
     return result.rows.map((row) => row.action as string);
+  }
+
+  // A deleted table's last state, kept so the ledger and round history outlive
+  // the deletion. PRIMARY KEY on room_id rather than a serial: Game IDs are
+  // reused once freed, and the useful record is the most recent life of that
+  // code, not every life it has ever had.
+  async archiveRoom(params: { roomId: string; name?: string; bankerName?: string; reason: string; state: unknown }): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO archived_rooms (room_id, name, banker_name, archived_at, reason, state)
+       VALUES ($1, $2, $3, now(), $4, $5)
+       ON CONFLICT (room_id) DO UPDATE
+         SET name = EXCLUDED.name, banker_name = EXCLUDED.banker_name,
+             archived_at = EXCLUDED.archived_at, reason = EXCLUDED.reason, state = EXCLUDED.state`,
+      [params.roomId, params.name ?? null, params.bankerName ?? null, params.reason, JSON.stringify(params.state)]
+    );
+  }
+
+  async listArchivedRooms(limit: number) {
+    const result = await this.pool.query(
+      `SELECT room_id, name, banker_name, archived_at, reason FROM archived_rooms
+       ORDER BY archived_at DESC LIMIT $1`,
+      [limit]
+    );
+    return result.rows.map((row) => ({
+      roomId: row.room_id as string,
+      name: (row.name ?? undefined) as string | undefined,
+      bankerName: (row.banker_name ?? undefined) as string | undefined,
+      archivedAt: new Date(row.archived_at).getTime(),
+      reason: row.reason as string,
+    }));
+  }
+
+  async getArchivedRoom(roomId: string) {
+    const result = await this.pool.query(
+      `SELECT room_id, name, banker_name, archived_at, reason, state FROM archived_rooms WHERE room_id = $1`,
+      [roomId]
+    );
+    const row = result.rows[0];
+    if (!row) return undefined;
+    return {
+      roomId: row.room_id as string,
+      name: (row.name ?? undefined) as string | undefined,
+      bankerName: (row.banker_name ?? undefined) as string | undefined,
+      archivedAt: new Date(row.archived_at).getTime(),
+      reason: row.reason as string,
+      state: row.state as Record<string, unknown>,
+    };
+  }
+
+  /** Deletes archives older than `cutoff` (epoch ms). Returns how many went. */
+  async pruneArchivedRooms(cutoff: number): Promise<number> {
+    const result = await this.pool.query(
+      `DELETE FROM archived_rooms WHERE archived_at < to_timestamp($1 / 1000.0)`,
+      [cutoff]
+    );
+    return result.rowCount ?? 0;
   }
 
   async logConnection(params: { roomId: string; playerId: string; ip?: string; userAgent?: string }) {

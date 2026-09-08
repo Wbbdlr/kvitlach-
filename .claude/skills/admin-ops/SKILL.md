@@ -80,6 +80,27 @@ Compose is not the only thing that eats it - `sed`, shells and editors do too.
   does. Takes effect on the next practice table; one already in play keeps the
   names it was dealt.
 
+- **The panel's other pages**, all reachable from the top bar: `/admin/rooms/<id>`
+  (a table's seats, connections, ledger and round history), `/admin/protections`
+  (what the throttles are absorbing), `/admin/errors` (crashes reported by
+  players' browsers), `/admin/audit` (who did what, filterable), `/admin/archive`
+  (deleted tables' ledgers) and `/admin/appearance` (house felt/chip defaults and
+  the win/futch card effects).
+- **Capacity, the throttles and the gameplay timings are all live settings now**
+  (`limits.ts`, three groups on the panel). Every one is read at the point of use,
+  not at boot, so a saved value is the enforced value - keep it that way; a
+  limiter that reads its threshold once at startup gives you a panel that reports
+  a new limit and enforces the old one. Bounds are fixed in code and the form
+  cannot widen them, because every protection can be set to a value that turns it
+  off. Pinned by `live-limits.test.ts`.
+- **Rotating the Postgres password is `bash deploy/rotate-db-password.sh`**, not
+  an edit to `deploy/.env`. `POSTGRES_PASSWORD` only takes effect on a first init
+  against an empty volume, so changing the line alone leaves the role untouched
+  and breaks `DATABASE_URL` - and the obvious fix for that is `down -v`, which
+  destroys the database. The script ALTERs the role first, verifies the new
+  password over TCP, then writes `.env`. Run
+  `bash deploy/verify-rotate-db-password.sh` before changing it.
+
 ## Access model
 
 Each way in is gated separately (`create` / `join` / `practice`), each

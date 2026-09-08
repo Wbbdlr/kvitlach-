@@ -385,9 +385,16 @@ export class WSServer {
     // refused anything over MAX_MESSAGE_BYTES_CEILING with a 1009 -- this is the
     // live half of that pair, and the reason the pair exists at all is that
     // maxPayload is read once when the server socket is built.
+    // RawData is Buffer | ArrayBuffer | Buffer[], and the three do not agree on
+    // how to ask their size: an ArrayBuffer has byteLength and no length, so
+    // reading .length off it yields undefined, and `undefined > limit` is
+    // false -- the check would pass every oversized frame while looking
+    // correct. `ws` hands us Buffers today; this does not depend on that.
+    const sizeOf = (chunk: Buffer | ArrayBuffer): number =>
+      "byteLength" in chunk ? chunk.byteLength : (chunk as Buffer).length;
     const bytes = Array.isArray(data)
-      ? data.reduce((sum, chunk) => sum + chunk.length, 0)
-      : (data as Buffer).length;
+      ? data.reduce((sum, chunk) => sum + sizeOf(chunk), 0)
+      : sizeOf(data as Buffer | ArrayBuffer);
     if (bytes > limits.maxMessageBytes) {
       this.recordRejection("messages", this.meta.get(socket)?.ip ?? "unknown");
       this.send(socket, { type: "error", error: { message: "message_too_large" } });

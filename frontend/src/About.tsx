@@ -154,6 +154,29 @@ export default function About() {
             by Kenney (CC0 / public domain).
           </li>
           <li>
+            {/* The SIL Open Font License requires its own text to travel with
+                the font, and for a web app that means the files have to be
+                reachable, not sitting in tools/fonts where the deploy tarball
+                does not even look. They are served from /licenses and linked
+                here, which is also the only place a reader would think to
+                look for them. */}
+            Typefaces: <strong>Cinzel</strong> (the wordmark and the maker's
+            mark on the cards), <strong>Newsreader</strong> (the nameplates)
+            and <strong>Frank Ruhl Libre</strong> (Hebrew), all under the{" "}
+            <a
+              href="https://openfontlicense.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-700 hover:underline"
+            >
+              SIL Open Font License
+            </a>
+            :{" "}
+            <a href="/licenses/OFL-Cinzel.txt" className="text-amber-700 hover:underline">Cinzel</a>,{" "}
+            <a href="/licenses/OFL-Newsreader.txt" className="text-amber-700 hover:underline">Newsreader</a>,{" "}
+            <a href="/licenses/OFL-FrankRuhlLibre.txt" className="text-amber-700 hover:underline">Frank Ruhl Libre</a>.
+          </li>
+          <li>
             Natural 21 fanfare:{" "}
             <a
               href="https://mixkit.co/free-sound-effects/win/"

@@ -139,6 +139,26 @@ const formatIdle = (ms: number) => formatDuration(ms, "just now");
 // this and the box writing it are not reliably in the same zone, and a bare
 // naked local-looking time is how you end up off by five hours with nothing on
 // screen admitting it.
+/**
+ * Builds an admin URL that carries BOTH the session-carrying query and the
+ * page's own parameters.
+ *
+ * The obvious `${path}?refresh=0${query}` is wrong, and was wrong on four
+ * pages. `query` is itself "?token=..." for a token-authenticated operator, so
+ * that produces `/admin?refresh=0?token=abc` -- the token is swallowed into the
+ * value of `refresh`, guard() finds no token, and the page 404s. Worse, it
+ * breaks the `?token=` path specifically, which is the escape hatch an operator
+ * reaches for when they are locked out of the cookie login.
+ *
+ * Cookie sessions never saw it: `query` is empty for them, so the naive form
+ * happens to produce a correct URL.
+ */
+function adminUrl(path: string, carried: string, params: Record<string, string> = {}): string {
+  const extra = new URLSearchParams(params).toString();
+  if (!extra) return `${path}${carried}`;
+  return `${path}${carried}${carried ? "&" : "?"}${extra}`;
+}
+
 const formatStamp = (ms: number): string => {
   if (!Number.isFinite(ms) || ms <= 0) return "unknown";
   return new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
@@ -427,6 +447,121 @@ function hexTriplet(hex: string): string {
  * SAVED record, never from the form -- this page has no JavaScript, by the
  * same rule as the rest of the panel, so what you see is what is live.
  */
+export interface ArchivedRoomSummary {
+  roomId: string;
+  name?: string;
+  bankerName?: string;
+  archivedAt: number;
+  reason: string;
+}
+
+export interface ArchivePageDeps {
+  rooms: ArchivedRoomSummary[];
+  detail?: {
+    roomId: string;
+    name?: string;
+    bankerName?: string;
+    archivedAt: number;
+    ledger: LedgerEntry[];
+    roundCount: number;
+    playerCount: number;
+  };
+  hasDatabase: boolean;
+  retentionDays: number;
+  query: string;
+}
+
+/**
+ * Tables that were force-deleted, and the chip record they left behind.
+ *
+ * Force-delete used to be total: an operator clearing a stuck table took its
+ * ledger with it, and that ledger is the only account of who paid whom. The
+ * Game ID still frees up -- that is what deleting is for -- but the record now
+ * outlives it.
+ *
+ * Read-only by construction. There is no un-archive and no restore button:
+ * putting a room back would mean reviving sessions, timers and a round that
+ * has been dead for days, and the question this page answers ("what did that
+ * table look like when it ended") does not need one.
+ */
+export function renderArchivePage({ rooms, detail, hasDatabase, retentionDays, query }: ArchivePageDeps): string {
+  const act = (path: string) => `${path}${query}`;
+
+  const rows = rooms
+    .map(
+      (r) => `<tr>
+        <td><a href="${adminUrl("/admin/archive", query, { roomId: r.roomId })}"><code>${escapeHtml(r.roomId)}</code></a></td>
+        <td>${escapeHtml(r.name ?? "-")}</td>
+        <td>${escapeHtml(r.bankerName ?? "-")}</td>
+        <td class="meta">${escapeHtml(formatStamp(r.archivedAt))}</td>
+        <td class="meta">${escapeHtml(r.reason)}</td>
+      </tr>`
+    )
+    .join("\n");
+
+  const ledgerRows = (detail?.ledger ?? [])
+    .map(
+      (e) => `<tr${e.undoneAt ? ' class="meta"' : ""}>
+        <td>${escapeHtml(formatStamp(e.at))}</td>
+        <td>${escapeHtml(LEDGER_LABELS[e.kind] ?? e.kind)}${e.undoneAt ? " &middot; undone" : ""}</td>
+        <td>${escapeHtml(e.playerName)}</td>
+        <td>${escapeHtml(e.actorName)}</td>
+        <td class="${e.amount < 0 ? "bad" : "ok"}">${escapeHtml(chips(e.amount))}</td>
+        <td class="meta">${escapeHtml(e.note ?? "")}</td>
+      </tr>`
+    )
+    .join("\n");
+
+  return shell(
+    "Deleted tables",
+    `<div class="topbar">
+      <h1 style="margin:0">Deleted tables</h1>
+      <span class="meta"><a href="${act("/admin")}">&larr; panel</a></span>
+    </div>
+
+    ${
+      !hasDatabase
+        ? `<p class="meta">This server has no database configured, so nothing is archived and a deleted table
+           is genuinely gone. Everything else here is in memory too, by the same choice.</p>`
+        : ""
+    }
+
+    ${
+      detail
+        ? `<fieldset>
+            <legend>${escapeHtml(detail.roomId)}${detail.name ? ` &middot; ${escapeHtml(detail.name)}` : ""}</legend>
+            <p class="meta">Banker: ${escapeHtml(detail.bankerName ?? "unknown")} &middot;
+            ${detail.playerCount} player(s) at the end &middot; ${detail.roundCount} round(s) played &middot;
+            deleted ${escapeHtml(formatStamp(detail.archivedAt))}</p>
+            <h1>Chip corrections (${detail.ledger.length})</h1>
+            ${
+              detail.ledger.length === 0
+                ? '<p class="meta">No chips were ever adjusted at this table.</p>'
+                : `<table>
+                    <thead><tr><th>When</th><th>What</th><th>Player</th><th>By</th><th>Amount</th><th>Note</th></tr></thead>
+                    <tbody>${ledgerRows}</tbody>
+                  </table>`
+            }
+            <p class="meta"><a href="${act("/admin/archive")}">&larr; all deleted tables</a></p>
+          </fieldset>`
+        : rooms.length === 0
+          ? '<p class="meta">Nothing archived. A table appears here when an operator force-deletes it.</p>'
+          : `<table>
+              <thead><tr><th>Game ID</th><th>Name</th><th>Banker</th><th>Deleted</th><th>Why</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>`
+    }
+
+    <p class="meta">Kept for ${retentionDays} days, then deleted permanently &mdash; the window is
+    &ldquo;Deleted tables kept for&rdquo; under Gameplay timing, and the Privacy page tells players about it,
+    so changing one means changing the other. The Game ID itself is freed the moment the table is deleted and
+    can be handed out again; this is the record, not the table.</p>
+    <p class="meta">There is deliberately no restore: bringing a room back would mean reviving sessions,
+    timers and a round that has been dead for days.</p>`,
+    false
+  );
+}
+
 export interface AuditPageDeps {
   entries: AuditEntry[];
   source: "database" | "memory";
@@ -491,7 +626,7 @@ export function renderAuditPage({
       <h1 style="margin:0">Audit trail</h1>
       <span class="meta">
         <a href="${act("/admin")}">&larr; panel</a>
-        &middot; <a href="${act(refresh ? "/admin/audit?refresh=0" : "/admin/audit")}">${
+        &middot; <a href="${adminUrl("/admin/audit", query, refresh ? { refresh: "0" } : {})}">${
           refresh ? "stop auto-refresh" : "start auto-refresh"
         }</a>
       </span>
@@ -822,10 +957,11 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
     `<div class="topbar">
       <h1 style="margin:0">Kvitlach admin</h1>
       <span class="meta">
-        <a href="${act(refresh ? "/admin?refresh=0" : "/admin")}">${refresh ? "stop auto-refresh" : "start auto-refresh"}</a>
+        <a href="${adminUrl("/admin", query, refresh ? { refresh: "0" } : {})}">${refresh ? "stop auto-refresh" : "start auto-refresh"}</a>
         &middot; <a href="${act("/admin/protections")}">protections</a>
         &middot; <a href="${act("/admin/errors")}">client errors</a>
         &middot; <a href="${act("/admin/audit")}">audit</a>
+        &middot; <a href="${act("/admin/archive")}">deleted tables</a>
         &middot; <a href="${act("/admin/appearance")}">appearance</a>
         &middot; <a href="/health/detail">raw JSON</a>
         &middot; <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>
@@ -1001,7 +1137,11 @@ export function renderRoomDetail({ roomId, room, connections, hasDb, query, appU
       "Room not found",
       `<div class="topbar"><h1 style="margin:0">Room <code>${escapeHtml(roomId)}</code></h1><span class="meta">${back}</span></div>
       <p class="meta">This room is no longer on the server. It was either deleted from the panel, or it
-      passed its idle window and was reaped. Its Game ID is free for reuse.</p>`,
+      passed its idle window and was reaped. Its Game ID is free for reuse.</p>
+      <p class="meta">If it was force-deleted from here, its ledger was kept:
+      <a href="${adminUrl("/admin/archive", query, { roomId })}">look for it under deleted tables</a>.
+      A table that simply aged out leaves no archive &mdash; nobody decided to end it, and nothing was
+      taken from anyone.</p>`,
       false
     );
   }
@@ -1240,7 +1380,7 @@ export function renderProtectionsPage({ login, ws, query, refresh }: Protections
       <h1 style="margin:0">Protections</h1>
       <span class="meta">
         <a href="${act("/admin")}">&larr; panel</a>
-        &middot; <a href="${act(refresh ? "/admin/protections?refresh=0" : "/admin/protections")}">${
+        &middot; <a href="${adminUrl("/admin/protections", query, refresh ? { refresh: "0" } : {})}">${
           refresh ? "stop auto-refresh" : "start auto-refresh"
         }</a>
       </span>
@@ -1358,7 +1498,7 @@ export function renderClientErrorsPage({ snapshot, query, refresh, notice }: Cli
       <h1 style="margin:0">Client errors</h1>
       <span class="meta">
         <a href="${act("/admin")}">&larr; panel</a>
-        &middot; <a href="${act(refresh ? "/admin/errors?refresh=0" : "/admin/errors")}">${
+        &middot; <a href="${adminUrl("/admin/errors", query, refresh ? { refresh: "0" } : {})}">${
           refresh ? "stop auto-refresh" : "start auto-refresh"
         }</a>
       </span>

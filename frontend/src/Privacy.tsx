@@ -67,6 +67,17 @@ export default function Privacy() {
             deliberately not removed when a table is deleted - an account of who deleted something is
             worth nothing if deleting it takes the account with it.
           </li>
+          <li>
+            {/* limits.ts's archiveRetentionDays, default 90; store.ts archives
+                on force-delete and prunes to that window. Same code-only rule
+                as the line above: if the default or its bounds change, this
+                sentence changes in the same commit. */}
+            When an operator deletes a real table, its final state - the players who were at it, their
+            chip totals, and the corrections made during the night - is kept for 90 days and then deleted
+            permanently. The table itself is gone immediately and its Game ID can be handed out again;
+            what is kept is the account of what happened, not a table anyone can return to. Practice
+            tables are not kept at all, since they are never stored in the first place.
+          </li>
         </ul>
       </section>
 

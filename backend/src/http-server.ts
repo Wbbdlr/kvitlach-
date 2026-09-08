@@ -10,10 +10,11 @@ import { ContactContent } from "./contact.js";
 import { DisclaimerContent, isDisclaimerSlug } from "./disclaimer.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderAppearanceEditor, renderAuditPage, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderAppearanceEditor, renderArchivePage, renderAuditPage, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
 import type { ProtectionSnapshot } from "./ws-server.js";
 import { ClientErrorLog } from "./client-errors.js";
 import { ClientConfig } from "./client-config.js";
+import type { LedgerEntry } from "./types.js";
 import { resolveClientIp } from "./client-ip.js";
 
 // HTML-text and attribute contexts only. Deliberately NOT sufficient for
@@ -659,9 +660,39 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     return reply.redirect(`/admin/contact${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
-  // Same own-page reasoning again. Everything a player sees of this arrives
-  // through GET /api/config above; there is no other path by which this server
-  // tells a browser anything about appearance.
+  // The record a force-delete leaves behind. Read-only by construction: there
+  // is no un-archive, because putting a room back would mean reviving sessions,
+  // timers and a round that has been dead for days.
+  app.get("/admin/archive", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    const roomId = typeof query.roomId === "string" ? query.roomId.trim().slice(0, 40) : "";
+    const archived = roomId ? await store.getArchivedRoom(roomId) : undefined;
+    const state = (archived?.state ?? {}) as {
+      ledger?: LedgerEntry[];
+      roundHistory?: unknown[];
+      players?: unknown[];
+    };
+    return reply.type("text/html").send(
+      renderArchivePage({
+        rooms: await store.listArchivedRooms(),
+        detail: archived && {
+          roomId: archived.roomId,
+          name: archived.name,
+          bankerName: archived.bankerName,
+          archivedAt: archived.archivedAt,
+          ledger: state.ledger ?? [],
+          roundCount: state.roundHistory?.length ?? 0,
+          playerCount: state.players?.length ?? 0,
+        },
+        hasDatabase: store.hasDatabase,
+        retentionDays: limits.archiveRetentionDays,
+        query: carry(request, how),
+      })
+    );
+  });
+
   // Read-only, and the only admin page that awaits a database query. Its
   // filters go to the store's own AuditLog, which parameterizes them -- an
   // operator typing a Game ID into a form is exactly the path where a string
@@ -690,6 +721,9 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     );
   });
 
+  // Same own-page reasoning again. Everything a player sees of this arrives
+  // through GET /api/config above; there is no other path by which this server
+  // tells a browser anything about appearance.
   app.get("/admin/appearance", async (request, reply) => {
     const how = guard(request, reply);
     if (!how) return reply;

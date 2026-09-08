@@ -2722,14 +2722,82 @@ export class GameStore {
     return { rooms: this.rooms.size, practiceRooms, players, activeRounds };
   }
 
+  /**
+   * Ends a table for good, keeping its record.
+   *
+   * Force-delete used to be immediate and total: an operator clearing a stuck
+   * table took its ledger and round history with it, and those are the only
+   * account of who paid whom that night. The Game ID still frees up -- that is
+   * the point of deleting -- but the record moves to archived_rooms first, and
+   * outlives it by limits.archiveRetentionDays.
+   *
+   * Practice rooms are skipped: they are never persisted in the first place
+   * (no wallets anyone cares about, no other humans), so archiving one would
+   * mean starting to store something this app has deliberately never stored.
+   */
   forceDeleteRoom(roomId: string): boolean {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) return false;
     if (roomRec.timer) clearTimeout(roomRec.timer);
+    const room = roomRec.room;
+    // Archived from the in-memory state rather than re-read from Postgres:
+    // this store is authoritative, and the row is about to be deleted anyway.
+    if (this.db && !room.practice) {
+      const banker = room.players.find((p) => p.type === "admin");
+      // passwordHash is stripped rather than archived. It is a one-way hash so
+      // this is not a leak, but the table it protected no longer exists and the
+      // Game ID has been handed back -- keeping the credential for another
+      // ninety days protects nothing and is one more place it can be found.
+      // Same instinct as AdminRoomDetail's own note further up this file.
+      const { passwordHash: _dropped, ...archivable } = room;
+      void this.db
+        .archiveRoom({
+          roomId,
+          name: room.name,
+          bankerName: banker?.firstName,
+          reason: "admin-force-delete",
+          state: archivable,
+        })
+        .catch((e) => console.error("db archive room", roomId, e));
+      this.pruneArchivesSoon();
+    }
     this.rooms.delete(roomId);
-    this.audit("admin-force-delete", roomId, "admin", {});
+    this.audit("admin-force-delete", roomId, "admin", { archived: Boolean(this.db) && !room.practice });
     void this.db?.deleteRoom(roomId).catch((e) => console.error("db delete room (admin force)", roomId, e));
     return true;
+  }
+
+  // Opportunistic, at most hourly, on a write that was happening anyway --
+  // same shape and same reasoning as AuditLog's own prune: no setInterval, so
+  // nothing to leak in a process meant to run for months.
+  private lastArchivePruneAt = 0;
+  private pruneArchivesSoon(): void {
+    const now = Date.now();
+    if (now - this.lastArchivePruneAt < 60 * 60_000) return;
+    this.lastArchivePruneAt = now;
+    const cutoff = now - this.limits.archiveRetentionDays * 24 * 60 * 60_000;
+    void this.db?.pruneArchivedRooms(cutoff).catch((e) => console.error("db pruneArchivedRooms", e));
+  }
+
+  /** Most recent first. Empty when this server has no database. */
+  async listArchivedRooms(limit = 100) {
+    if (!this.db) return [];
+    try {
+      return await this.db.listArchivedRooms(Math.min(Math.max(limit, 1), 500));
+    } catch (e) {
+      console.error("db listArchivedRooms", e);
+      return [];
+    }
+  }
+
+  async getArchivedRoom(roomId: string) {
+    if (!this.db) return undefined;
+    try {
+      return await this.db.getArchivedRoom(roomId);
+    } catch (e) {
+      console.error("db getArchivedRoom", roomId, e);
+      return undefined;
+    }
   }
 
   async loadFromDB() {

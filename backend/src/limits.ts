@@ -57,6 +57,7 @@ export interface LimitsRecord {
   practiceIdleMinutes: number;
   sessionTtlDays: number;
   auditRetentionDays: number;
+  archiveRetentionDays: number;
 
   updatedAt: number;
 }
@@ -93,6 +94,7 @@ export const DEFAULT_LIMITS = {
   practiceIdleMinutes: 30,
   sessionTtlDays: 7,
   auditRetentionDays: 90,
+  archiveRetentionDays: 90,
 } as const;
 
 export type LimitKey = keyof typeof DEFAULT_LIMITS;
@@ -269,6 +271,18 @@ export const LIMIT_META: Record<LimitKey, LimitMeta> = {
     env: "AUDIT_RETENTION_DAYS",
     note: "Older entries are deleted permanently. The Privacy page tells players this window, so a change here is a change there.",
   },
+  archiveRetentionDays: {
+    group: "timing",
+    label: "Deleted tables kept for (days)",
+    // Its own dial rather than sharing the audit window, because the two hold
+    // different things and an operator should be able to say so: the audit
+    // trail is who did what, and this is a whole table's ledger and round
+    // history. Same bounds and same default, so leaving both alone gives one
+    // coherent answer to "how far back do the records go".
+    bounds: [7, 365],
+    env: "ARCHIVE_RETENTION_DAYS",
+    note: "A deleted table's ledger and history are kept this long, then deleted permanently. Stated on the Privacy page.",
+  },
   sessionTtlDays: {
     group: "timing",
     label: "Session lifetime (days)",
@@ -428,6 +442,10 @@ export class RuntimeLimits {
 
   get auditRetentionDays(): number {
     return this.values.auditRetentionDays;
+  }
+
+  get archiveRetentionDays(): number {
+    return this.values.archiveRetentionDays;
   }
 
   get(key: LimitKey): number {

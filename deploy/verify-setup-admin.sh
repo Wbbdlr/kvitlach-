@@ -114,5 +114,60 @@ ok "re-running replaces rather than appends"
 grep -q '^ADMIN_USERNAME=Sws$' "$ENV_FILE" || fail "username not written verbatim"
 ok "username written verbatim (the backend lowercases it)"
 
+# --- the CONTAINER path, which is the one production actually takes ----------
+#
+# Everything above ran the host-node fallback, because the stub's `ps` prints
+# nothing. That gap let a broken container branch pass this whole file: a
+# mangled printf left the command split across two lines, and nothing here
+# noticed. This stub reports the backend running and forwards `exec` to a real
+# node with stdin attached, so the branch is actually executed.
+cat > "$TMP/bin/docker" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >> "$TMP/docker.log"
+case "\$1 \$2" in
+  "compose -f")
+    shift 3
+    case "\$1" in
+      ps) echo "kvitlach-backend"; exit 0 ;;
+      exec)
+        # ... exec -T backend node -e <script>; run the script for real,
+        # inheriting this process's stdin.
+        while [ "\$1" != "-e" ]; do shift; done
+        exec node -e "\$2"
+        ;;
+      *) exit 0 ;;
+    esac
+    ;;
+esac
+exit 0
+STUB
+chmod +x "$TMP/bin/docker"
+
+: > "$TMP/docker.log"
+CONTAINER_PW='another$password with spaces'
+printf 'POSTGRES_PASSWORD=keepme\n' > "$ENV_FILE"
+PATH="$TMP/bin:$PATH" bash "$TMP/repo/deploy/setup-admin.sh" "$USERNAME" "$CONTAINER_PW" 127.0.0.1 >/dev/null \
+  || fail "the container path failed outright"
+ok "the container path runs"
+
+grep -q ' exec ' "$TMP/docker.log" || fail "never went through the container -- still on the host fallback"
+ok "went through the container, not the host fallback"
+
+HASH2="$(grep '^ADMIN_PASSWORD_HASH=' "$ENV_FILE" | cut -d= -f2-)"
+node -e '
+const {scryptSync,timingSafeEqual}=require("node:crypto");
+const stored=process.argv[1], provided=process.argv[2];
+const [,salt,expected]=stored.split(stored[6]);
+const actual=scryptSync(provided,salt,32);
+const exp=Buffer.from(expected,"hex");
+if(actual.length!==exp.length||!timingSafeEqual(actual,exp)){console.error("no");process.exit(1);}
+' "$HASH2" "$CONTAINER_PW" || fail "the container path hashed the wrong thing (trailing newline? truncation?)"
+ok "the container path hashes the password exactly, spaces and all"
+
+# The whole reason this path exists: the password must not be on a host argv.
+grep -q "$CONTAINER_PW" "$TMP/docker.log" \
+  && fail "password appeared in argv, readable via ps: $CONTAINER_PW"
+ok "password never reaches argv (it goes in on stdin)"
+
 echo
 echo "setup-admin.sh verified."

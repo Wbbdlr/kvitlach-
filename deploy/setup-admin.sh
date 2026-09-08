@@ -37,13 +37,25 @@ fi
 # configure the panel, so it cannot depend on first deploying a fixed image.
 # Keep in step with hashPassword() in backend/src/admin-auth.ts (scrypt, 32).
 HASH_JS='const {randomBytes,scryptSync}=require("node:crypto");const s=randomBytes(16).toString("hex");console.log("ADMIN_PASSWORD_HASH=scrypt$"+s+"$"+scryptSync(process.env.KV_PW,s,32).toString("hex"));'
+# The same hashing, but taking the password off stdin instead of the
+# environment. See hash_password below for why the container path needs it.
+STDIN_HASH_JS='let d="";process.stdin.on("data",(c)=>{d+=c});process.stdin.on("end",()=>{process.env.KV_PW=d.replace(/\r?\n$/,"");'"$HASH_JS"'});'
 
 hash_password() {
   if docker compose -f "$REPO_ROOT/deploy/docker-compose.yml" ps --status running backend 2>/dev/null | grep -q backend; then
-    # Password goes through the environment, not argv: argv is visible in `ps`
-    # to every other user on the box for as long as the hash takes to compute.
-    docker compose -f "$REPO_ROOT/deploy/docker-compose.yml" exec -T -e KV_PW="$1" backend node -e "$HASH_JS"
+    # The password goes in on STDIN, not as `-e KV_PW=...`.
+    #
+    # That form was here first and its comment claimed it kept the password out
+    # of argv. It does not: the far end is an environment variable, but the
+    # string is argv of the `docker` process ON THE HOST, readable by any other
+    # user on the box via `ps` for as long as the hash takes to compute. Caught
+    # while writing rotate-db-password.sh, whose verifier greps for exactly
+    # this. Stdin has no such exposure.
+    printf '%s\n' "$1" \
+      | docker compose -f "$REPO_ROOT/deploy/docker-compose.yml" exec -T backend node -e "$STDIN_HASH_JS"
   else
+    # No container yet, so this is a plain local child process: the value is in
+    # this script's own environment and never on a command line.
     KV_PW="$1" node -e "$HASH_JS"
   fi
 }
