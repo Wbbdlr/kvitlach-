@@ -1,6 +1,7 @@
 import React from "react";
 import { useRouteError } from "react-router-dom";
 import { APP_VERSION } from "./version";
+import { activeProfile } from "./familyProfile";
 
 interface Props {
   children: React.ReactNode;
@@ -42,6 +43,11 @@ function reportToServer(error: unknown, stack?: string) {
         // grants and session hints.
         route: typeof window !== "undefined" ? window.location.pathname : undefined,
         version: APP_VERSION,
+        // Which look the player was on. Without it, a white-page report from a
+        // family member sends somebody hunting on the house look, which is not
+        // what they were looking at. Read lazily so a crash inside the profile
+        // module itself cannot stop the report going out.
+        profile: activeProfile()?.slug,
         stack: stack ?? (error instanceof Error ? error.stack : undefined),
         userAgent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
       }),

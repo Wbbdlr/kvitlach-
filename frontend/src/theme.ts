@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export type FeltName = "green" | "burgundy" | "navy";
+export type FeltName = "green" | "burgundy" | "navy" | "spruce" | "plum";
 
 export interface Felt {
   hi: string;   // lighter center of the felt gradient
@@ -15,15 +15,35 @@ export interface Felt {
   bet: string;   // bet/blatt button accent, coordinated with this felt
   hit: string;   // hit button accent
   stand: string; // stand button accent
+  /**
+   * Whether the felt switcher offers it. False means a family profile can name
+   * it and nothing else can reach it.
+   *
+   * A flag rather than a "family felts" list, deliberately: the switcher
+   * filters on this, and nothing anywhere asks "is this a family table". Adding
+   * a third reserved felt is then a row here, not a branch somewhere.
+   */
+  listed: boolean;
 }
 
 // Bet stays amber/gold-ish across felts (the app's one universal accent);
 // hit and stand vary per felt so neither blends into that felt's own hue.
 export const FELTS: Record<FeltName, Felt> = {
-  green: { hi: "#24503a", lo: "#12271c", rail: "#4a3320", label: "Green", bet: "#d97706", hit: "#2f7dc9", stand: "#a8532e" },
-  burgundy: { hi: "#5a2733", lo: "#280f16", rail: "#4a3320", label: "Burgundy", bet: "#d9a441", hit: "#2f9e6f", stand: "#6b4423" },
-  navy: { hi: "#24405e", lo: "#0d1a2b", rail: "#3a3320", label: "Navy", bet: "#d9a441", hit: "#c2622a", stand: "#5a3d7a" },
+  green: { hi: "#24503a", lo: "#12271c", rail: "#4a3320", label: "Green", bet: "#d97706", hit: "#2f7dc9", stand: "#a8532e", listed: true },
+  burgundy: { hi: "#5a2733", lo: "#280f16", rail: "#4a3320", label: "Burgundy", bet: "#d9a441", hit: "#2f9e6f", stand: "#6b4423", listed: true },
+  navy: { hi: "#24405e", lo: "#0d1a2b", rail: "#3a3320", label: "Navy", bet: "#d9a441", hit: "#c2622a", stand: "#5a3d7a", listed: true },
+  // The two held back for family profiles. Chosen to sit clear of the three
+  // above under the felt's own gradient -- spruce leans blue so it does not
+  // read as green, plum leans blue-purple so it does not read as burgundy --
+  // and both hold gold, which matters because gold is the app's one fixed
+  // accent: the card highlights, the active-turn glow and the wordmark are not
+  // themeable and have to keep working over whatever felt is underneath.
+  spruce: { hi: "#1f4a44", lo: "#0e2724", rail: "#43331f", label: "Spruce", bet: "#d9a441", hit: "#2f7dc9", stand: "#a8532e", listed: false },
+  plum: { hi: "#43304e", lo: "#20162a", rail: "#43331f", label: "Plum", bet: "#d9a441", hit: "#2f9e6f", stand: "#a8532e", listed: false },
 };
+
+/** What the felt switcher offers. See Felt.listed. */
+export const LISTED_FELTS: FeltName[] = (Object.keys(FELTS) as FeltName[]).filter((n) => FELTS[n].listed);
 
 // Navy, not the green this shipped with. Green is also the felt every one of
 // the twelve capture viewports photographs, and the felt-contrast audit
@@ -50,8 +70,16 @@ const STORAGE_KEY = "kvitlach.felt";
 // however the house feels about it.
 let houseFelt: FeltName | null = null;
 let houseChip: ChipName | null = null;
+// A family profile's own colours, kept SEPARATE from the operator's house
+// default above rather than sharing one variable. They arrive from different
+// places at different times -- /api/config at boot, a family profile from a
+// link or from a table's room state -- and with one variable whichever landed
+// second silently won. Two, with a stated order, is the only way the answer
+// does not depend on network timing. Precedence below in loadFelt().
+let familyFelt: FeltName | null = null;
+let familyChip: ChipName | null = null;
 
-/** Fires when the house defaults land, so the hooks below can catch up. */
+/** Fires when either set of defaults lands, so the hooks below can catch up. */
 export const HOUSE_THEME_EVENT = "kvitlach:house-theme";
 
 /**
@@ -61,8 +89,28 @@ export const HOUSE_THEME_EVENT = "kvitlach:house-theme";
  * leaves the player on the shipped one.
  */
 export function setHouseTheme(felt: unknown, chip: unknown): void {
-  if (typeof felt === "string" && felt in FELTS) houseFelt = felt as FeltName;
-  if (typeof chip === "string" && chip in CHIPS) houseChip = chip as ChipName;
+  houseFelt = typeof felt === "string" && felt in FELTS ? (felt as FeltName) : null;
+  houseChip = typeof chip === "string" && chip in CHIPS ? (chip as ChipName) : null;
+  announce();
+}
+
+/**
+ * A family profile's colours, or null to go back to the house look.
+ *
+ * Clearing has to be possible, and that is not obvious until you leave a family
+ * table: an earlier version only ever SET these, so walking away from a
+ * family's felt left you on it forever. Passing an unknown name clears for the
+ * same reason it does above -- a felt this build has never heard of is not a
+ * felt, and silently keeping the last one would be a stranger answer than
+ * falling back.
+ */
+export function setFamilyTheme(felt: unknown, chip: unknown): void {
+  familyFelt = typeof felt === "string" && felt in FELTS ? (felt as FeltName) : null;
+  familyChip = typeof chip === "string" && chip in CHIPS ? (chip as ChipName) : null;
+  announce();
+}
+
+function announce(): void {
   try {
     window.dispatchEvent(new Event(HOUSE_THEME_EVENT));
   } catch {
@@ -82,7 +130,8 @@ function stored(key: string): string | null {
 export function loadFelt(): FeltName {
   const saved = stored(STORAGE_KEY);
   if (saved && saved in FELTS) return saved as FeltName;
-  return houseFelt ?? DEFAULT_FELT;
+  // saved choice > the family's felt > the operator's house default > shipped.
+  return familyFelt ?? houseFelt ?? DEFAULT_FELT;
 }
 
 export function saveFelt(name: FeltName): void {
@@ -173,7 +222,7 @@ const CHIP_STORAGE_KEY = "kvitlach.chip";
 export function loadChip(): ChipName {
   const saved = stored(CHIP_STORAGE_KEY);
   if (saved && saved in CHIPS) return saved as ChipName;
-  return houseChip ?? DEFAULT_CHIP;
+  return familyChip ?? houseChip ?? DEFAULT_CHIP;
 }
 
 export function saveChip(name: ChipName): void {

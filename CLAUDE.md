@@ -30,8 +30,12 @@ Cloudflare Tunnel.
 React 18 + TypeScript + Vite + Tailwind + Zustand (`state.ts`), Vitest/jsdom on
 the front; Node ESM + Fastify + raw `ws` on the back. **Postgres is optional** -
 no `DATABASE_URL` means fully in-memory (rooms vanish on restart). No ORM and no
-migration tool; the schema is `CREATE TABLE IF NOT EXISTS` in `db.ts:init()`, so
-a new setting belongs in the existing `settings` key/value row.
+migration tool; the schema is `CREATE TABLE IF NOT EXISTS` in `db.ts:init()`.
+**A new SETTING belongs in the existing `settings` key/value row** - a column
+per setting would mean a migration. The two tables added since (`audit`,
+`archived_rooms`) are records rather than settings: they accumulate rows, are
+queried with filters, and carry their own retention sweep. That is the line - if
+it is one value an operator edits, it is a settings row.
 
 ## Architecture
 
@@ -108,7 +112,11 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   above, it makes factual claims about what the code does with data, so it
   should change when the data-handling code changes (a commit), not drift
   independently via an admin form. If that tradeoff ever gets revisited, say
-  so explicitly rather than silently making it editable.
+  so explicitly rather than silently making it editable. **Two retention
+  windows are stated on that page and bounded in `limits.ts`**
+  (`auditRetentionDays`, `archiveRetentionDays`, both 90 days): change either
+  default or its bounds and that page changes in the same commit.
+  `audit-trail.test.ts` and `room-archive.test.ts` fail if they drift.
 - **The age/legal checkbox (`AgeAckCheckbox` in `App.tsx`) gates Join, Create
   and Practice - never Watch**, which does not wager or "play" in the
   Disclaimer's own sense. One shared `ageAcknowledged` flag, remembered via
@@ -124,6 +132,50 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   during a hand, and other polish for this mode specifically - surface
   toward the user proactively if a session ends up in `bot.ts` or the
   practice-lobby JSX, rather than waiting to be asked.
+
+- **`limits.ts` values are read AT THE POINT OF USE, never captured at module
+  load.** Capacity, the seven throttles and the nine gameplay timings are all
+  live settings now; a limiter that reads its threshold once at boot gives you
+  a panel reporting a new limit and enforcing the old one, and throttles only
+  bite under load, so it is discovered on the night it matters. Consumers take
+  the `RuntimeLimits` instance, not a number off it. Bounds are fixed in code
+  because every protection can be set to a value that disables it. Pinned by
+  `live-limits.test.ts`, which also fails if any of the fifteen old constant
+  names is declared in `backend/src` again. **`ws` `maxPayload` is the one
+  exception** - it is read once when the socket server is built, so it is a
+  hard ceiling and the operator's own size cap is enforced on arrival instead.
+- **Admin links must go through `adminUrl()` (`admin-page.ts`), never
+  `` `${path}?foo=1${query}` ``.** `query` is itself `?token=...` for a
+  token-authenticated operator, so the naive form yields
+  `/admin?refresh=0?token=abc`, the token is swallowed into the value of
+  `refresh`, and the page 404s. It broke four pages and only ever on the
+  `?token=` path - the escape hatch used when the cookie login is unavailable -
+  because the carried query is empty for a cookie session and the naive
+  concatenation is accidentally correct there. Pinned by
+  `admin-token-links.test.ts`.
+
+- **Family profiles are a LAYER, never a fork** (`family-profiles.ts`,
+  `familyProfile.ts`). A family opens `kvitlach.us/m/<slug>`; their device
+  remembers it and any table they host is stamped with it. **The house look is
+  a profile too** (`HOUSE`), and that is the whole design: nothing in this app
+  should ever ask "is this a family table", only which profile is active and
+  what field it carries. `get()` therefore never returns undefined. Reserved
+  felts work the same way -- a `listed: false` flag the switcher filters on,
+  not a "family felts" list.
+  - The link is **not a route**. `router.tsx` is a deliberate single catch-all;
+    the slug is read off the pathname like `getUrlRoomId` and the URL is
+    rewritten to `/`.
+  - The lookup is `GET /api/family?slug=` -- a QUERY parameter because
+    `nginxProxy.test.ts` requires exact-match locations and a path parameter
+    cannot be one. There is deliberately no route that LISTS profiles: a
+    profile carries a family's surname.
+  - **The card mark is Latin-only and the felt print is Hebrew-only**, because
+    Cinzel ships here as an ASCII subset and Frank Ruhl carries a Hebrew-only
+    unicode-range. Hebrew in the mark field would draw nothing at all.
+  - Precedence, in `theme.ts`: a player's own saved felt > the family profile >
+    the operator's house default > shipped. The family and house defaults are
+    SEPARATE variables; sharing one made the winner depend on which fetch
+    landed first. Pinned by `houseTheme.test.ts`.
 
 ## Local development
 
@@ -242,6 +294,22 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
   maths** and pinned by `layout.test.ts`. Changing one without the other breaks
   the table, and it must never become a runtime setting. Overflow players queue.
 - Don't commit or push unless asked.
+- **Keep this file and the skills current as you go, and keep them SMALL.**
+  This file is charged to every session, so it earns its length by holding
+  what you can break without knowing you were near it - invariants, traps,
+  "X was tried and does not work". When a session ends up teaching one of
+  those, write it down then, in the same turn, while the reasoning is still
+  in hand. When a session merely adds a feature, write nothing here: that is
+  what git log and `VERSION_HISTORY` are for, and a changelog in this file
+  makes every future session more expensive, not less.
+  - Procedure goes in a **skill** (loaded on demand), reference goes in
+    **`docs/`**, and only the traps go here.
+  - **Correcting is worth more than appending.** A line here that has quietly
+    become false costs more than a missing one, because it will be believed.
+    If you touch an area this file describes, check what it claims about that
+    area before you move on.
+  - Before adding a paragraph, ask whether a test could hold the fact instead.
+    A pinned test enforces an invariant; a paragraph only hopes.
 
 ## Mobile UI & layout
 
@@ -290,6 +358,15 @@ Context is the scarce resource in a long session, not tokens on a bill.
 - **Bump `APP_VERSION` in `frontend/src/version.ts` by 0.1 before a tarball,
   then run `npx vite build` AFTER the bump** - a scripted bump once truncated
   the file to zero bytes and broke the server build.
+- **Never rotate the Postgres password by editing `deploy/.env`.** Run
+  `bash deploy/rotate-db-password.sh`. `POSTGRES_PASSWORD` only takes effect on
+  a container's first init against an empty volume, so changing the line alone
+  leaves the role untouched and breaks `DATABASE_URL` - and the obvious fix for
+  that is `down -v`, which destroys the database. The script ALTERs the role
+  first, verifies over TCP, then writes `.env`.
+- **Secrets go into a container on stdin, not `docker compose exec -e KEY=val`**
+  - that string is argv of the host's `docker` process and is readable via `ps`.
+  Both deploy scripts had it; both now pipe. Their verifiers grep for it.
 - **Never add a `dns:` block to a compose file** deployed to the adguard host.
   Container DNS goes through AdGuard by daemon config; a per-service `dns:`
   silently recreates the bypass. A container that can't resolve something has

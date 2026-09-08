@@ -1,4 +1,5 @@
 import { create, StateCreator } from "zustand";
+import { activeProfile, storedSlug } from "./familyProfile";
 import { errorCopy } from "./errorCopy";
 import { WSClient } from "./ws";
 import { Balance, LedgerEntry, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
@@ -1798,7 +1799,11 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       }
         const trimmedRoomId = roomId?.trim() || undefined;
         lastLobbyAction = "create";
-        client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll, accessCode: get().accessCode || undefined });
+        // The banker's own family link, stamped onto the table so everyone who
+        // joins sees it. storedSlug() rather than the fetched profile: the
+        // fetch may not have landed yet on a fast create, and the slug is what
+        // the server resolves anyway.
+        client.send("room:create", { firstName, lastName, roomName, password, buyIn, roomId: trimmedRoomId, bankerBankroll, familyProfile: storedSlug() || undefined, accessCode: get().accessCode || activeProfile()?.accessCode || undefined });
     },
     // An options object rather than createRoom's positional style: four
     // same-typed optional numbers in a row would be an easy mix-up
@@ -1809,7 +1814,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       lastLobbyAction = "practice";
-        pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options, accessCode: get().accessCode || undefined });
+        pendingPracticeRequestId = client.send("room:create-practice", { firstName, ...options, familyProfile: storedSlug() || undefined, accessCode: get().accessCode || activeProfile()?.accessCode || undefined });
     },
     joinRoom: (
       roomId: string,
@@ -1840,7 +1845,9 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         password,
         spectator: Boolean(spectator),
         allowDuplicateName: Boolean(allowDuplicateName),
-        accessCode: get().accessCode || undefined,
+        // A family link may carry the code, so joining a gated table is still
+        // one paste. A code typed by hand always wins over the carried one.
+        accessCode: get().accessCode || activeProfile()?.accessCode || undefined,
       });
     },
     claimSeat: () => {
@@ -1852,7 +1859,9 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         firstName: attempt.firstName,
         lastName: attempt.lastName,
         password: attempt.password,
-        accessCode: get().accessCode || undefined,
+        // A family link may carry the code, so joining a gated table is still
+        // one paste. A code typed by hand always wins over the carried one.
+        accessCode: get().accessCode || activeProfile()?.accessCode || undefined,
       });
     },
     joinAsSomeoneElse: () => {

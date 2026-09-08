@@ -64,7 +64,7 @@ function locations(): { modifier: string; path: string; body: string }[] {
 // an accident to DRY away. It has already earned its keep once: the
 // client-error route below was added to nginx.conf and this test failed, which
 // is exactly the review step it exists to force.
-const PUBLIC_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer", "/api/config", "/api/client-error"];
+const PUBLIC_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer", "/api/config", "/api/family", "/api/client-error"];
 
 // The three content routes are GET-only because each is operator-authored copy
 // written from /admin and never from the app. /api/client-error is the mirror
@@ -72,7 +72,7 @@ const PUBLIC_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer", "/api/co
 // error to it so somebody other than the player can read it, and nothing reads
 // it back from here. So the method rule is per-route rather than blanket, and
 // a route appearing in NEITHER list is a route nobody decided the methods for.
-const GET_ONLY_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer", "/api/config"];
+const GET_ONLY_ROUTES = ["/api/about", "/api/contact", "/api/disclaimer", "/api/config", "/api/family"];
 const POST_ONLY_ROUTES = ["/api/client-error"];
 
 describe("the frontend origin's backend proxy", () => {

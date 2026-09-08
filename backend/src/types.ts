@@ -267,6 +267,12 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  // Which named look this table wears (family-profiles.ts). Absent is the
+  // house look, which is itself a profile -- so nothing reading this should
+  // branch on "is this a family table", only on which profile is named.
+  // Stamped at creation and never changed: a table that restyled itself
+  // mid-night would read as a fault, not a feature.
+  familyProfile?: string;
   // Optional for the same reason roundHistory is: rooms persisted before this
   // existed come back from loadFromDB() without it. Every site defaults to [].
   seatClaims?: SeatClaim[];

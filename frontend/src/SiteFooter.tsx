@@ -1,5 +1,6 @@
 import { ReactNode, useRef, useState } from "react";
 import { APP_VERSION, firstPushedDate } from "./version";
+import { useFamilyProfile } from "./familyProfile";
 import { useEscapeKey } from "./useEscapeKey";
 import { useClickOutside } from "./table/clickOutside";
 
@@ -43,6 +44,10 @@ export default function SiteFooter({ active, children }: SiteFooterProps) {
   useEscapeKey(() => setShowShipDate(false), showShipDate);
   useClickOutside([wrapRef], () => setShowShipDate(false), showShipDate);
   const shipDate = firstPushedDate(APP_VERSION);
+  // Named next to the version because this badge is what somebody is asked for
+  // when they report a bug, and "it looked wrong" needs both halves to be
+  // reproducible. Nothing here says "family" -- the slug is the useful token.
+  const familySlug = useFamilyProfile()?.slug ?? "";
 
   return (
     <footer className="mt-8 border-t border-blue-200/70 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -56,6 +61,7 @@ export default function SiteFooter({ active, children }: SiteFooterProps) {
             aria-expanded={showShipDate}
           >
             v{APP_VERSION}
+            {familySlug && <span className="text-blue-700">{familySlug}</span>}
             <span className="text-blue-700">Beta</span>
           </button>
           {showShipDate && (

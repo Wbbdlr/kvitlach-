@@ -2,6 +2,7 @@ import { AboutContent, AboutRecord } from "./about.js";
 import { BotNames, BotNamesRecord } from "./bot-names.js";
 import { ContactContent, ContactRecord } from "./contact.js";
 import { ClientConfig, ClientConfigRecord } from "./client-config.js";
+import { FamilyProfiles, FamilyProfilesRecord } from "./family-profiles.js";
 import { DisclaimerContent, DisclaimerRecord } from "./disclaimer.js";
 import { createHttpServer } from "./http-server.js";
 import { GameStore } from "./store.js";
@@ -46,6 +47,7 @@ const BOT_NAMES_SETTING_KEY = "bot-names";
 const CONTACT_SETTING_KEY = "contact";
 const DISCLAIMER_SETTING_KEY = "disclaimer";
 const CLIENT_CONFIG_SETTING_KEY = "client-config";
+const FAMILIES_SETTING_KEY = "families";
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL;
@@ -74,7 +76,20 @@ async function main() {
     }
   }
 
-  const store = new GameStore(db, limits, botNames);
+  // The family looks. Hydrated BEFORE the store is built, because the store
+  // holds this instance and reads it when a practice table picks bot names.
+  const families = new FamilyProfiles((record) => {
+    void db?.putSetting(FAMILIES_SETTING_KEY, record).catch((e) => console.error("db putSetting(families)", e));
+  });
+  if (db) {
+    try {
+      families.hydrate(await db.getSetting<FamilyProfilesRecord>(FAMILIES_SETTING_KEY));
+    } catch (e) {
+      console.error("db getSetting(families); every table will show the house look", e);
+    }
+  }
+
+  const store = new GameStore(db, limits, botNames, families);
   await store.loadFromDB();
 
   // ONE AccessControl, shared by the HTTP admin page that mutates it and the
@@ -179,6 +194,7 @@ async function main() {
     contact,
     disclaimer,
     clientConfig,
+    families,
     access,
     limits,
     auth,

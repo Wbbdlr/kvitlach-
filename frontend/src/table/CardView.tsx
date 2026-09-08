@@ -4,6 +4,7 @@ import { Card } from "../types";
 import { cardImages } from "./selectors";
 import { Icon } from "./icons";
 import { ART_H, ART_W, DEFAULT_MARK, markSvgBody } from "./cardMark";
+import { useFamilyMark } from "../familyProfile";
 
 // A single card, shared by both UIs.
 //
@@ -71,7 +72,11 @@ export function CardView({
   // "" for a face-down card and for every card outside DEFAULT_MARK.cards
   // (currently 1, 8 and 12), so no element is created at all rather than an
   // empty <svg> over every card on a felt that re-renders each round.
-  const markBody = hidden || showFallback ? "" : markSvgBody(Number(card.name), DEFAULT_MARK);
+  // The text comes from the active profile, which is the house look unless a
+  // family link or a stamped table says otherwise. No branch on "is this a
+  // family table" -- the house IS a profile. See family-profiles.ts.
+  const mark = useFamilyMark();
+  const markBody = hidden || showFallback ? "" : markSvgBody(Number(card.name), mark);
 
   // The ring stays in the hand for the rest of the round.
   //

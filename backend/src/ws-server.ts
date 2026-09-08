@@ -433,7 +433,7 @@ export class WSServer {
       const payload = validatePayload(msg.payload);
       switch (type) {
         case "room:create": {
-          const { firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll, accessCode } = (payload as any) || {};
+          const { firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll, accessCode, familyProfile } = (payload as any) || {};
           this.access.assertAllowed("create", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const createIp = this.meta.get(socket)?.ip ?? "unknown";
@@ -441,7 +441,12 @@ export class WSServer {
             this.recordRejection("roomCreates", createIp);
             throw new Error("room_create_throttled");
           }
-          const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll });
+          // The banker's own remembered family link, stamped onto the table so
+          // everyone who joins sees it. Unvalidated here on purpose -- the
+          // store resolves an unknown slug to the house look rather than
+          // failing the create, because a mistyped family link should still
+          // deal a table.
+          const { room, player, sessionToken } = this.store.createRoom({ firstName, lastName, roomName, password, buyIn, roomId, bankerBankroll, familyProfile });
           WSServer.recordCreate(this.roomCreatesByIp, createIp, this.store.limits.roomCreateWindowMs);
           await this.attach(socket, room.roomId, player.id);
           this.sendAck(socket, requestId, {
@@ -454,7 +459,7 @@ export class WSServer {
           break;
         }
         case "room:create-practice": {
-          const { firstName, botCount, buyIn, bankBuyIn, deckCount, accessCode } = (payload as any) || {};
+          const { firstName, botCount, buyIn, bankBuyIn, deckCount, accessCode, familyProfile } = (payload as any) || {};
           this.access.assertAllowed("practice", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const practiceIp = this.meta.get(socket)?.ip ?? "unknown";
@@ -462,7 +467,7 @@ export class WSServer {
             this.recordRejection("practiceCreates", practiceIp);
             throw new Error("room_create_throttled");
           }
-          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount, buyIn, bankBuyIn, deckCount });
+          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount, buyIn, bankBuyIn, deckCount, familyProfile });
           WSServer.recordCreate(this.practiceCreatesByIp, practiceIp, this.store.limits.roomCreateWindowMs);
           await this.attach(socket, room.roomId, player.id);
           // Unlike room:create, a round is already underway here (no human

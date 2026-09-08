@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_CHIP, DEFAULT_FELT, loadChip, loadFelt, saveFelt, setHouseTheme } from "../theme";
+import { DEFAULT_CHIP, DEFAULT_FELT, loadChip, loadFelt, saveFelt, setFamilyTheme, setHouseTheme } from "../theme";
 import { applyHouseTheme } from "../clientConfig";
 
 // The operator can set a house felt and chip. The precedence is the whole
@@ -16,6 +16,7 @@ beforeEach(() => {
   document.documentElement.removeAttribute("style");
   // Module state, so each test has to put it back where it found it.
   setHouseTheme(DEFAULT_FELT, DEFAULT_CHIP);
+  setFamilyTheme(null, null);
 });
 
 describe("precedence", () => {
@@ -49,6 +50,42 @@ describe("precedence", () => {
 
   it("ignores a felt or chip this build does not have", () => {
     setHouseTheme("plaid", "unobtanium");
+    expect(loadFelt()).toBe(DEFAULT_FELT);
+    expect(loadChip()).toBe(DEFAULT_CHIP);
+  });
+});
+
+describe("a family profile sits between the two", () => {
+  // Found by a test rather than by reasoning: these two started life sharing
+  // one variable, so whichever landed second won and the answer depended on
+  // network timing. They are separate now, with a stated order.
+  it("beats the operator's house default", () => {
+    setHouseTheme("green", "ruby");
+    setFamilyTheme("spruce", "silver");
+    expect(loadFelt()).toBe("spruce");
+    expect(loadChip()).toBe("silver");
+  });
+
+  it("still loses to a player's own choice", () => {
+    saveFelt("burgundy");
+    setHouseTheme("green", "gold");
+    setFamilyTheme("spruce", "gold");
+    expect(loadFelt()).toBe("burgundy");
+  });
+
+  it("falls back to the house default when the family look is cleared", () => {
+    // Leaving a family table must not strand you on their felt. The first
+    // version of setFamilyTheme only ever set, never cleared, and did exactly
+    // that.
+    setHouseTheme("green", "ruby");
+    setFamilyTheme("spruce", "silver");
+    setFamilyTheme(null, null);
+    expect(loadFelt()).toBe("green");
+    expect(loadChip()).toBe("ruby");
+  });
+
+  it("ignores a felt this build has never heard of", () => {
+    setFamilyTheme("plaid", "bronze");
     expect(loadFelt()).toBe(DEFAULT_FELT);
     expect(loadChip()).toBe(DEFAULT_CHIP);
   });

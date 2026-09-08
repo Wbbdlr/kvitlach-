@@ -10,10 +10,11 @@ import { ContactContent } from "./contact.js";
 import { DisclaimerContent, isDisclaimerSlug } from "./disclaimer.js";
 import { RuntimeLimits, isLimitKey } from "./limits.js";
 import { AdminAuth } from "./admin-auth.js";
-import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderAppearanceEditor, renderArchivePage, renderAuditPage, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
+import { renderAboutEditor, renderAdminPage, renderBotNamesEditor, renderContactEditor, renderDisclaimerEditor, renderLoginPage, renderAppearanceEditor, renderArchivePage, renderFamiliesEditor, renderAuditPage, renderClientErrorsPage, renderProtectionsPage, renderRoomDetail } from "./admin-page.js";
 import type { ProtectionSnapshot } from "./ws-server.js";
 import { ClientErrorLog } from "./client-errors.js";
 import { ClientConfig } from "./client-config.js";
+import { FamilyProfiles } from "./family-profiles.js";
 import type { LedgerEntry } from "./types.js";
 import { resolveClientIp } from "./client-ip.js";
 
@@ -177,6 +178,9 @@ export interface HttpServerDeps {
   /** Appearance settings the browser fetches at boot -- see GET /api/config,
    *  the only route on this server that tells a client how to LOOK. */
   clientConfig?: ClientConfig;
+  /** Named looks a family opens with kvitlach.us/m/<slug>. See
+   *  GET /api/family/:slug, which is a lookup and never a listing. */
+  families?: FamilyProfiles;
 }
 
 export function createHttpServer(store: GameStore, deps: HttpServerDeps | AccessControl = {}) {
@@ -188,6 +192,7 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   const contact = opts.contact ?? new ContactContent();
   const disclaimer = opts.disclaimer ?? new DisclaimerContent();
   const clientConfig = opts.clientConfig ?? new ClientConfig();
+  const families = opts.families ?? new FamilyProfiles();
   // Deliberately the STORE's own instance rather than a dep of its own: the
   // panel has to edit the very object createPracticeRoom reads, or an operator
   // saves a list that nothing uses and nothing says why.
@@ -310,6 +315,29 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
   app.get("/api/config", async (_request, reply) => {
     reply.header("cache-control", "public, max-age=30");
     return clientConfig.toRecord();
+  });
+
+  // One family's look, by the slug in their own link. A LOOKUP, never a
+  // listing: a profile carries a family's surname, and a route that enumerated
+  // them would turn a private link into a directory of the families who use
+  // this app. An unknown slug is a flat 404 with no body, so this cannot be
+  // walked to find out which slugs exist either.
+  //
+  // The house look is deliberately NOT reachable here. It is what the client
+  // already renders with nothing stored, so serving it would only give a
+  // prober a way to tell "no such family" from "server is fine".
+  // The slug is a QUERY parameter rather than a path segment, and that is a
+  // security decision rather than a style one: nginxProxy.test.ts requires
+  // every public route to be an nginx EXACT-match location, because a prefix
+  // match on /api would publish /admin through the tunnel. A path parameter
+  // cannot be an exact match; a query string can, and nginx forwards it
+  // untouched. The family's own link is still /m/dov -- this is only the shape
+  // of the lookup behind it.
+  app.get("/api/family", async (request, reply) => {
+    const slug = (request.query as Record<string, unknown>).slug;
+    if (!families.has(slug)) return reply.code(404).send();
+    reply.header("cache-control", "public, max-age=30");
+    return families.get(slug);
   });
 
   app.get("/health", async () => ({ status: "ok" }));
@@ -760,6 +788,38 @@ export function createHttpServer(store: GameStore, deps: HttpServerDeps | Access
     // Back to the editor, not the panel: the swatches there are the only place
     // an operator can see what they just saved.
     return reply.redirect(`/admin/appearance${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
+  });
+
+  // Same own-page reasoning as every other editor here.
+  app.get("/admin/families", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const query = request.query as Record<string, unknown>;
+    return reply.type("text/html").send(
+      renderFamiliesEditor({
+        families,
+        appUrl: opts.appUrl,
+        query: carry(request, how),
+        notice: typeof query.ok === "string" ? query.ok.slice(0, 120) : undefined,
+      })
+    );
+  });
+
+  app.post("/admin/families", async (request, reply) => {
+    const how = guard(request, reply);
+    if (!how) return reply;
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    let note: string;
+    if (typeof body.remove === "string" && body.remove) {
+      note = families.remove(body.remove) ? "Family removed." : "No such family.";
+    } else if (families.save(body as never)) {
+      note = "Family saved. Their link works immediately; open tables keep the look they were dealt.";
+    } else {
+      // The one field that can fail the whole save, because it is the address.
+      note = "Needs a web address: lowercase letters, digits and hyphens only.";
+    }
+    const sep = carry(request, how) ? "&" : "?";
+    return reply.redirect(`/admin/families${carry(request, how)}${sep}ok=${encodeURIComponent(note)}`);
   });
 
   // One page for all six sections (unlike About/Contact's own single

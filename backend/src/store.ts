@@ -11,6 +11,7 @@ import type { Database } from "./db.js";
 import { metrics } from "./metrics.js";
 import { hashPassword, verifyPassword } from "./admin-auth.js";
 import { AuditLog } from "./audit.js";
+import { FamilyProfiles, HOUSE_SLUG } from "./family-profiles.js";
 
 // The room-expiry windows, the bot think delays, the bank-decision pause, the
 // offline grace, the abandoned-banker threshold and the session lifetime are
@@ -308,12 +309,47 @@ export class GameStore {
   // reason AccessControl and BotNames ARE injected is that the panel mutates
   // those, and two instances would mean a setting the game never sees.
   readonly auditLog: AuditLog;
+  // The named looks. Injected like botNames and for the same reason: the admin
+  // page edits this instance, and a second one would mean a family saving a
+  // felt that no table ever shows.
+  readonly families: FamilyProfiles;
 
-  constructor(db?: Database, limits: RuntimeLimits = new RuntimeLimits(), botNames: BotNames = new BotNames()) {
+  constructor(
+    db?: Database,
+    limits: RuntimeLimits = new RuntimeLimits(),
+    botNames: BotNames = new BotNames(),
+    families: FamilyProfiles = new FamilyProfiles(),
+  ) {
     this.db = db;
     this.limits = limits;
     this.botNames = botNames;
+    this.families = families;
     this.auditLog = new AuditLog(limits, db);
+  }
+
+  /**
+   * Which look a table wears. Never undefined -- an unstamped table is the
+   * house look, which IS a profile, so no caller ever has to branch on
+   * "is this a family table". See family-profiles.ts.
+   */
+  private profileFor(room: { familyProfile?: string }) {
+    return this.families.get(room.familyProfile ?? HOUSE_SLUG);
+  }
+
+  /**
+   * The names a practice table deals its bots.
+   *
+   * A family's own list if their profile carries one, the built-in pool
+   * otherwise -- and the fallback is per-list rather than all-or-nothing, so a
+   * family that named their bankers but not their players gets their bankers
+   * and the built-in seats rather than neither.
+   */
+  private botPoolFor(room: { familyProfile?: string }) {
+    const profile = this.profileFor(room);
+    return {
+      banker: profile.bankerNames ? profile.bankerNames.split(/\r?\n/).filter(Boolean) : undefined,
+      players: profile.playerNames ? profile.playerNames.split(/\r?\n/).filter(Boolean) : undefined,
+    };
   }
 
   private sanitizeName(value: string | undefined, max = MAX_NAME_LEN) {
@@ -745,7 +781,7 @@ export class GameStore {
     return withBotTimer;
   }
 
-    createRoom(admin: { firstName: string; lastName?: string; roomName?: string; password?: string; buyIn?: number; roomId?: string; bankerBankroll?: number }) {
+    createRoom(admin: { firstName: string; lastName?: string; roomName?: string; password?: string; buyIn?: number; roomId?: string; bankerBankroll?: number; familyProfile?: string }) {
     // Checked before anything is allocated or any id is claimed, so a refusal
     // leaves no trace behind (mirrors createPracticeRoom's own capacity gate).
     if (this.rooms.size >= this.limits.maxRooms) {
@@ -783,9 +819,15 @@ export class GameStore {
         roomId = shortId();
         while (this.rooms.has(roomId)) roomId = shortId();
       }
+    // Stamped once, at creation, from whichever family link the banker's own
+    // device remembered. Unknown or absent resolves to the house look, so this
+    // is always a real profile and never a special case. Not settable
+    // afterwards: a table that restyled itself mid-night would read as a fault.
+    const familyProfile = this.families.has(admin.familyProfile) ? String(admin.familyProfile) : undefined;
     const room: RoomState = {
       roomId,
       name: resolvedRoomName,
+      familyProfile,
       // Falsy stays falsy -- a room with no password must hash to
       // `undefined`, not to a hash of "" or "undefined", or joinRoom below
       // would suddenly start demanding a password nobody set.
@@ -821,6 +863,7 @@ export class GameStore {
     buyIn?: number;
     bankBuyIn?: number;
     deckCount?: number;
+    familyProfile?: string;
   }) {
     const activePracticeRooms = [...this.rooms.values()].filter((r) => r.room.practice === true).length;
     if (activePracticeRooms >= this.limits.maxPracticeRooms) {
@@ -839,10 +882,14 @@ export class GameStore {
     // Drawn per room, not per round: a banker whose name changed mid-night
     // would read as somebody having taken over the table, which is a real
     // event here (passBankAfterBankDecision) and must not be faked by a label.
-    const bankerBot: Player = { id: uuid(), firstName: this.botNames.pickBankerName(), lastName: "", type: "admin", presence: "online", isBot: true };
+    // A family's practice table deals their own names -- this is the one place
+    // the bot names show at all, so it is where a family notices them.
+    const practiceProfile = this.families.has(host.familyProfile) ? String(host.familyProfile) : undefined;
+    const pool = this.botPoolFor({ familyProfile: practiceProfile });
+    const bankerBot: Player = { id: uuid(), firstName: this.botNames.pickBankerName(pool.banker), lastName: "", type: "admin", presence: "online", isBot: true };
     const human: Player = { id: uuid(), firstName: humanName, lastName: "", type: "player", presence: "online" };
 
-    const bots: Player[] = this.botNames.pickPlayerNames(botCount).map((name) => ({
+    const bots: Player[] = this.botNames.pickPlayerNames(botCount, pool.players).map((name) => ({
       id: uuid(),
       firstName: name,
       lastName: "",
@@ -885,6 +932,7 @@ export class GameStore {
       renameBlockedIds: [],
       buyInBlockedIds: [],
       practice: true,
+      familyProfile: practiceProfile,
     };
     this.rooms.set(roomId, { room, nextStart: 0, seatFloorAt: Date.now() });
     this.bumpRoomTimer(roomId);

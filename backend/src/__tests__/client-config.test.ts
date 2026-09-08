@@ -123,16 +123,24 @@ describe("the theme name lists", () => {
   // panel offers and the client has never heard of would silently do nothing.
   const THEME_SRC = readFileSync(resolve(__dirname, "../../../frontend/src/theme.ts"), "utf8");
 
-  const namesIn = (constant: string) => {
+  // LISTED felts only, and the distinction is the point. A felt marked
+  // `listed: false` is held back for family profiles; the house theme is what
+  // every unstamped table in the world shows, so offering a reserved felt here
+  // would quietly un-reserve it. A family profile may name any felt --
+  // family-profiles.test.ts asserts against the full set.
+  const namesIn = (constant: string, listedOnly = false) => {
     const start = THEME_SRC.indexOf(`export const ${constant}: Record<`);
     if (start === -1) throw new Error(`${constant} moved or was renamed in frontend/src/theme.ts`);
     const end = THEME_SRC.indexOf("\n};", start);
     const block = THEME_SRC.slice(start, end);
-    return [...block.matchAll(/^ {2}([a-z]+): \{/gm)].map((m) => m[1]).sort();
+    return [...block.matchAll(/^ {2}([a-z]+): \{([^\n]*)/gm)]
+      .filter((m) => !listedOnly || !m[2].includes("listed: false"))
+      .map((m) => m[1])
+      .sort();
   };
 
-  it("matches the felts the client actually has", () => {
-    expect([...FELT_NAMES].sort()).toEqual(namesIn("FELTS"));
+  it("offers exactly the felts the switcher offers, and not the reserved ones", () => {
+    expect([...FELT_NAMES].sort()).toEqual(namesIn("FELTS", true));
   });
 
   it("matches the chip themes the client actually has", () => {

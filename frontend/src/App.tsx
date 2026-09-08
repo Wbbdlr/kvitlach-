@@ -2,6 +2,7 @@
 import { clsx } from "clsx";
 import { tableStandings } from "./playerRecord";
 import { useGameStore, loadLastRoomId, forgetLastRoom, loadAgeAcknowledged, persistAgeAcknowledged } from "./state";
+import { useFamilyProfile } from "./familyProfile";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
@@ -47,6 +48,10 @@ function AgeAckCheckbox({ id, checked, onChange }: { id: string; checked: boolea
 
 export default function App() {
   const store = useGameStore();
+  // The family's own greeting, if this device or the last table was on one.
+  // Empty for everybody else, which is the house look -- itself a profile, so
+  // nothing here asks whether a family is present.
+  const familyGreeting = useFamilyProfile()?.greeting ?? "";
   const {
     room,
     round,
@@ -844,7 +849,7 @@ export default function App() {
           <section className="rounded-xl shadow-md bg-blue-50/70 border border-blue-200 p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
-                <h1 className="text-xl font-bold text-blue-800">Welcome to Kvitlach</h1>
+                <h1 className="text-xl font-bold text-blue-800">{familyGreeting || "Welcome to Kvitlach"}</h1>
                 <div className="text-xs text-slate-600">
                   Join an existing table with the room code your Banker shared, or host one if you are running the game.
                 </div>

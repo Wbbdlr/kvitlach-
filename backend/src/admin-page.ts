@@ -12,6 +12,7 @@ import type { AdminLoginSnapshot } from "./http-server.js";
 import type { ClientErrorLog } from "./client-errors.js";
 import { CARD_EFFECT_BOUNDS, CARD_EFFECT_DEFAULTS, CHIP_NAMES, ClientConfig, FELT_NAMES, THEME_DEFAULTS, type CardEffectsRecord } from "./client-config.js";
 import { AUDIT_ACTIONS, type AuditEntry } from "./audit.js";
+import { CHIP_NAMES as FAMILY_CHIPS, FELT_NAMES as FAMILY_FELTS, FamilyProfiles, HOUSE, MAX as FAMILY_MAX, type FamilyProfile } from "./family-profiles.js";
 import { metrics } from "./metrics.js";
 
 // The admin page's HTML. Split out of http-server.ts once it stopped being a
@@ -562,6 +563,116 @@ export function renderArchivePage({ rooms, detail, hasDatabase, retentionDays, q
   );
 }
 
+/**
+ * The family looks, and the links that open them.
+ *
+ * One form per family plus one empty form to add another, rather than a single
+ * big textarea: each field has its own bounds and its own meaning, and a JSON
+ * blob in a box is how somebody eventually saves a felt name that does not
+ * exist.
+ *
+ * The house look is not editable here. It is expressed in code as profile zero
+ * (family-profiles.ts's HOUSE) precisely so that no part of this app has to ask
+ * "is this a family table" -- and an operator editing the shipped defaults from
+ * this page would be editing what every unstamped table in the world looks
+ * like, which is the appearance page's job and already has its own controls.
+ */
+export function renderFamiliesEditor({
+  families,
+  appUrl,
+  query,
+  notice,
+}: {
+  families: FamilyProfiles;
+  appUrl?: string;
+  query: string;
+  notice?: string;
+}): string {
+  const act = (path: string) => `${path}${query}`;
+  const origin = (appUrl ?? "https://kvitlach.us").replace(/\/+$/, "");
+
+  const field = (
+    p: Partial<FamilyProfile>,
+    key: keyof FamilyProfile,
+    label: string,
+    hint: string,
+    max: number,
+    placeholder = ""
+  ) => `<p><label>${escapeHtml(label)}<br />
+      <input type="text" name="${key}" maxlength="${max}" style="width:100%"
+        placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(String(p[key] ?? ""))}" /></label>
+      <span class="meta">${hint}</span></p>`;
+
+  const select = (p: Partial<FamilyProfile>, key: "felt" | "chip", label: string, options: readonly string[]) =>
+    `<div class="row"><label style="min-width:7rem">${escapeHtml(label)}</label>
+      <select name="${key}">${options
+        .map((o) => `<option value="${o}"${(p[key] ?? HOUSE[key]) === o ? " selected" : ""}>${o}</option>`)
+        .join("")}</select></div>`;
+
+  const form = (p: Partial<FamilyProfile>, isNew: boolean) => {
+    const slug = p.slug ?? "";
+    return `<fieldset>
+      <legend>${isNew ? "Add a family" : escapeHtml(p.name || slug)}</legend>
+      ${
+        isNew
+          ? ""
+          : `<p class="meta">Their link: <code>${escapeHtml(`${origin}/m/${slug}`)}</code> &mdash; paste that
+             into the family's group chat and there is nothing for anyone to type.</p>`
+      }
+      <form method="post" action="${act("/admin/families")}">
+        ${field(p, "slug", "Web address", `The <code>${escapeHtml(`${origin}/m/`)}</code> part is fixed; this is the rest. Lowercase letters, digits and hyphens.`, FAMILY_MAX.slug, "dov")}
+        ${field(p, "name", "Family name", "For this page and for crash reports. Players never see it.", FAMILY_MAX.name, "Dov")}
+        ${field(p, "greeting", "Lobby greeting", "Replaces the lobby's own heading. Blank keeps it.", FAMILY_MAX.greeting, "Welcome, Dov Family")}
+        ${field(p, "feltPrint", "Print on the felt", "The faint line across the table. Hebrew belongs here, not in the card mark below.", FAMILY_MAX.feltPrint, "משפחת דב קוויטלעך")}
+        ${field(p, "cardMark", "Mark on the cards", "Replaces SCHLESINGER on the ace, the 8 and the 12. <b>Latin letters only</b> &mdash; the face this is set in has no Hebrew, so Hebrew here would draw nothing at all. Long names are shrunk to fit rather than refused.", FAMILY_MAX.cardMark, "DOV")}
+        ${select(p, "felt", "Felt", FAMILY_FELTS)}
+        ${select(p, "chip", "Chips", FAMILY_CHIPS)}
+        <p><label>Computer banker's names<br />
+          <textarea name="bankerNames" rows="3" style="width:100%"
+            placeholder="Blank uses the built-in names">${escapeHtml(p.bankerNames ?? "")}</textarea></label></p>
+        <p><label>Computer players' names<br />
+          <textarea name="playerNames" rows="4" style="width:100%"
+            placeholder="Blank uses the built-in names">${escapeHtml(p.playerNames ?? "")}</textarea></label>
+          <span class="meta">One per line or comma separated. Blank falls back to the built-in list, the same
+          as the <a href="${act("/admin/bot-names")}">computer player names</a> page.</span></p>
+        ${field(p, "accessCode", "Access code to carry", "Only matters while joining or creating is gated by code. Filled in here, the family's link means they are not asked to type it. It is not a password and does not gate anything on its own.", FAMILY_MAX.accessCode)}
+        <p>
+          <button type="submit" class="save">${isNew ? "Add this family" : "Save"}</button>
+          ${
+            isNew
+              ? ""
+              : `<button type="submit" name="remove" value="${escapeHtml(slug)}"
+                   onclick="return confirm('Remove this family? Their link stops working. Tables already dealt keep the look they have until they end.');"
+                   class="danger">Remove</button>`
+          }
+        </p>
+      </form>
+    </fieldset>`;
+  };
+
+  const existing = families.list();
+
+  return shell(
+    "Families - Kvitlach admin",
+    `<h1>Families</h1>
+    ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
+    <p class="meta"><a href="${act("/admin")}">&larr; Back to the admin panel</a></p>
+    <p class="meta">A family opens their own link once and their device remembers it; any table they host
+    is stamped with the look, so everyone who joins sees the same felt and the same cards. A player who has
+    picked their own felt keeps it &mdash; a family look never overrules somebody's own choice.</p>
+    <p class="meta">Changes reach a browser on its next page load. A table already in play keeps the look it
+    was dealt until it ends.</p>
+
+    ${existing.length === 0 ? '<p class="meta">No families yet.</p>' : existing.map((p) => form(p, false)).join("\n")}
+    ${form({}, true)}
+
+    <p class="meta">The shipped look is not editable here on purpose: it lives in code as the profile every
+    unstamped table already uses, which is what keeps family tables from being a separate code path. To
+    change what everyone sees, use <a href="${act("/admin/appearance")}">appearance</a>.</p>`,
+    false
+  );
+}
+
 export interface AuditPageDeps {
   entries: AuditEntry[];
   source: "database" | "memory";
@@ -962,6 +1073,7 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
         &middot; <a href="${act("/admin/errors")}">client errors</a>
         &middot; <a href="${act("/admin/audit")}">audit</a>
         &middot; <a href="${act("/admin/archive")}">deleted tables</a>
+        &middot; <a href="${act("/admin/families")}">families</a>
         &middot; <a href="${act("/admin/appearance")}">appearance</a>
         &middot; <a href="/health/detail">raw JSON</a>
         &middot; <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>

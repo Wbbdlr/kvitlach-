@@ -1,8 +1,11 @@
 import { clsx } from "clsx";
-import { FELTS, FeltName } from "../theme";
+import { FELTS, FeltName, LISTED_FELTS } from "../theme";
 import { Icon } from "./icons";
 
-const FELT_ORDER: FeltName[] = ["green", "burgundy", "navy"];
+// Derived from FELTS rather than listed here, so a felt held back for a family
+// profile cannot appear in the switcher by somebody forgetting this line. See
+// Felt.listed in theme.ts.
+const FELT_ORDER: FeltName[] = LISTED_FELTS;
 
 export interface FeltSwitcherProps {
   felt: FeltName;

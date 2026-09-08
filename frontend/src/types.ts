@@ -195,6 +195,8 @@ export interface RoomState {
   renameBlockedIds: string[];
   buyInBlockedIds: string[];
   feltWatermark?: string;
+  /** The named look this table was stamped with. See familyProfile.ts. */
+  familyProfile?: string;
   seatClaims?: SeatClaim[];
   /** Thinking time per decision. Absent on rooms made before the setting existed. */
   turnSeconds?: number;

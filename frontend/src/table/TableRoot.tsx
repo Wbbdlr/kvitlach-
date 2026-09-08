@@ -18,6 +18,7 @@ import { PlayerDock } from "./PlayerDock";
 import { BankPanel } from "./BankPanel";
 import { BankReservations } from "./BankReservations";
 import { ViewerHud } from "./ViewerHud";
+import { useFamilyProfile, useRoomProfile } from "../familyProfile";
 import { ReactionLayer } from "./ReactionLayer";
 import { useDraggablePanel } from "./draggablePanel";
 import { DockGrips } from "./DockGrips";
@@ -499,12 +500,21 @@ export function TableRoot({
     snoozeInstallNudge(IOS_HINT_KEY);
   };
 
+  // A table carries the look its banker was on. Adopting it here is what makes
+  // this a family TABLE rather than a family device: somebody who followed no
+  // link at all sees it too, once they sit down.
+  useRoomProfile(room.familyProfile);
+  const familyPrint = useFamilyProfile()?.feltPrint ?? "";
+
   useEffect(() => {
     // Every table should show SOME branding by default, not just once a
     // banker bothers to set one.
-    const watermark = room.feltWatermark || DEFAULT_WATERMARK;
+    // Three sources, in order: what this table's banker typed, then the family
+    // profile's own print, then the built-in one. The banker's own edit wins
+    // so a profile can never silently undo something somebody set by hand.
+    const watermark = room.feltWatermark || familyPrint || DEFAULT_WATERMARK;
     document.documentElement.style.setProperty("--wm", JSON.stringify(watermark));
-  }, [room.feltWatermark]);
+  }, [room.feltWatermark, familyPrint]);
 
   const bankLock = round?.bankLock;
   const bankLockStage = bankLock?.stage;

@@ -2,7 +2,8 @@ import { test, expect, Page } from "@playwright/test";
 
 // The felt is a USER-CHOSEN colour, so no element's legibility can be judged
 // against "the background" -- there are three, and the player picks. See
-// frontend/src/theme.ts: FELTS is a fixed set (green / burgundy / navy),
+// frontend/src/theme.ts: FELTS is a fixed set (three offered in the switcher,
+// two more reserved for family profiles),
 // persisted per-client in localStorage, never synced, applied by writing
 // --felt-hi / --felt-lo / --felt-rail onto :root.
 //
@@ -15,10 +16,17 @@ import { test, expect, Page } from "@playwright/test";
 // A screenshot sweep structurally cannot catch this -- every capture is taken
 // on whichever felt the client defaulted to (green), so the other two are
 // unphotographed. Same blind spot as the per-viewpoint one in Part 8.
+// EVERY felt, including the two that the switcher does not offer. spruce and
+// plum are reserved for family profiles (theme.ts's `listed: false`), and a
+// family plays on one every night -- so leaving them out here would mean the
+// first contrast regression is one that only one family can see, and that they
+// have no way to escape by picking a different felt.
 const FELTS = {
   green: { hi: "#24503a", lo: "#12271c" },
   burgundy: { hi: "#5a2733", lo: "#280f16" },
   navy: { hi: "#24405e", lo: "#0d1a2b" },
+  spruce: { hi: "#1f4a44", lo: "#0e2724" },
+  plum: { hi: "#43304e", lo: "#20162a" },
 } as const;
 
 // Anything at or above this alpha is doing the job -- it is a background of

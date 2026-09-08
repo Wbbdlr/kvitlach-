@@ -158,8 +158,15 @@ export class BotNames {
   }
 
   /** One name for this table's banker bot, drawn fresh each room. */
-  pickBankerName(): string {
-    const pool = this.bankerNames();
+  /**
+   * `override` lets a family profile supply its own list without this class
+   * needing to know families exist. Passing nothing is the platform pool, so
+   * there is one code path rather than a family branch. An empty override is
+   * treated as no override: a family that named their bankers but not their
+   * players gets their bankers and the built-in seats.
+   */
+  pickBankerName(override?: string[]): string {
+    const pool = override?.length ? override : this.bankerNames();
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
@@ -174,8 +181,8 @@ export class BotNames {
    * both matter more than the names being pretty -- a table that quietly deals
    * six bots when eight were asked for is a bug report nobody can explain.
    */
-  pickPlayerNames(count: number): string[] {
-    const pool = this.playerNames();
+  pickPlayerNames(count: number, override?: string[]): string[] {
+    const pool = override?.length ? override : this.playerNames();
     const shuffled = [...pool];
     for (let i = shuffled.length - 1; i > 0; i -= 1) {
       const j = Math.floor(Math.random() * (i + 1));
