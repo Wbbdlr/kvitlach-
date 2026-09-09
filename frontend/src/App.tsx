@@ -20,6 +20,7 @@ import InstallPrompt from "./InstallPrompt";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
 import { NumberField } from "./NumberField";
+import { setUiSoundEnabled, toggleFeedback } from "./uiFeedback";
 
 // One checkbox, rendered on Join/Create/Practice (never Watch -- see
 // state.ts's own comment on why). `id` has to be unique per instance since
@@ -264,6 +265,9 @@ export default function App() {
   useEffect(() => {
     // Keep manager flags in sync with UI toggles.
     audioManager.setSfxEnabled(sfxEnabled);
+    // The UI click rides the same switch as the table's own effects -- see
+    // uiFeedback.ts for why the haptic does not.
+    setUiSoundEnabled(sfxEnabled);
   }, [audioManager, sfxEnabled]);
 
   useEffect(() => {
@@ -692,14 +696,21 @@ export default function App() {
           setMusicEnabled((prev) => !prev);
           setUserInteracted(true);
           audioManager.noteInteraction();
+          toggleFeedback();
         }}
         onToggleSfx={() => {
+          // Fires only on the way ON. Clicking to confirm that sound is now
+          // OFF is a joke the third time and a bug report the first.
+          if (!sfxEnabled) toggleFeedback();
           setSfxEnabled((prev) => !prev);
           setUserInteracted(true);
           audioManager.noteInteraction();
         }}
         motionEnabled={motionEnabled}
-        onToggleMotion={() => setMotionEnabled((prev) => !prev)}
+        onToggleMotion={() => {
+          setMotionEnabled((prev) => !prev);
+          toggleFeedback();
+        }}
         wsStatus={status}
       />
       {rulesModals}
@@ -850,55 +861,50 @@ export default function App() {
           </section>
         )}
         {!room && (
-          <section className="rounded-xl shadow-md bg-blue-50/70 border border-blue-200 p-4 flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-3 max-w-xl">
-                {/* One line, then the forms. This block used to carry three
-                    more paragraphs explaining what a banker is and which form
-                    to use -- the product teaching itself to somebody who has
-                    not done anything yet. All of it is still one click away in
-                    "What is Kvitlach?" and "How to play", which sit directly
-                    to the right of this heading and are what a reader who
-                    actually wants the explanation reaches for. */}
-                <h1 className="k-lobby-h text-2xl text-blue-800">{familyGreeting || "Welcome to Kvitlach"}</h1>
-                <div className="text-xs text-slate-600">
-                  Have a code from your Banker? Join below. Running the game yourself? Host a table.
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-2">
-                <button
-                  type="button"
-                  className="group inline-flex items-center gap-2 rounded-full border border-accent text-accent px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-accent hover:text-white"
-                  onClick={() => {
-                    setShowWhatIs(false);
-                    setShowHowTo(true);
-                  }}
-                >
-                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold transition-colors duration-200 group-hover:bg-white group-hover:text-accent">
-                    ?
-                  </span>
-                  <span>How to play</span>
-                </button>
-                <button
-                  type="button"
-                  className="group inline-flex items-center gap-2 rounded-full border border-blue-300 text-blue-700 px-4 py-2 text-xs font-semibold tracking-wide shadow-sm transition-colors duration-200 hover:bg-blue-600 hover:text-white"
-                  onClick={() => {
-                    setShowHowTo(false);
-                    setShowWhatIs(true);
-                  }}
-                >
-                  <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm transition-colors duration-200 group-hover:border-blue-600 p-[1px]">
-                    <img
-                      src="/blank.png"
-                      alt=""
-                      aria-hidden="true"
-                      className="h-full w-full object-contain"
-                      loading="lazy"
-                    />
-                  </span>
-                  <span>What is Kvitlach?</span>
-                </button>
-              </div>
+          /* Two buttons and, for a family, their own greeting. Nothing else.
+             This banner used to open with "Welcome to Kvitlach" under a
+             wordmark that already says Kvitlach, then explain in prose which
+             of the two forms directly below it to use -- both of which those
+             forms say for themselves, in their own headings and their own
+             first lines.
+             The heading survives ONLY for a family: "Welcome, Dov Family" is
+             the one thing here that is not written anywhere else on the page,
+             and dropping the element outright would have taken it with it. */
+          <section className="rounded-xl shadow-md bg-blue-50/70 border border-blue-200 p-4 flex flex-col items-center gap-3">
+            {familyGreeting && <h1 className="k-lobby-h text-2xl text-blue-800 text-center">{familyGreeting}</h1>}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                className="k-gold-hover group inline-flex items-center justify-center gap-2 rounded border border-accent text-accent px-5 py-2 text-sm font-semibold shadow-sm transition-colors duration-200"
+                onClick={() => {
+                  setShowWhatIs(false);
+                  setShowHowTo(true);
+                }}
+              >
+                <span className="k-gold-hover-dot inline-flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white text-[10px] font-bold transition-colors duration-200">
+                  ?
+                </span>
+                <span>How to Play</span>
+              </button>
+              <button
+                type="button"
+                className="k-gold-hover group inline-flex items-center justify-center gap-2 rounded border border-blue-300 text-blue-700 px-5 py-2 text-sm font-semibold shadow-sm transition-colors duration-200"
+                onClick={() => {
+                  setShowHowTo(false);
+                  setShowWhatIs(true);
+                }}
+              >
+                <span className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded border border-blue-300 bg-white shadow-sm transition-colors duration-200 p-[1px]">
+                  <img
+                    src="/blank.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="h-full w-full object-contain"
+                    loading="lazy"
+                  />
+                </span>
+                <span>What is Kvitlach?</span>
+              </button>
             </div>
           </section>
         )}
@@ -1125,11 +1131,16 @@ export default function App() {
                   />
                   <span className="text-xs text-slate-500">
                     {practiceDecksManuallySet && practiceDecks !== recommendedDecks(practiceBotCount + 1)
-                      ? `The game recommends ${recommendedDecks(practiceBotCount + 1)} for ${practiceBotCount + 1} at the table.`
+                      ? `The Rebbe recommends ${recommendedDecks(practiceBotCount + 1)} for ${practiceBotCount + 1} at the table.`
                       : "Two decks (one pack) for up to six at the table, then one more per three people."}
                   </span>
                 </label>
 
+                {/* The stake ceiling is 5000, raised from 1000. The server has
+                    always allowed far more (PRACTICE_MAX_BUYIN is 100,000) --
+                    this slider was the only thing holding it down, and there
+                    is no reason a solo table cannot play for bigger imaginary
+                    money. The bank's own slider tracks it at up to 10x. */}
                 <label className="text-sm flex flex-col gap-1">
                   <span className="flex items-center justify-between">
                     <span>Your starting money</span>
@@ -1138,7 +1149,7 @@ export default function App() {
                   <input
                     type="range"
                     min={20}
-                    max={1000}
+                    max={5000}
                     step={10}
                     value={practiceBuyIn}
                     onChange={(e) => {

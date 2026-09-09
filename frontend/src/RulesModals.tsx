@@ -208,6 +208,18 @@ export function RulesModals({ showHowTo, showWhatIs, onCloseHowTo, onCloseWhatIs
                 Over time, Kvitlech decks were produced both by hand and later by manufacturers, allowing the game to spread
                 and remain a familiar Chanuka pastime in many Jewish homes.
               </p>
+              <p>
+                Now Kvitlach is playable online with the whole family, brought to you by the good menchen at{" "}
+                <a
+                  href="https://computerrabbis.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold underline underline-offset-2"
+                >
+                  ComputerRabbis.com
+                </a>
+                .
+              </p>
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { useEscapeKey } from "../useEscapeKey";
 import { FeltSwitcher } from "./FeltSwitcher";
 import { ChipSwitcher } from "./ChipSwitcher";
 import { Icon } from "./icons";
+import { toggleFeedback } from "../uiFeedback";
 
 export interface AppearanceMenuProps {
   felt: FeltName;
@@ -37,6 +38,17 @@ export interface AppearanceMenuProps {
 // away everywhere, and the two switchers keep their own sizing and
 // selection-ring treatment unchanged inside the panel.
 export function AppearanceMenu({ felt, chip, onFeltChange, onChipChange, inline = false }: AppearanceMenuProps) {
+  // Picking a felt or a chip is the one place in the app where somebody
+  // deliberately changes how the table looks, and until now it was the only
+  // control that changed something visibly with no acknowledgement at all.
+  const pickFelt = (name: FeltName) => {
+    toggleFeedback();
+    onFeltChange(name);
+  };
+  const pickChip = (name: ChipName) => {
+    toggleFeedback();
+    onChipChange(name);
+  };
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
 
@@ -58,11 +70,11 @@ export function AppearanceMenu({ felt, chip, onFeltChange, onChipChange, inline 
     <>
       <div className="k-appearance-row">
         <span className="k-appearance-label">Felt</span>
-        <FeltSwitcher felt={felt} onChange={onFeltChange} />
+        <FeltSwitcher felt={felt} onChange={pickFelt} />
       </div>
       <div className="k-appearance-row">
         <span className="k-appearance-label">Chips</span>
-        <ChipSwitcher chip={chip} onChange={onChipChange} />
+        <ChipSwitcher chip={chip} onChange={pickChip} />
       </div>
       <p className="k-appearance-note">Just for your view &mdash; nobody else sees the change.</p>
     </>

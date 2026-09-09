@@ -65,10 +65,14 @@ vi.mock("./ws", () => ({ WSClient: class {} }));
 // Basic smoke tests
 
 describe("App", () => {
-  it("renders welcome in lobby state", () => {
+  it("opens on the forms, not on a welcome", () => {
+    // The lobby used to greet you with "Welcome to Kvitlach" beneath a
+    // wordmark already reading Kvitlach. What it opens with now is the thing
+    // somebody came to do.
     render(<App />);
-    expect(screen.getByText(/Welcome to Kvitlach/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Welcome to Kvitlach/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Join Game/i)).toBeInTheDocument();
+    expect(screen.getByText(/How to Play/i)).toBeInTheDocument();
   });
 });
 

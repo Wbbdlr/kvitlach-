@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { cardImages } from "./table/selectors";
+import { PAGE_THEME_EVENT, loadPageTheme, resolvesDark, togglePageTheme } from "./pageTheme";
+import { toggleFeedback } from "./uiFeedback";
 const NAV_LINKS = [
   { href: "/about", label: "About" },
   { href: "/disclaimer", label: "Disclaimer" },
@@ -13,6 +16,69 @@ export interface SiteHeaderProps {
   // these, so a second copy right above it would just be clutter.
   showNav?: boolean;
   active?: string;
+}
+
+
+// Light/dark, for the lobby and info pages only -- the table has its own art
+// direction and is excluded in CSS (see tailwind.config.cjs).
+//
+// The icon shows what you will GET, not what you are in: a control captioned
+// with the current state reads as a status readout and gets pressed by people
+// trying to reach the other one.
+function ThemeToggle() {
+  const [dark, setDark] = useState(() => resolvesDark(loadPageTheme()));
+
+  useEffect(() => {
+    const sync = () => setDark(resolvesDark(loadPageTheme()));
+    window.addEventListener(PAGE_THEME_EVENT, sync);
+    // Anyone still on "system" follows the device, including a change made
+    // while the page is open -- sunset on a phone, or a laptop switching
+    // itself. Without this the CSS would flip and this icon would not.
+    // Guarded: jsdom has no matchMedia at all, and an unguarded call here
+    // threw during render -- which took out every page that renders this
+    // header, nineteen tests across five suites, for a listener that only ever
+    // provides a nicety.
+    let media: MediaQueryList | undefined;
+    try {
+      media = window.matchMedia("(prefers-color-scheme: dark)");
+      media.addEventListener?.("change", sync);
+    } catch {
+      /* no matchMedia; the theme still applies, it just will not track a
+         device change made while the page is open */
+    }
+    sync();
+    return () => {
+      window.removeEventListener(PAGE_THEME_EVENT, sync);
+      media?.removeEventListener?.("change", sync);
+    };
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        toggleFeedback();
+        setDark(togglePageTheme() === "dark");
+      }}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-50"
+      aria-label={dark ? "Switch to the light look" : "Switch to the dark look"}
+      title={dark ? "Switch to the light look" : "Switch to the dark look"}
+    >
+      {dark ? (
+        // A sun: pressing this returns you to light.
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+          <circle cx="10" cy="10" r="3.4" />
+          <path strokeLinecap="round" d="M10 2.4v1.7M10 15.9v1.7M2.4 10h1.7M15.9 10h1.7M4.6 4.6l1.2 1.2M14.2 14.2l1.2 1.2M15.4 4.6l-1.2 1.2M5.8 14.2l-1.2 1.2" />
+        </svg>
+      ) : (
+        // A moon, drawn as one path rather than a circle with a bite taken
+        // out of it, so it keeps its shape against any background.
+        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+          <path d="M16.3 12.6A6.9 6.9 0 0 1 7.4 3.7a1 1 0 0 0-1.3-1.2 8.6 8.6 0 1 0 11.4 11.4 1 1 0 0 0-1.2-1.3z" />
+        </svg>
+      )}
+    </button>
+  );
 }
 
 export default function SiteHeader({ showNav = false, active }: SiteHeaderProps) {
@@ -63,11 +129,17 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
           @font-face), so `italic` would be synthesised by slanting the
           uprights -- which is exactly the smear the subset's own comment warns
           about for synthesised bold. */}
-      <span className="self-end -translate-y-[3px] text-[13px] text-blue-700/80 leading-tight" style={{ fontFamily: "var(--k-plate-font)" }}>
-        Ah heimishe Chanukah shpil
+      {/* Tucked in closer to the wordmark and sitting on the same floor as it:
+          the header's own gap-3 plus a 3px lift left it reading as a separate
+          item in the row rather than as the wordmark's tagline. No vertical
+          nudge at all -- self-end puts it on the wordmark's own baseline, and
+          both a lift and a drop were tried and looked detached. */}
+      <span className="k-tagline self-end -ml-1.5 text-[13px] leading-tight" style={{ fontFamily: "var(--k-plate-font)" }}>
+        Ah Heimishe Chanukah Shpil
       </span>
-      {showNav && (
-        <nav className="ml-auto flex items-center gap-4 text-xs">
+      <div className={showNav ? "ml-auto flex items-center gap-4" : "ml-auto"}>
+        {showNav && (
+          <nav className="flex items-center gap-4 text-xs">
           {NAV_LINKS.map((link) => (
             <a
               key={link.href}
@@ -80,9 +152,11 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
             >
               {link.label}
             </a>
-          ))}
-        </nav>
-      )}
+            ))}
+          </nav>
+        )}
+        <ThemeToggle />
+      </div>
     </header>
   );
 }

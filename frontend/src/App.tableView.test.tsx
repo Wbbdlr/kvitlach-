@@ -185,7 +185,7 @@ describe("the felt table is the only in-room view", () => {
     mockState.round = undefined;
     const { container, getByText } = render(<App />);
     expect(container.querySelector(".felt-table")).toBeNull();
-    expect(getByText(/Welcome to Kvitlach/i)).toBeInTheDocument();
+    expect(getByText(/Join Game/i)).toBeInTheDocument();
   });
 
   it("stays on the felt table with a results banner once a round terminates", () => {

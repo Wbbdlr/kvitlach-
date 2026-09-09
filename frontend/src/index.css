@@ -4840,3 +4840,72 @@ body:not(:has(.k-fit)) h2 {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+
+/* ---------------------------------------------------------------------------
+   Gold, the game's own accent, on the lobby and info pages.
+
+   --gold (#e6a44b) is the wordmark's colour and the in-table wordmark's
+   colour; until now the pages leading into the table borrowed none of it and
+   were entirely steel-blue. These bring it in where it can carry meaning
+   without hurting legibility: on hover, and on the tagline in dark mode.
+
+   Gold FILLS get near-black text, never white: #e6a44b against white is about
+   1.9:1, and a hover state nobody can read is worse than no hover state.
+--------------------------------------------------------------------------- */
+.k-gold-hover:hover {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #241a06;
+}
+/* The little "?" disc inside the How to Play button inverts with it, the way
+   it already did for the blue hover it replaced. */
+.k-gold-hover:hover .k-gold-hover-dot {
+  background: #241a06;
+  color: var(--gold);
+}
+.k-tagline {
+  color: rgb(var(--k-tagline));
+}
+
+/* ---------------------------------------------------------------------------
+   Form fields on the lobby and info pages.
+
+   These carried no background of their own, which is fine in light (white is
+   the UA default too) and wrong in dark: `color-scheme: dark` makes the user
+   agent paint its own field grey, a flat neutral that belongs to no palette
+   and sat on the slate surfaces looking like a rendering fault.
+
+   Scoped the same way the palette is -- body:not(:has(.k-fit)) -- so the
+   table's own inputs, which have their own art direction, are untouched.
+--------------------------------------------------------------------------- */
+body:not(:has(.k-fit)) input[type="text"],
+body:not(:has(.k-fit)) input[type="password"],
+body:not(:has(.k-fit)) input[type="number"],
+body:not(:has(.k-fit)) input:not([type]),
+body:not(:has(.k-fit)) textarea,
+body:not(:has(.k-fit)) select {
+  background-color: rgb(var(--k-field));
+  border-color: rgb(var(--k-field-border));
+  color: rgb(var(--k-ink));
+}
+body:not(:has(.k-fit)) ::placeholder {
+  color: rgb(var(--k-slate-400));
+  opacity: 1;
+}
+/* Checkboxes and range thumbs follow the theme too. Gold in dark is the same
+   accent the wordmark and the button hovers use -- see the gold block above --
+   and it is the one bright thing on a slate page, which is the point. */
+body:not(:has(.k-fit)) input[type="checkbox"],
+body:not(:has(.k-fit)) input[type="range"] {
+  accent-color: rgb(var(--k-blue-600));
+}
+html[data-page-theme="dark"] body:not(:has(.k-fit)) input[type="checkbox"],
+html[data-page-theme="dark"] body:not(:has(.k-fit)) input[type="range"] {
+  accent-color: var(--gold);
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-page-theme="light"]) body:not(:has(.k-fit)) input[type="checkbox"],
+  html:not([data-page-theme="light"]) body:not(:has(.k-fit)) input[type="range"] {
+    accent-color: var(--gold);
+  }
+}

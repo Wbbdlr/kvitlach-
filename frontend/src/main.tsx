@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { registerServiceWorker } from "./pwa";
 import { loadClientConfig } from "./clientConfig";
 import { loadFamilyProfile } from "./familyProfile";
+import { initPageTheme } from "./pageTheme";
 import "./index.css";
 
 // Imported for its side effect as much as this call: pwa.ts parks the
@@ -17,6 +18,11 @@ registerServiceWorker();
 // React must not wait on a network round trip to paint, and the stylesheet
 // already holds the right answer if this never lands. See clientConfig.ts.
 loadClientConfig();
+
+// Light or dark for the lobby and info pages. Before React paints, or the page
+// flashes light and then corrects itself -- which is worse on a dark page than
+// never having offered dark at all.
+initPageTheme();
 
 // The family link, kvitlach.us/m/<slug>. Read off the pathname here rather
 // than as a route: router.tsx is a deliberate single catch-all, and a second
