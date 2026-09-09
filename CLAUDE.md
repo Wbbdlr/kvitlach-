@@ -369,6 +369,17 @@ Context is the scarce resource in a long session, not tokens on a bill.
 - **Read the part of the file you need**, not the whole file, when a targeted
   read will do. Grep for the anchor, then read the range.
 - **Say when context is getting long**, and say what is safe to drop.
+- **Delegate the searches that read a lot and say a little.** A sweep across
+  many files to answer one question puts every file it touched into this
+  session's context forever, and the answer was three lines. Send those to an
+  Explore subagent on `model: "haiku"` and keep the three lines. This is the
+  ONLY shape where a subagent is cheaper: an agent starts cold and re-derives
+  what is already loaded here, so anything needing the context I hold is
+  cheaper done inline. Not a licence to fan out by default.
+- **Model choice is not settable from this file.** It is the app's picker and
+  fast mode, plus per-subagent overrides. An instruction here telling Claude to
+  "pick a cheaper model for easy work" does nothing and is charged every
+  session. Do not add one.
 
 ## Constraints
 
