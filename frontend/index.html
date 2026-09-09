@@ -38,6 +38,34 @@
       @media (prefers-color-scheme: dark) {
         html:not([data-page-theme="light"]) #k-boot { color: #c9a04e; }
       }
+      /* The same two cards the header wears, at roughly twice the size --
+         asked for after the first version showed the wordmark alone.
+         The _thumb variants, deliberately: 11.png and 12.png are 213KB and
+         62KB, against 12.6KB and 7.9KB here, and this is a placeholder whose
+         entire job is being on screen before the real page is. They are
+         decorative and load independently, so the wordmark below never waits
+         on them -- if they are slow, the text is simply there on its own. */
+      #k-boot .k-boot-cards {
+        position: relative;
+        width: 92px;
+        height: 68px;
+      }
+      #k-boot .k-boot-cards img {
+        position: absolute;
+        top: 0;
+        height: 64px;
+        width: auto;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.22));
+      }
+      #k-boot .k-boot-cards img:first-child {
+        left: 6px;
+        transform: rotate(-24deg);
+        z-index: 1;
+      }
+      #k-boot .k-boot-cards img:last-child {
+        left: 30px;
+        transform: rotate(23deg);
+      }
       #k-boot .k-boot-word {
         font-size: 30px;
         letter-spacing: 0.06em;
@@ -108,6 +136,10 @@
   <body class="bg-sand text-ink">
     <div id="root">
       <div id="k-boot">
+        <div class="k-boot-cards">
+          <img src="/11_thumb.png" alt="" />
+          <img src="/12_thumb.png" alt="" />
+        </div>
         <div class="k-boot-word">Kvitlach</div>
         <div class="k-boot-rule"></div>
       </div>

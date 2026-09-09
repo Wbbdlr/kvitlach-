@@ -75,7 +75,7 @@ describe("the first frame", () => {
     expect(HTML).toContain("Kvitlach</div>");
   });
 
-  it("depends on no font, no image and no script", () => {
+  it("reads without waiting on anything that has to be fetched", () => {
     const style = HTML.slice(HTML.indexOf("<style>"), HTML.indexOf("</style>"));
     expect(style).toContain("Georgia");
     // Matched, not sliced to a literal: this file is checked out with CRLF on
@@ -84,7 +84,19 @@ describe("the first frame", () => {
     // test failed for a reason that had nothing to do with the placeholder.
     const boot = HTML.match(/<div id="k-boot">[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
     expect(boot, "the #k-boot block was not found").toContain("k-boot-word");
-    expect(boot).not.toContain("<img");
+    // No script, ever: this has to paint before the module graph exists.
     expect(boot).not.toContain("<script");
+    // Images ARE allowed -- the two cards from the header -- but only the
+    // thumbnails, and only as decoration the text does not depend on. The
+    // full-size faces are 213KB and 62KB, which would make the placeholder
+    // slower than the page it stands in for.
+    const images = boot.match(/<img[^>]*>/g) ?? [];
+    // Asserted, or the loop below passes by matching nothing at all -- the
+    // block is found by a non-greedy regex and could stop short of the cards.
+    expect(images.length, "the boot block should carry the two header cards").toBe(2);
+    for (const img of images) {
+      expect(img, "a boot image must be a _thumb").toMatch(/_thumb\.png/);
+      expect(img, "decorative, so it carries an empty alt").toContain('alt=""');
+    }
   });
 });
