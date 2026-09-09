@@ -1205,8 +1205,13 @@ export function TableRoot({
                     </div>
                   </button>
                 )}
+                {/* The way out of this dialog is a real button, not a text
+                    link: it sits under two full-width buttons that both LEAVE,
+                    so the one control that keeps you where you are should not
+                    be the least substantial thing in the box. k-btn.ghost is
+                    the platform's own secondary, used on the felt already. */}
                 <div className="flex justify-end border-t k-dialog-line pt-3">
-                  <button type="button" className="k-dialog-sub text-xs" onClick={() => setLeaveOpen(false)}>
+                  <button type="button" className="k-btn ghost sm" onClick={() => setLeaveOpen(false)}>
                     Stay at the table
                   </button>
                 </div>

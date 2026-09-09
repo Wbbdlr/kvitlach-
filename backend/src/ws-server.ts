@@ -459,7 +459,7 @@ export class WSServer {
           break;
         }
         case "room:create-practice": {
-          const { firstName, botCount, buyIn, bankBuyIn, deckCount, accessCode, familyProfile } = (payload as any) || {};
+          const { firstName, roomName, botCount, buyIn, bankBuyIn, deckCount, accessCode, familyProfile } = (payload as any) || {};
           this.access.assertAllowed("practice", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const practiceIp = this.meta.get(socket)?.ip ?? "unknown";
@@ -467,7 +467,7 @@ export class WSServer {
             this.recordRejection("practiceCreates", practiceIp);
             throw new Error("room_create_throttled");
           }
-          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, botCount, buyIn, bankBuyIn, deckCount, familyProfile });
+          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, roomName, botCount, buyIn, bankBuyIn, deckCount, familyProfile });
           WSServer.recordCreate(this.practiceCreatesByIp, practiceIp, this.store.limits.roomCreateWindowMs);
           await this.attach(socket, room.roomId, player.id);
           // Unlike room:create, a round is already underway here (no human

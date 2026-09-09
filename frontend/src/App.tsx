@@ -72,6 +72,10 @@ export default function App() {
   const [joinLastName, setJoinLast] = useState("");
   const [practiceBotCount, setPracticeBotCount] = useState(2);
   const [practiceFirstName, setPracticeFirst] = useState("");
+  // Blank is the common case and is not a missing value: the server names the
+  // table from the same pithy pool a hosted table uses. It was hardcoded
+  // "Practice Table", which outlived the mode's own rename.
+  const [practiceRoomName, setPracticeRoomName] = useState("");
   // Two decks for up to six at the table, then one more per three people --
   // the same rule the server's recommendedDeckCount follows (backend's
   // round.ts), restated here rather than fetched because the lobby has no
@@ -849,13 +853,16 @@ export default function App() {
           <section className="rounded-xl shadow-md bg-blue-50/70 border border-blue-200 p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
+                {/* One line, then the forms. This block used to carry three
+                    more paragraphs explaining what a banker is and which form
+                    to use -- the product teaching itself to somebody who has
+                    not done anything yet. All of it is still one click away in
+                    "What is Kvitlach?" and "How to play", which sit directly
+                    to the right of this heading and are what a reader who
+                    actually wants the explanation reaches for. */}
                 <h1 className="text-xl font-bold text-blue-800">{familyGreeting || "Welcome to Kvitlach"}</h1>
                 <div className="text-xs text-slate-600">
-                  Join an existing table with the room code your Banker shared, or host one if you are running the game.
-                </div>
-                <div className="space-y-1 text-xs text-slate-600">
-                  <p>Banker manages the bankroll and payouts; everyone else plays against them.</p>
-                  <p>Most visitors only need the Join form. Create a table only if you are the Banker.</p>
+                  Have a code from your Banker? Join below. Running the game yourself? Host a table.
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2">
@@ -1033,6 +1040,16 @@ export default function App() {
               />
             </label>
 
+            <label className="text-sm">Table name (optional)
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={practiceRoomName}
+                onChange={(e) => setPracticeRoomName(e.target.value)}
+                placeholder="We'll pick one"
+                autoCapitalize="words"
+              />
+            </label>
+
             <AgeAckCheckbox id="age-ack-practice" checked={practiceAgeAcknowledged} onChange={setPracticeAgeAcknowledged} />
 
             {formErrors.practice && (
@@ -1054,6 +1071,7 @@ export default function App() {
                 }
                 enterImmersive();
                 store.createPracticeRoom(practiceFirstName.trim() || "Guest", {
+                  roomName: practiceRoomName.trim() || undefined,
                   botCount: practiceBotCount,
                   deckCount: practiceDecks,
                   buyIn: practiceBuyIn,

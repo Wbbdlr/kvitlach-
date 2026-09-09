@@ -189,17 +189,34 @@ export function useTableData({
       bet: string;
       betClass: string;
     }[];
-    if (!entries.length)
-      return { name: "", entries: [], wins: 0, losses: 0, pushes: 0, isBanker: false, netTotal: 0, isSelf: statsPlayerId === playerId };
-    const wins = entries.filter((e) => e.status === "WON!").length;
-    const losses = entries.filter((e) => e.status === "LOST" || e.status === "FUTCHED!").length;
-    const pushes = entries.filter((e) => e.status === "PUSH").length;
+    // Resolved BEFORE the empty-history check, and that is the fix rather than
+    // a tidy-up: who somebody IS does not depend on whether a round has been
+    // played yet. The early return below used to hardcode name: "" and
+    // isBanker: false, so opening a player's card before the first round
+    // finished showed their stats under no name at all -- and it corrected
+    // itself the moment a round landed, which makes it look like a rendering
+    // glitch rather than a missing lookup. room.players is populated from the
+    // moment anyone sits down.
     const playerRecord = room?.players.find((p) => p.id === statsPlayerId);
     const playerName =
       playerRecord?.firstName ??
       rounds.find((r) => r.turns.some((t) => t.player.id === statsPlayerId))?.turns.find((t) => t.player.id === statsPlayerId)?.player
         ?.firstName ?? "Player";
     const isBanker = playerRecord?.type === "admin";
+    if (!entries.length)
+      return {
+        name: playerName,
+        entries: [],
+        wins: 0,
+        losses: 0,
+        pushes: 0,
+        isBanker,
+        netTotal: 0,
+        isSelf: statsPlayerId === playerId,
+      };
+    const wins = entries.filter((e) => e.status === "WON!").length;
+    const losses = entries.filter((e) => e.status === "LOST" || e.status === "FUTCHED!").length;
+    const pushes = entries.filter((e) => e.status === "PUSH").length;
     // Every entry is shown now, not just the last 10 -- already bounded
     // upstream (roundHistory is capped at 50 client-side / 200 server-side).
     return { name: playerName, entries, wins, losses, pushes, isBanker, netTotal, isSelf: statsPlayerId === playerId };

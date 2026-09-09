@@ -1,6 +1,7 @@
 import { createBrowserRouter } from "react-router-dom";
 import { RouteErrorElement } from "./ErrorBoundary";
 import App from "./App";
+import NotFound, { unknownPathAtBoot } from "./NotFound";
 import About from "./About";
 import Disclaimer from "./Disclaimer";
 import Contact from "./Contact";
@@ -34,11 +35,24 @@ import Terms from "./Terms";
 // instead of the reload card. See ErrorBoundary.tsx's RouteErrorElement.
 const errorElement = <RouteErrorElement />;
 
+// The catch-all's element, and the reason it is a wrapper rather than a second
+// route object: everything above is a real path, and everything else used to
+// render the LOBBY as though the link had worked. A mistyped family link was
+// therefore indistinguishable from one whose look had simply failed to load,
+// which is exactly the report that led here.
+//
+// One route, two possible elements. Adding `{ path: "*", element: <NotFound/> }`
+// alongside the App route would reintroduce the remount described above, and a
+// not-found page is nowhere near worth that.
+function AppOrNotFound() {
+  return unknownPathAtBoot ? <NotFound path={unknownPathAtBoot} /> : <App />;
+}
+
 export const router = createBrowserRouter([
   { path: "/about", element: <About />, errorElement },
   { path: "/disclaimer", element: <Disclaimer />, errorElement },
   { path: "/contact", element: <Contact />, errorElement },
   { path: "/privacy", element: <Privacy />, errorElement },
   { path: "/terms", element: <Terms />, errorElement },
-  { path: "*", element: <App />, errorElement },
+  { path: "*", element: <AppOrNotFound />, errorElement },
 ]);

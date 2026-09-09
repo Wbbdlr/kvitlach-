@@ -176,6 +176,12 @@ const MAX_ROOM_NAME_LEN = 80;
 const MAX_NOTE_LEN = 160;
 const MAX_WATERMARK_LEN = 60;
 const shortId = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 6);
+// Used for BOTH hosted and computer tables. A computer table used to be
+// called "Practice Table", which outlived the mode it named: this is "Play
+// Against the Computer" now, a real standalone way to play, and a table
+// labelled "Practice" reads like a tutorial the player is stuck in. Named from
+// the same pool as everything else, so the shoe, the felt and the name all
+// behave the same whoever is sitting there.
 const ROOM_NAME_POOL = [
   "Tish Time Tables",
   "The Rebbe's Card Table",
@@ -197,6 +203,11 @@ const ROOM_NAME_POOL = [
   "The Leftover Challah Table",
   "Washing First, Playing Later",
 ];
+
+/** One pithy name from the pool. The only way a table gets named by default. */
+function randomRoomName(): string {
+  return ROOM_NAME_POOL[Math.floor(Math.random() * ROOM_NAME_POOL.length)];
+}
 
 interface RoomRecord {
   room: RoomState;
@@ -804,8 +815,7 @@ export class GameStore {
       throw new Error("invalid_bankroll");
     }
     const trimmedRoomName = this.sanitizeName(admin.roomName, MAX_ROOM_NAME_LEN);
-    const autoName = ROOM_NAME_POOL[Math.floor(Math.random() * ROOM_NAME_POOL.length)];
-    const resolvedRoomName = trimmedRoomName || autoName;
+    const resolvedRoomName = trimmedRoomName || randomRoomName();
       const customId = admin.roomId?.trim().toUpperCase() ?? "";
       let roomId = customId;
       if (customId) {
@@ -859,6 +869,7 @@ export class GameStore {
   // some seats driven by syncBotTurn instead of a human's WS messages.
   createPracticeRoom(host: {
     firstName: string;
+    roomName?: string;
     botCount?: number;
     buyIn?: number;
     bankBuyIn?: number;
@@ -914,7 +925,7 @@ export class GameStore {
 
     const room: RoomState = {
       roomId,
-      name: "Practice Table",
+      name: this.sanitizeName(host.roomName, MAX_ROOM_NAME_LEN) || randomRoomName(),
       buyIn,
       bankerBuyIn: bankBuyIn,
       wallets: {

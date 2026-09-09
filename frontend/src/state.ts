@@ -86,7 +86,7 @@ interface UIState {
   dismissGameOver: () => void;
   init: () => void;
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
-  createPracticeRoom: (firstName: string, options?: { botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => void;
+  createPracticeRoom: (firstName: string, options?: { roomName?: string; botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => void;
   joinRoom: (
     roomId: string,
     firstName: string,
@@ -1808,7 +1808,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     // An options object rather than createRoom's positional style: four
     // same-typed optional numbers in a row would be an easy mix-up
     // (buyIn/bankBuyIn especially) at every call site.
-    createPracticeRoom: (firstName: string, options?: { botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => {
+    createPracticeRoom: (firstName: string, options?: { roomName?: string; botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => {
       if (!firstName) {
         set((s) => ({ formErrors: { ...s.formErrors, practice: "Enter a first name to start a practice game." } }));
         return;

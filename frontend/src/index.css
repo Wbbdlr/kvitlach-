@@ -4758,3 +4758,46 @@ body:has(.k-fit) {
   border-radius: 4px;
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------
+   The not-found dreidel (NotFound.tsx).
+
+   Two motions rather than one: a full turn, plus a slower lean that is out of
+   phase with it. A single spin reads as a loading spinner; the lean is what
+   makes it read as an object with weight on a point. Kept slow -- this sits on
+   a page somebody arrived at by accident, and a fast spin on an error page is
+   agitating rather than charming.
+
+   The reduced-motion branch stands the dreidel still and upright, which is
+   where a real one ends up anyway, so nothing about it looks unfinished.
+--------------------------------------------------------------------------- */
+.k-nf-dreidel {
+  transform-origin: 50% 92%;
+  animation: k-nf-lean 4.2s ease-in-out infinite;
+  filter: drop-shadow(0 10px 14px rgba(40, 53, 66, 0.18));
+}
+.k-nf-dreidel svg {
+  transform-origin: 50% 50%;
+  animation: k-nf-spin 2.6s linear infinite;
+}
+/* The letter is set in the app's Hebrew face rather than the SVG default --
+   see tailwind.config's note on FrankRuhlLibre's Hebrew-only unicode-range. */
+.k-nf-letter {
+  font-family: "FrankRuhlLibre", Georgia, serif;
+  font-weight: 600;
+}
+@keyframes k-nf-spin {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+@keyframes k-nf-lean {
+  0%, 100% { transform: rotate(-7deg); }
+  50% { transform: rotate(7deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-nf-dreidel,
+  .k-nf-dreidel svg {
+    animation: none;
+    transform: none;
+  }
+}
