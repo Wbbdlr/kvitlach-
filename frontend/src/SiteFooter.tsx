@@ -1,6 +1,6 @@
 import { ReactNode, useRef, useState } from "react";
 import { APP_VERSION, firstPushedDate } from "./version";
-import { useFamilyProfile } from "./familyProfile";
+import { leaveFamily, useFamilyProfile } from "./familyProfile";
 import { useEscapeKey } from "./useEscapeKey";
 import { useClickOutside } from "./table/clickOutside";
 
@@ -47,12 +47,34 @@ export default function SiteFooter({ active, children }: SiteFooterProps) {
   // Named next to the version because this badge is what somebody is asked for
   // when they report a bug, and "it looked wrong" needs both halves to be
   // reproducible. Nothing here says "family" -- the slug is the useful token.
-  const familySlug = useFamilyProfile()?.slug ?? "";
+  const familyProfile = useFamilyProfile();
+  const familySlug = familyProfile?.slug ?? "";
+  // The exit lives down here rather than on the lobby's welcome banner, which
+  // is the family's own greeting and not the place for a control that undoes
+  // it. Down here it is also on every page, not just the lobby.
+  const [leftFamily, setLeftFamily] = useState(false);
 
   return (
     <footer className="mt-8 border-t border-blue-200/70 pt-4 text-xs text-slate-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div className="flex items-center gap-3">
         <span className="font-semibold text-slate-600">Kvitlach.us</span>
+        {familyProfile && (
+          <button
+            type="button"
+            className="rounded-md border border-blue-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-800 shadow-sm transition-colors hover:border-blue-400 hover:bg-blue-50"
+            onClick={() => {
+              leaveFamily();
+              setLeftFamily(true);
+            }}
+          >
+            Exit {familyProfile.name} Family Mode
+          </button>
+        )}
+        {leftFamily && !familyProfile && (
+          <span role="status" className="text-slate-500">
+            Regular mode. Open your family&rsquo;s link again to switch back.
+          </span>
+        )}
         <div ref={wrapRef} className="relative">
           <button
             type="button"

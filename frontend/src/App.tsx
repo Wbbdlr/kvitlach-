@@ -2,7 +2,7 @@
 import { clsx } from "clsx";
 import { tableStandings } from "./playerRecord";
 import { useGameStore, loadLastRoomId, forgetLastRoom, loadAgeAcknowledged, persistAgeAcknowledged } from "./state";
-import { leaveFamily, useFamilyProfile } from "./familyProfile";
+import { useFamilyProfile } from "./familyProfile";
 import { Player, RoundState } from "./types";
 import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
@@ -51,12 +51,7 @@ export default function App() {
   // The family's own greeting, if this device or the last table was on one.
   // Empty for everybody else, which is the house look -- itself a profile, so
   // nothing here asks whether a family is present.
-  const familyProfile = useFamilyProfile();
-  const familyGreeting = familyProfile?.greeting ?? "";
-  // Shown once, after leaving, because the way back in is a link they may no
-  // longer have to hand -- the greeting and felt reverting is visible enough
-  // that the change lands, but nothing else would say how to undo it.
-  const [leftFamily, setLeftFamily] = useState(false);
+  const familyGreeting = useFamilyProfile()?.greeting ?? "";
   const {
     room,
     round,
@@ -855,29 +850,6 @@ export default function App() {
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-3 max-w-xl">
                 <h1 className="text-xl font-bold text-blue-800">{familyGreeting || "Welcome to Kvitlach"}</h1>
-                {familyProfile && (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-300 bg-white px-2.5 py-1 font-semibold text-blue-800">
-                      <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
-                      {familyProfile.name} family look
-                    </span>
-                    <button
-                      type="button"
-                      className="font-semibold text-slate-600 underline hover:text-slate-800"
-                      onClick={() => {
-                        leaveFamily();
-                        setLeftFamily(true);
-                      }}
-                    >
-                      Switch to the regular look
-                    </button>
-                  </div>
-                )}
-                {leftFamily && !familyProfile && (
-                  <p role="status" className="text-xs text-slate-600">
-                    Back on the regular look. Open your family&rsquo;s link again to switch back.
-                  </p>
-                )}
                 <div className="text-xs text-slate-600">
                   Join an existing table with the room code your Banker shared, or host one if you are running the game.
                 </div>

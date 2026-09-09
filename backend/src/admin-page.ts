@@ -52,6 +52,10 @@ const STYLE = `
   legend { font-size: 0.7rem; text-transform: uppercase; color: #4b5563; font-weight: 600; letter-spacing: 0.04em; }
   textarea, input[type=text], input[type=password], input[type=number], select { font: inherit; font-size: 0.88rem; padding: 0.35rem; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; color: inherit; }
   textarea { width: 100%; font-family: ui-monospace, monospace; }
+  /* Placeholders are examples, values are answers -- they must not look
+     alike. Set explicitly in both themes: the screenshot that reported the
+     invisible-value bug also showed how easily the two are confused. */
+  ::placeholder { color: #6b7280; opacity: 1; }
   .tiles { display: flex; flex-wrap: wrap; gap: 0.6rem; }
   .tile { flex: 1 1 7.2rem; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.55rem 0.7rem; background: #fff; }
   .tile .v { font-size: 1.5rem; font-weight: 600; line-height: 1.1; }
@@ -60,7 +64,17 @@ const STYLE = `
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0.35rem 0; }
   .row label { min-width: 5.5rem; font-size: 0.88rem; }
   .grid3 { display: flex; flex-wrap: wrap; gap: 1.25rem; }
-  .topbar { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
+  /* Panel navigation reads as controls, not as prose. It was a run of blue
+     links separated by middots, which on a page whose whole job is operating
+     the server looked like body copy and gave a phone nothing worth tapping. */
+  .topnav { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+  .navbtn { display: inline-block; padding: 0.3rem 0.75rem; border: 1px solid #d1d5db; border-radius: 999px;
+            background: #fff; color: #1f2937; font-size: 0.78rem; font-weight: 600; text-decoration: none;
+            line-height: 1.45; white-space: nowrap; }
+  .navbtn:hover { background: #f3f4f6; border-color: #9ca3af; }
+  /* The class beats the bare a-element colour rule above in both themes. */
+  .navbtn.back { font-weight: 700; }
   code { font-size: 0.85em; }
   /* The login gets its own sizing rather than the dense control-panel scale.
      It is typed once, often on a phone over Tailscale, and a password you
@@ -80,7 +94,19 @@ const STYLE = `
     body { background: #0b1220; color: #e5e7eb; }
     table, fieldset, .tile { background: #111827; }
     th, td, fieldset, .tile, .topbar { border-color: #1f2937; }
-    textarea, input, select { background: #0b1220; border-color: #374151; color: #e5e7eb; }
+    /* THE SELECTOR LIST HERE MUST MATCH THE LIGHT ONE EXACTLY, attribute
+       selectors included. A media query adds NO specificity, so the light
+       rule's input[type=text] (0,1,1) outranks a bare input (0,0,1) and
+       keeps its white background in dark mode -- while color:inherit picks
+       up the dark body's near-white text. White on white: every field on every
+       admin form looked EMPTY, including ones holding saved values, which is
+       how an operator reads "nothing was saved" off a form that saved fine.
+       Reported with a screenshot after the previous contrast pass missed it --
+       that pass measured labels and hints and never measured a form control. */
+    textarea, input[type=text], input[type=password], input[type=number], select {
+      background: #0b1220; border-color: #374151; color: #e5e7eb;
+    }
+    ::placeholder { color: #9ca3af; opacity: 1; }
     a { color: #93c5fd; }
     /* Every muted colour has to be restated here, not just the surfaces.
        Without these the hints, table headers, legends and status words kept
@@ -90,6 +116,8 @@ const STYLE = `
        from real use. Replacements measure 6.4-11.2:1. */
     th, .meta, legend, .tile .k, .login label { color: #9ca3af; }
     .ok { color: #34d399; } .warn { color: #fbbf24; } .bad { color: #f87171; }
+    .navbtn { background: #1f2937; border-color: #4b5563; color: #e5e7eb; }
+    .navbtn:hover { background: #374151; border-color: #6b7280; }
   }
 `;
 
@@ -524,7 +552,7 @@ export function renderArchivePage({ rooms, detail, hasDatabase, retentionDays, q
     "Deleted tables",
     `<div class="topbar">
       <h1 style="margin:0">Deleted tables</h1>
-      <span class="meta"><a href="${act("/admin")}">&larr; panel</a></span>
+      <nav class="topnav"><a class="navbtn back" href="${act("/admin")}">&larr; Panel</a></nav>
     </div>
 
     ${
@@ -750,12 +778,12 @@ export function renderAuditPage({
     "Audit trail",
     `<div class="topbar">
       <h1 style="margin:0">Audit trail</h1>
-      <span class="meta">
-        <a href="${act("/admin")}">&larr; panel</a>
-        &middot; <a href="${adminUrl("/admin/audit", query, refresh ? { refresh: "0" } : {})}">${
-          refresh ? "stop auto-refresh" : "start auto-refresh"
+      <nav class="topnav">
+        <a class="navbtn back" href="${act("/admin")}">&larr; Panel</a>
+        <a class="navbtn" href="${adminUrl("/admin/audit", query, refresh ? { refresh: "0" } : {})}">${
+          refresh ? "Stop auto-refresh" : "Start auto-refresh"
         }</a>
-      </span>
+      </nav>
     </div>
 
     <form method="get" action="/admin/audit" class="row">
@@ -1082,17 +1110,17 @@ export function renderAdminPage({ store, access, limits, about, contact, disclai
     "Kvitlach admin",
     `<div class="topbar">
       <h1 style="margin:0">Kvitlach admin</h1>
-      <span class="meta">
-        <a href="${adminUrl("/admin", query, refresh ? { refresh: "0" } : {})}">${refresh ? "stop auto-refresh" : "start auto-refresh"}</a>
-        &middot; <a href="${act("/admin/protections")}">protections</a>
-        &middot; <a href="${act("/admin/errors")}">client errors</a>
-        &middot; <a href="${act("/admin/audit")}">audit</a>
-        &middot; <a href="${act("/admin/archive")}">deleted tables</a>
-        &middot; <a href="${act("/admin/families")}">families</a>
-        &middot; <a href="${act("/admin/appearance")}">appearance</a>
-        &middot; <a href="/health/detail">raw JSON</a>
-        &middot; <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>
-      </span>
+      <nav class="topnav">
+        <a class="navbtn" href="${adminUrl("/admin", query, refresh ? { refresh: "0" } : {})}">${refresh ? "Stop auto-refresh" : "Start auto-refresh"}</a>
+        <a class="navbtn" href="${act("/admin/protections")}">Protections</a>
+        <a class="navbtn" href="${act("/admin/errors")}">Client errors</a>
+        <a class="navbtn" href="${act("/admin/audit")}">Audit</a>
+        <a class="navbtn" href="${act("/admin/archive")}">Deleted tables</a>
+        <a class="navbtn" href="${act("/admin/families")}">Families</a>
+        <a class="navbtn" href="${act("/admin/appearance")}">Appearance</a>
+        <a class="navbtn" href="/health/detail">Raw JSON</a>
+        <form method="post" action="/admin/logout" style="display:inline"><button type="submit">Sign out</button></form>
+      </nav>
     </div>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
 
@@ -1505,12 +1533,12 @@ export function renderProtectionsPage({ login, ws, query, refresh }: Protections
     "Protections",
     `<div class="topbar">
       <h1 style="margin:0">Protections</h1>
-      <span class="meta">
-        <a href="${act("/admin")}">&larr; panel</a>
-        &middot; <a href="${adminUrl("/admin/protections", query, refresh ? { refresh: "0" } : {})}">${
-          refresh ? "stop auto-refresh" : "start auto-refresh"
+      <nav class="topnav">
+        <a class="navbtn back" href="${act("/admin")}">&larr; Panel</a>
+        <a class="navbtn" href="${adminUrl("/admin/protections", query, refresh ? { refresh: "0" } : {})}">${
+          refresh ? "Stop auto-refresh" : "Start auto-refresh"
         }</a>
-      </span>
+      </nav>
     </div>
     <p class="meta">Counts are cumulative since the server started, and reset with it. The limits shown are
     the ones in force right now &mdash; read from the same settings the limiters check, not from a copy of
@@ -1623,12 +1651,12 @@ export function renderClientErrorsPage({ snapshot, query, refresh, notice }: Cli
     "Client errors",
     `<div class="topbar">
       <h1 style="margin:0">Client errors</h1>
-      <span class="meta">
-        <a href="${act("/admin")}">&larr; panel</a>
-        &middot; <a href="${adminUrl("/admin/errors", query, refresh ? { refresh: "0" } : {})}">${
-          refresh ? "stop auto-refresh" : "start auto-refresh"
+      <nav class="topnav">
+        <a class="navbtn back" href="${act("/admin")}">&larr; Panel</a>
+        <a class="navbtn" href="${adminUrl("/admin/errors", query, refresh ? { refresh: "0" } : {})}">${
+          refresh ? "Stop auto-refresh" : "Start auto-refresh"
         }</a>
-      </span>
+      </nav>
     </div>
     ${notice ? `<p class="ok">${escapeHtml(notice)}</p>` : ""}
     <p class="meta">What actually crashed in a player's browser, reported by the app itself. Held in memory

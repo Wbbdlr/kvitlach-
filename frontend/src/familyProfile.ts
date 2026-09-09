@@ -119,16 +119,44 @@ function usable(doc: unknown): FamilyProfile | null {
  * showing anybody: the lobby simply looks like the house, which is what a
  * stranger following a bad link should see anyway.
  */
-export async function fetchProfile(slug: string): Promise<FamilyProfile | null> {
-  if (!SLUG_RE.test(slug)) return null;
+export type ProfileFetch =
+  /** The family exists and this is their look. */
+  | { status: "ok"; profile: FamilyProfile }
+  /** A definite 404. This slug names no family, so stop remembering it. */
+  | { status: "missing" }
+  /** Offline, a 5xx, a restarting backend, a payload that is not a profile. */
+  | { status: "unavailable" };
+
+/**
+ * Fetches one profile, distinguishing "no such family" from "could not ask".
+ *
+ * The distinction is the whole point and it was missing: every failure came
+ * back as null, and the caller below forgets a slug it cannot resolve -- so one
+ * offline moment, one backend restart mid-load, or one 502 permanently dropped
+ * a family back to the house look, on a phone, with no way to tell what
+ * happened. Only a 404 is an answer; everything else is a question we failed
+ * to ask, and the right response to that is to change nothing and try again on
+ * the next load.
+ */
+export async function fetchProfileResult(slug: string): Promise<ProfileFetch> {
+  if (!SLUG_RE.test(slug)) return { status: "missing" };
   try {
     const res = await fetch(`/api/family?slug=${encodeURIComponent(slug)}`, {
       headers: { accept: "application/json" },
     });
-    return res.ok ? usable(await res.json()) : null;
+    if (res.status === 404) return { status: "missing" };
+    if (!res.ok) return { status: "unavailable" };
+    const profile = usable(await res.json());
+    return profile ? { status: "ok", profile } : { status: "unavailable" };
   } catch {
-    return null;
+    return { status: "unavailable" };
   }
+}
+
+/** The profile, or null however it failed. For callers with nothing to forget. */
+export async function fetchProfile(slug: string): Promise<FamilyProfile | null> {
+  const result = await fetchProfileResult(slug);
+  return result.status === "ok" ? result.profile : null;
 }
 
 /**
@@ -154,18 +182,22 @@ export function loadFamilyProfile(): void {
   }
   if (!slug) return;
 
-  void fetchProfile(slug).then((profile) => {
-    // A slug that no longer resolves is forgotten rather than retried on every
-    // load: a family whose profile was removed should stop being told about it.
-    if (!profile) {
+  void fetchProfileResult(slug).then((result) => {
+    if (result.status === "ok") {
+      applyProfile(result.profile);
+      return;
+    }
+    // Forgotten ONLY on a definite 404 -- a family whose profile was actually
+    // removed should stop being told about it. "unavailable" keeps the slug and
+    // changes nothing: see fetchProfileResult for why treating the two alike
+    // dropped families back to the house look for a transient network blip.
+    if (result.status === "missing") {
       try {
         window.localStorage.removeItem(STORAGE_KEY);
       } catch {
         /* nothing to clear */
       }
-      return;
     }
-    applyProfile(profile);
   });
 }
 

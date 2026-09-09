@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { applyProfile, fetchProfile, leaveFamily, slugFromPath, storedSlug, activeProfile } from "../familyProfile";
+import { applyProfile, fetchProfile, fetchProfileResult, leaveFamily, slugFromPath, storedSlug, activeProfile } from "../familyProfile";
 import { DEFAULT_FELT, loadFelt, saveFelt } from "../theme";
 
 // The client half of kvitlach.us/m/dov.
@@ -143,5 +143,38 @@ describe("leaving", () => {
     applyProfile(DOV);
     leaveFamily();
     expect(storedSlug()).toBe("");
+  });
+});
+
+describe("telling \"no such family\" apart from \"could not ask\"", () => {
+  // Everything used to come back as null, and the boot path forgets a slug it
+  // cannot resolve -- so one offline moment or one backend restart mid-load
+  // permanently dropped a family to the house look, on a phone, with nothing
+  // on screen to say what had happened.
+  it("calls a 404 missing, which is the one answer worth acting on", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    expect((await fetchProfileResult("dov")).status).toBe("missing");
+  });
+
+  it("calls a network failure unavailable, not missing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    expect((await fetchProfileResult("dov")).status).toBe("unavailable");
+  });
+
+  it("calls a 502 unavailable -- the backend restarting is not a deletion", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 502 }));
+    expect((await fetchProfileResult("dov")).status).toBe("unavailable");
+  });
+
+  it("calls a payload that is not a profile unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ felt: "spruce" }) }));
+    expect((await fetchProfileResult("dov")).status).toBe("unavailable");
+  });
+
+  it("still hands a plain profile back to the callers that want one", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => DOV }));
+    const result = await fetchProfileResult("dov");
+    expect(result.status).toBe("ok");
+    expect(await fetchProfile("dov")).toEqual(DOV);
   });
 });
