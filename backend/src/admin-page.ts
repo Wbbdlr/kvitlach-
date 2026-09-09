@@ -652,6 +652,22 @@ export function renderFamiliesEditor({
         )
         .join("")}</select></div>`;
 
+  // What this family ACTUALLY gets, resolved. Every optional field falls back
+  // to something, and an empty box is indistinguishable from a filled one when
+  // the placeholder is a realistic example -- which is exactly how a profile
+  // came to be saved with no print and no colour while the operator believed
+  // both were set, then reported the table as broken. An empty box is a real
+  // answer here, so the page states the answer rather than implying it.
+  const summary = (p: Partial<FamilyProfile>) => {
+    const or = (value: string | undefined, fallback: string) =>
+      value ? `<b>${escapeHtml(value)}</b>` : `<i>${fallback}</i>`;
+    return `<p class="meta">At their table right now:
+      ${or(p.felt, "the house felt")} &middot; ${or(p.chip, "the house chips")} &middot;
+      print ${or(p.feltPrint, "the built-in Schlesinger print")} &middot;
+      mark ${or(p.cardMark, "the built-in SCHLESINGER mark")} &middot;
+      greeting ${or(p.greeting, "the built-in one")}</p>`;
+  };
+
   const form = (p: Partial<FamilyProfile>, isNew: boolean) => {
     const slug = p.slug ?? "";
     return `<fieldset>
@@ -660,14 +676,15 @@ export function renderFamiliesEditor({
         isNew
           ? ""
           : `<p class="meta">Their link: <code>${escapeHtml(`${origin}/m/${slug}`)}</code> &mdash; paste that
-             into the family's group chat and there is nothing for anyone to type.</p>`
+             into the family's group chat and there is nothing for anyone to type.</p>
+             ${summary(p)}`
       }
       <form method="post" action="${act("/admin/families")}">
         ${field(p, "slug", "Web address", `The <code>${escapeHtml(`${origin}/m/`)}</code> part is fixed; this is the rest. Lowercase letters, digits and hyphens.`, FAMILY_MAX.slug, "dov")}
         ${field(p, "name", "Family name", "For this page and for crash reports. Players never see it.", FAMILY_MAX.name, "Dov")}
         ${field(p, "greeting", "Lobby greeting", "Replaces the lobby's own heading. Blank keeps it.", FAMILY_MAX.greeting, "Welcome, Dov Family")}
-        ${field(p, "feltPrint", "Print on the felt", "The faint line across the table. Hebrew belongs here, not in the card mark below.", FAMILY_MAX.feltPrint, "משפחת דב קוויטלעך")}
-        ${field(p, "cardMark", "Mark on the cards", "Replaces SCHLESINGER on the ace, the 8 and the 12. <b>Latin letters only</b> &mdash; the face this is set in has no Hebrew, so Hebrew here would draw nothing at all. Long names are shrunk to fit rather than refused.", FAMILY_MAX.cardMark, "DOV")}
+        ${field(p, "feltPrint", "Print on the felt", "The faint line across the table. Hebrew belongs here, not in the card mark below. <b>Blank keeps the built-in Schlesinger print</b> &mdash; the grey text in the box is only an example.", FAMILY_MAX.feltPrint, "for example: משפחת דב קוויטלעך")}
+        ${field(p, "cardMark", "Mark on the cards", "Replaces SCHLESINGER on the ace, the 8 and the 12. <b>Latin letters only</b> &mdash; the face this is set in has no Hebrew, so Hebrew here would draw nothing at all. Long names are shrunk to fit rather than refused. <b>Blank keeps SCHLESINGER.</b>", FAMILY_MAX.cardMark, "for example: DOV")}
         ${select(p, "felt", "Felt", FAMILY_FELTS)}
         ${select(p, "chip", "Chips", FAMILY_CHIPS)}
         <p><label>Computer banker's names<br />

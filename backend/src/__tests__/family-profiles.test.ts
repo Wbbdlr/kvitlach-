@@ -238,3 +238,29 @@ describe("stamping a table", () => {
     expect(state.players.find((p) => p.type === "admin")!.firstName).not.toBe("Zeide Dov");
   });
 });
+
+describe("the editor says what a family ACTUALLY gets", () => {
+  // An empty field is a real answer here -- it means "fall back" -- and it was
+  // indistinguishable from a filled one, because each box shows a realistic
+  // example as its placeholder. A profile was saved with no print and no
+  // colour while the operator believed both were set, and the first anyone
+  // knew of it was a table showing the built-in Schlesinger print.
+  const page = async () => (await fetch(`${base}/admin/families`, { headers: { cookie } })).text();
+
+  it("names the fallback for every field left blank", async () => {
+    families.save({ ...DOV, slug: "blank", feltPrint: "", cardMark: "", greeting: "", felt: "", chip: "" });
+    const html = await page();
+    expect(html).toContain("the built-in Schlesinger print");
+    expect(html).toContain("the built-in SCHLESINGER mark");
+    expect(html).toContain("the house felt");
+    expect(html).toContain("the house chips");
+  });
+
+  it("shows the real value where one was set", async () => {
+    families.save(DOV);
+    const html = await page();
+    expect(html).toContain("<b>spruce</b>");
+    expect(html).toContain(`<b>${DOV.feltPrint}</b>`);
+    expect(html).toContain("<b>DOV</b>");
+  });
+});
