@@ -59,6 +59,39 @@ function locations(): { modifier: string; path: string; body: string }[] {
   return out;
 }
 
+/**
+ * The names of every header an add_header sets in `text`, in order.
+ *
+ * Comments are stripped first, or the prose explaining add_header in this very
+ * file parses as a header called "does".
+ */
+function headerNames(text: string): string[] {
+  const code = text.replace(/#[^\r\n]*/g, "");
+  return [...code.matchAll(/add_header\s+([\w-]+)/g)].map((m) => m[1]);
+}
+
+/**
+ * The config with every location block cut out, leaving the server level.
+ *
+ * Cut POSITIONALLY, not by name: the whole point of the rule below is that a
+ * location repeats the server's own header names, so subtracting the names a
+ * location uses would subtract the server's entire set and leave nothing.
+ */
+function serverLevelText(): string {
+  const re = /location\s+(?:=\s+|\^~\s+|~\*?\s+)?[^\s{]+\s*\{/g;
+  let out = "";
+  let cursor = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(CONF))) {
+    if (m.index < cursor) continue;
+    out += CONF.slice(cursor, m.index);
+    const bodyStart = m.index + m[0].length;
+    cursor = bodyStart + blockBody(bodyStart).length + 1;
+    re.lastIndex = cursor;
+  }
+  return out + CONF.slice(cursor);
+}
+
 // The complete, deliberate list of public backend routes. Adding one means
 // adding it here too, in the same review -- that duplication is the point, not
 // an accident to DRY away. It has already earned its keep once: the
@@ -135,6 +168,52 @@ describe("the frontend origin's backend proxy", () => {
   it("decides the methods for every public route, one way or the other", () => {
     // A route in neither list is one whose methods nobody chose.
     expect([...GET_ONLY_ROUTES, ...POST_ONLY_ROUTES].sort()).toEqual([...PUBLIC_ROUTES].sort());
+  });
+
+  // nginx's add_header does NOT merge: one add_header in a location discards
+  // every add_header inherited from the server block. That is how /assets/ --
+  // one Cache-Control line -- came to serve the entire compiled application
+  // with no nosniff and no CSP, while the HTML that loads it had all eight.
+  // The front page looked correct throughout, which is why nothing caught it.
+  it("restates every security header in any location that sets one", () => {
+    // The server-level set is DERIVED (every add_header in the file, minus the
+    // ones inside a location) rather than hardcoded, so adding a ninth header
+    // to the server block extends this test with no edit here.
+    const serverHeaders = headerNames(serverLevelText());
+    expect(serverHeaders.length, "no server-level add_header found -- the parser moved").toBeGreaterThan(5);
+    expect(serverHeaders).toContain("Content-Security-Policy");
+
+    for (const loc of locations()) {
+      const own = headerNames(loc.body);
+      if (own.length === 0) continue;
+      for (const name of serverHeaders) {
+        expect(
+          own,
+          `location ${loc.modifier} ${loc.path} sets a header, which DISCARDS the ` +
+            `server block's ${name}. Restate the whole security list inside that block.`
+        ).toContain(name);
+      }
+    }
+  });
+
+  // A family's link carries their surname. Everything else on this site is
+  // meant to be found; this namespace is not.
+  it("tells crawlers not to index a family's link", () => {
+    const family = locations().find((loc) => loc.path === "/m/");
+    expect(family, "no location for /m/ -- family links would be indexable").toBeDefined();
+    expect(family!.modifier, "must beat the SPA catch-all").toBe("^~");
+    expect(family!.body).toMatch(/add_header\s+X-Robots-Tag\s+"[^"]*noindex/);
+    // It still has to serve the app, or the family's own link 404s.
+    expect(family!.body).toContain("try_files");
+    expect(family!.body).not.toContain("proxy_pass");
+  });
+
+  it("does not put /m/ in robots.txt, which would advertise it", () => {
+    // A Disallow is the wrong tool twice over: robots.txt is public, and a
+    // disallowed URL is never fetched, so the crawler never reads the noindex
+    // and Google can still list the bare URL -- surname included.
+    const robots = readFileSync(resolve(__dirname, "../../public/robots.txt"), "utf8");
+    expect(robots).not.toContain("/m/");
   });
 
   // Not a proxy property, but the same blast radius: the SPA fallback is what

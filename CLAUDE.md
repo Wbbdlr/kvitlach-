@@ -383,6 +383,17 @@ Context is the scarce resource in a long session, not tokens on a bill.
 - **`frontend/nginx.conf`'s `location = /api/about` must stay an exact match.**
   The backend port also serves `/admin`, and the 127.0.0.1 binding that protects
   it does not apply inside the compose network. Pinned by `nginxProxy.test.ts`.
+- **nginx `add_header` does NOT merge: one in a location DISCARDS every
+  server-level header.** `location ^~ /assets/` had a lone `Cache-Control`, so
+  the entire compiled app was served with no nosniff and no CSP while the HTML
+  loading it had all eight - and the front page looked correct throughout. Any
+  location setting a header must restate the whole security list. Pinned by
+  `nginxProxy.test.ts`.
+- **`/m/` is `noindex` via `X-Robots-Tag`, deliberately NOT a robots.txt
+  `Disallow`.** A disallowed URL is never fetched, so the crawler never reads
+  the noindex and Google can still list the bare URL - publishing the family's
+  surname, the exact thing being prevented. robots.txt is public too, so naming
+  `/m/` there advertises the namespace.
 
 ## Spending credits well
 
