@@ -144,6 +144,14 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   names is declared in `backend/src` again. **`ws` `maxPayload` is the one
   exception** - it is read once when the socket server is built, so it is a
   hard ceiling and the operator's own size cap is enforced on arrival instead.
+- **`useStageScale`'s `apply` runs in a `useLayoutEffect` with NO dependency
+  array**, so any fit it treats as new schedules a render that measures again.
+  That is only safe because `fitsMatch` compares with a TOLERANCE:
+  `getBoundingClientRect()` returns fractional pixels and the row it measures
+  carries the transform the fit itself sets, so an exact `===` let two values a
+  hair apart alternate forever - React #185, "Maximum update depth exceeded",
+  hit by a player mid-round. Never tighten that comparison back to `===`.
+  Pinned by `stageFitSettle.test.ts`.
 - **A BANK! frame's winning hand is never broadcast.** `settleBankOutcome`
   pays the frame out and OVERWRITES the banker's turn with their redeal in the
   same call, so the cards that just beat everybody exist only on

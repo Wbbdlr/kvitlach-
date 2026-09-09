@@ -398,6 +398,45 @@ function readBottomInset(): number {
   return Number.isFinite(height) ? height : 0;
 }
 
+// How far two fits may differ and still count as the same one.
+//
+// This is a crash fix, not a taste for round numbers. `apply` runs in a
+// useLayoutEffect with NO dependency array -- deliberately, because the dock's
+// on-screen height changes with a transform nothing observes -- so every
+// setFit that returns a NEW object schedules a render that measures again. The
+// comment on that effect calls the arrangement "self-limiting", and it is,
+// but only while the measurement is stable.
+//
+// It is not stable to the last decimal. getBoundingClientRect() returns
+// FRACTIONAL pixels, and the row it measures carries the resize transform this
+// very fit sets, so a hair of difference in the measured bar height produces a
+// hair of difference in `scale`, which re-renders, which measures again. Two
+// values a fraction apart, alternating, is a render loop -- React gives up at
+// roughly fifty nested updates and throws #185, "Maximum update depth
+// exceeded", which is the error a player got mid-round at a real table on
+// 2026-09-09 (bundle index-DEskz4en.js, frame $k/i, i.e. this callback).
+//
+// Comparing with a tolerance ends it: the first of the two values is kept and
+// the second is treated as no change, so the chain stops after one step. The
+// thresholds are far below anything a person can see -- half a pixel of
+// layout, and 0.05% of a scale factor -- while every real change (a rotation,
+// a resize drag, the URL bar collapsing) is orders of magnitude larger.
+const SAME_PX = 0.5;
+const SAME_RATIO = 0.0005;
+const near = (a: number, b: number, tolerance: number) => Math.abs(a - b) < tolerance;
+
+/** True when two fits are the same one as far as the screen is concerned. */
+export function fitsMatch(prev: StageFit, next: StageFit): boolean {
+  return (
+    near(prev.scale, next.scale, SAME_RATIO) &&
+    near(prev.stageHeight, next.stageHeight, SAME_PX) &&
+    near(prev.vf, next.vf, SAME_RATIO) &&
+    near(prev.playTop, next.playTop, SAME_PX) &&
+    prev.compact === next.compact &&
+    near(prev.maxDockScale, next.maxDockScale, SAME_RATIO)
+  );
+}
+
 export function useStageScale(seatCount = 0, dockBarRef?: RefObject<HTMLElement>) {
   const wrapRef = useRef<HTMLDivElement>(null);
   // Attach to the controls tray so its real height feeds the bottom band.
@@ -439,16 +478,7 @@ export function useStageScale(seatCount = 0, dockBarRef?: RefObject<HTMLElement>
     // bar is allowed to grow to without moving vf, which is pinned at its
     // floor on exactly the viewports where this matters), and a fit held back
     // here never reaches draggablePanel's bounds.
-    setFit((prev) =>
-      prev.scale === next.scale &&
-      prev.stageHeight === next.stageHeight &&
-      prev.vf === next.vf &&
-      prev.playTop === next.playTop &&
-      prev.compact === next.compact &&
-      prev.maxDockScale === next.maxDockScale
-        ? prev
-        : next
-    );
+    setFit((prev) => (fitsMatch(prev, next) ? prev : next));
   }, [seatCount, dockBarRef]);
 
   // Every render, not only on the events below: the bar's on-screen height
