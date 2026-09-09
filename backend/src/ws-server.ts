@@ -1072,6 +1072,25 @@ export class WSServer {
           this.sendAck(socket, requestId, { broadcastRound: Boolean(updatedRound) });
           break;
         }
+        case "bank:frame-ack": {
+          // Releases a COMPUTER banker that is holding after a BANK! frame,
+          // once the player has read it. A human banker is never held, so at a
+          // live table this is a no-op that returns no round -- the client
+          // dismisses its own panel and nothing needs to cross the wire.
+          const { settledAt } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId) throw new Error("invalid_payload");
+          const updatedRound = this.store.acknowledgeBankFrame(
+            roomId,
+            actorId,
+            typeof settledAt === "number" ? settledAt : undefined
+          );
+          if (updatedRound) this.broadcastRound(updatedRound);
+          this.sendAck(socket, requestId, { released: Boolean(updatedRound) });
+          break;
+        }
         case "player:react": {
           const { emoji } = (payload as any) || {};
           const meta = this.meta.get(socket);

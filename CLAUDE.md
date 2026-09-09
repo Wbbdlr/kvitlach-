@@ -144,6 +144,17 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   names is declared in `backend/src` again. **`ws` `maxPayload` is the one
   exception** - it is read once when the socket server is built, so it is a
   hard ceiling and the operator's own size cap is enforced on arrival instead.
+- **A BANK! frame's winning hand is never broadcast.** `settleBankOutcome`
+  pays the frame out and OVERWRITES the banker's turn with their redeal in the
+  same call, so the cards that just beat everybody exist only on
+  `round.lastBankFrame`. `BankFrameModal` is the one place they are shown; the
+  toast is the fallback for anyone who dismissed it. **A bot banker is also
+  HELD** (`bankFrameHoldAt`, set only when `bankerTurn.player.isBot`) and
+  `syncBotTurn` refuses to arm anything while it is set - otherwise the bot
+  plays its next hand out from under the panel. The card IS still drawn before
+  the hold: moving that draw breaks settleBankOutcome's `deck_empty` guard,
+  which makes the whole settlement a no-op when the shoe is dry. Pinned by
+  `bank-frame-hold.test.ts`.
 - **Admin links must go through `adminUrl()` (`admin-page.ts`), never
   `` `${path}?foo=1${query}` ``.** `query` is itself `?token=...` for a
   token-authenticated operator, so the naive form yields

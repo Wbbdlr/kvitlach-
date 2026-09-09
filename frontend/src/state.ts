@@ -180,6 +180,13 @@ interface UIState {
   clockSkewMs: number;
   undoLastCorrection: () => void;
   reshuffleDeck: () => void;
+  /**
+   * Dismisses the held BANK! frame and, at a computer table, releases the bot
+   * banker that was waiting on it. Harmless at a live table, where nothing is
+   * held server-side -- the server answers with released: false and the panel
+   * simply closes.
+   */
+  acknowledgeBankFrame: (settledAt?: number) => void;
   closeRoom: () => void;
   /** Disconnect but keep the seat, the stack and the way back. */
   stepAway: () => void;
@@ -2203,6 +2210,15 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       pendingWatermarkRequestId = client.send("room:set-watermark", { roomId, text });
+    },
+    acknowledgeBankFrame: (settledAt?: number) => {
+      // Sent unconditionally rather than only in a practice room: the server
+      // already knows whether anything is held (only a BOT banker ever is),
+      // and duplicating that rule here is how the two drift apart. A live
+      // table's ack is a no-op the server drops.
+      const roomId = get().room?.roomId;
+      if (!roomId || !get().playerId) return;
+      client.send("bank:frame-ack", { settledAt });
     },
     reshuffleDeck: () => {
       const roomId = get().room?.roomId;

@@ -33,6 +33,7 @@ import { StatsModal } from "./StatsModal";
 import { DiscardEntry, DiscardPile, discardedEntries } from "./DiscardPile";
 import { DiscardPileModal } from "./DiscardPileModal";
 import { BankSummaryModal } from "./BankSummaryModal";
+import { BankFrameModal } from "./BankFrameModal";
 import { CompletedRoundSummary } from "../state";
 import { StatsData } from "./useTableData";
 import { Icon } from "./icons";
@@ -144,6 +145,8 @@ export interface TableRootProps {
   onOpenStats: (playerId: string) => void;
   onCloseStats: () => void;
   bankSummaryOpen: boolean;
+  /** Dismisses the held BANK! frame; at a computer table it also releases the bot. */
+  onAcknowledgeBankFrame: (settledAt?: number) => void;
   bankSummary?: CompletedRoundSummary;
   onDismissBankSummary: () => void;
   musicEnabled: boolean;
@@ -218,6 +221,7 @@ export function TableRoot({
   onOpenStats,
   onCloseStats,
   bankSummaryOpen,
+  onAcknowledgeBankFrame,
   bankSummary,
   onDismissBankSummary,
   musicEnabled,
@@ -503,6 +507,14 @@ export function TableRoot({
   // A table carries the look its banker was on. Adopting it here is what makes
   // this a family TABLE rather than a family device: somebody who followed no
   // link at all sees it too, once they sit down.
+  // The BANK! frame this client has already read. Tracked by settledAt rather
+  // than a boolean for the same reason state.ts diffs it that way: the field
+  // is never cleared back to undefined between frames, so presence alone would
+  // reopen the panel on every subsequent broadcast of the same round.
+  const [seenBankFrameAt, setSeenBankFrameAt] = useState<number | undefined>(undefined);
+  const lastFrame = round?.lastBankFrame;
+  const heldFrame = lastFrame && lastFrame.settledAt !== seenBankFrameAt ? lastFrame : undefined;
+
   useRoomProfile(room.familyProfile);
   const familyPrint = useFamilyProfile()?.feltPrint ?? "";
 
@@ -1872,6 +1884,22 @@ export function TableRoot({
       {discardPileOpen && <DiscardPileModal entries={discardEntries} onClose={() => setDiscardPileOpen(false)} />}
 
       {bankSummaryOpen && <BankSummaryModal summary={bankSummary} onClose={onDismissBankSummary} />}
+      {/* The hand that won a BANK! showdown, held up to be read before the
+          table moves on. Keyed on settledAt so a SECOND frame in the same
+          round opens it again rather than being swallowed as "already seen" --
+          two BANK! wagers in one round is exactly the case that produced the
+          original report. */}
+      {heldFrame && (
+        <BankFrameModal
+          frame={heldFrame}
+          bankerName={bankerPlayer ? fullName(bankerPlayer) || bankerPlayer.firstName : undefined}
+          releasesBot={Boolean(room.practice)}
+          onContinue={() => {
+            setSeenBankFrameAt(heldFrame.settledAt);
+            onAcknowledgeBankFrame(heldFrame.settledAt);
+          }}
+        />
+      )}
 
       <PracticeBankDialog
         open={practiceBankOpen && practiceBankIsEmpty}

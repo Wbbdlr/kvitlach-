@@ -226,6 +226,20 @@ export interface RoundState {
   // undefined, so clients must diff `settledAt`, not presence, the same way
   // deckReshuffledAt works).
   lastBankFrame?: BankFrameResult;
+  // Set alongside lastBankFrame when the banker is a BOT, and only then.
+  //
+  // The frame that just won is shown on the felt and waits to be dismissed
+  // (see the client's BankFrameModal). At a live table that wait costs
+  // nothing to enforce -- the banker's own fresh hand is already the active
+  // turn, so the table is waiting on a human either way. At a COMPUTER table
+  // it is the whole feature: the bot would otherwise play its new hand out
+  // while somebody is still reading how the last one went, which is exactly
+  // the report this exists to answer.
+  //
+  // Holds the frame's `settledAt`, not a boolean, so an acknowledgement for
+  // a frame that has already been superseded is ignored rather than
+  // releasing the wrong one.
+  bankFrameHoldAt?: number;
 }
 
 // What a client is actually allowed to see of a round. `deck` is the live

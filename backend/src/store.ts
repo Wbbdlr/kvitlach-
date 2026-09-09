@@ -636,6 +636,15 @@ export class GameStore {
       return { ...next, botTimer: timer };
     }
 
+    // Held frame: the bot has been dealt its next card but must not play it
+    // until the frame that just finished has been read. Checked before the
+    // active-turn lookup rather than inside it, because the turn IS the bot's
+    // and would otherwise be armed on the very next tick.
+    if (next.bankFrameHoldAt) {
+      clearPrev();
+      return { ...next, botTimer: undefined };
+    }
+
     const activeTurnId = this.getActiveTurnId(next);
     const activeTurn = activeTurnId ? next.turns.find((t) => t.player.id === activeTurnId) : undefined;
     clearPrev();
@@ -1614,6 +1623,40 @@ export class GameStore {
   //     an empty deck and throwing deck_low right back at the banker who
   //     just fixed it. deckJustReshuffledAt is the one-shot signal that
   //     tells THAT next round to stamp its own deckReshuffledAt.
+  /**
+   * Releases a computer banker held after a BANK! frame, once somebody has
+   * actually read it.
+   *
+   * Only ever does anything at a table where the banker is a bot -- a human
+   * banker is never held (see settleBankOutcome). The permission check mirrors
+   * reshuffleDeck's: a practice room's banker has no session to authenticate
+   * as, so its one human is allowed to act for the table.
+   *
+   * Takes the frame's own `settledAt`. An acknowledgement carrying a stale one
+   * is dropped rather than releasing a hold it was not looking at -- two BANK!
+   * frames can land in a single round, and a click that was already in flight
+   * when the second one arrived must not skip it.
+   */
+  acknowledgeBankFrame(roomId: string, playerId: string, settledAt?: number): RoundContext | undefined {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    const actor = roomRec.room.players.find((p) => p.id === playerId);
+    if (!actor) throw new Error("forbidden");
+    const allowed = !actor.isBot && (actor.type === "admin" || (roomRec.room.practice === true && actor.type === "player"));
+    if (!allowed) throw new Error("forbidden");
+
+    const roundId = roomRec.room.roundId;
+    const round = roundId ? this.rounds.get(roundId) : undefined;
+    if (!round?.bankFrameHoldAt) return undefined; // nothing held; a repeat click
+    if (settledAt !== undefined && settledAt !== round.bankFrameHoldAt) return undefined;
+
+    round.bankFrameHoldAt = undefined;
+    // persistRound is what re-runs syncBotTurn, which is what actually arms
+    // the bot now that the hold is gone -- clearing the field alone would
+    // leave the table sitting exactly as it was.
+    return this.persistRound(round.roundId, round);
+  }
+
   reshuffleDeck(roomId: string, adminId: string): RoundContext | undefined {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");
@@ -2525,6 +2568,14 @@ export class GameStore {
       lostTo: resolvedBanker.lostTo,
       settledAt: Date.now(),
     };
+
+    // A COMPUTER banker stops here until somebody says go. Its fresh hand is
+    // dealt (moving the draw would break the deck_empty guard above), but
+    // syncBotTurn refuses to schedule a bot that is holding, so nothing is
+    // PLAYED until the human acknowledges the frame. A human banker needs no
+    // such hold: their new hand is the active turn and the table is already
+    // waiting on them.
+    if (bankerTurn.player.isBot) round.bankFrameHoldAt = round.lastBankFrame.settledAt;
 
     round.turns[bankerIndex] = {
       ...round.turns[bankerIndex],

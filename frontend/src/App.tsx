@@ -690,6 +690,7 @@ export default function App() {
         bankSummaryOpen={Boolean(bankerSummaryAt)}
         bankSummary={roundHistory?.[0]}
         onDismissBankSummary={dismissBankerSummary}
+        onAcknowledgeBankFrame={store.acknowledgeBankFrame}
         musicEnabled={musicEnabled}
         sfxEnabled={sfxEnabled}
         onToggleMusic={() => {
