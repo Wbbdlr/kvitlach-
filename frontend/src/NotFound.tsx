@@ -48,16 +48,19 @@ function Dreidel() {
         <path d="M22 34 h76 a6 6 0 0 1 6 6 v52 a6 6 0 0 1 -6 6 h-76 a6 6 0 0 1 -6 -6 v-52 a6 6 0 0 1 6 -6 z" fill="url(#nf-wood)" />
         {/* lit face */}
         <rect x="30" y="40" width="60" height="52" rx="4" fill="url(#nf-face)" opacity="0.55" />
-        {/* the letter, in the app's own Hebrew face */}
-        <text
-          x="60"
-          y="80"
-          textAnchor="middle"
-          className="k-nf-letter"
-          fill="#4a3208"
-          fontSize="44"
-        >
+        {/* Two letters, one shown at a time.
+            Spinning, it shows the nun -- the face you see through most of a
+            turn, and the one that means nothing happens, which is the honest
+            letter for a page that found nothing.
+            Standing still, it lands on GIMMEL: a dreidel at rest has landed on
+            something, and gimmel is the one worth landing on. Swapped in CSS
+            rather than in JS because the thing that decides is a media query
+            (prefers-reduced-motion), not state. */}
+        <text x="60" y="80" textAnchor="middle" className="k-nf-letter k-nf-spinning" fill="#4a3208" fontSize="44">
           &#1504;
+        </text>
+        <text x="60" y="80" textAnchor="middle" className="k-nf-letter k-nf-landed" fill="#4a3208" fontSize="44">
+          &#1490;
         </text>
         {/* point */}
         <path d="M22 98 h76 l-38 42 z" fill="url(#nf-wood)" />

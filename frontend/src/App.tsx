@@ -860,7 +860,7 @@ export default function App() {
                     "What is Kvitlach?" and "How to play", which sit directly
                     to the right of this heading and are what a reader who
                     actually wants the explanation reaches for. */}
-                <h1 className="text-xl font-bold text-blue-800">{familyGreeting || "Welcome to Kvitlach"}</h1>
+                <h1 className="k-lobby-h text-2xl text-blue-800">{familyGreeting || "Welcome to Kvitlach"}</h1>
                 <div className="text-xs text-slate-600">
                   Have a code from your Banker? Join below. Running the game yourself? Host a table.
                 </div>
@@ -909,20 +909,12 @@ export default function App() {
           <section className="grid md:grid-cols-2 gap-4 items-start">
           <form className="card-surface p-4 flex flex-col gap-3" onSubmit={onJoin}>
             <header className="flex flex-col gap-1 pb-3 border-b border-slate-200">
-              <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
-                Join Game
-                <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
-                  <svg
-                    className="h-3 w-3 text-blue-500"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path d="M10 2a4 4 0 110 8 4 4 0 010-8zm0 10c-3.314 0-6 1.79-6 4v1h12v-1c0-2.21-2.686-4-6-4z" />
-                  </svg>
-                  (Player)
-                </span>
-              </h2>
+              {/* The heading alone. It carried a letterspaced "(Player)" tag
+                  with a little figure icon, and the line under it already says
+                  "Enter the code you received from the Banker" -- so the tag
+                  labelled the form as the thing the very next sentence
+                  explains. */}
+              <h2 className="k-lobby-h text-xl text-ink">Join Game</h2>
               <p className="text-xs text-slate-500">Enter the code you received from the Banker to take a seat.</p>
             </header>
             <label className="text-sm">Game ID
@@ -1018,12 +1010,7 @@ export default function App() {
               costs it nothing it didn't already have. */}
           <section className="card-surface p-4 flex flex-col gap-3 border-2 border-dashed border-blue-300 bg-blue-50/60">
             <header className="flex flex-col gap-1 pb-3 border-b border-blue-200">
-              <h2 className="text-lg font-semibold text-ink flex items-center gap-2">
-                Play Against the Computer
-                <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.3em] text-slate-600">
-                  Solo
-                </span>
-              </h2>
+              <h2 className="k-lobby-h text-xl text-ink">Play Against the Computer</h2>
               <p className="text-xs text-slate-500">
                 Nobody else needs to be online, and nothing here touches a real table.
               </p>

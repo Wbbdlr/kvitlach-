@@ -56,8 +56,15 @@ export default function SiteHeader({ showNav = false, active }: SiteHeaderProps)
           <sup className="text-[0.5em] font-normal align-super ml-0.5">&trade;</sup>
         </span>
       </a>
-      <span className="k-brand-face self-end -translate-y-[4px] text-[10px] uppercase tracking-[0.2em] text-blue-700/80 leading-tight">
-        Ah Heimishe Chanukah Shpil
+      {/* Set in the serif rather than as letterspaced micro-caps. It is a
+          phrase, not a label, and caps at 10px with 0.2em tracking read as UI
+          chrome next to a wordmark that is trying to be a wordmark.
+          NOT italic: this Newsreader subset ships upright only (see its
+          @font-face), so `italic` would be synthesised by slanting the
+          uprights -- which is exactly the smear the subset's own comment warns
+          about for synthesised bold. */}
+      <span className="self-end -translate-y-[3px] text-[13px] text-blue-700/80 leading-tight" style={{ fontFamily: "var(--k-plate-font)" }}>
+        Ah heimishe Chanukah shpil
       </span>
       {showNav && (
         <nav className="ml-auto flex items-center gap-4 text-xs">

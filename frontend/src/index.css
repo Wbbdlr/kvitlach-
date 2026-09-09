@@ -4794,10 +4794,49 @@ body:has(.k-fit) {
   0%, 100% { transform: rotate(-7deg); }
   50% { transform: rotate(7deg); }
 }
+/* Spinning: the nun. See NotFound.tsx for why each letter is the one it is. */
+.k-nf-landed {
+  display: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .k-nf-dreidel,
   .k-nf-dreidel svg {
     animation: none;
     transform: none;
   }
+  /* Standing still, it has landed -- and it lands on gimmel. */
+  .k-nf-spinning {
+    display: none;
+  }
+  .k-nf-landed {
+    display: block;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Serif headings on every page that is not the table.
+
+   The lobby and the info pages were set entirely in the UI sans, which gave
+   the front of a traditional card game the typographic identity of a settings
+   screen. Headings now take the app's own Newsreader -- already bundled for
+   the nameplates, so this costs no new bytes -- while forms, labels and body
+   copy stay sans, which is what they should be.
+
+   Scoped by `body:not(:has(.k-fit))` rather than by a class on each page:
+   .k-fit is the table's viewport box, so this turns itself off the moment a
+   table is on screen, including for anything StageOverlay portals to <body>
+   from inside it. Adding a class to six page components would have to be
+   remembered on the seventh.
+
+   --k-plate-font, not a new stack: 'Newsreader', 'FrankRuhlLibre', Georgia.
+   Newsreader's unicode-range is Latin-only, so a Hebrew heading -- a family's
+   own greeting, say -- lands on Frank Ruhl exactly as it does elsewhere,
+   rather than on whatever the system serif happens to be.
+--------------------------------------------------------------------------- */
+.k-lobby-h,
+body:not(:has(.k-fit)) h1,
+body:not(:has(.k-fit)) h2 {
+  font-family: var(--k-plate-font);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
