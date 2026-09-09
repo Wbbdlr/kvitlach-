@@ -872,6 +872,10 @@ export default function App() {
              and dropping the element outright would have taken it with it. */
           <section className="rounded-xl shadow-md bg-blue-50/70 border border-blue-200 p-4 flex flex-col items-center gap-3">
             {familyGreeting && <h1 className="k-lobby-h text-2xl text-blue-800 text-center">{familyGreeting}</h1>}
+            {/* The two carry IDENTICAL outlines on purpose. They were
+                border-accent and border-blue-300 respectively, which made one
+                look like the primary of the pair when they are peers -- two
+                ways of reading about the same game. */}
             <div className="flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
@@ -888,7 +892,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                className="k-gold-hover group inline-flex items-center justify-center gap-2 rounded border border-blue-300 text-blue-700 px-5 py-2 text-sm font-semibold shadow-sm transition-colors duration-200"
+                className="k-gold-hover group inline-flex items-center justify-center gap-2 rounded border border-accent text-accent px-5 py-2 text-sm font-semibold shadow-sm transition-colors duration-200"
                 onClick={() => {
                   setShowHowTo(false);
                   setShowWhatIs(true);
@@ -1014,8 +1018,13 @@ export default function App() {
               instead -- it's the rarest of the three actions and was already
               collapsed behind its own accordion, so demoting its position
               costs it nothing it didn't already have. */}
-          <section className="card-surface p-4 flex flex-col gap-3 border-2 border-dashed border-blue-300 bg-blue-50/60">
-            <header className="flex flex-col gap-1 pb-3 border-b border-blue-200">
+          {/* Plain card-surface, the same as Join beside it. It carried a
+              2px DASHED border and a tinted ground, which in a row with a
+              solid-bordered panel reads as unfinished rather than as
+              different -- dashed edges mean "placeholder" almost everywhere
+              else in UI. Two ways to play, two panels that look alike. */}
+          <section className="card-surface p-4 flex flex-col gap-3">
+            <header className="flex flex-col gap-1 pb-3 border-b border-slate-200">
               <h2 className="k-lobby-h text-xl text-ink">Play Against the Computer</h2>
               <p className="text-xs text-slate-500">
                 Nobody else needs to be online, and nothing here touches a real table.

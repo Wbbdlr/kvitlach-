@@ -2,6 +2,61 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Runs before the app's stylesheet is applied, so a reader who explicitly
+         chose dark never sees a frame of light first. External rather than
+         inline because nginx.conf serves script-src 'self' with no
+         'unsafe-inline' -- see the file's own comment. -->
+    <script src="/theme-init.js"></script>
+    <!-- The first frame, painted from the HTML itself with no stylesheet, no
+         font and no JavaScript needed.
+         Two jobs. The ground below matches what the app's own CSS will settle
+         on, in all three theme states, so the page never flashes white before
+         its real background arrives -- and the system-dark case is handled
+         entirely here, without theme-init.js having loaded at all.
+         And #k-boot gives the empty #root something to show: the bundle is
+         ~147KB gzipped, and until it parses this document had literally
+         nothing in the body. Not a spinner -- a spinner on a fast connection
+         appears and vanishes too quickly to read as anything but a glitch.
+         React replaces it on mount; nothing removes it by hand. -->
+    <style>
+      html { background: #f5f1e8; }
+      html[data-page-theme="dark"] { background: #1e293b; }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-page-theme="light"]) { background: #1e293b; }
+      }
+      #k-boot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        min-height: 70vh;
+        font-family: Georgia, "Times New Roman", serif;
+        color: #8a6a2f;
+      }
+      html[data-page-theme="dark"] #k-boot { color: #c9a04e; }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-page-theme="light"]) #k-boot { color: #c9a04e; }
+      }
+      #k-boot .k-boot-word {
+        font-size: 30px;
+        letter-spacing: 0.06em;
+        line-height: 1;
+      }
+      #k-boot .k-boot-rule {
+        width: 92px;
+        height: 1px;
+        background: currentColor;
+        opacity: 0.45;
+      }
+      /* Held back for a beat: on a fast connection the app mounts before this
+         ever becomes visible, which is the point. Somebody on shul wifi sees
+         it; nobody else knows it exists. */
+      @media (prefers-reduced-motion: no-preference) {
+        #k-boot { animation: k-boot-in 220ms ease-out 240ms both; }
+        @keyframes k-boot-in { from { opacity: 0; } to { opacity: 1; } }
+      }
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Kvitlach</title>
     <meta name="description" content="Play Kvitlach, the family card game, online -- host a live table, invite players with a room code, or practice solo against computer players." />
@@ -51,7 +106,12 @@
     <meta name="twitter:image" content="https://kvitlach.us/kvitlach-og.png" />
   </head>
   <body class="bg-sand text-ink">
-    <div id="root"></div>
+    <div id="root">
+      <div id="k-boot">
+        <div class="k-boot-word">Kvitlach</div>
+        <div class="k-boot-rule"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
