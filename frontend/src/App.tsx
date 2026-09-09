@@ -985,14 +985,14 @@ export default function App() {
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-accent text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200 hover:bg-accent/85"
+                  className="k-gold-hover flex-1 bg-accent text-white rounded px-4 py-2 font-semibold shadow-sm transition-colors duration-200"
                 >
                   Join
                 </button>
                 <button
                   type="button"
                   onClick={onWatch}
-                  className="flex-1 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+                  className="k-gold-hover flex-1 rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition-colors"
                   title="Watch the game without being dealt in"
                 >
                   Watch
@@ -1080,7 +1080,7 @@ export default function App() {
                   bankBuyIn: practiceBankBuyIn,
                 });
               }}
-              className="w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200 hover:bg-accent/85"
+              className="k-gold-hover w-full rounded bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors duration-200"
               title="Start a solo table against computer players - no code needed"
             >
               Play Against the Computer

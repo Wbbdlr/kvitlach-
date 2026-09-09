@@ -84,13 +84,24 @@ hop. Next EOL to watch: **April 2027**.
 
 ## `caniuse-lite is 9 months old`
 
-Cosmetic, and the one genuinely worth doing. It only affects which
-autoprefixer rules and browser targets are applied - stale data means slightly
-conservative CSS output, never a broken build.
+**Checked 2026-09-09: already current (1.0.30001810), lockfile unchanged, "no
+target browser changes". Nothing to do.** Left here because the warning can
+come back, not because it is outstanding.
+
+Cosmetic when it does return. It only affects which autoprefixer rules and
+browser targets are applied - stale data means slightly conservative CSS
+output, never a broken build.
 
 ```bash
 cd frontend && npx update-browserslist-db@latest
 ```
+
+**Run it in the REPO on the PC, never on the server.** It edits
+`package-lock.json`, and the server's copy of that file arrives from the
+tarball and is overwritten by the next deploy - so a run there changes nothing
+that survives, and nothing that any image is built from. Note the spelling:
+`browserslist`, two s's; `update-browserlist-db` is a 404 and has been typed
+that way once already.
 
 It updates `package-lock.json`, so it is a commit like any other. Do it when
 touching the frontend anyway, not as its own deploy.
