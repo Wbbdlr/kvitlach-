@@ -170,6 +170,27 @@ export function loadFamilyProfile(): void {
 }
 
 /**
+ * Leaves family mode: forgets the slug and puts this device back on the house
+ * look. Their link still works, and opening it again re-enters.
+ *
+ * The way in rewrites the address bar to "/", so without this there is no way
+ * out that does not involve clearing site data -- the mode was enterable,
+ * invisible and permanent. That was reported from a real session and this is
+ * the fix; the indicator in the lobby is the other half of it.
+ *
+ * Does NOT touch a felt the player chose for themselves. They keep their own
+ * choice, which is the same precedence rule that applied on the way in.
+ */
+export function leaveFamily(): void {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* private mode; clearing `active` below is what matters for this page */
+  }
+  applyProfile(null);
+}
+
+/**
  * The active profile, re-read whenever one lands.
  *
  * A hook rather than a prop threaded down: the profile can arrive after mount

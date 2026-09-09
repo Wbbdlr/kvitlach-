@@ -33,9 +33,9 @@ export interface FamilyProfile {
   feltPrint: string;
   /** The maker's mark on cards 1, 8 and 12. LATIN ONLY -- see normalizeMark. */
   cardMark: string;
-  /** A felt name from frontend/src/theme.ts's FELTS. */
+  /** A felt name from frontend/src/theme.ts's FELTS. Empty inherits the house. */
   felt: string;
-  /** A chip theme name from that same file's CHIPS. */
+  /** A chip theme from that same file's CHIPS. Empty inherits the house. */
   chip: string;
   /** Newline or comma separated; empty falls back to the built-in pool. */
   bankerNames: string;
@@ -147,8 +147,14 @@ export function normalizeProfile(raw: Partial<FamilyProfile> | undefined | null)
     greeting: clean(src.greeting, MAX.greeting),
     feltPrint: clean(src.feltPrint, MAX.feltPrint),
     cardMark: normalizeMark(src.cardMark),
-    felt: pick(src.felt, FELT_NAMES, HOUSE.felt),
-    chip: pick(src.chip, CHIP_NAMES, HOUSE.chip),
+    // Empty means "no opinion", NOT navy. A family that names no felt inherits
+    // whatever the operator has set as the house look, live, and follows it
+    // when it changes. Falling back to HOUSE.felt here instead pinned every
+    // family to the SHIPPED colour, so an operator who set a house felt found
+    // it reaching everybody except the families -- which is how this was found.
+    // An unknown name lands here too: better to inherit than to assert navy.
+    felt: pick(src.felt, FELT_NAMES, ""),
+    chip: pick(src.chip, CHIP_NAMES, ""),
     // Through the same normalizer the bot-name editor uses, so a profile
     // cannot hold a list the built-in pool would have refused -- and stored
     // as text, one per line, because that is what the form round-trips.

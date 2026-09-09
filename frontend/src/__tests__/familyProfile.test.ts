@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { applyProfile, fetchProfile, slugFromPath, storedSlug, activeProfile } from "../familyProfile";
+import { applyProfile, fetchProfile, leaveFamily, slugFromPath, storedSlug, activeProfile } from "../familyProfile";
 import { DEFAULT_FELT, loadFelt, saveFelt } from "../theme";
 
 // The client half of kvitlach.us/m/dov.
@@ -115,6 +115,33 @@ describe("what the device remembers", () => {
     localStorage.setItem("kvitlach.family", "dov");
     expect(storedSlug()).toBe("dov");
     localStorage.setItem("kvitlach.family", "../etc/passwd");
+    expect(storedSlug()).toBe("");
+  });
+});
+
+describe("leaving", () => {
+  // The way in rewrites the address bar to "/", so without an exit the mode was
+  // enterable, invisible and permanent -- reported from a real session.
+  it("forgets the family and goes back to the house look", () => {
+    localStorage.setItem("kvitlach.family", "dov");
+    applyProfile(DOV);
+    leaveFamily();
+    expect(activeProfile()).toBeNull();
+    expect(storedSlug()).toBe("");
+    expect(loadFelt()).toBe(DEFAULT_FELT);
+  });
+
+  it("leaves a player's own felt alone", () => {
+    // Leaving family mode is not "reset my preferences".
+    saveFelt("burgundy");
+    applyProfile(DOV);
+    leaveFamily();
+    expect(loadFelt()).toBe("burgundy");
+  });
+
+  it("stays gone across a reload", () => {
+    applyProfile(DOV);
+    leaveFamily();
     expect(storedSlug()).toBe("");
   });
 });

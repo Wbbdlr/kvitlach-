@@ -12,7 +12,7 @@ import type { AdminLoginSnapshot } from "./http-server.js";
 import type { ClientErrorLog } from "./client-errors.js";
 import { CARD_EFFECT_BOUNDS, CARD_EFFECT_DEFAULTS, CHIP_NAMES, ClientConfig, FELT_NAMES, THEME_DEFAULTS, type CardEffectsRecord } from "./client-config.js";
 import { AUDIT_ACTIONS, type AuditEntry } from "./audit.js";
-import { CHIP_NAMES as FAMILY_CHIPS, FELT_NAMES as FAMILY_FELTS, FamilyProfiles, HOUSE, MAX as FAMILY_MAX, type FamilyProfile } from "./family-profiles.js";
+import { CHIP_NAMES as FAMILY_CHIPS, FELT_NAMES as FAMILY_FELTS, FamilyProfiles, MAX as FAMILY_MAX, type FamilyProfile } from "./family-profiles.js";
 import { metrics } from "./metrics.js";
 
 // The admin page's HTML. Split out of http-server.ts once it stopped being a
@@ -41,21 +41,21 @@ const STYLE = `
   a { color: #1d4ed8; }
   table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; background: #fff; }
   th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid #e5e7eb; font-size: 0.88rem; }
-  th { color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.04em; }
+  th { color: #4b5563; font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.04em; }
   button { background: #374151; color: #fff; border: 0; border-radius: 4px; padding: 0.35rem 0.8rem; cursor: pointer; font-size: 0.85rem; }
   button:hover { background: #111827; }
   button.danger { background: #dc2626; } button.danger:hover { background: #b91c1c; }
   button.save { background: #1d4ed8; } button.save:hover { background: #1e40af; }
   button.on { background: #047857; cursor: default; }
-  .meta { color: #6b7280; font-size: 0.82rem; }
+  .meta { color: #4b5563; font-size: 0.82rem; }
   fieldset { border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.6rem 1rem 1rem; margin: 0 0 1.25rem; background: #fff; }
-  legend { font-size: 0.7rem; text-transform: uppercase; color: #6b7280; font-weight: 600; letter-spacing: 0.04em; }
+  legend { font-size: 0.7rem; text-transform: uppercase; color: #4b5563; font-weight: 600; letter-spacing: 0.04em; }
   textarea, input[type=text], input[type=password], input[type=number], select { font: inherit; font-size: 0.88rem; padding: 0.35rem; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; color: inherit; }
   textarea { width: 100%; font-family: ui-monospace, monospace; }
   .tiles { display: flex; flex-wrap: wrap; gap: 0.6rem; }
   .tile { flex: 1 1 7.2rem; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.55rem 0.7rem; background: #fff; }
   .tile .v { font-size: 1.5rem; font-weight: 600; line-height: 1.1; }
-  .tile .k { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
+  .tile .k { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: #4b5563; }
   .ok { color: #047857; } .warn { color: #b45309; } .bad { color: #b91c1c; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0.35rem 0; }
   .row label { min-width: 5.5rem; font-size: 0.88rem; }
@@ -70,12 +70,11 @@ const STYLE = `
   .login { max-width: 21rem; margin: 1.5rem 0; }
   .login .row { display: block; margin: 0 0 0.9rem; }
   .login label { display: block; min-width: 0; margin-bottom: 0.3rem; font-size: 0.8rem; font-weight: 600;
-                 text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
+                 text-transform: uppercase; letter-spacing: 0.04em; color: #4b5563; }
   .login input { width: 100%; box-sizing: border-box; font-size: 1.05rem; padding: 0.6rem 0.65rem; letter-spacing: 0.01em; }
   .login input:focus { outline: 2px solid #1d4ed8; outline-offset: 1px; border-color: #1d4ed8; }
   .login button { width: 100%; font-size: 1rem; padding: 0.65rem; }
   @media (prefers-color-scheme: dark) {
-    .login label { color: #9ca3af; }
     .login input { background: #111827; border-color: #4b5563; }
     .login input:focus { outline-color: #93c5fd; border-color: #93c5fd; }
     body { background: #0b1220; color: #e5e7eb; }
@@ -83,6 +82,14 @@ const STYLE = `
     th, td, fieldset, .tile, .topbar { border-color: #1f2937; }
     textarea, input, select { background: #0b1220; border-color: #374151; color: #e5e7eb; }
     a { color: #93c5fd; }
+    /* Every muted colour has to be restated here, not just the surfaces.
+       Without these the hints, table headers, legends and status words kept
+       their LIGHT-mode greys on a near-black card: measured 2.74-3.87:1 where
+       small text needs 4.5, which is an operator squinting at the field
+       descriptions on the very forms that explain what a setting does. Reported
+       from real use. Replacements measure 6.4-11.2:1. */
+    th, .meta, legend, .tile .k, .login label { color: #9ca3af; }
+    .ok { color: #34d399; } .warn { color: #fbbf24; } .bad { color: #f87171; }
   }
 `;
 
@@ -603,10 +610,18 @@ export function renderFamiliesEditor({
         placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(String(p[key] ?? ""))}" /></label>
       <span class="meta">${hint}</span></p>`;
 
+  // The empty option is the default and has to stay first: a family with no
+  // opinion on colour follows the house look and keeps following it when the
+  // operator changes it. Pre-selecting a real colour here silently pinned every
+  // family to it, which is how an operator's own house felt ended up reaching
+  // everybody except the families.
   const select = (p: Partial<FamilyProfile>, key: "felt" | "chip", label: string, options: readonly string[]) =>
     `<div class="row"><label style="min-width:7rem">${escapeHtml(label)}</label>
-      <select name="${key}">${options
-        .map((o) => `<option value="${o}"${(p[key] ?? HOUSE[key]) === o ? " selected" : ""}>${o}</option>`)
+      <select name="${key}">${["", ...options]
+        .map(
+          (o) =>
+            `<option value="${o}"${(p[key] ?? "") === o ? " selected" : ""}>${o || "same as the house"}</option>`
+        )
         .join("")}</select></div>`;
 
   const form = (p: Partial<FamilyProfile>, isNew: boolean) => {

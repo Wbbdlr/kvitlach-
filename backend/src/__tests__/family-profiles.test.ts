@@ -105,10 +105,26 @@ describe("normalizing", () => {
     expect(normalizeProfile(DOV)!.feltPrint).toBe("משפחת דב קוויטלעך");
   });
 
-  it("falls back to the house felt and chips rather than an unknown one", () => {
+  it("leaves the colour EMPTY rather than asserting one, when none was picked", () => {
+    // Empty means "no opinion", which the client reads as "use the house look"
+    // -- and it keeps following the house look when the operator changes it.
+    // Filling in the shipped navy here instead pinned every family to navy, so
+    // an operator who set a house felt found it reaching everybody except the
+    // families. Found by an operator, not by a test, which is why this one now
+    // exists.
+    const blank = normalizeProfile({ ...DOV, felt: "", chip: "" })!;
+    expect(blank.felt).toBe("");
+    expect(blank.chip).toBe("");
+  });
+
+  it("inherits rather than guessing when the colour is one this build lacks", () => {
     const p = normalizeProfile({ ...DOV, felt: "plaid", chip: "bronze" })!;
-    expect(p.felt).toBe(HOUSE.felt);
-    expect(p.chip).toBe(HOUSE.chip);
+    expect(p.felt).toBe("");
+    expect(p.chip).toBe("");
+  });
+
+  it("keeps a colour the family DID pick", () => {
+    expect(normalizeProfile(DOV)!.felt).toBe("spruce");
   });
 
   it("refuses a profile with no usable address at all", () => {

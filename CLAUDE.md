@@ -176,6 +176,14 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
     the operator's house default > shipped. The family and house defaults are
     SEPARATE variables; sharing one made the winner depend on which fetch
     landed first. Pinned by `houseTheme.test.ts`.
+  - **A profile's `felt`/`chip` may be EMPTY, and empty means inherit** - not
+    navy. Defaulting them to `HOUSE.felt` pinned every family to the SHIPPED
+    colour, so an operator's house felt reached everybody except the families.
+    The client already falls through correctly (`"" in FELTS` is false); the
+    bug was entirely in `normalizeProfile` and the admin `<select>`.
+  - Entering family mode rewrites the URL to `/`, so the lobby MUST keep both
+    an indicator and `leaveFamily()`. Without them the mode is enterable,
+    invisible and permanent - reported from real use.
 
 ## Local development
 
