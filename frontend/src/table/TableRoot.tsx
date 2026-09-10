@@ -285,8 +285,30 @@ export function TableRoot({
   // feeds seatPositions()/seatScale() below (the dealer never shrinks, see
   // dealDeltaFor's own comment), so computeFit's crowding correction shrinks
   // its reservation by the same amount the seats themselves actually shrink.
+  //
+  // ...but it falls to ZERO between rounds, and that moved the whole table.
+  // No round means no turns, so no seats are rendered, so crowding read as 1
+  // and computeFit reserved a full viewer-seat overhang for a seat that was
+  // not on the felt -- which shrinks vf, which shortens the oval. The dock is
+  // anchored to the viewport's bottom edge and does not move, so the gap
+  // between the table and the controls changed every time a round started or
+  // ended: measured at 915x412 with twelve seated, oval 174px tall and a 74px
+  // gap mid-round, 154px tall and a 97px gap between rounds. Reported as the
+  // controls sitting "randomly below the table or overlapping the table" and
+  // wanting them anchored below the middle of the table -- the controls were
+  // the fixed thing all along; the table was the one moving.
+  //
+  // Falling back to the seats that are ABOUT to be dealt in keeps the
+  // geometry still across the round boundary and reserves for exactly what is
+  // going to appear. Deliberately `||` and not a max: while a round is live
+  // the turn count is the truth about the arc (a seat can leave mid-round),
+  // so in-round behaviour is byte-for-byte what it was.
+  const seatedCount = useMemo(
+    () => room.players.filter((p) => p.type === "player").length,
+    [room.players]
+  );
   const { wrapRef, dockRef, scale, stageHeight, vf, playTop, compact, maxDockScale } = useStageScale(
-    playerTurns.length,
+    playerTurns.length || seatedCount,
     dockRowRef
   );
   const dockPanel = useDraggablePanel(dockRowRef, "dock", {

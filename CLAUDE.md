@@ -161,7 +161,14 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   carries the transform the fit itself sets, so an exact `===` let two values a
   hair apart alternate forever - React #185, "Maximum update depth exceeded",
   hit by a player mid-round. Never tighten that comparison back to `===`.
-  Pinned by `stageFitSettle.test.ts`.
+  Pinned by `stageFitSettle.test.ts`. **The seat count it is given must not
+  collapse between rounds** (`TableRoot`: `playerTurns.length || seatedCount`).
+  No round means no turns means no seats rendered, so `crowding` read as 1 and
+  computeFit reserved a viewer-seat overhang for a seat that was not there -
+  vf 0.40 instead of 0.44, a 20px shorter oval, and the gap to the
+  viewport-anchored dock opening from 74px to 97px every time a round ended.
+  Reported as the controls sitting "randomly below the table". Pinned by
+  `fitStableAcrossRounds.test.ts`.
 - **A BANK! frame's winning hand is never broadcast.** `settleBankOutcome`
   pays the frame out and OVERWRITES the banker's turn with their redeal in the
   same call, so the cards that just beat everybody exist only on

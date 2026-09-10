@@ -942,6 +942,18 @@ body:has(.k-fit) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Without this the ellipsis above never fires and a long name runs straight
+     over the presence dot sitting to its right.
+     The plate is a flex ROW (avatar | name column | dot) and the name column
+     already carries min-w-0, so the COLUMN shrinks correctly. The name itself
+     did not: the column is `align-items: flex-start`, which sizes a child on
+     the cross axis (here the width) to its own content rather than stretching
+     it -- so the span stayed as wide as the text, overflow:hidden had nothing
+     to clip against, and the text simply painted outside its box.
+     Measured on a 915x412 Android landscape with a 32-character banker name:
+     column 77px, name 171px, running 90px past the dot's left edge. With this
+     line the name lands at 77px and clears the dot by 4px. */
+  max-width: 100%;
 }
 .k-plate-sub {
   font-size: clamp(10px, calc(8px / var(--stage-scale, 1)), 14px);
@@ -1352,7 +1364,21 @@ body:has(.k-fit) {
      target, vs. ~8-9.5px for names/tags). See .k-resv-amt for the pattern. */
   font-size: clamp(14px, calc(11px / var(--stage-scale, 1)), 20px);
   color: #e7ede6;
-  background: rgba(10, 20, 14, 0.6);
+  /* 0.92, not 0.6. The felt print (.k-oval::after) is deliberately BEHIND
+     everything and is meant to be painted over -- that is the whole design,
+     and cards do it correctly because cards are opaque. These pills were not,
+     so 40% of a 20px gold watermark came through the digits sitting on it.
+     Reported as the reserved/total readouts overlapping the felt marker, and
+     the overlap is real: measured on a 915x412 Android landscape, the
+     reserved row occupies y164-181 and the watermark's line box y172-196, so
+     9px of the row sits directly on the print.
+     Raising the alpha rather than moving either one: three earlier attempts
+     tried to find the watermark a patch of felt to itself and all three lost
+     (see .k-oval::after's own comment) -- the gap they were chasing moves
+     with vf and the player count. Still short of 1 so the pill keeps reading
+     as something laid ON the felt rather than a hole cut out of it; the
+     residual bleed is 0.13 x 0.08, which is nothing. */
+  background: rgba(10, 20, 14, 0.92);
   padding: 3px 11px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1576,7 +1602,10 @@ body:has(.k-fit) {
   font-weight: 800;
   color: #f0c579;
   letter-spacing: 0.8px;
-  background: rgba(10, 20, 14, 0.55);
+  /* Same reason as .k-readout above, and it must move WITH it -- these two
+     sit on one row (.k-bank-hud-row) and a different alpha on each would read
+     as one of them being lit. */
+  background: rgba(10, 20, 14, 0.92);
   border: 1px solid rgba(230, 164, 75, 0.45);
   padding: 3px 12px;
   border-radius: 999px;
