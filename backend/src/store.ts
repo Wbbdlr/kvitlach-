@@ -182,7 +182,7 @@ const shortId = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 6);
 // labelled "Practice" reads like a tutorial the player is stuck in. Named from
 // the same pool as everything else, so the shoe, the felt and the name all
 // behave the same whoever is sitting there.
-const ROOM_NAME_POOL = [
+export const ROOM_NAME_POOL = [
   "Tish Time Tables",
   "The Rebbe's Card Table",
   "Farbrengen & Cards",
@@ -729,7 +729,7 @@ export class GameStore {
     if (!roomRec) return round;
     try {
       const updated = handleStand(round, playerId);
-      const processed = this.processBankLock(updated, roomRec);
+      const processed = this.parkIfBankEmpty(this.processBankLock(updated, roomRec), roomRec);
       this.audit("auto-stand", round.roomId, playerId, { reason: "turn_timeout" });
       const persisted = this.persistRound(roundId, processed, round);
       if (this.roundUpdateListener) this.roundUpdateListener(persisted);
@@ -1806,7 +1806,7 @@ export class GameStore {
       updated.bankLock = round.bankLock;
     }
 
-    const processed = this.processBankLock(updated, roomRec);
+    const processed = this.parkIfBankEmpty(this.processBankLock(updated, roomRec), roomRec);
     return this.persistRound(roundId, processed, round);
   }
 
@@ -1829,7 +1829,7 @@ export class GameStore {
     const updated = handleHit(round, playerId, { eleveroon: options?.eleveroon });
     const settledIndex = updated.turns.findIndex((t) => t.player.id === playerId);
     if (settledIndex >= 0) this.settleImmediateTurn(updated, roomRec, settledIndex);
-    const processed = this.processBankLock(updated, roomRec);
+    const processed = this.parkIfBankEmpty(this.processBankLock(updated, roomRec), roomRec);
     return this.persistRound(roundId, processed, round);
   }
 
@@ -1850,7 +1850,7 @@ export class GameStore {
     }
     this.ensureActiveTurn(round, playerId);
     const updated = handleStand(round, playerId);
-    const processed = this.processBankLock(updated, roomRec);
+    const processed = this.parkIfBankEmpty(this.processBankLock(updated, roomRec), roomRec);
     return this.persistRound(roundId, processed, round);
   }
 
@@ -1883,7 +1883,7 @@ export class GameStore {
       throw new Error("cannot_skip_wagered");
     }
     const updated = handleSkip(round, playerId);
-    const processed = this.processBankLock(updated, roomRec);
+    const processed = this.parkIfBankEmpty(this.processBankLock(updated, roomRec), roomRec);
     return this.persistRound(roundId, processed, round);
   }
 
@@ -2414,6 +2414,56 @@ export class GameStore {
       return this.settleBankOutcome(round, roomRec, lock, bankerTurn);
     }
 
+    return round;
+  }
+
+  /**
+   * Parks the round on the banker's decision the moment the bank runs dry.
+   *
+   * Every OTHER way the bank empties already does this -- the outright-win
+   * branch in processBankLock, and both no-redeal exits in settleBankOutcome
+   * -- because a bank with nothing in it cannot back another wager and the
+   * banker is the only one who can fix that (top up, pass the bank, or end
+   * the round). What none of them covered is the plain case: the last
+   * settlement of a BANK! frame drains the bank while seats that have NOT yet
+   * wagered are still to come.
+   *
+   * Play simply carried on. `applyBet` refused those seats with bank_empty,
+   * which is correct on its own, but NOTHING refused `applyHit`: a seat could
+   * be dealt a whole hand with no wager on it. For a bot that is not even an
+   * edge case, it is the default -- decideBotBet returns 0 when the window is
+   * 0, and playBotTurn reads a 0 as "no bet yet, so hit". So the table dealt
+   * out the rest of the round at $0 a hand and only announced the empty bank
+   * once the round was over. Reported from a practice table exactly that way:
+   * "it continued playing and dealing cards with the other computer players,
+   * and only after that did the pop up show up".
+   *
+   * Deliberately does nothing when a lock is already set -- the paths above
+   * own their own frames and this must not overwrite one mid-showdown -- and
+   * nothing when no seat is left to play, because a round with nothing
+   * outstanding is finishing anyway and a decision prompt over a finished
+   * round is just one more thing to dismiss.
+   */
+  private parkIfBankEmpty(round: RoundContext, roomRec: RoomRecord): RoundContext {
+    if (round.bankLock) return round;
+    const bankerIndex = round.turns.findIndex((turn) => turn.player.type === "admin");
+    if (bankerIndex < 0) return round;
+    const bankerId = round.turns[bankerIndex]!.player.id;
+    if ((roomRec.room.wallets[bankerId] ?? 0) > 0) return round;
+    const seatsStillToPlay = round.turns.some(
+      (turn) =>
+        turn.player.type !== "admin" &&
+        !turn.settled &&
+        (turn.state === "pending" || turn.state === "standby")
+    );
+    if (!seatsStillToPlay) return round;
+    round.bankLock = {
+      playerId: bankerId,
+      stage: "decision",
+      exposure: 0,
+      throughIndex: bankerIndex,
+      initiatedAt: Date.now(),
+    };
     return round;
   }
 

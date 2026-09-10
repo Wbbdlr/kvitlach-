@@ -76,6 +76,16 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   backstop, not a fix.** Anything reaching that log line is a bug to fix at
   source - Node kills the process on an unhandled rejection by default, and one
   dropped socket's failed DB write once took down every room on the server.
+- **Every action that can resolve a turn must run `parkIfBankEmpty` after
+  `processBankLock`** (`store.ts` - applyBet, applyHit, applyStand, applySkip,
+  forceTimeoutStand). A bank at zero cannot back a wager, so the round has to
+  stop and let the banker decide. `applyBet` refuses an empty bank on its own,
+  but `applyHit` never did, and a seat with no wager could be dealt a whole
+  hand: on a practice table that is the DEFAULT path, because decideBotBet
+  returns 0 for a zero window and playBotTurn reads a 0 as "no bet yet, so
+  hit". The table dealt the rest of the round at $0 a hand and only announced
+  the empty bank once it was over. A new action path that skips the call
+  reopens exactly that. Pinned by `empty-bank-parks-round.test.ts`.
 - **`useEscapeKey.ts`** - new dialogs use it, not a bespoke `keydown`.
 - **Every audio asset's source and license is already recorded** - `audio.ts`'s
   own comments (natural21: Mixkit, free/no attribution) and `About.tsx`'s

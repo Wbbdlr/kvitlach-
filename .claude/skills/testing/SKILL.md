@@ -41,6 +41,31 @@ concluding you broke something:
 cd backend && npx vitest run src/__tests__/<file>.test.ts
 ```
 
+## The other kind of red: an assertion that was never deterministic
+
+The rule above ("passes alone, so it is the timing flake") is a trap on its
+own, because it only fits a file that passes alone. `room-names.test.ts`
+failed **alone**, on roughly three runs in five, at a commit nobody had
+touched it in - and the cause was the assertion, not the clock.
+
+It drew 60 random names from each of two paths and asserted every name from
+one appeared in the other's sample. That is a coupon-collector problem
+wearing an invariant's clothes: with 19 names in the bag, one is missing from
+60 draws about 4% of the time, so the whole assertion held about 40% of the
+time. It shipped green because the runs that mattered happened to be lucky
+ones, and a green run of a 40% test proves nothing at all.
+
+So when a file fails alone, **measure it before believing either story**:
+
+```bash
+cd backend && for i in 1 2 3 4 5 6 7 8; do npx vitest run src/__tests__/<file>.test.ts 2>&1 | grep -E "Tests "; done
+```
+
+A clean 8/8 means the failure was real and you broke something. A mixed
+result on a file with no timers and no sockets means the assertion samples
+where it should compare - fix the assertion against the source of truth
+(export the constant and check membership), never by drawing more samples.
+
 ## Conventions
 
 - **Every WS test file binds its own port.** They run in parallel, so a reused
