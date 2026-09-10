@@ -969,6 +969,18 @@ body:has(.k-fit) {
      If the alpha above ever drops further, re-solve this; do not just dim. */
   color: #5d5139;
   white-space: nowrap;
+  /* Bounded for the same reason as .k-plate-name directly above, and it has
+     to be bounded SEPARATELY: the two are siblings in the same flex column,
+     so capping one says nothing about the other. This is the wallet line, and
+     it grows with the money -- measured on a seat plate at 915x412, it clears
+     the presence dot by 3.4px at "$999,999 - +$99,999" and lands ON it at
+     "$5,000,000 - -$1,250,000".
+     Harmless where the same class is used INLINE for the " (you)" suffix
+     inside .k-plate-name (Seat.tsx, Dealer.tsx): max-width and overflow have
+     no effect on an inline box, so that use is untouched. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Hand + cards.

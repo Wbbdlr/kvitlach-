@@ -97,6 +97,38 @@ describe("a banker name longer than its plate", () => {
     expect(body).toContain("white-space: nowrap");
   });
 
+  it("bounds the wallet line too, which is a SIBLING and not covered by the above", () => {
+    // Asked for directly after the first fix -- "we need to make sure it is
+    // fixed for other people's name pills too, not just banker."
+    //
+    // The name and the wallet line are two children of the same flex column,
+    // so capping one says nothing about the other. The name is shared CSS and
+    // so was already fixed for every seat; the wallet line was not bounded at
+    // all, and it grows with the money. Measured on a seat plate at 915x412:
+    // it clears the presence dot by 3.4px at "$999,999 - +$99,999" and lands
+    // ON the dot at "$5,000,000 - -$1,250,000".
+    const body = ruleBody(".k-plate-sub");
+    expect(body).toContain("max-width: 100%");
+    expect(body).toContain("overflow: hidden");
+    expect(body).toContain("text-overflow: ellipsis");
+  });
+
+  it("bounds the name through shared CSS, so every seat gets it, not just the dealer", () => {
+    // Seat.tsx and Dealer.tsx build the same plate: avatar, a min-w-0 column
+    // holding .k-plate-name over .k-plate-sub, then the presence element. One
+    // rule covers both, and that is the reason it does -- if either file ever
+    // grows its own name class, this stops being true silently.
+    const seat = readFileSync(resolve(__dirname, "../Seat.tsx"), "utf8");
+    const dealer = readFileSync(resolve(__dirname, "../Dealer.tsx"), "utf8");
+    for (const source of [seat, dealer]) {
+      expect(source).toContain('className="k-plate-name"');
+      expect(source).toContain("flex flex-col items-start leading-tight min-w-0");
+    }
+    // Swept live at 915x412 with a 28-character name and the extreme wallet
+    // line on all eleven plates at once: zero overflowed their presence mark.
+    expect(seat).toContain("k-presence flex-none");
+  });
+
   it("still has a dot to keep clear of", () => {
     // If the presence dot ever stops being a flex sibling of the name, the
     // max-width above is guarding nothing and this should be re-derived.
