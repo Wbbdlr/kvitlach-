@@ -184,7 +184,7 @@ export class WSClient {
     this.connecting = true;
     try {
       this.socket = new WebSocket(this.url);
-    } catch (err) {
+    } catch {
       this.connecting = false;
       this.closeListeners.forEach((fn) => fn());
       this.scheduleReconnect();

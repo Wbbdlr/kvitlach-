@@ -50,7 +50,7 @@ describe("the banker's shoe size", () => {
   // size -- that is the reason they reached for reshuffle.
   it("takes effect on a mid-round reshuffle", () => {
     const { store, roomId, adminId } = table();
-    const round = store.startRound(roomId, adminId);
+    store.startRound(roomId, adminId);
     store.setDeckCount(roomId, adminId, 8);
     const after = store.reshuffleDeck(roomId, adminId)!;
     expect(after.deckCount).toBe(8);

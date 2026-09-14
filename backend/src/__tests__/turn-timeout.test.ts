@@ -54,7 +54,7 @@ describe("the turn timeout", () => {
   it("stays on a mid-timeout player: a normal action before it expires resets the clock rather than firing early", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker", buyIn: 100, bankerBankroll: 500 });
-    const { player: p1 } = store.joinRoom(room.roomId, { firstName: "P1" });
+    store.joinRoom(room.roomId, { firstName: "P1" });
     store.joinRoom(room.roomId, { firstName: "P2" });
     const round = store.startRound(room.roomId, admin.id);
     const activeId = round.turns.find((t) => t.state === "pending" && t.player.type !== "admin")!.player.id;

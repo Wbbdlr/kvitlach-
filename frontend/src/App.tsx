@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 import { tableStandings } from "./playerRecord";
 import { useGameStore, loadLastRoomId, forgetLastRoom, loadAgeAcknowledged, persistAgeAcknowledged } from "./state";
 import { useFamilyProfile } from "./familyProfile";
-import { Player, RoundState } from "./types";
+import { BotSkill, BOT_SKILL_LABELS, BOT_SKILL_BLURBS, RoundState } from "./types";
 import { AudioManager } from "./audio";
 import { buzz } from "./table/haptics";
 import { CARD_DEAL_MS } from "./table/animations";
@@ -56,7 +56,6 @@ export default function App() {
   const {
     room,
     round,
-    balances,
     playerId,
     message,
     status,
@@ -72,6 +71,7 @@ export default function App() {
   const [joinFirstName, setJoinFirst] = useState("");
   const [joinLastName, setJoinLast] = useState("");
   const [practiceBotCount, setPracticeBotCount] = useState(2);
+  const [practiceBotSkill, setPracticeBotSkill] = useState<BotSkill>("normal");
   const [practiceFirstName, setPracticeFirst] = useState("");
   // Blank is the common case and is not a missing value: the server names the
   // table from the same pithy pool a hosted table uses. It was hardcoded
@@ -463,9 +463,7 @@ export default function App() {
   const playerTurns = turns.filter((t) => t.player?.type !== "admin");
   const myPlayerTurn = playerTurns.find((t) => t.player?.id === playerId);
   const isAdmin = room?.players.find((p) => p.id === playerId)?.type === "admin";
-  const bankLock = round?.bankLock;
   const primaryBankerTurn = bankerTurns[0];
-  const turnTimerDurationMs = round?.turnTimerDurationMs ?? 90_000;
   // Deliberately NOT gated on bankAffordable: a seat that can't cover the
   // bank's window should still be able to press BANK! and be told so by the
   // confirm dialog's shortfall branch, which is the moment the number is
@@ -480,8 +478,6 @@ export default function App() {
   // comment. The explaining still happens in the dialog, as designed here.
   const canBank = Boolean(bankInfo && bankInfo.available > 0 && bankIncrement > 0);
 
-  const waitingPlayerIds = room?.waitingPlayerIds ?? [];
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   useEffect(() => {
     if (room?.buyIn && !buyInAmount) {
@@ -679,6 +675,7 @@ export default function App() {
         onLeave={() => store.leaveGame()}
         onStepAway={() => store.stepAway()}
         onReshuffleDeck={() => store.reshuffleDeck()}
+        onSetBotSkill={(skill) => store.setBotSkill(skill)}
         onStartNextRound={() => {
           store.startRound(preferredDecks === "" ? undefined : Number(preferredDecks));
         }}
@@ -1076,6 +1073,7 @@ export default function App() {
                 store.createPracticeRoom(practiceFirstName.trim() || "Guest", {
                   roomName: practiceRoomName.trim() || undefined,
                   botCount: practiceBotCount,
+                  botSkill: practiceBotSkill,
                   deckCount: practiceDecks,
                   buyIn: practiceBuyIn,
                   bankBuyIn: practiceBankBuyIn,
@@ -1093,6 +1091,37 @@ export default function App() {
                 same reasoning as the buy-in/bankroll guidance the real
                 Create form just got. */}
             <div className="flex flex-col gap-4 pt-1" id="practice-settings">
+                {/* A segmented control rather than a slider: three named
+                    choices, and a slider would invite reading them as a
+                    continuum with a middle that is "half sharp". The blurb
+                    under it quotes the MEASURED win rate for each (400,000
+                    simulated rounds, see bot.ts) instead of an adjective -
+                    "Easy" tells you nothing about what you are agreeing to,
+                    and the honest headline is that the spread lives almost
+                    entirely in Easy. */}
+                <div className="text-sm flex flex-col gap-1">
+                  <span id="practice-skill-label">How the computer plays</span>
+                  <div className="flex gap-1" role="group" aria-labelledby="practice-skill-label">
+                    {(["easy", "normal", "hard"] as const).map((skill) => (
+                      <button
+                        key={skill}
+                        type="button"
+                        onClick={() => setPracticeBotSkill(skill)}
+                        aria-pressed={practiceBotSkill === skill}
+                        className={clsx(
+                          "flex-1 rounded border px-3 py-2 text-sm transition-colors duration-150",
+                          practiceBotSkill === skill
+                            ? "border-accent bg-accent text-white font-semibold"
+                            : "border-slate-300 bg-white text-ink hover:border-accent"
+                        )}
+                      >
+                        {BOT_SKILL_LABELS[skill]}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-slate-500">{BOT_SKILL_BLURBS[practiceBotSkill]}</span>
+                </div>
+
                 <label className="text-sm flex flex-col gap-1">
                   <span className="flex items-center justify-between">
                     <span>Computer players</span>

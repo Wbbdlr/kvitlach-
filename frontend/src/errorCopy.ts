@@ -65,6 +65,7 @@ export const ERROR_COPY: Record<string, string> = {
   invalid_turn_seconds: "Turn time has to be between 10 and 300 seconds.",
   nothing_to_undo: "There is no chip correction left to undo.",
   invalid_deck_count: "The shoe has to be between 1 and 16 decks.",
+  invalid_bot_skill: "Pick Easy, Regular or Sharp for how the computer plays.",
   already_seated: "That player is back at the table already.",
   // Seat recovery. seat_claimable is never a dead end -- the lobby turns it
   // into a choice (take the seat back, or come in as a different person of

@@ -6,7 +6,7 @@ import { validatePayload } from "./payload.js";
 import { resolveClientIp } from "./client-ip.js";
 import { GameStore } from "./store.js";
 import { metrics } from "./metrics.js";
-import { ClientEnvelope, PublicRoundState, RoomState, RoundState, ServerEnvelope, ReactionEvent, Turn, Card } from "./types.js";
+import { ClientEnvelope, PublicRoundState, RoundState, ServerEnvelope, ReactionEvent, Turn, Card } from "./types.js";
 import type { RoundContext } from "./round.js";
 
 // A card that carries no game information, sent in place of one a viewer is
@@ -293,6 +293,15 @@ export class WSServer {
   constructor(store: GameStore, port: number, private readonly access: AccessControl = new AccessControl()) {
     this.store = store;
     this.store.setRoundUpdateListener((round) => this.handleRoundUpdate(round));
+    // Bot remarks (bot-remarks.ts) ride the same reaction event a player's own
+    // tap produces, so the felt needs nothing new to render one. Deliberately
+    // NOT routed through the `player:react` allowlist above: that list exists
+    // to stop a client sending arbitrary text, and these do not come from a
+    // client -- bot-remarks.ts is itself the allowlist for them.
+    this.store.setReactionListener((roomId, playerId, emoji) => {
+      const payload: ReactionEvent = { playerId, emoji, reactedAt: Date.now() };
+      this.broadcast(roomId, { type: "reaction:new", roomId, payload });
+    });
     this.wss = new WebSocketServer({ port, maxPayload: MAX_MESSAGE_BYTES_CEILING });
     this.wss.on("connection", (socket: WebSocket, request: IncomingMessage) => this.onConnection(socket, request));
     console.log(`WebSocket listening on ws://0.0.0.0:${port}`);
@@ -417,7 +426,7 @@ export class WSServer {
     let msg: ClientEnvelope;
     try {
       msg = JSON.parse(data.toString());
-    } catch (err) {
+    } catch {
       this.send(socket, { type: "error", error: { message: "invalid_json" } });
       return;
     }
@@ -459,7 +468,7 @@ export class WSServer {
           break;
         }
         case "room:create-practice": {
-          const { firstName, roomName, botCount, buyIn, bankBuyIn, deckCount, accessCode, familyProfile } = (payload as any) || {};
+          const { firstName, roomName, botCount, buyIn, bankBuyIn, deckCount, botSkill, accessCode, familyProfile } = (payload as any) || {};
           this.access.assertAllowed("practice", accessCode);
           if (!firstName) throw new Error("invalid_payload");
           const practiceIp = this.meta.get(socket)?.ip ?? "unknown";
@@ -467,7 +476,7 @@ export class WSServer {
             this.recordRejection("practiceCreates", practiceIp);
             throw new Error("room_create_throttled");
           }
-          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, roomName, botCount, buyIn, bankBuyIn, deckCount, familyProfile });
+          const { room, player, sessionToken } = this.store.createPracticeRoom({ firstName, roomName, botCount, buyIn, bankBuyIn, deckCount, botSkill, familyProfile });
           WSServer.recordCreate(this.practiceCreatesByIp, practiceIp, this.store.limits.roomCreateWindowMs);
           await this.attach(socket, room.roomId, player.id);
           // Unlike room:create, a round is already underway here (no human
@@ -1024,6 +1033,17 @@ export class WSServer {
           const actorId = meta?.playerId;
           if (!roomId || !actorId || typeof decks !== "number") throw new Error("invalid_payload");
           const result = this.store.setDeckCount(roomId, actorId, decks);
+          this.broadcastRoom(roomId);
+          this.sendAck(socket, requestId, { result });
+          break;
+        }
+        case "room:set-bot-skill": {
+          const { skill, roomId: roomFromPayload } = (payload as any) || {};
+          const meta = this.meta.get(socket);
+          const roomId = roomFromPayload ?? meta?.roomId;
+          const actorId = meta?.playerId;
+          if (!roomId || !actorId || typeof skill !== "string") throw new Error("invalid_payload");
+          const result = this.store.setBotSkill(roomId, actorId, skill);
           this.broadcastRoom(roomId);
           this.sendAck(socket, requestId, { result });
           break;

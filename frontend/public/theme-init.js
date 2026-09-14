@@ -25,7 +25,7 @@
       document.documentElement.setAttribute("data-page-theme", saved);
       document.documentElement.style.colorScheme = saved;
     }
-  } catch (e) {
+  } catch {
     /* private mode, or storage disabled. The page still renders; it just
        follows the device instead of the stored choice for this load. */
   }

@@ -137,11 +137,37 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
 - **Practice mode is user-facing as "Play Against the Computer" now, not
   "Practice"** (2026-09-04, direct request) - the framing moved from a demo/
   tutorial mode to a real standalone way to play. `room.practice` (the
-  internal flag/logic) is unchanged; only the lobby copy changed. Queued,
-  not built: difficulty levels for the bots, bot commentary/"AI remarks"
-  during a hand, and other polish for this mode specifically - surface
-  toward the user proactively if a session ends up in `bot.ts` or the
-  practice-lobby JSX, rather than waiting to be asked.
+  internal flag/logic) is unchanged; only the lobby copy changed.
+- **`bot.ts`'s thresholds are MEASURED, not chosen.** 400,000 simulated rounds
+  against the real rule primitives, and two of the results are
+  counter-intuitive enough to be re-derived by anyone who assumes otherwise:
+  a seat's stand threshold is FLAT between 16 and 18 (17 was already optimal,
+  so no fixed threshold makes a seat sharper), and the BANKER is where the
+  whole dial lives, because in practice mode the banker bot IS the human's
+  opponent - a bank standing on 14 hands the player 52.3% of hands against
+  44.5% at 17, while 18 (its ceiling) only buys back 0.4. Shoe-counting
+  measured BETTER for a seat (45.3%) and WORSE for the bank, which is why
+  only hard seats count. The lobby copy quotes these figures at the player
+  and `botSkill.test.ts` fails if the copy and the code disagree - so re-run
+  the simulation rather than re-fitting either.
+- **The turn clock does not run while the shoe is empty** (`syncTurnTimer`'s
+  `shouldSkipTimer`). The shoe runs dry roughly every eight rounds by design
+  and does not refill itself, and a seat must not be force-stood for failing
+  to act at a table that cannot deal it a card. Measured before the guard: the
+  rest of the round auto-stood one full clock at a time, worst on a bot seat,
+  whose draw throws `deck_empty` into a catch that logs and reschedules
+  nothing. Do NOT widen the condition past `deck.length === 0` - the timeout
+  itself is what stops a stalled human freezing a real table, and
+  `shoe-empty-holds-clock.test.ts` fails in BOTH directions for that reason.
+  The felt was never silent here: `shoeDecisionPending` is driven by
+  `deckRemaining`, so the panel is up for the whole table whoever is on turn.
+- **Bot remarks ride the reaction channel** (`bot-remarks.ts` -> the store's
+  `reactionListener` -> `reaction:new`), so the felt needed nothing new to
+  render one. Two consequences: they never pass ws-server's reaction
+  allowlist (that list guards what a CLIENT may send, and these come from the
+  store), so `bot-remarks.ts` is itself the allowlist; and the no-emoji rule
+  DOES apply to them - player reactions are the deliberate exception because
+  they are user content, and a bot remark is copy we wrote. Pinned by test.
 
 - **`limits.ts` values are read AT THE POINT OF USE, never captured at module
   load.** Capacity, the seven throttles and the nine gameplay timings are all
@@ -337,6 +363,15 @@ Full rules: [docs/GAME_RULES.md](docs/GAME_RULES.md).
 - **`MAX_SEATED_PLAYERS_PER_ROUND = 11` is derived from `layout.ts` collision
   maths** and pinned by `layout.test.ts`. Changing one without the other breaks
   the table, and it must never become a runtime setting. Overflow players queue.
+- **`npm run lint` is a CORRECTNESS linter, not a formatter** (both packages,
+  gated in CI). Nothing here has ever run a formatter and no style rule is
+  enabled - do not add one, it would report thousands of findings on code that
+  is already consistent by hand. Two traps in `eslint.config.js`, both of which
+  cost a round to find: a config block with no `files` key applies to
+  everything, so the bare recommended sets must come BEFORE any narrower block
+  or they undo its rule overrides; and `ignoreRestSiblings` is load-bearing,
+  because this codebase strips fields by destructuring them away
+  (`const { timer, turnTimer, botTimer, ...serializable } = round`).
 - Don't commit or push unless asked.
 - **Keep this file and the skills current as you go, and keep them SMALL.**
   This file is charged to every session, so it earns its length by holding

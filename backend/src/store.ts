@@ -2,10 +2,11 @@ import { v4 as uuid } from "uuid";
 import { customAlphabet } from "nanoid";
 import { createRound, handleBet, handleSkip, handleStand, calculateBalances, calculateEndState, buildShoe, buildRoundHistoryEntry, recommendedDeckCount } from "./round.js";
 import { handleHit } from "./round.js";
-import { decideBotAction, decideBotBet, decideBotEleveroon } from "./bot.js";
+import { decideBotAction, decideBotBet, decideBotEleveroon, isBotSkill } from "./bot.js";
+import { BotMoment, botRemark, REMARK_CHANCE, REMARK_COOLDOWN_MS } from "./bot-remarks.js";
 import { RuntimeLimits } from "./limits.js";
 import { BotNames } from "./bot-names.js";
-import { Balance, Card, Player, PlayerType, Presence, RenameRequest, RoomState, RoundState, RoundHistoryEntry, BuyInRequest, BankLockState, Turn, ConnectionSummary, LedgerEntry, SeatClaim } from "./types.js";
+import { Balance, Card, Player, PlayerType, Presence, RenameRequest, RoomState, RoundHistoryEntry, BuyInRequest, BankLockState, Turn, ConnectionSummary, LedgerEntry, SeatClaim } from "./types.js";
 import type { RoundContext } from "./round.js";
 import type { Database } from "./db.js";
 import { metrics } from "./metrics.js";
@@ -305,6 +306,13 @@ export class GameStore {
   private rounds = new Map<string, RoundContext>();
   private sessions = new Map<string, SessionRecord>();
   private roundUpdateListener?: (round: RoundContext) => void;
+  // Bot remarks go out on the reaction channel (bot-remarks.ts), which the WS
+  // layer owns -- the store has no sockets. Same shape as the round listener
+  // above, and undefined in every test that does not care.
+  private reactionListener?: (roomId: string, playerId: string, text: string) => void;
+  // Last time ANY bot at a table spoke. Table-wide on purpose; see
+  // REMARK_COOLDOWN_MS.
+  private lastRemarkAt = new Map<string, number>();
   private db?: Database;
   // Capacity caps are read through this on every check rather than captured
   // at construction, so a change made from the admin page applies to the very
@@ -502,6 +510,29 @@ export class GameStore {
     this.roundUpdateListener = listener;
   }
 
+  setReactionListener(listener: (roomId: string, playerId: string, text: string) => void) {
+    this.reactionListener = listener;
+  }
+
+  /**
+   * Lets a bot say something, if the table has been quiet long enough and the
+   * roll goes its way. Silent and side-effect-free when no listener is set,
+   * which is every unit test that is not about remarks.
+   */
+  private maybeBotRemark(roomId: string, playerId: string, moment: BotMoment) {
+    if (!this.reactionListener) return;
+    const now = Date.now();
+    const last = this.lastRemarkAt.get(roomId) ?? 0;
+    if (now - last < REMARK_COOLDOWN_MS) return;
+    if (Math.random() >= REMARK_CHANCE) return;
+    const text = botRemark(moment, playerId, Math.random());
+    if (!text) return;
+    // Stamped BEFORE the listener runs: a throwing listener must still leave
+    // the cooldown armed, or a broken socket turns into a remark every turn.
+    this.lastRemarkAt.set(roomId, now);
+    this.reactionListener(roomId, playerId, text);
+  }
+
   async recordConnection(roomId: string, playerId: string, ip?: string, userAgent?: string): Promise<number | undefined> {
     if (!this.db) return undefined;
     return this.db.logConnection({ roomId, playerId, ip, userAgent });
@@ -560,7 +591,30 @@ export class GameStore {
       !activeTurnId ||
       !activeTurn ||
       activeTurn.player.type === "admin" ||
-      activeTurn.state !== "pending";
+      activeTurn.state !== "pending" ||
+      // Nothing left in the shoe. A seat must not be force-stood for failing
+      // to act at a table that physically cannot deal it a card -- and it is
+      // not a rare state: the shoe is sized to run out roughly every eight
+      // rounds BY DESIGN (TARGET_ROUNDS_PER_SHOE), and it does not refill
+      // itself, a real shoe being something the banker calls for.
+      //
+      // Measured before this, on a practice table with the shoe emptied
+      // mid-round: the seat on turn sat pending for its entire clock, was
+      // force-stood, and then the NEXT seat did the same, and the next --
+      // the whole rest of the round auto-standing one 90-second clock at a
+      // time while the felt looked frozen. A bot makes it worse than a human
+      // does, because playBotTurn's draw throws deck_empty, is logged, and
+      // nothing reschedules, so the seat does not even twitch.
+      //
+      // The felt already tells everyone ("The shoe is empty", TableRoot's
+      // shoeDecisionPending, driven by deckRemaining and so shown to the
+      // whole table whoever is on turn) and already offers the fix to whoever
+      // can reshuffle. What it did not do was give them TIME to use it. This
+      // is the half that makes that panel worth having: the clock stops while
+      // the shoe is empty, and the branch below restores a full one the
+      // moment a fresh shoe lands, because it clears turnTimerExpiresAt on
+      // the way through rather than leaving a stale deadline to resume into.
+      next.deck.length === 0;
 
     if (shouldSkipTimer) {
       if (prev?.turnTimer) clearTimeout(prev.turnTimer);
@@ -711,12 +765,32 @@ export class GameStore {
           amount > 0
             ? this.applyBet(roundId, playerId, amount, { eleveroon })
             : this.applyHit(roundId, playerId, { eleveroon });
+        // A fifth of the stack is the top of the boldest temperament's range
+        // (bot.ts TEMPERAMENTS), so this fires for a bet that is genuinely
+        // big FOR THAT BOT rather than for whoever happens to be richest.
+        if (amount > 0 && wallet > 0 && amount / wallet >= 0.15) {
+          this.maybeBotRemark(round.roomId, playerId, "bigBet");
+        }
       } else {
-        const action = decideBotAction(turn.cards);
+        const action = decideBotAction(turn.cards, {
+          skill: roomRec.room.botSkill,
+          isBanker,
+          shoe: round.deck,
+        });
         updated =
           action === "stand"
             ? this.applyStand(roundId, playerId)
             : this.applyHit(roundId, playerId, { eleveroon });
+        if (action === "stand") this.maybeBotRemark(round.roomId, playerId, "stood");
+      }
+      // Read off the turn AFTER the move, not off the action that caused it:
+      // a hit resolves itself (21, a futch, a rosier pair) inside apply*, and
+      // the only honest source for what just happened is the settled turn.
+      const settled = updated.turns.find((t) => t.player.id === playerId);
+      if (settled?.busted) {
+        this.maybeBotRemark(round.roomId, playerId, isBanker ? "bankFutched" : "futched");
+      } else if (settled?.state === "won") {
+        this.maybeBotRemark(round.roomId, playerId, "won");
       }
       if (this.roundUpdateListener) this.roundUpdateListener(updated);
     } catch (err) {
@@ -883,6 +957,7 @@ export class GameStore {
     buyIn?: number;
     bankBuyIn?: number;
     deckCount?: number;
+    botSkill?: string;
     familyProfile?: string;
   }) {
     const activePracticeRooms = [...this.rooms.values()].filter((r) => r.room.practice === true).length;
@@ -952,6 +1027,10 @@ export class GameStore {
       renameBlockedIds: [],
       buyInBlockedIds: [],
       practice: true,
+      // Unrecognised means "normal" rather than an error: this arrives off a
+      // WS payload, and a lobby that sends a skill this build does not know
+      // should deal a normal table, not refuse to open.
+      botSkill: isBotSkill(host.botSkill) ? host.botSkill : "normal",
       familyProfile: practiceProfile,
     };
     this.rooms.set(roomId, { room, nextStart: 0, seatFloorAt: Date.now() });
@@ -1565,6 +1644,29 @@ export class GameStore {
   // somebody mid-decision is the same force-stand the refill was added to
   // stop. The next turn picks the new value up (syncTurnTimer reads it fresh
   // every time it starts a clock).
+  /**
+   * How well the computer plays, per table.
+   *
+   * Takes the practice carve-out rather than plain `isAdmin`, for the reason
+   * reshuffleDeck already documents: a practice table's banker IS a bot, so an
+   * admin-only guard would leave the one person at the table unable to change
+   * the one setting the mode exists for. `!actor.isBot` still bars the bots
+   * themselves.
+   */
+  setBotSkill(roomId: string, playerId: string, skill: string) {
+    const roomRec = this.rooms.get(roomId);
+    if (!roomRec) throw new Error("room_not_found");
+    const actor = roomRec.room.players.find((p) => p.id === playerId);
+    if (!actor) throw new Error("forbidden");
+    const allowed = !actor.isBot && (actor.type === "admin" || (roomRec.room.practice === true && actor.type === "player"));
+    if (!allowed) throw new Error("forbidden");
+    if (!isBotSkill(skill)) throw new Error("invalid_bot_skill");
+    roomRec.room.botSkill = skill;
+    this.audit("set-bot-skill", roomId, playerId, { skill });
+    this.bumpRoomTimer(roomId);
+    return { botSkill: skill };
+  }
+
   setTurnSeconds(roomId: string, adminId: string, seconds: number) {
     const roomRec = this.rooms.get(roomId);
     if (!roomRec) throw new Error("room_not_found");

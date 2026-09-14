@@ -156,7 +156,7 @@ describe("the consumers read it live", () => {
 
   it("changes the room expiry window", () => {
     const limits = new RuntimeLimits();
-    const store = new GameStore(undefined, limits);
+    new GameStore(undefined, limits);
     limits.set("roomIdleHours", 1);
     expect(limits.roomIdleMs).toBe(60 * 60_000);
     limits.set("practiceIdleMinutes", 5);

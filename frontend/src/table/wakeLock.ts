@@ -38,10 +38,10 @@ export function useWakeLock(active: boolean) {
            document at the moment of the call -- not worth surfacing */
       }
     };
-    acquire();
+    void acquire();
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible" && !sentinelRef.current) acquire();
+      if (document.visibilityState === "visible" && !sentinelRef.current) void acquire();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 

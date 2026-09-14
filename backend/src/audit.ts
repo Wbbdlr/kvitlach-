@@ -61,6 +61,7 @@ export const AUDIT_ACTIONS = [
   "seat-claim-reject",
   "seat-claim-request",
   "set-deck-count",
+  "set-bot-skill",
   "set-turn-seconds",
   "set-watermark",
   "switch-admin",

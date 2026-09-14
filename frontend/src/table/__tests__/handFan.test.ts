@@ -44,9 +44,9 @@ describe("useHandFan", () => {
     const { result } = renderHook(() => useHandFan(ref));
     act(() => result.current.toggle());
     expect(result.current.fanned).toBe(true);
-    act(() => vi.advanceTimersByTime(FAN_OUT_MS - 1));
+    act(() => { vi.advanceTimersByTime(FAN_OUT_MS - 1); });
     expect(result.current.fanned).toBe(true);
-    act(() => vi.advanceTimersByTime(1));
+    act(() => { vi.advanceTimersByTime(1); });
     expect(result.current.fanned).toBe(false);
   });
 

@@ -90,10 +90,79 @@ export function decideBotBet(wallet: number, available: number, playerId = "", b
   return Math.max(1, Math.min(ceiling, Math.round(target)));
 }
 
-export function decideBotAction(cards: Card[]): "hit" | "stand" {
+/**
+ * How well the computer plays, per table. Practice only in practice, but it is
+ * a room setting rather than a practice-only one so nothing has to special-case
+ * it (`room.botSkill`, default "normal" = exactly what shipped before this).
+ */
+export type BotSkill = "easy" | "normal" | "hard";
+export const BOT_SKILLS = ["easy", "normal", "hard"] as const;
+export function isBotSkill(value: unknown): value is BotSkill {
+  return typeof value === "string" && (BOT_SKILLS as readonly string[]).includes(value);
+}
+
+// Every number below is measured, not chosen, over 400,000 simulated rounds
+// against the real rule primitives (one seat, one banker, ties to the banker).
+// Two results shaped the whole design and neither was the expected one:
+//
+//   A seat's stand threshold is FLAT at the top and steep at the bottom.
+//   Win rate by threshold: 14 -> 42.7%, 15 -> 43.6%, 16 -> 44.4%,
+//   17 -> 44.5%, 18 -> 44.5%, 19 -> 41.5%, 20 -> 36.1%. So 17 (what shipped)
+//   was already optimal to within noise, and there is no fixed threshold that
+//   makes a seat meaningfully sharper -- only ones that make it worse.
+//
+//   The BANKER is the dial that matters. In practice mode the human's opponent
+//   IS the banker bot; the other bots are table dressing. Player win rate by
+//   what the banker stands on: 14 -> 52.3%, 15 -> 49.7%, 16 -> 47.2%,
+//   17 -> 44.5%, 18 -> 44.1%, 19 -> 46.3%, 20 -> 50.8%. An easy banker is
+//   worth nearly EIGHT points to the player; a hard one is worth 0.4, because
+//   18 is the banker's ceiling and 17 is almost exactly as good.
+//
+// So "hard" is honest about being a small edge, and the width of this dial is
+// almost entirely in "easy".
+const STAND_ON: Record<BotSkill, number> = { easy: 14, normal: 17, hard: 18 };
+
+// A hard SEAT does not use a threshold at all -- it reads the shoe. Hitting
+// while the chance the next card futches it stays under 50% measured 45.3%
+// against 44.5% for standing on 17, the only thing tried that beat a fixed
+// threshold at all. Counting was measured for the banker too and was WORSE
+// there (player 47.4% vs 44.5%): it keeps the bank off a futch at the cost of
+// standing low, and a low bank total loses to a tie it would otherwise win.
+const HARD_SEAT_FUTCH_CUTOFF = 0.5;
+
+/**
+ * The chance the next card off the shoe futches this hand.
+ *
+ * Fair information, not a peek: the shoe's COMPOSITION (never its order) is
+ * derivable by anyone at the table from the cards on the felt and the discard
+ * pile, both of which are rendered. Reading `round.deck` is the cheap way to
+ * the same number, not a look at what is coming.
+ */
+function futchChance(cards: Card[], shoe: Card[]): number {
+  if (!shoe.length) return 1;
+  const holdingEleven = getSums(cards).includes(11);
+  let futching = 0;
+  for (const card of shoe) {
+    // An 11 onto a hand readable as exactly 11 is ignored, not a futch
+    // (decideBotEleveroon below always claims it), so counting it as one would
+    // have a hard bot stand on hands it cannot lose.
+    if (holdingEleven && card.name === "11") continue;
+    if (getSums([...cards, card]).every((sum) => sum > 21)) futching += 1;
+  }
+  return futching / shoe.length;
+}
+
+export function decideBotAction(
+  cards: Card[],
+  options?: { skill?: BotSkill; isBanker?: boolean; shoe?: Card[] }
+): "hit" | "stand" {
   const total = winningNumber(cards);
   if (total === undefined) return "stand"; // no valid total left to improve on
-  return total >= 17 ? "stand" : "hit";
+  const skill = options?.skill ?? "normal";
+  if (skill === "hard" && !options?.isBanker && options?.shoe?.length) {
+    return futchChance(cards, options.shoe) <= HARD_SEAT_FUTCH_CUTOFF ? "hit" : "stand";
+  }
+  return total >= STAND_ON[skill] ? "stand" : "hit";
 }
 
 /**

@@ -29,7 +29,7 @@ describe("startRound seat cap and waiting rotation", () => {
   it("rotates previously-waiting players into a seat on the next round", () => {
     const store = new GameStore();
     const { room, player: admin } = store.createRoom({ firstName: "Banker" });
-    const players = Array.from({ length: 14 }, (_, i) => store.joinRoom(room.roomId, { firstName: `P${i}` }).player);
+    Array.from({ length: 14 }, (_, i) => store.joinRoom(room.roomId, { firstName: `P${i}` }).player);
 
     store.startRound(room.roomId, admin.id);
     const firstWait = new Set(store.getRoom(room.roomId)!.waitingPlayerIds);

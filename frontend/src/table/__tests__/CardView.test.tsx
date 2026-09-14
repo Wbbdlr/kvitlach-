@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { cardImages } from "../selectors";
 import { APP_VERSION } from "../../version";
 import { act, render } from "@testing-library/react";

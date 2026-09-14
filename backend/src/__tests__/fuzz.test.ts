@@ -24,7 +24,6 @@ interface Violation {
 
 function playGame(seed: number, violations: Violation[]) {
   const rand = rng(seed);
-  const pick = <T,>(xs: T[]): T => xs[Math.floor(rand() * xs.length)];
   const store = new GameStore();
   const playerCount = 1 + Math.floor(rand() * 4);
   const bankroll = 20 + Math.floor(rand() * 200);

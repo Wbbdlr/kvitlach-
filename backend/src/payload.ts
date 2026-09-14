@@ -34,7 +34,7 @@ export function validatePayload(payload: unknown): Record<string, unknown> {
   // speaking a different protocol than we are -- nothing to destructure.
   if (typeof payload !== "object" || Array.isArray(payload)) throw new Error("invalid_payload");
 
-  for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+  for (const value of Object.values(payload as Record<string, unknown>)) {
     if (value === undefined || value === null) continue;
     const kind = typeof value;
     if (kind === "string") {

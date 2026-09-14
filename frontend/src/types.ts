@@ -2,6 +2,29 @@ export type PlayerType = "admin" | "player" | "spectator";
 export type Presence = "online" | "offline";
 export type TurnState = "pending" | "lost" | "won" | "standby" | "skipped";
 export type RoundPhase = "playing" | "final" | "terminate";
+/**
+ * How well the computer players play. Mirrors backend/src/bot.ts's BotSkill --
+ * the two lists must match, and the server rejects anything it does not know
+ * (`invalid_bot_skill`) rather than silently playing normal.
+ */
+export type BotSkill = "easy" | "normal" | "hard";
+export const BOT_SKILL_LABELS: Record<BotSkill, string> = {
+  easy: "Easy",
+  normal: "Regular",
+  hard: "Sharp",
+};
+/**
+ * What each level actually costs you, in the only terms that matter at the
+ * table. Every figure is measured over 400,000 simulated rounds against the
+ * real rule primitives (see backend/src/bot.ts, which holds the full curve) -
+ * not an adjective, and not rounded in the house's favour. Keep them truthful
+ * if the thresholds there ever move.
+ */
+export const BOT_SKILL_BLURBS: Record<BotSkill, string> = {
+  easy: "The bank stops at 14, so an ordinary hand usually beats it. You win about 52 hands in 100.",
+  normal: "The bank plays like a careful dealer and stops at 17. You win about 45 hands in 100.",
+  hard: "The bank holds out for 18 and the other seats count what is left in the shoe. You win about 44 hands in 100 - sharper, but only just: 18 is as far as a bank can push it.",
+};
 
 export interface Card {
   name: string;
@@ -202,6 +225,8 @@ export interface RoomState {
   turnSeconds?: number;
   /** The banker's standing shoe size. Absent means auto-size by players. */
   deckCount?: number;
+  /** How well the computer players play. Absent means "normal". */
+  botSkill?: BotSkill;
   /** Chips that moved without a hand being played. See LedgerEntry. */
   ledger?: LedgerEntry[];
   practice?: boolean;

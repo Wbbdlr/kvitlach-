@@ -458,7 +458,7 @@ describe("bot banker deciding after the bank goes broke", () => {
   }
 
   it("resolves the round on its own once the bank is broke, rather than staying stuck forever", () => {
-    const { store, room, banker, round } = setUpBrokenBank();
+    const { store, round } = setUpBrokenBank();
 
     const listener = vi.fn();
     store.setRoundUpdateListener(listener);

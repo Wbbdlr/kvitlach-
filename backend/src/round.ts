@@ -280,7 +280,6 @@ export function recommendedDeckCount(playerCount: number): number {
 export function getGameState(turns: Turn[]): RoundPhase {
   const pendingTurns = turns.filter((t) => t.state === "pending" && t.player.type !== "admin");
   const adminTurn = turns.find((t) => t.player.type === "admin");
-  const standing = turns.filter((t) => t.state === "standby");
   const resolvedPlayers = turns.filter((t) => t.player.type !== "admin" && t.state !== "pending");
 
   if (!adminTurn) return "terminate";

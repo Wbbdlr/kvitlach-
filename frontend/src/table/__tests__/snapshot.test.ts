@@ -20,7 +20,7 @@ describe("snapshotFilename", () => {
     // A download that silently fails to save is worse than an ugly filename,
     // and room names are player-authored.
     const name = snapshotFilename('Zaidy: "the big one" <night 4/5>', 2, at);
-    expect(name).not.toMatch(/[\/:*?"<>|]/);
+    expect(name).not.toMatch(/[/:*?"<>|]/);
     expect(name).toContain("Zaidy");
   });
 

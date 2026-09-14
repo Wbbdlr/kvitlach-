@@ -18,20 +18,6 @@ import { FamilyProfiles } from "./family-profiles.js";
 import type { LedgerEntry } from "./types.js";
 import { resolveClientIp } from "./client-ip.js";
 
-// HTML-text and attribute contexts only. Deliberately NOT sufficient for
-// interpolating into a <script> or an inline event handler: the HTML parser
-// decodes character references in an attribute value BEFORE the JS engine sees
-// it, so an escaped `'` arrives at JS as a real quote and closes the string.
-// That is why the delete form below passes the room id through a data-
-// attribute and reads it via this.dataset rather than pasting it into the
-// confirm() call. Today the room-id regex in store.ts (`^[A-Z0-9-]{4,20}$`)
-// makes the difference academic -- but that regex lives in another file, and
-// if it were ever loosened this page would hand an attacker the ADMIN_TOKEN
-// sitting in its own URL. Don't reintroduce the nesting.
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-}
-
 function isValidToken(provided: unknown): boolean {
   const expected = process.env.ADMIN_TOKEN;
   if (!expected || typeof provided !== "string" || !provided) return false;
@@ -135,15 +121,6 @@ function recordFailedAttempt(ip: string, limits: RuntimeLimits): void {
   } else {
     entry.count += 1;
   }
-}
-
-function formatIdle(ms: number): string {
-  const minutes = Math.floor(ms / 60000);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ${minutes % 60}m`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ${hours % 24}h`;
 }
 
 export interface HttpServerDeps {

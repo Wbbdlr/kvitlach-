@@ -78,8 +78,7 @@ describe("concealed cards -- redaction happens on the server, not just in the UI
     const created = await send(banker, "room:create", { firstName: "Banker" });
     const roomId = created.room.roomId;
     const bankerId = created.player.id;
-    const joined = await send(punter, "room:join", { roomId, firstName: "Punter" });
-    const punterId = joined.player.id;
+    await send(punter, "room:join", { roomId, firstName: "Punter" });
 
     const started = await send(banker, "round:start", { roomId });
     const roundId = started.round.roundId;

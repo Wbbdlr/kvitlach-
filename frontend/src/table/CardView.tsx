@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 import { Card } from "../types";
 import { cardImages } from "./selectors";
 import { Icon } from "./icons";
-import { ART_H, ART_W, DEFAULT_MARK, markSvgBody } from "./cardMark";
+import { ART_H, ART_W, markSvgBody } from "./cardMark";
 import { useFamilyMark } from "../familyProfile";
 
 // A single card, shared by both UIs.

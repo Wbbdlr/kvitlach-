@@ -249,7 +249,7 @@ describe("historyFilename", () => {
   it("strips what a filesystem would reject, and keeps it short", () => {
     const name = historyFilename("R1", false, now, { roomName: 'a/b\\c:d*e?f"g<h>i|j' });
     expect(name).toBe("Kvitlach - a b c d e f g h i j - 2026-01-05.html");
-    expect(name).not.toMatch(/[\/:*?"<>|]/);
+    expect(name).not.toMatch(/[/:*?"<>|]/);
 
     const long = historyFilename("R1", false, now, { roomName: "x".repeat(200) });
     expect(long.length).toBeLessThan(80);

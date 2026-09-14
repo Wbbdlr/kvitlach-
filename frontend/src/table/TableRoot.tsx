@@ -3,7 +3,7 @@ import { cardImages } from "./selectors";
 import { clsx } from "clsx";
 import { StandingRow } from "../playerRecord";
 import { captureElement, snapshotFilename } from "./snapshot";
-import { Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
+import { BotSkill, BOT_SKILL_LABELS, Player, ReactionEvent, RoomState, RoundState, Turn } from "../types";
 import { UINotification } from "../state";
 import { useChip, useFelt } from "../theme";
 import { dealerClearanceScale, discardPilePosition, orderSeatsForViewer, orderTurnsBySeat, seatPositions, seatScale, shoePosition, spreadFactor, STAGE_WIDTH, viewerHandScale } from "./layout";
@@ -15,7 +15,6 @@ import { installNudgeDue, snoozeInstallNudge, useInstallPrompt } from "../pwa";
 import { Seat } from "./Seat";
 import { Dealer } from "./Dealer";
 import { PlayerDock } from "./PlayerDock";
-import { BankPanel } from "./BankPanel";
 import { BankReservations } from "./BankReservations";
 import { ViewerHud } from "./ViewerHud";
 import { useFamilyProfile, useRoomProfile } from "../familyProfile";
@@ -137,6 +136,7 @@ export interface TableRootProps {
   /** Disconnect but keep the seat and the stack; returning resumes it. */
   onStepAway: () => void;
   onReshuffleDeck: () => void;
+  onSetBotSkill?: (skill: BotSkill) => void;
   /** Hand the bank to another player after a BANK! wager emptied it. */
   onPassBank: (targetPlayerId: string) => void;
   notifications: UINotification[];
@@ -214,6 +214,7 @@ export function TableRoot({
   onLeave,
   onStepAway,
   onReshuffleDeck,
+  onSetBotSkill,
   onPassBank,
   notifications,
   onDismissNotification,
@@ -719,7 +720,6 @@ export function TableRoot({
   // The lowest point any seat is placed at -- layout.ts puts the viewer's
   // own seat exactly there (angle 180). Compared with a tolerance because the
   // ellipse yields floats.
-  const bottomSeatY = Math.max(...positions.map((p) => p.y), 0) - 1;
   const seatShrink = Math.min(
     seatScale(positions),
     dealerClearanceScale(positions, playTop + 160 * vf)
@@ -1112,6 +1112,32 @@ export function TableRoot({
         >
           <Icon name="shuffle" size={13} />
           Reshuffle
+        </button>
+      )}
+      {/* Cycles rather than opening a picker. Three values and a chip row
+          that is already the tightest space on a phone (see the dock-overflow
+          work): a menu for three items would cost a dialog, a focus trap and
+          a backdrop to save one tap. The label always names the CURRENT
+          setting, so the button doubles as the readout - a cycling control
+          that does not say where it is now is the version of this that is
+          genuinely bad. Practice-only for the same reason Reshuffle above is:
+          a real table's banker has Manage, and a practice table's banker is a
+          bot. */}
+      {room.practice && onSetBotSkill && (
+        <button
+          type="button"
+          className="k-chip-btn"
+          data-closes-menu
+          onClick={() => {
+            const order: BotSkill[] = ["easy", "normal", "hard"];
+            const at = order.indexOf(room.botSkill ?? "normal");
+            onSetBotSkill(order[(at + 1) % order.length]!);
+          }}
+          title="Practice mode - tap to change how well the computer plays."
+          aria-label={`Computer skill: ${BOT_SKILL_LABELS[room.botSkill ?? "normal"]}. Tap to change.`}
+        >
+          <Icon name="bot" size={13} />
+          {BOT_SKILL_LABELS[room.botSkill ?? "normal"]}
         </button>
       )}
       {/* The two things a player actually needs mid-game, each with its own

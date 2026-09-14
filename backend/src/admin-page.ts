@@ -1,5 +1,5 @@
 import { AccessControl, GATED_ACTIONS, GatedAction } from "./access.js";
-import { DEFAULT_LIMITS, LIMIT_GROUPS, LIMIT_META, LIMIT_KEYS, LimitKey, RuntimeLimits, limitBounds, limitsInGroup } from "./limits.js";
+import { DEFAULT_LIMITS, LIMIT_GROUPS, LIMIT_META, LimitKey, RuntimeLimits, limitBounds, limitsInGroup } from "./limits.js";
 import { BotNames, BOT_NAME_MAX, DEFAULT_BANKER_NAMES, DEFAULT_PLAYER_NAMES } from "./bot-names.js";
 import { AboutContent, ABOUT_MAX } from "./about.js";
 import { ContactContent, CONTACT_MAX } from "./contact.js";
@@ -30,6 +30,16 @@ import { metrics } from "./metrics.js";
 // field says to stop the refresh first, and "stop auto-refresh" is one click
 // away in the top bar. `?refresh=0` is the off switch.
 
+// HTML-text and attribute contexts only. Deliberately NOT sufficient for
+// interpolating into a <script> or an inline event handler: the HTML parser
+// decodes character references in an attribute value BEFORE the JS engine sees
+// it, so an escaped `'` arrives at JS as a real quote and closes the string.
+// That is why the delete form below passes the room id through a data-
+// attribute and reads it via this.dataset rather than pasting it into the
+// confirm() call. Today the room-id regex in store.ts (`^[A-Z0-9-]{4,20}$`)
+// makes the difference academic -- but that regex lives in another file, and
+// if it were ever loosened this page would hand an attacker the ADMIN_TOKEN
+// sitting in its own URL. Don't reintroduce the nesting.
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 }

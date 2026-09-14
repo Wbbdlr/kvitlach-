@@ -2,7 +2,7 @@ import { create, StateCreator } from "zustand";
 import { activeProfile, storedSlug } from "./familyProfile";
 import { errorCopy } from "./errorCopy";
 import { WSClient } from "./ws";
-import { Balance, LedgerEntry, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
+import { Balance, BotSkill, LedgerEntry, RoomState, RoundHistoryEntry, RoundState, ServerEnvelope, Turn, ConnectionSummary } from "./types";
 import { ReactionEvent } from "./types";
 import { bestTotal, isPushTurn } from "./table/selectors";
 import { DiscardEntry, discardedEntries } from "./table/DiscardPile";
@@ -86,7 +86,7 @@ interface UIState {
   dismissGameOver: () => void;
   init: () => void;
   createRoom: (firstName: string, lastName?: string, roomName?: string, password?: string, buyIn?: number, roomId?: string, bankerBankroll?: number) => void;
-  createPracticeRoom: (firstName: string, options?: { roomName?: string; botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => void;
+  createPracticeRoom: (firstName: string, options?: { roomName?: string; botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number; botSkill?: BotSkill }) => void;
   joinRoom: (
     roomId: string,
     firstName: string,
@@ -165,6 +165,7 @@ interface UIState {
   setFeltWatermark: (text: string) => void;
   setTurnSeconds: (seconds: number) => void;
   setDeckCount: (decks: number) => void;
+  setBotSkill: (skill: BotSkill) => void;
   /**
    * serverClock - deviceClock, in ms, measured off the last round snapshot.
    *
@@ -478,9 +479,9 @@ const setUrlRoomId = (roomId?: string) => {
     const currentRoomId = window.location.pathname.match(ROOM_PATH_RE)?.[1];
     const next = roomId ? `/table/${encodeURIComponent(roomId)}` : "/";
     if (roomId && roomId !== currentRoomId) {
-      router.navigate(next);
+      router.navigate(next).catch(() => {});
     } else {
-      router.navigate(next, { replace: true });
+      router.navigate(next, { replace: true }).catch(() => {});
     }
   } catch {
     /* ignore -- URL sync is a nicety, never worth breaking the app over */
@@ -542,26 +543,6 @@ const mergeServerHistory = (
   if (!backfill.length) return clientHistory;
   return [...clientHistory, ...backfill].sort((a, b) => b.roundNumber - a.roundNumber).slice(0, 50);
 };
-
-const DEFAULT_WS_PORT = 3001;
-
-function computeDefaultWsUrl(): string {
-  if (typeof window === "undefined") return `ws://localhost:${DEFAULT_WS_PORT}`;
-  const { protocol, hostname } = window.location;
-  const wsProtocol = protocol === "https:" ? "wss" : "ws";
-
-  // If we are served from the public domain, hard-point to the tunnel host.
-  if (hostname.endsWith("kvitlach.us")) {
-    return `${wsProtocol}://ws.kvitlach.us`;
-  }
-
-  if (/-\d+\.app\.github\.dev$/.test(hostname)) {
-    // GitHub Codespaces encode the port inside the subdomain, so swap in the WS port.
-    return `${wsProtocol}://${hostname.replace(/-\d+\.app\.github\.dev$/, `-${DEFAULT_WS_PORT}.app.github.dev`)}`;
-  }
-
-  return `${wsProtocol}://${hostname}:${DEFAULT_WS_PORT}`;
-}
 
 // Prefer build-time injection; otherwise, default to the public tunnel host.
 const WS_URL = import.meta.env.VITE_WS_URL ?? "wss://ws.kvitlach.us";
@@ -1718,7 +1699,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
       // on to resume a DIFFERENT room -- that success path calls
       // setUrlRoomId with the real roomId and overwrites this.
       if (window.location.pathname.match(ROOM_PATH_RE)) {
-        router.navigate(`/?room=${encodeURIComponent(urlRoomId)}`, { replace: true });
+        router.navigate(`/?room=${encodeURIComponent(urlRoomId)}`, { replace: true }).catch(() => {});
       }
     }
 
@@ -1815,7 +1796,7 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
     // An options object rather than createRoom's positional style: four
     // same-typed optional numbers in a row would be an easy mix-up
     // (buyIn/bankBuyIn especially) at every call site.
-    createPracticeRoom: (firstName: string, options?: { roomName?: string; botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number }) => {
+    createPracticeRoom: (firstName: string, options?: { roomName?: string; botCount?: number; buyIn?: number; bankBuyIn?: number; deckCount?: number; botSkill?: BotSkill }) => {
       if (!firstName) {
         set((s) => ({ formErrors: { ...s.formErrors, practice: "Enter a first name to start a practice game." } }));
         return;
@@ -2182,6 +2163,26 @@ const creator: StateCreator<UIState> = (set: SetState, get: GetState) => {
         return;
       }
       client.send("room:set-deck-count", { roomId, decks });
+    },
+    setBotSkill: (skill: BotSkill) => {
+      const roomId = get().room?.roomId;
+      const actorId = get().playerId;
+      if (!roomId || !actorId) {
+        set({ message: "Join a game first." });
+        return;
+      }
+      // The practice carve-out, for the same reason reshuffleDeck above needs
+      // it: a practice table's banker is a BOT, so the one human is a
+      // type: "player", and a bare admin check here would block the only
+      // person who can reach this control from using it. Mirrors the server's
+      // own guard (store.ts's setBotSkill) rather than being stricter.
+      const actor = get().room?.players.find((p) => p.id === actorId);
+      const isPractice = get().room?.practice === true;
+      if (!(actor?.type === "admin" || (isPractice && actor?.type === "player"))) {
+        set({ message: "Only the banker can change how the computer plays." });
+        return;
+      }
+      client.send("room:set-bot-skill", { roomId, skill });
     },
     setTurnSeconds: (seconds: number) => {
       const roomId = get().room?.roomId;

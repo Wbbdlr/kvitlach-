@@ -5,8 +5,7 @@ import { totalDisplay, statusDisplay, betDisplay, tagVariant, fullName, winningC
 import { CardView } from "./CardView";
 import { SeatPosition } from "./layout";
 import { Icon } from "./icons";
-import { useClickOutside } from "./clickOutside";
-import { FAN_OUT_MS, useHandFan } from "./handFan";
+import { useHandFan } from "./handFan";
 import { StageOverlay } from "./StageOverlay";
 
 export interface SeatProps {

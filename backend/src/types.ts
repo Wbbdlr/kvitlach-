@@ -296,6 +296,13 @@ export interface RoomState {
   turnSeconds?: number;
   /** The banker's standing shoe size for this table. Absent means auto-size by players. */
   deckCount?: number;
+  /**
+   * How well the computer players play (`bot.ts`'s BotSkill). Absent means
+   * "normal", which is exactly the behaviour that shipped before the setting
+   * existed -- so a room persisted without it plays identically, same reason
+   * turnSeconds above is optional.
+   */
+  botSkill?: "easy" | "normal" | "hard";
   // Chips that moved without a hand being played, plus the banker actions that
   // destroyed a stack. Optional for the same reason roundHistory is: rooms
   // persisted before this field existed come back from loadFromDB() without
