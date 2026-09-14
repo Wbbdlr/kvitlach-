@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactionLayer } from "../ReactionLayer";
 
 // The picker used to be position: absolute inside the control bar, which
@@ -26,7 +26,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.body.innerHTML = "";
+  // cleanup(), NOT `document.body.innerHTML = ""`. These components portal
+  // into the body (StageOverlay), and wiping the body by hand pulls those
+  // nodes out from under React -- its own unmount then cannot find them and
+  // throws NotFoundError. It survived only because the old runner happened to
+  // order this hook after the library's own cleanup; it does not any more.
+  cleanup();
 });
 
 describe("the reaction picker", () => {

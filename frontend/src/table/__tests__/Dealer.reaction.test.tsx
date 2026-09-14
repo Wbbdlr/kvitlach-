@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { Dealer } from "../Dealer";
 import { Seat } from "../Seat";
 import { seatPositions } from "../layout";
@@ -31,7 +31,12 @@ const punter: Player = { id: "p1", firstName: "Sruly", lastName: "", type: "play
 const turnFor = (player: Player): Turn => ({ player, state: "pending", cards: [], bet: 0 });
 
 afterEach(() => {
-  document.body.innerHTML = "";
+  // cleanup(), NOT `document.body.innerHTML = ""`. These components portal
+  // into the body (StageOverlay), and wiping the body by hand pulls those
+  // nodes out from under React -- its own unmount then cannot find them and
+  // throws NotFoundError. It survived only because the old runner happened to
+  // order this hook after the library's own cleanup; it does not any more.
+  cleanup();
 });
 
 describe("reaction bubbles", () => {

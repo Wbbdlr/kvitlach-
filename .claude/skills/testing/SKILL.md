@@ -66,6 +66,38 @@ result on a file with no timers and no sockets means the assertion samples
 where it should compare - fix the assertion against the source of truth
 (export the constant and check membership), never by drawing more samples.
 
+## The runner's own defaults are a silent input
+
+Found upgrading Vitest 1 -> 3 (2026-09-14). Both packages sat on the runner's
+defaults for things the suites turn out to be sensitive to, so a tooling bump
+changed test behaviour without a line of test code moving.
+
+- **`pool` changed default from `threads` to `forks` in Vitest 2.** The
+  frontend config set `poolOptions.threads` with a comment explaining the cap
+  (don't pin every core); the default move ORPHANED that block, and the suite
+  fanned back out. Eight tests then failed in a full run and passed alone.
+  Frontend now pins `pool: "threads"` so its cap binds again.
+- **The backend went the other way, and the numbers decided it.** Pinning
+  `threads` back there made its known intermittent flake markedly worse --
+  0 of 2 full runs clean (3 and 5 failures) against 2 of 3 on forks, then 3 of
+  3 clean once left on forks. A fork per file is the stronger isolation and
+  this suite needs it. Left on the default, with that measurement recorded in
+  the config.
+
+The general rule: when a runner upgrade turns tests red, measure both settings
+over several full runs before touching a test. A default that moved looks
+exactly like a change that broke something.
+
+## Never wipe `document.body` in a cleanup hook
+
+`afterEach(() => { document.body.innerHTML = ""; })` in two component test
+files was a real bug that only surfaced under a newer runner. These components
+portal into the body (`StageOverlay`), so wiping it by hand pulls those nodes
+out from under React; its own unmount then cannot find them and throws
+`NotFoundError: The node to be removed is not a child of this node`. It had
+survived only because the old runner happened to order the hook after Testing
+Library's own cleanup. Use `cleanup()` from `@testing-library/react`.
+
 ## Conventions
 
 - **Every WS test file binds its own port.** They run in parallel, so a reused

@@ -12,6 +12,15 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: ["src/**/*.test.ts"],
+    // Left on Vitest's own default (`forks` since Vitest 2), deliberately and
+    // with numbers behind it. This suite has a known intermittent flake in its
+    // real-WebSocket and real-timer tests (TASKS.md), and pinning the old
+    // `threads` model back during the Vitest 1 -> 3 upgrade made it markedly
+    // WORSE, not better: 0 of 2 full runs clean on threads (3 and 5 failures)
+    // against 2 of 3 on forks. A fork per file is the stronger isolation and
+    // this suite evidently needs it. Do not pin `pool` here without re-running
+    // that comparison -- the frontend pins `threads` for an unrelated reason
+    // (a thread cap the default move orphaned) and is not a precedent.
     coverage: {
       reporter: ["text", "json", "html"],
       include: ["src/**/*.ts"],
