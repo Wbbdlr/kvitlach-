@@ -61,6 +61,13 @@ jobs:
 
       - run: npm ci
 
+      # Correctness rules only, no formatting (see eslint.config.js). It gates
+      # rather than reporting: it was introduced clean, and a linter that is
+      # allowed to sit red stops being read -- which is the same trade-off the
+      # audit step below documents in the other direction.
+      - name: Lint
+        run: npm run lint
+
       # `tsc -p tsconfig.json` IS the backend typecheck (CLAUDE.md) -- it is
       # clean here, unlike the frontend's, so a type error fails the build.
       - name: Typecheck
@@ -115,6 +122,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
+
+      # See the backend job's lint step. The frontend's set adds react-hooks,
+      # which is the half that matters here.
+      - name: Lint
+        run: npm run lint
 
       - name: Tests
         run: npx vitest run
