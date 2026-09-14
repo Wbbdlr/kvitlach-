@@ -235,6 +235,14 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
     `nginxProxy.test.ts` requires exact-match locations and a path parameter
     cannot be one. There is deliberately no route that LISTS profiles: a
     profile carries a family's surname.
+  - **The card BACK has three render sites and they must change together**:
+    `CardView.tsx`'s `<picture>` (every face-down card), `.k-cardback` in
+    `index.css` (the shoe and discard stacks, a background-image, so it cannot
+    share that markup) and `App.tsx`'s lobby image. Each also carries its own
+    large/small swap, because `blank.png` is 946x1438 (2.6MB, the single
+    most-loaded image in the app) with a `blank-sm.png` for viewports under
+    1280 where the stage scale can never exceed 1. Change one and the other
+    two are silently stale.
   - **The card mark is Latin-only and the felt print is Hebrew-only**, because
     Cinzel ships here as an ASCII subset and Frank Ruhl carries a Hebrew-only
     unicode-range. Hebrew in the mark field would draw nothing at all.
