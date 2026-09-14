@@ -138,6 +138,10 @@ composes; `layout.ts`/`stage.ts` own coordinates; `selectors.ts` /
   "Practice"** (2026-09-04, direct request) - the framing moved from a demo/
   tutorial mode to a real standalone way to play. `room.practice` (the
   internal flag/logic) is unchanged; only the lobby copy changed.
+- **Ten bots is the ceiling and that is settled** (owner's call, 2026-09-14):
+  ten is MAX_SEATED_PLAYERS_PER_ROUND minus the human's own seat, and it is
+  also the most anyone plays with. Do not propose widening the name pool past
+  it again.
 - **`bot.ts`'s thresholds are MEASURED, not chosen.** 400,000 simulated rounds
   against the real rule primitives, and two of the results are
   counter-intuitive enough to be re-derived by anyone who assumes otherwise:
